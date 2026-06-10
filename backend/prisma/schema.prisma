@@ -1,0 +1,125 @@
+// Prisma schema — 순수 PostgreSQL. 미디어 원본은 DB에 넣지 않고 R2 키만 저장.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique          // 어떤 소셜로 들어와도 이메일을 공통 키로 묶음
+  name            String?
+  passwordHash    String?                    // email 가입 시 bcrypt
+  provider        String    @default("email") // email | kakao | naver | google | apple
+  onboardingDone  Boolean   @default(false)
+  trialStartedAt  DateTime?
+  createdAt       DateTime  @default(now())
+
+  contacts  Contact[]
+  meetings  Meeting[]
+  todos      Todo[]
+  deals      Deal[]
+  events     Event[]
+  kbArticles KbArticle[]
+}
+
+model Contact {           // 인맥 (사람/거래처)
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  person    String                       // 이름/직책
+  company   String?
+  phone     String?
+  email     String?
+  address   String?
+  lat       Float?
+  lng       Float?
+  group     String?                       // 1개 소속 (이천/강남/VIP 등)
+  tags      String[]                      // 자유·복수 태그 (결제완료/대기/신규/핫리드 …)
+  cardImageKey String?                    // 명함 원본 R2 키
+  favorite  Boolean  @default(false)      // 즐겨찾기(별표) — 주관적 중요 표시
+  wonAmount Int      @default(0)          // 직접 성사 딜 합계(원)
+  meetCount Int      @default(0)          // 미팅 횟수(보조 지표)
+  // 소개 관계(자기참조): referredBy = 나를 소개해준 사람 / referrals = 내가 소개한 사람들
+  referredById String?
+  referredBy   Contact?  @relation("Referral", fields: [referredById], references: [id])
+  referrals    Contact[] @relation("Referral")
+  // 영향력 = wonAmount + Σ(소개한 사람 성과 × 단계 가중치)는 조회 시 계산(저장 안 함)
+  createdAt DateTime @default(now())
+
+  meetings  Meeting[]
+  deals     Deal[]
+}
+
+model Meeting {           // 기록 (녹음/통화/사진)
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  contactId   String?
+  contact     Contact? @relation(fields: [contactId], references: [id])
+  source      String                      // live | call | photo
+  mediaKey    String?                     // R2 객체 키 (원본 미디어)
+  oneLine     String?
+  summary     Json?                       // {key_points, actions, next_meeting, attendees, confidence, needs_review}
+  attendees   String[]                    // 태그된 참석자 contactId 목록
+  createdAt   DateTime @default(now())
+}
+
+model Todo {              // 할 일
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  status    String   @default("todo")     // todo | doing | done
+  priority  String   @default("mid")       // high | mid | low
+  due       DateTime?
+  detail    String?
+  attachments Json?                        // [{name, key, kind}]
+  history   Json?                          // [{when, who, what}]
+  result    String?
+  contactId String?
+  createdAt DateTime @default(now())
+}
+
+model Deal {              // 딜/매출 — 금액은 직접 입력, 부가세/합계는 계산
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  contactId   String?
+  contact     Contact? @relation(fields: [contactId], references: [id])
+  title       String
+  stage       String   @default("리드")     // 리드|견적|협상|성사|실패
+  supplyAmount Int     @default(0)          // 공급가액(원). 부가세=*0.1, 합계=*1.1
+  quoteKey    String?                       // 견적서 파일 R2 키 (분석 안 함)
+  wonAt       DateTime?                      // 성사 시각 → 월 매출 집계
+  createdAt   DateTime @default(now())
+}
+
+model Event {             // 캘린더 일정
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  startsAt  DateTime
+  endsAt    DateTime?
+  place     String?
+  contactId String?
+  reminders String[]                        // ["1시간 전","1일 전"] 등 (기본값 자동 적용)
+  googleId  String?                          // Google 캘린더 연동 id
+  createdAt DateTime @default(now())
+}
+
+model KbArticle {         // 지식백과
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  category  String?
+  tags      String[]
+  blocks    Json                            // 노션형 블록 배열
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
