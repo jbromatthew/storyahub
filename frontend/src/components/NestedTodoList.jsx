@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { api } from "../api/client.js";
+import { confirmDelete } from "../confirmDelete.js";
 
 const PRI = { high: "#DD5E39", mid: "#C9A23A", low: "#C0B9AC" };
 
@@ -122,7 +123,7 @@ export default function NestedTodoList({
 
   const deleteTask = async (t, e) => {
     e?.stopPropagation();
-    if (!confirm(`"${t.t}" 할 일을 삭제할까요?`)) return;
+    if (!confirmDelete(t.t || "할 일")) return;
     try {
       await api.deleteTodo(t.id);
       await onRefresh?.();

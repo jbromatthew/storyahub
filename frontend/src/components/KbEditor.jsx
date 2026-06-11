@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
 import { api } from "../api/client.js";
+import { confirmDelete } from "../confirmDelete.js";
 import { uploadFile, pickImageFile, pickAnyFile, mediaUrl, isPickCancelled } from "../api/upload.js";
 
 const PRESET_TAGS = ["결제완료", "결제대기", "핫리드", "신규", "VIP", "보류"];
@@ -597,7 +598,7 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
 
   const handleDelete = async () => {
     if (!article?.id) return back();
-    if (!confirm("이 글을 삭제할까요?")) return;
+    if (!confirmDelete(article.title || "이 글")) return;
     try {
       await api.deleteKb(article.id);
       onDeleted?.();

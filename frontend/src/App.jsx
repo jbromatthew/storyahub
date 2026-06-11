@@ -9,6 +9,7 @@ import { api, loadToken, saveToken, clearToken, setToken, isAuthError } from "./
 import { uploadBlob, uploadFile, pickImageFile, pickAnyFile, fileToBase64, mediaUrl, AudioRecorder, isPickCancelled } from "./api/upload.js";
 import { setClients, getClients } from "./store.js";
 import { contactToUi, todoToUi, todoSearchText, formatWhen, eventToUi, kbToUi, meetingToUi, isAudioMediaKey, isImageMediaKey, contactGroups, kbCategories, haversineKm, formatDistanceKm, kakaoDirectionsUrl, kbExcerpt, kbReadMinutes, kbFileCount, kbThumbMeta } from "./mappers.js";
+import { confirmDelete } from "./confirmDelete.js";
 
 /* ------------------------------------------------------------------
    Storyahub — 비서앱 UI
@@ -34,7 +35,7 @@ const CSS = `
 .app-shell{display:flex;min-height:100vh;min-height:100dvh;width:100%;}
 .app-main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:100vh;min-height:100dvh;position:relative;background:var(--paper);}
 .app-main-centered{display:flex;align-items:center;justify-content:center;padding:24px;}
-.screen{flex:1;overflow-y:auto;overflow-x:hidden;padding:8px 0 calc(96px + env(safe-area-inset-bottom,0px));scroll-behavior:smooth;}
+.screen{flex:1;overflow-y:auto;overflow-x:hidden;padding:8px 0 calc(76px + env(safe-area-inset-bottom,0px));scroll-behavior:smooth;}
 .screen::-webkit-scrollbar{width:6px;}
 .screen::-webkit-scrollbar-thumb{background:#D8D0C4;border-radius:3px;}
 .screen-kb{overflow:hidden;padding:0;display:flex;flex-direction:column;flex:1;min-height:0;background:#fff;}
@@ -84,18 +85,15 @@ const CSS = `
 .avatar{width:42px;height:42px;border-radius:14px;background:var(--accent-soft);color:var(--accent-deep);
   display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex:0 0 auto;}
 
-/* bottom nav (mobile) */
-.nav{position:fixed;left:0;right:0;bottom:0;height:calc(84px + env(safe-area-inset-bottom,0px));
+/* bottom nav (mobile) — 5탭 */
+.nav{position:fixed;left:0;right:0;bottom:0;height:calc(68px + env(safe-area-inset-bottom,0px));
   padding-bottom:env(safe-area-inset-bottom,0px);
   background:rgba(247,244,238,.92);backdrop-filter:blur(14px);border-top:1px solid var(--line);
-  display:flex;align-items:flex-start;justify-content:space-around;padding-top:11px;z-index:40;}
-.navitem{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:600;
-  color:var(--muted);background:none;border:none;cursor:pointer;width:46px;transition:.15s;}
+  z-index:40;}
+.nav-grid{display:grid;grid-template-columns:repeat(5,1fr);width:100%;align-items:end;padding:8px 4px 0;}
+.navitem{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px;font-weight:600;
+  color:var(--muted);background:none;border:none;cursor:pointer;width:100%;padding:0 2px;transition:.15s;}
 .navitem.on{color:var(--accent-deep);}
-.fab{width:60px;height:60px;border-radius:22px;background:var(--accent);
-  display:flex;align-items:center;justify-content:center;margin-top:-22px;
-  box-shadow:0 12px 24px -6px rgba(221,94,57,.6);border:none;cursor:pointer;transition:.15s;}
-.fab:active{transform:scale(.94);}
 
 @media (min-width:768px){
   .app-shell{max-width:1440px;margin:0 auto;}
@@ -730,12 +728,13 @@ function App(){
 
         {showMobileNav && (
         <div className="nav">
-          <NavBtn on={tab==="today"&&!client} icon={I.home} label="투데이" onClick={()=>goTab("today")}/>
-          <NavBtn on={tab==="clients"||client} icon={I.users} label={T(segment,"contacts")} onClick={()=>goTab("clients")}/>
-          <NavBtn on={tab==="meetings"} icon={I.meet} label="미팅" onClick={()=>goTab("meetings")}/>
-          <button className="fab" onClick={startRec} aria-label="녹음">{I.mic()}</button>
-          <NavBtn on={tab==="calendar"} icon={I.cal} label="캘린더" onClick={()=>goTab("calendar")}/>
-          <NavBtn on={tab==="kb"} icon={I.book} label="지식백과" onClick={()=>goTab("kb")}/>
+          <div className="nav-grid">
+            <NavBtn on={tab==="today"&&!client} icon={I.home} label="투데이" onClick={()=>goTab("today")}/>
+            <NavBtn on={tab==="clients"||client} icon={I.users} label={T(segment,"contacts")} onClick={()=>goTab("clients")}/>
+            <NavBtn on={tab==="meetings"} icon={I.meet} label="미팅" onClick={()=>goTab("meetings")}/>
+            <NavBtn on={tab==="kb"} icon={I.book} label="지식백과" onClick={()=>goTab("kb")}/>
+            <NavBtn on={tab==="calendar"} icon={I.cal} label="캘린더" onClick={()=>goTab("calendar")}/>
+          </div>
         </div>
         )}
 
@@ -777,8 +776,8 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
           <div className="h-title">안녕하세요, {greetName}님</div>
         </div>
         <div className="row" style={{gap:8}}>
-          <button className="iconbtn" onClick={openSearch}>{I.search({width:19,height:19})}</button>
-          <button className="iconbtn" onClick={openSettings}>{I.gear({width:19,height:19})}</button>
+          <button className="iconbtn" onClick={openSearch} aria-label="검색">{I.search({width:19,height:19})}</button>
+          <button className="iconbtn" onClick={openSettings} aria-label="설정">{I.gear({width:19,height:19})}</button>
         </div>
       </div>
 
@@ -1318,7 +1317,7 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting}){
   const openTodos=(detail?.openTodos||[]).map(todoToUi);
   const meetHistory=detail?.meetings||[];
   const deleteDeal=async (d)=>{
-    if(!confirm(`"${d.title||"딜"}"을(를) 삭제할까요?`)) return;
+    if(!confirmDelete(d.title||"딜")) return;
     try{
       await api.deleteDeal(d.id);
       reload();
@@ -2076,7 +2075,7 @@ function Calendar({openDetail}){
   };
   const deleteEvent=async (e,ev)=>{
     ev?.stopPropagation();
-    if(!confirm(`"${e.title}" 일정을 삭제할까요?`)) return;
+    if(!confirmDelete(e.title||"일정")) return;
     try{
       await api.deleteEvent(e.id);
       reloadEvents();
@@ -3473,7 +3472,7 @@ function DetailHead({back,eyebrow,title}){
 function DeleteBar({label,onDelete,afterDelete}){
   const [busy,setBusy]=useState(false);
   const go=async ()=>{
-    if(!confirm(`"${label}"을(를) 삭제할까요?\n삭제 후에는 복구할 수 없어요.`)) return;
+    if(!confirmDelete(label)) return;
     setBusy(true);
     try{
       await onDelete();
