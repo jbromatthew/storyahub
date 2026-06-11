@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
+import { requireAccess } from "../middleware/requireAccess.js";
 
 export const dealsRouter = Router();
-dealsRouter.use(auth);
+dealsRouter.use(auth, requireAccess);
 
 // 부가세/합계는 저장하지 않고 응답 시 계산(곱셈). AI/토큰 미사용.
 function withVat(supplyAmount: number) {

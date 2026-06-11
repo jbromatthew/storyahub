@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
+import { requireAccess } from "../middleware/requireAccess.js";
 
 export const todosRouter = Router();
-todosRouter.use(auth);
+todosRouter.use(auth, requireAccess);
 
 const STATUS_LABEL: Record<string, string> = { todo: "할 일", doing: "진행 중", done: "완료" };
 
@@ -47,7 +48,7 @@ function matchesTodoSearch(
   const history = Array.isArray(t.history) ? (t.history as HistoryEntry[]) : [];
   for (const h of history) parts.push(h.what, h.who);
   const attachments = Array.isArray(t.attachments) ? (t.attachments as { name?: string }[]) : [];
-  for (const a of attachments) parts.push(a.name);
+  for (const a of attachments) if (a.name) parts.push(a.name);
   const subs = normalizeSubs(t.subs);
   for (const s of subs) parts.push(s.text);
   return parts.filter(Boolean).join(" ").toLowerCase().includes(ql);

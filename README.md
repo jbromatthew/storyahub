@@ -21,36 +21,51 @@ npm install                 # 루트 concurrently
 npm run install:all         # backend + frontend 의존성
 ```
 
-`backend/.env`에서 RDS 비밀번호를 설정한 뒤:
+환경 파일을 준비한 뒤 ( **`DATABASE_URL`만 dev/production에서 다름** ):
 
 ```bash
-npm run db:migrate          # RDS에 스키마 적용 (prisma migrate deploy)
-npm run dev                 # API :4000 + 프런트 :5173 동시 기동
+cd backend
+cp .env.development.example .env.development   # 로컬 PostgreSQL
+cp .env.production.example .env.production       # RDS (운영)
+```
+
+```bash
+npm run db:migrate:dev      # 로컬 DB 스키마 적용
+npm run dev:local           # 로컬 Postgres + API + 프런트
+# 또는
+npm run dev                 # 동일 (development)
+```
+
+운영 배포 시:
+
+```bash
+npm run db:migrate          # production (.env.production) 스키마 적용
 ```
 
 ### 1) Backend (개별)
 
 ```bash
 cd backend
-cp .env.example .env        # DATABASE_URL에 RDS 마스터 비밀번호 입력
+cp .env.development.example .env.development
 npm install
-npm run prisma:migrate      # RDS 스키마 적용
+npm run prisma:migrate:dev  # 로컬 DB
 npm run dev                 # http://localhost:4000
 ```
 
-**RDS 연결 문자열 예시**
+**DATABASE_URL 예시**
 
-```
-postgresql://postgres:YOUR_PASSWORD@database-1.czqkai6ywh46.ap-northeast-2.rds.amazonaws.com:5432/storyahub?sslmode=require
-```
+| 환경 | 파일 | 예시 |
+|------|------|------|
+| development | `.env.development` | `postgresql://broj:broj@localhost:5432/storyahub` |
+| production | `.env.production` | `postgresql://postgres:PW@rds-host:5432/storyahub?sslmode=require` |
 
-RDS에 `storyahub` DB가 없으면 먼저 생성:
+로컬 Postgres에 DB가 없으면:
 
 ```sql
 CREATE DATABASE storyahub;
 ```
 
-로컬에서 RDS에 접속하려면 **퍼블릭 액세스** + **보안 그룹 5432 인바운드**(내 IP)가 필요합니다.
+RDS 터널로 운영 DB에 붙을 때는 `npm run dev:prod-db` (레거시).
 
 ### 2) Frontend (개별)
 

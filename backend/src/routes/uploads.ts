@@ -1,16 +1,50 @@
 import { Router, type Response } from "express";
 import { randomUUID } from "node:crypto";
+import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
-import { presignPut, presignGet, putObjectBytes, getObjectBytes } from "../services/r2.js";
+import { requireAccess, type AccessRequest } from "../middleware/requireAccess.js";
+import { fileUploadBlocked, getAccessStatus } from "../services/access.js";
+import { getUserUsage } from "../services/usage.js";
+import {
+  presignPut,
+  presignGet,
+  putObjectBytes,
+  getObjectBytes,
+  buildUserMediaKey,
+  isUserMediaKey,
+} from "../services/r2.js";
 import { mimeFromKey } from "../services/stt.js";
 import { env } from "../env.js";
 
 export const uploadsRouter = Router();
-uploadsRouter.use(auth);
+uploadsRouter.use(auth, requireAccess);
 
 function safeFilename(raw: string): string {
   const name = decodeURIComponent(raw || "upload").split(/[/\\]/).pop() || "upload";
   return name.replace(/[^\w.\-가-힣]/g, "_").slice(0, 120) || "upload";
+}
+
+async function assertUploadAllowed(userId: string, contentType: string, size: number) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw Object.assign(new Error("not found"), { status: 404 });
+
+  const status = getAccessStatus(user);
+  const blocked = fileUploadBlocked(status);
+  const isRecordingAudio = contentType.startsWith("audio/");
+
+  if (blocked && !isRecordingAudio) {
+    throw Object.assign(new Error(blocked), { status: 403 });
+  }
+  if (!status.hasAccess) {
+    throw Object.assign(new Error("이용 기간이 만료되었습니다."), { status: 402 });
+  }
+
+  const usage = await getUserUsage(userId);
+  if (usage.storage.limitBytes > 0 && usage.storage.usedBytes + size > usage.storage.limitBytes) {
+    throw Object.assign(new Error("저장 한도를 초과합니다. 플랜을 업그레이드하거나 파일을 정리해주세요."), {
+      status: 402,
+    });
+  }
 }
 
 /** 브라우저 → R2 직접 PUT은 R2 CORS 미설정 시 Failed to fetch. 서버 경유 업로드. */
@@ -24,29 +58,39 @@ export async function directUploadHandler(req: AuthedRequest, res: Response) {
 
     const filename = safeFilename(String(req.headers["x-filename"] ?? "upload"));
     const contentType = String(req.headers["content-type"] ?? "application/octet-stream");
-    const key = `u/${req.userId}/${randomUUID()}/${filename}`;
+    await assertUploadAllowed(req.userId!, contentType, buf.length);
+
+    const key = buildUserMediaKey(req.userId!, `${randomUUID()}/${filename}`);
     await putObjectBytes(key, buf, contentType);
     res.json({ key });
   } catch (e) {
+    const err = e as Error & { status?: number };
     console.error("direct upload", e);
-    res.status(500).json({ error: (e as Error).message || "업로드 실패" });
+    res.status(err.status ?? 500).json({ error: err.message || "업로드 실패" });
   }
 }
 
 // 업로드용 presigned URL 발급 → 클라이언트가 R2로 직접 PUT (서버는 바이트를 거치지 않음).
-uploadsRouter.post("/presign", async (req: AuthedRequest, res) => {
-  const { filename, contentType } = req.body ?? {};
-  if (!filename) return res.status(400).json({ error: "filename 필요" });
-  const key = `u/${req.userId}/${randomUUID()}/${filename}`;
-  const url = await presignPut(key, contentType ?? "application/octet-stream");
-  res.json({ key, url });
+uploadsRouter.post("/presign", async (req: AccessRequest, res) => {
+  try {
+    const { filename, contentType } = req.body ?? {};
+    if (!filename) return res.status(400).json({ error: "filename 필요" });
+    const ct = contentType ?? "application/octet-stream";
+    await assertUploadAllowed(req.userId!, ct, 0);
+    const key = buildUserMediaKey(req.userId!, `${randomUUID()}/${filename}`);
+    const url = await presignPut(key, ct);
+    res.json({ key, url });
+  } catch (e) {
+    const err = e as Error & { status?: number };
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
 });
 
 // 브라우저 <audio> 재생용 — R2 presigned URL은 CORS 때문에 로컬에서 막히는 경우가 많아 서버 경유
 uploadsRouter.get("/stream", async (req: AuthedRequest, res) => {
   try {
     const key = String(req.query.key ?? "");
-    if (!key.startsWith(`u/${req.userId}/`)) return res.status(403).json({ error: "forbidden" });
+    if (!isUserMediaKey(key, req.userId!)) return res.status(403).json({ error: "forbidden" });
     if (!env.r2.endpoint || !env.r2.accessKeyId) {
       return res.status(503).json({ error: "R2가 설정되지 않았습니다" });
     }
@@ -63,6 +107,6 @@ uploadsRouter.get("/stream", async (req: AuthedRequest, res) => {
 // 다운로드/열람용 presigned URL
 uploadsRouter.get("/get", async (req: AuthedRequest, res) => {
   const key = String(req.query.key ?? "");
-  if (!key.startsWith(`u/${req.userId}/`)) return res.status(403).json({ error: "forbidden" });
+  if (!isUserMediaKey(key, req.userId!)) return res.status(403).json({ error: "forbidden" });
   res.json({ url: await presignGet(key) });
 });

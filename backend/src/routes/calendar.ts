@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
+import { requireAccess } from "../middleware/requireAccess.js";
 
 export const calendarRouter = Router();
-calendarRouter.use(auth);
+calendarRouter.use(auth, requireAccess);
 
 calendarRouter.get("/", async (req: AuthedRequest, res) => {
   const from = req.query.from ? new Date(String(req.query.from)) : new Date(0);

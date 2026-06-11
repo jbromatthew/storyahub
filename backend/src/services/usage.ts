@@ -1,7 +1,7 @@
 import { prisma } from "../db.js";
+import { getAccessStatus } from "./access.js";
+import { PLAN_LIMITS, type PlanId } from "./plans.js";
 import { headObjectSize, listUserObjects, r2Configured } from "./r2.js";
-
-const TRIAL_STORAGE_BYTES = 5 * 1024 * 1024 * 1024; // 5GB
 
 type BreakdownKey = "meetings" | "contacts" | "deals" | "todos" | "kb" | "other";
 
@@ -34,7 +34,20 @@ function collectKbMediaKeys(blocks: unknown): string[] {
   return keys;
 }
 
+function formatLimitLabel(bytes: number): string {
+  if (bytes >= 1024 ** 4) return `${Math.round(bytes / 1024 ** 4)}TB`;
+  if (bytes >= 1024 ** 3) return `${Math.round(bytes / 1024 ** 3)}GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)}MB`;
+  return `${Math.round(bytes / 1024)}KB`;
+}
+
 export async function getUserUsage(userId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new Error("not found");
+
+  const access = getAccessStatus(user);
+  const limitBytes = access.storageLimitBytes;
+
   const [contacts, meetings, todos, deals, kbArticles] = await Promise.all([
     prisma.contact.findMany({ where: { userId }, select: { cardImageKey: true } }),
     prisma.meeting.findMany({ where: { userId }, select: { mediaKey: true } }),
@@ -94,19 +107,32 @@ export async function getUserUsage(userId: string) {
     });
   }
 
-  const limitBytes = TRIAL_STORAGE_BYTES;
   const percent = limitBytes > 0 ? Math.min(100, Math.round((usedBytes / limitBytes) * 1000) / 10) : 0;
+  const plan = access.plan as PlanId | null;
 
   return {
+    access: {
+      isTrial: access.isTrial,
+      hasAccess: access.hasAccess,
+      allowFileUpload: access.allowFileUpload,
+      recordingUsedSec: access.recordingUsedSec,
+      recordingLimitSec: access.recordingLimitSec,
+      recordingLimitLabel:
+        access.recordingLimitSec >= 3600
+          ? `${Math.round(access.recordingLimitSec / 3600)}시간`
+          : `${Math.round(access.recordingLimitSec / 60)}분`,
+      purgeAt: access.purgeAt,
+    },
     storage: {
       usedBytes,
       limitBytes,
-      limitLabel: "5GB",
+      limitLabel: formatLimitLabel(limitBytes),
       fileCount,
       percent,
       source,
       breakdown: breakdown.filter((b) => b.count > 0 || b.bytes > 0),
     },
+    plan: plan ? PLAN_LIMITS[plan] : null,
     counts: {
       contacts: contacts.length,
       meetings: meetings.length,

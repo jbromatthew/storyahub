@@ -5,7 +5,7 @@ import WelcomeScreen from "./components/WelcomeScreen.jsx";
 import KbEditor, { KbReadView, kbSearchText } from "./components/KbEditor.jsx";
 import NestedTodoList, { isTodoDone } from "./components/NestedTodoList.jsx";
 import MeetingInsights from "./components/MeetingInsights.jsx";
-import { api, loadToken, saveToken, clearToken, setToken, isAuthError } from "./api/client.js";
+import { api, loadToken, saveToken, clearToken, setToken, isAuthError, isAccessError } from "./api/client.js";
 import { uploadBlob, uploadFile, pickImageFile, pickAnyFile, fileToBase64, mediaUrl, AudioRecorder, isPickCancelled } from "./api/upload.js";
 import { setClients, getClients } from "./store.js";
 import { contactToUi, todoToUi, todoSearchText, formatWhen, eventToUi, kbToUi, meetingToUi, isAudioMediaKey, isImageMediaKey, contactGroups, kbCategories, haversineKm, formatDistanceKm, kakaoDirectionsUrl, kbExcerpt, kbReadMinutes, kbFileCount, kbThumbMeta } from "./mappers.js";
@@ -587,7 +587,17 @@ function App(){
   },[user]);
 
   const goTab=(t)=>{ setClient(null); setKbView(null); setPricing(false); setCardScan(false); setOverlay(null); setDetail(null); if(t!=="record"){ setTab(t);} };
-  const startRec=()=>{ setTab("record"); setPhase("rec"); setSecs(0); setHl(0); setLastSummary(null); setLastMediaKey(null); };
+  const startRec=()=>{
+    if(user && user.hasAccess===false){
+      setPricing(true);
+      return alert("이용 기간이 만료되었습니다. 요금제를 선택해 주세요.");
+    }
+    if(user?.isTrial && user.recordingLimitSec && user.recordingUsedSec>=user.recordingLimitSec){
+      setPricing(true);
+      return alert("체험 녹음 한도(1시간)를 모두 사용했습니다.");
+    }
+    setTab("record"); setPhase("rec"); setSecs(0); setHl(0); setLastSummary(null); setLastMediaKey(null);
+  };
   const friendlyAiError=(msg)=>{
     if(!msg) return "요약에 실패했습니다.";
     if(/일시적으로 바쁩니다|high demand|503|UNAVAILABLE/i.test(msg))
@@ -600,6 +610,7 @@ function App(){
   const handleRecordComplete=async ({ mode, mediaKey, imageKeys, attendees, contactId, companyName })=>{
     setPhase("proc");
     setLastMediaKey(mediaKey||imageKeys?.[0]||null);
+    let ok=false;
     try{
       const { jobId } = await api.enqueueSummary(mediaKey||null,{
         template:"영업",
@@ -608,6 +619,7 @@ function App(){
         source: mode==="photo"?"photo":"live",
         attendees,
         imageKeys: imageKeys??[],
+        durationSec: mode==="photo"?0:secs,
       });
       let job;
       for(let i=0;i<180;i++){
@@ -618,12 +630,19 @@ function App(){
       if(job?.status==="done"){
         setLastSummary(job.result);
         if(job.result?.mediaKey) setLastMediaKey(job.result.mediaKey);
+        ok=true;
       }
       else if(job?.status==="error") alert(friendlyAiError(job.error));
       else alert("요약이 예상보다 오래 걸리고 있어요. 잠시 후 기록 목록에서 확인해주세요.");
       await loadAppData();
-    }catch(e){ alert(friendlyAiError(e.message)||"처리 실패"); console.warn("record",e); }
-    setPhase("sum");
+      const { user:u }=await api.me().catch(()=>({}));
+      if(u) setUser(u);
+    }catch(e){
+      if(isAccessError(e)){ setPricing(true); setUser(u=>u?{...u,hasAccess:false}:u); }
+      alert(friendlyAiError(e.message)||"처리 실패");
+      console.warn("record",e);
+    }
+    setPhase(ok?"sum":"idle");
   };
   const mmss=(n)=>`${String(Math.floor(n/60)).padStart(2,"0")}:${String(n%60).padStart(2,"0")}`;
   const toggleTodo=async (i)=>{
@@ -696,10 +715,10 @@ function App(){
               onLogout={()=>{ clearToken(); setUser(null); setBoot("auth"); setOverlay(null); }}/>
           : overlay==="trash" ? <Trash back={()=>setOverlay("settings")}/>
           : overlay==="export" ? <ExportData back={()=>setOverlay("settings")}/>
-          : pricing ? <Pricing back={()=>setPricing(false)} segment={segment} trialLeft={user?.trialDaysLeft}/>
+          : pricing ? <Pricing back={()=>setPricing(false)} segment={segment} user={user} onUserUpdated={setUser}/>
           : tab==="record" ? <RecordScreen phase={phase} secs={secs} mmss={mmss} hl={hl} setHl={setHl}
                               onComplete={handleRecordComplete} todos={todos} toggleTodo={toggleTodo}
-                              summary={lastSummary} mediaKey={lastMediaKey}
+                              summary={lastSummary} mediaKey={lastMediaKey} user={user}
                               goClients={()=>{setTab("clients");setPhase("idle");}} />
           : client ? <ClientDetail c={client} back={()=>setClient(null)} startRec={startRec} seg={segment} onRefresh={loadAppData}
               onDeleted={()=>{ setClient(null); loadAppData(); }}
@@ -1747,7 +1766,7 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted}){
 }
 
 /* ---------------- RECORD + SUMMARY ---------------- */
-function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goClients,summary,mediaKey}){
+function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goClients,summary,mediaKey,user}){
   const CLIENTS=getClients();
   const [att,setAtt]=useState(()=>CLIENTS.slice(0,2).map(c=>c.id));
   const [pick,setPick]=useState(false);
@@ -1818,8 +1837,14 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
       {/* 녹음 / 사진 모드 */}
       <div className="seg" style={{marginTop:14}}>
         <button className={mode==="rec"?"on":""} onClick={()=>setMode("rec")}>녹음</button>
-        <button className={mode==="photo"?"on":""} onClick={()=>setMode("photo")}>사진 · 문서</button>
+        <button className={mode==="photo"?"on":""} onClick={()=>{
+          if(user?.isTrial||user?.allowFileUpload===false){ alert("체험 기간에는 파일 업로드가 불가합니다. 녹음만 이용할 수 있어요."); return; }
+          setMode("photo");
+        }}>사진 · 문서</button>
       </div>
+      {user?.isTrial && <div className="small" style={{marginTop:10,textAlign:"center",color:"#8a6d3b"}}>
+        체험 중: 녹음 1시간 한도 · 파일 업로드 불가
+      </div>}
 
       {/* 참석자 태그 */}
       <div style={{marginTop:16}}>
@@ -2393,15 +2418,57 @@ function Knowledge({articles,openWrite}){
 
 /* ---------------- PRICING (3-트랙) ---------------- */
 const won=(n)=>"₩"+Math.round(n).toLocaleString("ko-KR");
-function Pricing({back,segment,trialLeft}){
+function Pricing({back,segment,user,onUserUpdated}){
   const [track,setTrack]=useState("통합");
+  const [busy,setBusy]=useState(null);
+  const [coupon,setCoupon]=useState("");
+  const [couponMsg,setCouponMsg]=useState("");
   const isStu=segment==="student";
+  const trialLeft=user?.trialDaysLeft;
+  const planLabel=user?.lifetimeAccess?"무제한":user?.plan?`${user.plan.toUpperCase()} 플랜`:"";
+
+  const subscribe=async (planId)=>{
+    setBusy(planId);
+    try{
+      const { user:u }=await api.subscribe(planId);
+      onUserUpdated?.(u);
+      alert(`${planId.toUpperCase()} 플랜이 적용됐어요. (PG 연동 전 테스트 결제)`);
+      back?.();
+    }catch(e){ alert(e.message||"결제 처리 실패"); }
+    finally{ setBusy(null); }
+  };
+
+  const redeem=async ()=>{
+    const code=coupon.trim();
+    if(!code){ setCouponMsg("쿠폰 코드를 입력하세요"); return; }
+    setCouponMsg("");
+    try{
+      const { user:u }=await api.redeemCoupon(code);
+      onUserUpdated?.(u);
+      setCoupon("");
+      setCouponMsg("쿠폰이 적용됐어요");
+      alert("쿠폰이 적용됐어요");
+      back?.();
+    }catch(e){ setCouponMsg(e.message||"쿠폰 적용 실패"); }
+  };
+
   return (
     <div className="fade">
       <div className="pad row between" style={{marginTop:8}}>
         <button className="iconbtn" onClick={back}>{I.back({})}</button>
-        <span className="tag" style={{padding:"6px 11px"}}>{trialLeft!=null?`무료 체험 ${trialLeft}일 남음`:"무료 체험"}</span>
+        <span className="tag" style={{padding:"6px 11px"}}>
+          {planLabel||(trialLeft!=null?`무료 체험 ${trialLeft}일 남음`:user?.hasAccess===false?"이용 만료":"무료 체험")}
+        </span>
       </div>
+      {user?.hasAccess===false && <div className="pad" style={{marginTop:4}}>
+        <div className="card" style={{padding:14,background:"#FDEEEA",border:"1px solid #F0C9BE"}}>
+          <div style={{fontWeight:700,fontSize:13.5}}>이용 기간이 만료됐어요</div>
+          <div className="small" style={{marginTop:6,lineHeight:1.55}}>
+            요금제를 선택하거나 쿠폰을 등록해 주세요.
+            {user?.purgeAt && <> 미결제 시 {new Date(user.purgeAt).toLocaleDateString("ko-KR")}에 데이터가 삭제됩니다.</>}
+          </div>
+        </div>
+      </div>}
       <div className="pad" style={{marginTop:8}}>
         <div className="h-eyebrow">Plans</div>
         <div className="h-title">요금제 선택</div>
@@ -2423,9 +2490,21 @@ function Pricing({back,segment,trialLeft}){
         </div>
       </div>
       <div className="pad" style={{marginTop:16,marginBottom:12}}>
-        {track==="통합"&&<Bundles isStu={isStu}/>}
-        {track==="선택"&&<Combos isStu={isStu}/>}
-        {track==="커스텀"&&<CustomPlan isStu={isStu}/>}
+        {track==="통합"&&<Bundles isStu={isStu} onSelect={subscribe} busy={busy}/>}
+        {track==="선택"&&<Combos isStu={isStu} onSelect={()=>subscribe("pro")} busy={busy}/>}
+        {track==="커스텀"&&<CustomPlan isStu={isStu} onSelect={()=>subscribe("custom")} busy={busy}/>}
+      </div>
+
+      <div className="pad" style={{marginBottom:14}}>
+        <div className="card" style={{padding:16}}>
+          <div style={{fontWeight:800,fontSize:13.5}}>쿠폰 코드</div>
+          <div className="row" style={{gap:8,marginTop:10}}>
+            <input value={coupon} onChange={e=>setCoupon(e.target.value.toUpperCase())} placeholder="쿠폰 번호 입력"
+              style={{flex:1,padding:"12px 14px",borderRadius:12,border:"1px solid var(--line)",fontFamily:"inherit"}}/>
+            <button className="btn btn-accent" style={{padding:"12px 16px"}} onClick={redeem}>등록</button>
+          </div>
+          {couponMsg && <div className="small" style={{marginTop:8,color:couponMsg.includes("적용")?"var(--green)":"#B23B2E"}}>{couponMsg}</div>}
+        </div>
       </div>
 
       {/* 체험 안내 */}
@@ -2433,9 +2512,9 @@ function Pricing({back,segment,trialLeft}){
         <div className="card" style={{padding:16,background:"#FFF6E5",border:"1px solid #F2E3BE"}}>
           <div style={{fontWeight:800,fontSize:13.5}}>무료 체험 안내</div>
           <div style={{marginTop:8,fontSize:13,lineHeight:1.6,color:"#6b5e3a"}}>
-            · 체험 중 저장 최대 5GB · {isStu?"강의 녹음":"변환"} 최대 5시간<br/>
-            · 7일 무료, 종료 전 알림 후 결제<br/>
-            · 미결제 시 7일간 읽기 전용 보관 후 데이터 삭제
+            · 3일 무료 체험 · 녹음 1시간 한도 · 파일 업로드 불가<br/>
+            · Lite 10h/50GB · Pro 30h/200GB · Ultra 100h/1TB (월)<br/>
+            · 미결제 시 7일간 읽기 전용 보관 후 데이터 전체 삭제
           </div>
         </div>
       </div>
@@ -2443,23 +2522,23 @@ function Pricing({back,segment,trialLeft}){
   );
 }
 
-function PlanBtn({label="선택"}){
-  return <button className="btn btn-accent" style={{width:"100%",padding:13,marginTop:14}}>{label}</button>;
+function PlanBtn({label="선택",onClick,disabled}){
+  return <button className="btn btn-accent" style={{width:"100%",padding:13,marginTop:14}} onClick={onClick} disabled={disabled}>{disabled?"처리 중…":label}</button>;
 }
 function Inc({children}){
   return <div className="row" style={{gap:8,padding:"5px 0",fontSize:13.5}}>
     <span style={{color:"var(--green)"}}>{I.check({})}</span><span>{children}</span></div>;
 }
 
-function Bundles({isStu}){
+function Bundles({isStu,onSelect,busy}){
   const plans = isStu ? [
-    {n:"Lite", p:"₩9,900", day:"₩330", conv:"강의 녹음 10시간", stor:"자료 저장 50GB", f:["강의 자동 요약·필기","지식백과 정리","시험 전 검색"], hot:false},
-    {n:"Pro",  p:"₩24,900", day:"₩830", conv:"강의 녹음 30시간", stor:"자료 저장 200GB", f:["전 기능","요약 템플릿(강의·개념·오답)","과목별 정리"], hot:true},
-    {n:"Ultra",p:"₩59,900", day:"₩1,997", conv:"강의 녹음 100시간", stor:"자료 저장 1TB", f:["전 기능","우선 처리","스터디 공유"], hot:false},
+    {id:"lite",n:"Lite", p:"₩9,900", day:"₩330", conv:"강의 녹음 10시간", stor:"자료 저장 50GB", f:["강의 자동 요약·필기","지식백과 정리","시험 전 검색"], hot:false},
+    {id:"pro",n:"Pro",  p:"₩24,900", day:"₩830", conv:"강의 녹음 30시간", stor:"자료 저장 200GB", f:["전 기능","요약 템플릿(강의·개념·오답)","과목별 정리"], hot:true},
+    {id:"ultra",n:"Ultra",p:"₩59,900", day:"₩1,997", conv:"강의 녹음 100시간", stor:"자료 저장 1TB", f:["전 기능","우선 처리","스터디 공유"], hot:false},
   ] : [
-    {n:"Lite", p:"₩9,900", day:"₩330", conv:"변환 10시간", stor:"저장 50GB", f:["기본 CRM·캘린더","지식백과","통화 파일 업로드"], hot:false},
-    {n:"Pro",  p:"₩24,900", day:"₩830", conv:"변환 30시간", stor:"저장 200GB", f:["전 기능","요약 템플릿 전체","공유"], hot:true},
-    {n:"Ultra",p:"₩59,900", day:"₩1,997", conv:"변환 100시간", stor:"저장 1TB", f:["전 기능","우선 처리","공유"], hot:false},
+    {id:"lite",n:"Lite", p:"₩9,900", day:"₩330", conv:"변환 10시간", stor:"저장 50GB", f:["기본 CRM·캘린더","지식백과","통화 파일 업로드"], hot:false},
+    {id:"pro",n:"Pro",  p:"₩24,900", day:"₩830", conv:"변환 30시간", stor:"저장 200GB", f:["전 기능","요약 템플릿 전체","공유"], hot:true},
+    {id:"ultra",n:"Ultra",p:"₩59,900", day:"₩1,997", conv:"변환 100시간", stor:"저장 1TB", f:["전 기능","우선 처리","공유"], hot:false},
   ];
   return <>
     {plans.map(pl=>(
@@ -2476,13 +2555,13 @@ function Bundles({isStu}){
           <span className="tag">{pl.conv}</span><span className="tag green">{pl.stor}</span>
         </div>
         <div style={{marginTop:10}}>{pl.f.map(x=><Inc key={x}>{x}</Inc>)}</div>
-        <PlanBtn label={pl.hot?"7일 무료로 시작":"선택"}/>
+        <PlanBtn label={pl.hot?"시작하기":"선택"} onClick={()=>onSelect?.(pl.id)} disabled={!!busy}/>
       </div>
     ))}
   </>;
 }
 
-function Combos({isStu}){
+function Combos({isStu,onSelect,busy}){
   const combos = isStu ? [
     {n:"인강 집중형", d:"강의 녹음 L(100h) + 저장 50GB", p:"₩42,900", ic:"mic"},
     {n:"자료 아카이브형", d:"강의 녹음 S(10h) + 저장 1TB", p:"₩29,900", ic:"video"},
@@ -2503,13 +2582,13 @@ function Combos({isStu}){
           </div>
           <div style={{fontWeight:800,fontSize:16}}>{c.p}</div>
         </div>
-        <PlanBtn/>
+        <PlanBtn onClick={onSelect} disabled={!!busy}/>
       </div>
     ))}
   </>;
 }
 
-function CustomPlan({isStu}){
+function CustomPlan({isStu,onSelect,busy}){
   const usedGB=320; // 현재 사용 중(데모)
   const [conv,setConv]=useState(30);   // 시간/월
   const [stor,setStor]=useState(500);  // GB
@@ -2563,7 +2642,7 @@ function CustomPlan({isStu}){
               {fmt(overGB)} 정리 후 변경 가능
             </button>
           </div>
-        ) : <PlanBtn label="이 구성으로 변경"/>}
+        ) : <PlanBtn label="이 구성으로 변경" onClick={onSelect} disabled={!!busy}/>}
       </div>
       <div className="small" style={{marginTop:10,textAlign:"center",lineHeight:1.5}}>
         올릴 땐 즉시 적용, 내릴 땐 한도 이하로 정리 후 변경돼요.<br/>데이터를 임의로 삭제하지 않아요.
@@ -3218,9 +3297,10 @@ function MyPage({user,back,onUserUpdated}){
     api.getUsage().then(setUsage).catch(()=>setUsage(null)).finally(()=>setUsageLoading(false));
   },[]);
 
-  const trialLabel=user?.trialDaysLeft!=null?`체험 ${user.trialDaysLeft}일`:"체험 중";
+  const trialLabel=user?.lifetimeAccess?"무제한":user?.plan?`${user.plan.toUpperCase()} 플랜`:user?.trialDaysLeft!=null?`체험 ${user.trialDaysLeft}일`:"체험 중";
   const joined=user?.createdAt?new Date(user.createdAt).toLocaleDateString("ko-KR",{year:"numeric",month:"long",day:"numeric"}):"";
   const st=usage?.storage;
+  const rec=usage?.access;
   const pct=st?.percent??0;
   const overLimit=st && st.usedBytes>st.limitBytes;
 
@@ -3301,6 +3381,15 @@ function MyPage({user,back,onUserUpdated}){
           )}
         </div>
 
+        {rec && <><div className="section-h">녹음 · 변환</div>
+        <div className="card" style={{padding:16,marginBottom:16}}>
+          <div className="row between" style={{marginBottom:8}}>
+            <span style={{fontWeight:700,fontSize:14}}>{Math.round(rec.recordingUsedSec/60)}분 사용</span>
+            <span className="small">한도 {rec.recordingLimitLabel}</span>
+          </div>
+          {rec.isTrial && <div className="small" style={{lineHeight:1.5}}>체험 중에는 파일 업로드가 불가하고 녹음만 1시간까지 가능해요.</div>}
+        </div></>}
+
         <div className="section-h">내 데이터</div>
         <div className="card" style={{padding:16,marginBottom:16}}>
           <div className="row" style={{gap:8,flexWrap:"wrap"}}>
@@ -3352,7 +3441,7 @@ function MyPage({user,back,onUserUpdated}){
 
 /* ---------------- SETTINGS ---------------- */
 function Settings({back,go,user,onLogout,openPricing}){
-  const trialLabel=user?.trialDaysLeft!=null?`체험 ${user.trialDaysLeft}일`:"체험 중";
+  const trialLabel=user?.lifetimeAccess?"무제한":user?.plan?`${user.plan.toUpperCase()}`:user?.trialDaysLeft!=null?`체험 ${user.trialDaysLeft}일`:"체험 중";
   const Row=(icon,label,val,onClick)=>(
     <div className="list-item row between" style={{cursor:"pointer"}} onClick={onClick}>
       <div className="row" style={{gap:12}}><span style={{color:"var(--muted)"}}>{icon}</span><span style={{fontWeight:600,fontSize:14.5}}>{label}</span></div>

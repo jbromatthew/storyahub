@@ -1,5 +1,21 @@
-import dotenv from "dotenv";
-dotenv.config();
+import { config } from "dotenv";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const nodeEnv = process.env.NODE_ENV ?? "development";
+const envFile = nodeEnv === "production" ? ".env.production" : ".env.development";
+const envPath = join(root, envFile);
+
+if (existsSync(envPath)) {
+  config({ path: envPath });
+} else {
+  config({ path: join(root, ".env") });
+}
+
+const localPath = join(root, ".env.local");
+if (existsSync(localPath)) config({ path: localPath, override: true });
 
 function need(key: string, fallback?: string): string {
   const v = process.env[key] ?? fallback;
@@ -17,6 +33,10 @@ export const env = {
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
     bucket: process.env.R2_BUCKET ?? "storyahub-media",
     endpoint: process.env.R2_ENDPOINT ?? "",
+    // development 기본 "dev/" → 버킷 내 dev/ 폴더. production 은 빈 문자열(루트)
+    keyPrefix:
+      process.env.R2_KEY_PREFIX ??
+      (nodeEnv === "production" ? "" : "dev"),
   },
   gemini: {
     apiKey: process.env.GEMINI_API_KEY ?? "",
@@ -29,4 +49,7 @@ export const env = {
   kakao: {
     restApiKey: process.env.KAKAO_REST_API_KEY ?? "",
   },
+  trialDays: Number(process.env.TRIAL_DAYS ?? 3),
+  graceDays: Number(process.env.GRACE_DAYS ?? 7),
+  couponAdminSecret: process.env.COUPON_ADMIN_SECRET ?? "",
 };

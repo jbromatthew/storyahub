@@ -1,14 +1,15 @@
 import { Router } from "express";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
-import { getObjectBytes } from "../services/r2.js";
+import { requireAccess } from "../middleware/requireAccess.js";
+import { getObjectBytes, isUserMediaKey } from "../services/r2.js";
 import { ocrBusinessCard, ocrDocumentText } from "../services/ocr.js";
 import { mimeFromKey } from "../services/stt.js";
 
 export const ocrRouter = Router();
-ocrRouter.use(auth);
+ocrRouter.use(auth, requireAccess);
 
 async function loadImageBase64(userId: string, mediaKey: string, mimeType?: string) {
-  if (!mediaKey.startsWith(`u/${userId}/`)) throw new Error("forbidden");
+  if (!isUserMediaKey(mediaKey, userId)) throw new Error("forbidden");
   const buf = await getObjectBytes(mediaKey);
   return { base64: buf.toString("base64"), mime: mimeType || mimeFromKey(mediaKey, "image/jpeg") };
 }

@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
+import { requireAccess } from "../middleware/requireAccess.js";
 
 export const kbRouter = Router();
-kbRouter.use(auth);
+kbRouter.use(auth, requireAccess);
 
 kbRouter.get("/", async (req: AuthedRequest, res) => {
   res.json(await prisma.kbArticle.findMany({ where: { userId: req.userId }, orderBy: { updatedAt: "desc" } }));

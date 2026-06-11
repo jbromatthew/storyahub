@@ -16,6 +16,12 @@ model User {
   provider        String    @default("email") // email | kakao | naver | google | apple
   onboardingDone  Boolean   @default(false)
   trialStartedAt  DateTime?
+  plan            String?                    // lite | pro | ultra | custom
+  planUntil       DateTime?
+  lifetimeAccess  Boolean   @default(false)
+  usedRecordingSec Int      @default(0)       // 체험·유료 플랜 녹음 사용량(초)
+  recordingPeriodStart DateTime?              // 유료 플랜 월간 리셋 기준
+  accessEndedAt   DateTime?                    // 체험/구독 만료 시각 (데이터 삭제 예정일 계산용)
   createdAt       DateTime  @default(now())
 
   contacts  Contact[]
@@ -24,6 +30,33 @@ model User {
   deals      Deal[]
   events     Event[]
   kbArticles KbArticle[]
+  couponRedemptions CouponRedemption[]
+}
+
+model Coupon {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  kind            String   @default("once")    // once(1회 전체) | multi(유저당1회) | unlimited(무제한)
+  plan            String?                      // lite | pro | ultra
+  planDays        Int?                         // 구독 연장 일수 (기본 30)
+  lifetimeAccess  Boolean  @default(false)
+  note            String?
+  expiresAt       DateTime?
+  useCount        Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  redemptions CouponRedemption[]
+}
+
+model CouponRedemption {
+  id         String   @id @default(cuid())
+  couponId   String
+  coupon     Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redeemedAt DateTime @default(now())
+
+  @@unique([couponId, userId])
 }
 
 model Contact {           // 인맥 (사람/거래처)

@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Todo" ADD COLUMN IF NOT EXISTS "subs" JSONB;

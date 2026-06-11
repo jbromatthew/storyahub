@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { User } from "@prisma/client";
 import { prisma } from "../db.js";
 import { auth, signToken, type AuthedRequest } from "../middleware/auth.js";
+import { getAccessStatus, extendPlanUntil } from "../services/access.js";
 import { getUserUsage } from "../services/usage.js";
 
 export const authRouter = Router();
@@ -11,13 +12,8 @@ export const authRouter = Router();
 const emailSchema = z.string().email("올바른 이메일을 입력하세요");
 const passwordSchema = z.string().min(6, "비밀번호는 6자 이상");
 
-function publicUser(u: User) {
-  const trialDays = 7;
-  let trialDaysLeft: number | null = null;
-  if (u.trialStartedAt) {
-    const elapsed = Math.floor((Date.now() - u.trialStartedAt.getTime()) / 86400000);
-    trialDaysLeft = Math.max(0, trialDays - elapsed);
-  }
+export function publicUser(u: User) {
+  const access = getAccessStatus(u);
   return {
     id: u.id,
     email: u.email,
@@ -25,12 +21,22 @@ function publicUser(u: User) {
     provider: u.provider,
     onboardingDone: u.onboardingDone,
     trialStartedAt: u.trialStartedAt,
-    trialDaysLeft,
+    trialDaysLeft: access.trialDaysLeft,
+    hasAccess: access.hasAccess,
+    isTrial: access.isTrial,
+    accessReason: access.reason,
+    accessUntil: access.accessUntil,
+    purgeAt: access.purgeAt,
+    lifetimeAccess: access.lifetimeAccess,
+    plan: access.plan,
+    planUntil: access.planUntil,
+    allowFileUpload: access.allowFileUpload,
+    recordingUsedSec: access.recordingUsedSec,
+    recordingLimitSec: access.recordingLimitSec,
     createdAt: u.createdAt,
   };
 }
 
-// 이메일 회원가입 (1차 — 소셜 로그인은 추후)
 authRouter.post("/register", async (req, res) => {
   const parsed = z
     .object({
@@ -76,6 +82,32 @@ authRouter.post("/login", async (req, res) => {
   if (!ok) return res.status(401).json({ error: "이메일 또는 비밀번호가 맞지 않습니다" });
 
   res.json({ token: signToken(user.id, remember), user: publicUser(user) });
+});
+
+/** 결제 완료 후 호출 (PG 연동 전 임시·운영 테스트용) */
+authRouter.post("/subscribe", auth, async (req: AuthedRequest, res) => {
+  const parsed = z
+    .object({ plan: z.enum(["lite", "pro", "ultra", "custom"]) })
+    .safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "플랜을 선택하세요" });
+
+  const user = await prisma.user.findUnique({ where: { id: req.userId } });
+  if (!user) return res.status(404).json({ error: "not found" });
+
+  const planUntil = extendPlanUntil(user.lifetimeAccess ? null : user.planUntil, 30);
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      plan: parsed.data.plan,
+      planUntil,
+      lifetimeAccess: false,
+      accessEndedAt: null,
+      usedRecordingSec: 0,
+      recordingPeriodStart: new Date(),
+    },
+  });
+
+  res.json({ ok: true, user: publicUser(updated) });
 });
 
 authRouter.get("/me/usage", auth, async (req: AuthedRequest, res) => {
@@ -138,7 +170,6 @@ authRouter.patch("/me", auth, async (req: AuthedRequest, res) => {
   res.json({ user: publicUser(user) });
 });
 
-// 소셜 로그인 — 추후 OAuth 연동
 authRouter.post("/social", async (req, res) => {
   const { provider, code } = req.body ?? {};
   if (!provider || !code) return res.status(400).json({ error: "provider, code 필요" });

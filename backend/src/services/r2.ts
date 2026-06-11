@@ -1,4 +1,11 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, ListObjectsV2Command, HeadObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  ListObjectsV2Command,
+  HeadObjectCommand,
+  DeleteObjectsCommand,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../env.js";
 
@@ -39,9 +46,31 @@ export function r2Configured(): boolean {
   return !!(env.r2.endpoint && env.r2.accessKeyId && env.r2.secretAccessKey && env.r2.bucket);
 }
 
+function normalizeKeyPrefix(raw: string): string {
+  if (!raw) return "";
+  return raw.endsWith("/") ? raw : `${raw}/`;
+}
+
+/** 버킷 루트 기준 환경 프리픽스 (dev → "dev/", production → "") */
+export function r2KeyPrefix(): string {
+  return normalizeKeyPrefix(env.r2.keyPrefix);
+}
+
+export function userMediaPrefix(userId: string): string {
+  return `${r2KeyPrefix()}u/${userId}/`;
+}
+
+export function buildUserMediaKey(userId: string, parts: string): string {
+  return `${userMediaPrefix(userId)}${parts}`;
+}
+
+export function isUserMediaKey(key: string, userId: string): boolean {
+  return key.startsWith(userMediaPrefix(userId));
+}
+
 export async function listUserObjects(userId: string): Promise<{ key: string; size: number }[]> {
   if (!r2Configured()) return [];
-  const prefix = `u/${userId}/`;
+  const prefix = userMediaPrefix(userId);
   const out: { key: string; size: number }[] = [];
   let token: string | undefined;
   do {
@@ -60,4 +89,17 @@ export async function headObjectSize(key: string): Promise<number> {
   if (!r2Configured()) return 0;
   const res = await s3.send(new HeadObjectCommand({ Bucket: env.r2.bucket, Key: key }));
   return res.ContentLength ?? 0;
+}
+
+export async function deleteObjectKeys(keys: string[]): Promise<void> {
+  if (!r2Configured() || !keys.length) return;
+  for (let i = 0; i < keys.length; i += 1000) {
+    const chunk = keys.slice(i, i + 1000);
+    await s3.send(
+      new DeleteObjectsCommand({
+        Bucket: env.r2.bucket,
+        Delete: { Objects: chunk.map((Key) => ({ Key })), Quiet: true },
+      })
+    );
+  }
 }

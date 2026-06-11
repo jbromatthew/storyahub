@@ -18,6 +18,10 @@ export function isAuthError(err) {
   return err instanceof ApiError && err.status === 401;
 }
 
+export function isAccessError(err) {
+  return err instanceof ApiError && err.status === 402;
+}
+
 export function setToken(t) {
   token = t;
 }
@@ -96,6 +100,8 @@ export const api = {
   changePassword: (currentPassword, newPassword) =>
     req("/auth/me/password", { method: "PATCH", body: { currentPassword, newPassword } }),
   completeOnboarding: () => req("/auth/me", { method: "PATCH", body: { onboardingDone: true } }),
+  subscribe: (plan) => req("/auth/subscribe", { method: "POST", body: { plan } }),
+  redeemCoupon: (code) => req("/auth/coupons/redeem", { method: "POST", body: { code } }),
 
   bootstrap: () => req("/bootstrap"),
 

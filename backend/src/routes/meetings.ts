@@ -1,14 +1,17 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
+import { requireAccess, type AccessRequest } from "../middleware/requireAccess.js";
+import { getAccessStatus, recordingQuotaError } from "../services/access.js";
+import { incrementRecordingSec } from "../services/recordingUsage.js";
 import { enqueue, getJob } from "../services/queue.js";
 import { summarize } from "../services/summarize.js";
-import { getObjectBytes } from "../services/r2.js";
+import { getObjectBytes, isUserMediaKey } from "../services/r2.js";
 import { transcribeAudio, plainToTranscript, mimeFromKey, type TranscriptResult } from "../services/stt.js";
 import { ocrDocumentText } from "../services/ocr.js";
 
 export const meetingsRouter = Router();
-meetingsRouter.use(auth);
+meetingsRouter.use(auth, requireAccess);
 
 async function resolveTranscript(
   userId: string,
@@ -18,7 +21,7 @@ async function resolveTranscript(
   if (meta?.transcript?.trim()) return plainToTranscript(meta.transcript.trim());
 
   if (mediaKey) {
-    if (!mediaKey.startsWith(`u/${userId}/`)) throw new Error("invalid mediaKey");
+    if (!isUserMediaKey(mediaKey, userId)) throw new Error("invalid mediaKey");
     const buf = await getObjectBytes(mediaKey);
     const mime = mimeFromKey(mediaKey, "audio/webm");
     if (mime.startsWith("audio/")) {
@@ -34,7 +37,7 @@ async function resolveTranscript(
   if (imageKeys.length) {
     const parts: string[] = [];
     for (const key of imageKeys) {
-      if (!key.startsWith(`u/${userId}/`)) continue;
+      if (!isUserMediaKey(key, userId)) continue;
       const buf = await getObjectBytes(key);
       const mime = mimeFromKey(key, "image/jpeg");
       parts.push(await ocrDocumentText(buf.toString("base64"), mime));
@@ -59,9 +62,24 @@ meetingsRouter.get("/", async (req: AuthedRequest, res) => {
   res.json(items);
 });
 
-meetingsRouter.post("/summarize", async (req: AuthedRequest, res) => {
+meetingsRouter.post("/summarize", async (req: AccessRequest, res) => {
   const userId = req.userId!;
   const { mediaKey, meta } = req.body ?? {};
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return res.status(404).json({ error: "not found" });
+
+  const status = getAccessStatus(user);
+  const quotaErr = recordingQuotaError(status);
+  if (quotaErr) return res.status(402).json({ error: quotaErr });
+
+  const isAudio = meta?.source !== "photo" && (!meta?.imageKeys?.length || mediaKey);
+  const durationSec = isAudio ? Math.max(0, Math.min(7200, Number(meta?.durationSec) || 0)) : 0;
+  if (isAudio && durationSec > 0 && status.recordingUsedSec + durationSec > status.recordingLimitSec) {
+    return res.status(402).json({
+      error: status.isTrial ? "체험 녹음 한도(1시간)를 초과합니다." : "이번 달 녹음·변환 한도를 초과합니다.",
+    });
+  }
 
   const jobId = enqueue(async () => {
     const transcript = await resolveTranscript(userId, mediaKey, meta);
@@ -105,6 +123,8 @@ meetingsRouter.post("/summarize", async (req: AuthedRequest, res) => {
         },
       });
     }
+
+    if (durationSec > 0) await incrementRecordingSec(userId, durationSec);
 
     return { meetingId: meeting.id, mediaKey: meeting.mediaKey, summary };
   });

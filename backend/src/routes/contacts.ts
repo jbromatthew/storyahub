@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
+import { requireAccess } from "../middleware/requireAccess.js";
 import { geocodeAddress } from "../services/geocode.js";
 
 export const contactsRouter = Router();
-contactsRouter.use(auth);
+contactsRouter.use(auth, requireAccess);
 
 async function applyGeocode(address: string | null | undefined, lat?: number | null, lng?: number | null) {
   if (lat != null && lng != null) return { lat, lng };

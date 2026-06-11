@@ -3,7 +3,9 @@ import cors from "cors";
 import { env } from "./env.js";
 import { prisma } from "./db.js";
 import { auth } from "./middleware/auth.js";
+import { requireAccess } from "./middleware/requireAccess.js";
 import { authRouter } from "./routes/auth.js";
+import { couponsRouter } from "./routes/coupons.js";
 import { bootstrapRouter } from "./routes/bootstrap.js";
 import { contactsRouter } from "./routes/contacts.js";
 import { meetingsRouter } from "./routes/meetings.js";
@@ -13,6 +15,7 @@ import { calendarRouter } from "./routes/calendar.js";
 import { kbRouter } from "./routes/kb.js";
 import { uploadsRouter, directUploadHandler } from "./routes/uploads.js";
 import { ocrRouter } from "./routes/ocr.js";
+import { startPurgeScheduler } from "./services/purge.js";
 
 const app = express();
 app.use(cors());
@@ -21,6 +24,7 @@ app.use(cors());
 app.post(
   "/uploads/direct",
   auth,
+  requireAccess,
   express.raw({ type: () => true, limit: "25mb" }),
   directUploadHandler
 );
@@ -30,6 +34,7 @@ app.use(express.json({ limit: "15mb" })); // OCR base64 fallback 등
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
 app.use("/auth", authRouter);
+app.use("/auth/coupons", couponsRouter);
 app.use("/bootstrap", bootstrapRouter);
 app.use("/contacts", contactsRouter);
 app.use("/meetings", meetingsRouter);
@@ -44,6 +49,9 @@ app.listen(env.port, () => {
   console.log(`Storyahub API listening on http://localhost:${env.port}`);
   prisma
     .$connect()
-    .then(() => console.log("PostgreSQL (RDS) connected"))
+    .then(() => {
+      console.log("PostgreSQL (RDS) connected");
+      startPurgeScheduler();
+    })
     .catch((e) => console.warn("PostgreSQL unreachable — check DATABASE_URL / RDS security group:", (e as Error).message));
 });
