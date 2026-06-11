@@ -19,6 +19,6 @@ export function auth(req: AuthedRequest, res: Response, next: NextFunction) {
   }
 }
 
-export function signToken(userId: string): string {
-  return jwt.sign({ sub: userId }, env.jwtSecret, { expiresIn: "30d" });
+export function signToken(userId: string, remember = true): string {
+  return jwt.sign({ sub: userId }, env.jwtSecret, { expiresIn: remember ? "90d" : "12h" });
 }

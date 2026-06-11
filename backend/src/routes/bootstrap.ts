@@ -26,8 +26,11 @@ bootstrapRouter.get("/", async (req: AuthedRequest, res) => {
     prisma.meeting.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
-      take: 5,
-      include: { contact: { select: { id: true, person: true, company: true } } },
+      take: 100,
+      include: {
+        contact: { select: { id: true, person: true, company: true } },
+        todos: { select: { id: true, status: true } },
+      },
     }),
     prisma.deal.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
   ]);

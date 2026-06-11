@@ -4,7 +4,7 @@ import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { enqueue, getJob } from "../services/queue.js";
 import { summarize } from "../services/summarize.js";
 import { getObjectBytes } from "../services/r2.js";
-import { transcribeAudio, mimeFromKey } from "../services/stt.js";
+import { transcribeAudio, plainToTranscript, mimeFromKey, type TranscriptResult } from "../services/stt.js";
 import { ocrDocumentText } from "../services/ocr.js";
 
 export const meetingsRouter = Router();
@@ -14,8 +14,8 @@ async function resolveTranscript(
   userId: string,
   mediaKey: string | null | undefined,
   meta: any
-): Promise<string> {
-  if (meta?.transcript?.trim()) return meta.transcript.trim();
+): Promise<TranscriptResult> {
+  if (meta?.transcript?.trim()) return plainToTranscript(meta.transcript.trim());
 
   if (mediaKey) {
     if (!mediaKey.startsWith(`u/${userId}/`)) throw new Error("invalid mediaKey");
@@ -25,7 +25,8 @@ async function resolveTranscript(
       return transcribeAudio(buf.toString("base64"), mime);
     }
     if (mime.startsWith("image/")) {
-      return ocrDocumentText(buf.toString("base64"), mime);
+      const text = await ocrDocumentText(buf.toString("base64"), mime);
+      return plainToTranscript(text);
     }
   }
 
@@ -39,7 +40,7 @@ async function resolveTranscript(
       parts.push(await ocrDocumentText(buf.toString("base64"), mime));
     }
     const joined = parts.filter(Boolean).join("\n\n");
-    if (joined) return joined;
+    if (joined) return plainToTranscript(joined);
   }
 
   throw new Error("전사할 음성/이미지가 없습니다");
@@ -49,8 +50,11 @@ meetingsRouter.get("/", async (req: AuthedRequest, res) => {
   const items = await prisma.meeting.findMany({
     where: { userId: req.userId },
     orderBy: { createdAt: "desc" },
-    take: 20,
-    include: { contact: { select: { id: true, person: true, company: true } } },
+    take: 100,
+    include: {
+      contact: { select: { id: true, person: true, company: true } },
+      todos: { select: { id: true, status: true } },
+    },
   });
   res.json(items);
 });
@@ -83,6 +87,7 @@ meetingsRouter.post("/summarize", async (req: AuthedRequest, res) => {
           priority: a.priority ?? "mid",
           due: a.due ? new Date(a.due) : null,
           contactId: meta?.contactId ?? null,
+          meetingId: meeting.id,
         })),
       });
     }
@@ -101,7 +106,7 @@ meetingsRouter.post("/summarize", async (req: AuthedRequest, res) => {
       });
     }
 
-    return { meetingId: meeting.id, summary };
+    return { meetingId: meeting.id, mediaKey: meeting.mediaKey, summary };
   });
 
   res.status(202).json({ jobId });
@@ -111,4 +116,41 @@ meetingsRouter.get("/job/:id", (req, res) => {
   const job = getJob(req.params.id);
   if (!job) return res.status(404).json({ error: "no job" });
   res.json(job);
+});
+
+meetingsRouter.get("/:id", async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const m = await prisma.meeting.findFirst({
+    where: { id: req.params.id, userId },
+    include: {
+      contact: { select: { id: true, person: true, company: true } },
+      todos: { orderBy: { createdAt: "asc" } },
+    },
+  });
+  if (!m) return res.status(404).json({ error: "not found" });
+
+  let todos = m.todos;
+  if (!todos.length && m.contactId) {
+    const windowStart = new Date(m.createdAt.getTime() - 60_000);
+    const windowEnd = new Date(m.createdAt.getTime() + 120_000);
+    todos = await prisma.todo.findMany({
+      where: {
+        userId,
+        contactId: m.contactId,
+        meetingId: null,
+        createdAt: { gte: windowStart, lte: windowEnd },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  res.json({ ...m, todos });
+});
+
+meetingsRouter.delete("/:id", async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const m = await prisma.meeting.findFirst({ where: { id: req.params.id, userId } });
+  if (!m) return res.status(404).json({ error: "not found" });
+  await prisma.meeting.delete({ where: { id: m.id } });
+  res.status(204).send();
 });

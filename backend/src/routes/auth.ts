@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { User } from "@prisma/client";
 import { prisma } from "../db.js";
 import { auth, signToken, type AuthedRequest } from "../middleware/auth.js";
+import { getUserUsage } from "../services/usage.js";
 
 export const authRouter = Router();
 
@@ -56,7 +57,8 @@ authRouter.post("/register", async (req, res) => {
     },
   });
 
-  res.status(201).json({ token: signToken(user.id), user: publicUser(user) });
+  const remember = req.body?.remember !== false;
+  res.status(201).json({ token: signToken(user.id, remember), user: publicUser(user) });
 });
 
 authRouter.post("/login", async (req, res) => {
@@ -66,13 +68,50 @@ authRouter.post("/login", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "이메일과 비밀번호를 확인하세요" });
 
   const { email, password } = parsed.data;
+  const remember = req.body?.remember !== false;
   const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
   if (!user?.passwordHash) return res.status(401).json({ error: "이메일 또는 비밀번호가 맞지 않습니다" });
 
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: "이메일 또는 비밀번호가 맞지 않습니다" });
 
-  res.json({ token: signToken(user.id), user: publicUser(user) });
+  res.json({ token: signToken(user.id, remember), user: publicUser(user) });
+});
+
+authRouter.get("/me/usage", auth, async (req: AuthedRequest, res) => {
+  try {
+    res.json(await getUserUsage(req.userId!));
+  } catch (e) {
+    console.error("usage", e);
+    res.status(500).json({ error: "용량 정보를 불러오지 못했습니다" });
+  }
+});
+
+authRouter.patch("/me/password", auth, async (req: AuthedRequest, res) => {
+  const parsed = z
+    .object({
+      currentPassword: passwordSchema,
+      newPassword: passwordSchema,
+    })
+    .safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0]?.message ?? "입력 오류" });
+
+  const user = await prisma.user.findUnique({ where: { id: req.userId } });
+  if (!user?.passwordHash) {
+    return res.status(400).json({ error: "소셜 로그인 계정은 비밀번호를 변경할 수 없습니다" });
+  }
+
+  const { currentPassword, newPassword } = parsed.data;
+  if (currentPassword === newPassword) {
+    return res.status(400).json({ error: "새 비밀번호는 현재와 달라야 합니다" });
+  }
+
+  const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!ok) return res.status(401).json({ error: "현재 비밀번호가 맞지 않습니다" });
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+  res.json({ ok: true, token: signToken(user.id, true) });
 });
 
 authRouter.get("/me", auth, async (req: AuthedRequest, res) => {
@@ -83,10 +122,16 @@ authRouter.get("/me", auth, async (req: AuthedRequest, res) => {
 
 authRouter.patch("/me", auth, async (req: AuthedRequest, res) => {
   const { name, onboardingDone } = req.body ?? {};
+  if (name !== undefined) {
+    const trimmed = String(name).trim();
+    if (!trimmed || trimmed.length > 50) {
+      return res.status(400).json({ error: "이름은 1~50자여야 합니다" });
+    }
+  }
   const user = await prisma.user.update({
     where: { id: req.userId },
     data: {
-      ...(name !== undefined ? { name: String(name) } : {}),
+      ...(name !== undefined ? { name: String(name).trim() } : {}),
       ...(onboardingDone !== undefined ? { onboardingDone: Boolean(onboardingDone) } : {}),
     },
   });

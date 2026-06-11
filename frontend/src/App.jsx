@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import AuthScreen from "./components/AuthScreen.jsx";
 import WelcomeScreen from "./components/WelcomeScreen.jsx";
 import KbEditor, { KbReadView, kbSearchText } from "./components/KbEditor.jsx";
-import { api, loadToken, saveToken, clearToken, setToken } from "./api/client.js";
-import { uploadBlob, uploadFile, pickImageFile, fileToBase64, AudioRecorder } from "./api/upload.js";
+import NestedTodoList, { isTodoDone } from "./components/NestedTodoList.jsx";
+import MeetingInsights from "./components/MeetingInsights.jsx";
+import { api, loadToken, saveToken, clearToken, setToken, isAuthError } from "./api/client.js";
+import { uploadBlob, uploadFile, pickImageFile, pickAnyFile, fileToBase64, mediaUrl, AudioRecorder, isPickCancelled } from "./api/upload.js";
 import { setClients, getClients } from "./store.js";
-import { contactToUi, todoToUi, eventToUi, kbToUi, meetingToUi, contactGroups, kbCategories } from "./mappers.js";
+import { contactToUi, todoToUi, todoSearchText, formatWhen, eventToUi, kbToUi, meetingToUi, isAudioMediaKey, isImageMediaKey, contactGroups, kbCategories, haversineKm, formatDistanceKm, kakaoDirectionsUrl, kbExcerpt, kbReadMinutes, kbFileCount, kbThumbMeta } from "./mappers.js";
 
 /* ------------------------------------------------------------------
    Storyahub — 비서앱 UI
@@ -23,27 +26,34 @@ const CSS = `
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 .sa-root{
-  min-height:100vh;width:100%;
-  background:
-    radial-gradient(1200px 600px at 70% -10%, #3a342c 0%, #211e19 60%, #18150f 100%);
-  display:flex;align-items:center;justify-content:center;
-  padding:16px 14px;
+  min-height:100vh;min-height:100dvh;width:100%;
+  background:var(--paper);
   font-family:'Pretendard',-apple-system,BlinkMacSystemFont,sans-serif;
   color:var(--ink);
 }
-.phone{
-  position:relative;width:380px;max-width:100%;height:min(812px, calc(100vh - 32px));
-  background:var(--paper);border-radius:46px;
-  box-shadow:0 40px 90px -20px rgba(0,0,0,.6), 0 0 0 10px #0d0b08, 0 0 0 11px #2c2820;
-  overflow:hidden;display:flex;flex-direction:column;
-}
-.notch{position:absolute;top:0;left:50%;transform:translateX(-50%);
-  width:130px;height:30px;background:#0d0b08;border-radius:0 0 18px 18px;z-index:50;}
-.statusbar{height:50px;flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;
-  padding:0 26px 6px;font-size:13px;font-weight:600;color:var(--ink);}
-.screen{flex:1;overflow-y:auto;overflow-x:hidden;padding:6px 0 96px;scroll-behavior:smooth;}
-.screen::-webkit-scrollbar{display:none;}
+.app-shell{display:flex;min-height:100vh;min-height:100dvh;width:100%;}
+.app-main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:100vh;min-height:100dvh;position:relative;background:var(--paper);}
+.app-main-centered{display:flex;align-items:center;justify-content:center;padding:24px;}
+.screen{flex:1;overflow-y:auto;overflow-x:hidden;padding:8px 0 calc(96px + env(safe-area-inset-bottom,0px));scroll-behavior:smooth;}
+.screen::-webkit-scrollbar{width:6px;}
+.screen::-webkit-scrollbar-thumb{background:#D8D0C4;border-radius:3px;}
+.screen-kb{overflow:hidden;padding:0;display:flex;flex-direction:column;flex:1;min-height:0;background:#fff;}
+.screen-kb>.kbe-wrap,.screen-kb>.kbe-read{flex:1;min-height:0;}
 .pad{padding:0 20px;}
+.content-max{max-width:840px;margin:0 auto;width:100%;}
+
+/* desktop sidebar */
+.app-sidebar{display:none;}
+.sidenavitem{display:flex;align-items:center;gap:12px;width:100%;padding:11px 14px;border-radius:12px;
+  font-size:14px;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;
+  font-family:inherit;text-align:left;transition:.15s;}
+.sidenavitem.on{background:var(--accent-soft);color:var(--accent-deep);}
+.sidenavitem svg{flex:0 0 auto;}
+.side-rec{width:100%;margin-top:8px;border:none;border-radius:14px;background:var(--accent);color:#fff;
+  font-family:inherit;font-weight:800;font-size:14px;padding:14px 16px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  box-shadow:0 8px 20px -6px rgba(221,94,57,.45);}
+.side-rec:active{background:var(--accent-deep);}
 
 .h-eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;}
 .h-title{font-size:26px;font-weight:700;letter-spacing:-.02em;margin:2px 0 0;}
@@ -74,17 +84,67 @@ const CSS = `
 .avatar{width:42px;height:42px;border-radius:14px;background:var(--accent-soft);color:var(--accent-deep);
   display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex:0 0 auto;}
 
-/* bottom nav */
-.nav{position:absolute;left:0;right:0;bottom:0;height:84px;background:rgba(247,244,238,.86);
-  backdrop-filter:blur(14px);border-top:1px solid var(--line);
-  display:flex;align-items:flex-start;justify-content:space-around;padding:11px 14px 0;z-index:40;}
-.navitem{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10.5px;font-weight:600;
-  color:var(--muted);background:none;border:none;cursor:pointer;width:54px;transition:.15s;}
+/* bottom nav (mobile) */
+.nav{position:fixed;left:0;right:0;bottom:0;height:calc(84px + env(safe-area-inset-bottom,0px));
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  background:rgba(247,244,238,.92);backdrop-filter:blur(14px);border-top:1px solid var(--line);
+  display:flex;align-items:flex-start;justify-content:space-around;padding-top:11px;z-index:40;}
+.navitem{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:600;
+  color:var(--muted);background:none;border:none;cursor:pointer;width:46px;transition:.15s;}
 .navitem.on{color:var(--accent-deep);}
 .fab{width:60px;height:60px;border-radius:22px;background:var(--accent);
   display:flex;align-items:center;justify-content:center;margin-top:-22px;
   box-shadow:0 12px 24px -6px rgba(221,94,57,.6);border:none;cursor:pointer;transition:.15s;}
 .fab:active{transform:scale(.94);}
+
+@media (min-width:768px){
+  .app-shell{max-width:1440px;margin:0 auto;}
+  .app-sidebar{display:flex;flex-direction:column;width:240px;flex-shrink:0;
+    border-right:1px solid var(--line);background:#fff;padding:28px 16px 24px;
+    position:sticky;top:0;height:100vh;height:100dvh;}
+  .app-brand{font-size:20px;font-weight:800;letter-spacing:-.03em;color:var(--ink);padding:0 10px 24px;}
+  .app-brand span{color:var(--accent-deep);}
+  .app-sidenav{display:flex;flex-direction:column;gap:4px;flex:1;}
+  .app-sidebar-foot{margin-top:auto;padding:10px;font-size:12px;color:var(--muted);line-height:1.5;}
+  .nav{display:none;}
+  .screen{padding:20px 32px 40px;}
+  .pad{padding:0;}
+  .h-title{font-size:30px;}
+  .mapwrap{height:420px;margin-left:0;margin-right:0;}
+  .kbh-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+  .kbh-item{margin-bottom:0;}
+  .kbh-fab{left:auto;right:32px;bottom:32px;transform:none;}
+  .screen .pad{max-width:840px;margin-left:auto;margin-right:auto;}
+  .kbe-inner{max-width:720px;margin:0 auto;width:100%;}
+  .kbe-bar{padding:14px 32px;}
+  .kbe-bar-inner{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .kbe-scroll{padding:0 32px 28px;}
+  .kbe-cover{height:220px;margin-top:20px;border-radius:18px;}
+  .kbe-title{font-size:32px;}
+  .kbe-toolbar{padding:12px 32px;}
+  .kbe-toolbar-inner{display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap;}
+  .kbe-tool{flex-direction:row;gap:6px;font-size:13px;padding:10px 14px;}
+  .kbe-menu{grid-template-columns:repeat(6,minmax(0,1fr));}
+  .kbe-read-top{padding:14px 32px;}
+  .kbe-read .kbe-cover-read{height:280px;margin:0;}
+  .kbe-read-body{max-width:720px;margin:0 auto;padding:24px 32px 48px;}
+}
+@media (min-width:1024px){
+  .screen{padding:24px 48px 48px;}
+  .kbh-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
+  .kbh-feat .cover{height:180px;}
+  .kbe-inner{max-width:760px;}
+  .kbe-scroll{padding:0 48px 36px;}
+  .kbe-bar{padding:16px 48px;}
+  .kbe-toolbar{padding:14px 48px;}
+  .kbe-cover{height:280px;}
+  .kbe-title{font-size:36px;}
+  .kbe-read-top{padding:16px 48px;}
+  .kbe-read-body{padding:28px 48px 56px;max-width:760px;}
+}
+@media (min-width:1280px){
+  .kbh-list{grid-template-columns:repeat(3,minmax(0,1fr));}
+}
 
 .list-item{padding:15px 0;border-bottom:1px solid var(--line);cursor:pointer;}
 .list-item:last-child{border-bottom:none;}
@@ -129,8 +189,7 @@ const CSS = `
 /* block editor */
 .editable{outline:none;}
 .editable:empty:before{content:attr(data-ph);color:#B9B2A5;}
-.blk{position:relative;padding:5px 0 5px 24px;}
-.blk .grip{position:absolute;left:-2px;top:8px;color:#CFC9BD;opacity:.4;cursor:grab;}
+.blk{padding:5px 0;}
 .addrow{display:flex;align-items:center;gap:8px;width:100%;border:1px dashed var(--line);
   background:#fff;border-radius:14px;padding:13px 15px;cursor:pointer;color:var(--muted);
   font-weight:600;font-size:13.5px;font-family:inherit;transition:.15s;}
@@ -143,6 +202,119 @@ const CSS = `
 .imgblk{border:1px dashed var(--line);border-radius:14px;padding:26px;text-align:center;background:#FBFAF6;color:var(--muted);}
 .ftoolbar{display:flex;gap:5px;flex-wrap:wrap;}
 .ftoolbar span{padding:6px 10px;border-radius:9px;background:#F4F1EA;font-size:13px;font-weight:700;cursor:pointer;color:var(--ink);}
+
+/* nested todo */
+.nt-list{display:flex;flex-direction:column;gap:12px;}
+.nt-card{background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(20,16,12,.04);transition:.15s;}
+.nt-card.done{background:#FBFAF7;}
+.nt-phead{display:flex;align-items:center;gap:12px;padding:15px 16px;cursor:pointer;}
+.nt-chev{color:var(--muted);transition:transform .2s;flex:0 0 auto;display:flex;}
+.nt-chev.open{transform:rotate(90deg);}
+.nt-ptitle{flex:1;min-width:0;font-weight:700;font-size:15px;letter-spacing:-.01em;}
+.nt-ptitle.s{text-decoration:line-through;color:var(--muted);font-weight:600;}
+.nt-count{font-size:12px;font-weight:800;color:var(--muted);flex:0 0 auto;}
+.nt-count.full{color:var(--green);}
+.nt-bar{height:5px;background:var(--line);border-radius:4px;margin:0 16px 14px;overflow:hidden;}
+.nt-bar > i{display:block;height:100%;border-radius:4px;background:var(--accent);transition:width .25s ease;}
+.nt-bar > i.full{background:var(--green);}
+.nt-subs{padding:0 16px 6px;}
+.nt-sitem{display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--line);}
+.nt-stext{flex:1;font-size:14px;font-weight:500;}
+.nt-stext.s{text-decoration:line-through;color:var(--muted);}
+.nt-cb{width:22px;height:22px;border-radius:7px;border:2px solid var(--line);background:#fff;cursor:pointer;
+  flex:0 0 auto;display:flex;align-items:center;justify-content:center;transition:.12s;color:#fff;}
+.nt-cb.on{background:var(--accent);border-color:var(--accent);}
+.nt-cb.on.g{background:var(--green);border-color:var(--green);}
+.nt-cb.big{width:24px;height:24px;border-radius:8px;}
+.nt-addrow{display:flex;align-items:center;gap:9px;padding:11px 0 13px;border-top:1px solid var(--line);color:var(--accent-deep);}
+.nt-addrow input{flex:1;border:none;outline:none;background:transparent;font-family:inherit;font-size:14px;color:var(--ink);}
+.nt-iadd{border:none;background:none;color:var(--accent-deep);cursor:pointer;padding:0;display:flex;}
+.nt-newtask{display:flex;gap:9px;align-items:center;background:#fff;border:1px solid var(--line);
+  border-radius:14px;padding:12px 14px;margin-top:4px;}
+.nt-newtask input{flex:1;border:none;outline:none;background:transparent;font-family:inherit;font-size:14.5px;color:var(--ink);}
+.nt-send{border:none;background:var(--accent);color:#fff;border-radius:10px;width:34px;height:34px;cursor:pointer;
+  font-size:18px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.nt-pridot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
+.nt-hint{font-size:12.5px;color:var(--muted);margin-bottom:10px;line-height:1.55;}
+.nt-split{border:none;background:var(--accent-soft);color:var(--accent-deep);font-family:inherit;font-size:11px;font-weight:700;
+  padding:5px 9px;border-radius:8px;cursor:pointer;flex:0 0 auto;white-space:nowrap;}
+.nt-split:hover{background:#F3D8CB;}
+
+/* kb home */
+.kbh-search{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);
+  border-radius:14px;padding:12px 14px;margin-top:14px;color:var(--muted);}
+.kbh-search input{flex:1;border:none;outline:none;background:transparent;font-family:inherit;font-size:14.5px;color:var(--ink);}
+.kbh-cats{display:flex;gap:8px;overflow-x:auto;margin-top:14px;padding-bottom:2px;}
+.kbh-cats::-webkit-scrollbar{display:none;}
+.kbh-cat{flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:20px;padding:8px 14px;
+  font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;font-family:inherit;}
+.kbh-cat.on{background:var(--ink);color:#fff;border-color:var(--ink);}
+.kbh-sech{font-size:12px;font-weight:800;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;margin:22px 0 10px;}
+.kbh-feat{position:relative;border-radius:20px;overflow:hidden;border:1px solid var(--line);cursor:pointer;margin-bottom:4px;}
+.kbh-feat .cover{height:130px;background:linear-gradient(135deg,#DD5E39,#C2491F);}
+.kbh-feat .body{padding:15px 16px 17px;background:#fff;}
+.kbh-feat .ttl{font-size:17px;font-weight:800;letter-spacing:-.02em;line-height:1.3;}
+.kbh-feat .ex{color:var(--muted);font-size:13px;line-height:1.55;margin-top:7px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.kbh-pin{position:absolute;top:12px;left:12px;background:rgba(0,0,0,.35);color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;}
+.kbh-item{display:flex;gap:14px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:10px;cursor:pointer;}
+.kbh-thumb{width:66px;height:66px;border-radius:12px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:#fff;}
+.kbh-item .ttl{font-weight:700;font-size:15px;letter-spacing:-.01em;line-height:1.35;}
+.kbh-item .ex{color:var(--muted);font-size:12.5px;line-height:1.5;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.kbh-info{display:flex;align-items:center;gap:7px;margin-top:8px;flex-wrap:wrap;}
+.kbh-dot{font-size:11.5px;color:#C0B9AC;}
+.kbh-attach{display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--accent-deep);font-weight:700;}
+.kbh-fab{position:absolute;left:50%;transform:translateX(-50%);bottom:88px;display:flex;align-items:center;gap:8px;
+  background:var(--accent);color:#fff;border:none;font-family:inherit;font-weight:800;font-size:14px;
+  padding:14px 20px;border-radius:30px;cursor:pointer;box-shadow:0 12px 28px -6px rgba(221,94,57,.55);z-index:8;}
+
+/* kb blog editor */
+.kbe-wrap,.kbe-read{display:flex;flex-direction:column;height:100%;width:100%;min-height:0;background:#fff;}
+.kbe-inner{width:100%;max-width:100%;margin:0 auto;}
+.kbe-bar{flex:0 0 auto;background:#fff;z-index:6;border-bottom:1px solid var(--line);padding:10px 20px;}
+.kbe-bar-inner{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;}
+.kbe-actions{display:flex;align-items:center;gap:6px;flex-shrink:0;}
+.kbe-pub{border:none;background:var(--accent);color:#fff;font-weight:800;font-size:13px;font-family:inherit;padding:9px 14px;border-radius:11px;cursor:pointer;white-space:nowrap;}
+.kbe-draft{border:none;background:transparent;color:var(--muted);font-weight:700;font-size:13px;font-family:inherit;cursor:pointer;padding:8px;white-space:nowrap;}
+.kbe-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 20px 20px;}
+.kbe-scroll::-webkit-scrollbar{width:6px;}
+.kbe-scroll::-webkit-scrollbar-thumb{background:#D8D0C4;border-radius:3px;}
+.kbe-cover{margin-top:12px;height:150px;border-radius:16px;border:1.5px dashed var(--line);background:var(--paper);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--muted);cursor:pointer;overflow:hidden;}
+.kbe-cover img{width:100%;height:100%;object-fit:cover;}
+.kbe-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;align-items:center;}
+.kbe-title{display:block;width:100%;min-height:34px;font-size:26px;font-weight:800;letter-spacing:-.03em;line-height:1.3;
+  margin:16px 0 4px;outline:none;word-break:break-word;}
+.kbe-title:empty::before{content:attr(data-ph);color:#C8C1B5;display:block;pointer-events:none;}
+.kbe-titleline{height:1px;background:var(--line);margin-bottom:10px;}
+.kbe-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+.kbe-addzone{display:flex;align-items:center;gap:8px;color:#CBC4B7;padding:4px 0;cursor:pointer;}
+.kbe-addzone:hover{color:var(--accent-deep);}
+.kbe-addbtn{width:22px;height:22px;border-radius:7px;border:1px dashed var(--line);background:#fff;
+  display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.kbe-menu{background:#fff;border:1px solid var(--line);border-radius:14px;padding:6px;margin:6px 0;
+  box-shadow:0 8px 24px rgba(20,16,12,.10);display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;}
+.kbe-mi{display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 6px;border-radius:10px;
+  border:none;background:transparent;cursor:pointer;font-family:inherit;font-size:11.5px;font-weight:700;color:var(--ink);}
+.kbe-mi:hover{background:var(--accent-soft);color:var(--accent-deep);}
+.kbe-blk{position:relative;padding:4px 0;}
+.kbe-blk .del{position:absolute;top:4px;right:0;width:26px;height:26px;border-radius:8px;border:1px solid var(--line);
+  background:#fff;color:var(--muted);cursor:pointer;opacity:0;transition:.12s;display:flex;align-items:center;justify-content:center;font-size:12px;}
+.kbe-blk:hover .del{opacity:1;}
+.kbe-toolbar{flex:0 0 auto;background:#fff;border-top:1px solid var(--line);
+  padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));box-shadow:0 -4px 16px rgba(20,16,12,.06);}
+.kbe-toolbar-inner{display:flex;align-items:center;gap:2px;overflow-x:auto;}
+.kbe-toolbar-inner::-webkit-scrollbar{display:none;}
+.kbe-toolbar::-webkit-scrollbar{display:none;}
+.kbe-tool{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:3px;border:none;background:transparent;
+  font-family:inherit;font-size:10.5px;font-weight:700;color:var(--ink);cursor:pointer;padding:7px 11px;border-radius:10px;}
+.kbe-tool:hover{background:var(--accent-soft);color:var(--accent-deep);}
+.kbe-tdiv{width:1px;height:26px;background:var(--line);margin:0 4px;flex:0 0 auto;}
+.kbe-read{overflow:hidden;}
+.kbe-read-top{padding:10px 20px;border-bottom:1px solid var(--line);flex:0 0 auto;}
+.kbe-read-top-inner{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.kbe-read-body{flex:1;overflow-y:auto;padding:16px 20px 32px;}
+.kbe-cover-read{width:100%;height:200px;overflow:hidden;flex:0 0 auto;}
+.kbe-cover-read img{width:100%;height:100%;object-fit:cover;display:block;}
 
 /* month calendar */
 .mgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
@@ -175,13 +347,27 @@ const CSS = `
 .orline{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px;margin:10px 0;}
 .orline:before,.orline:after{content:"";flex:1;height:1px;background:var(--line);}
 
-/* bottom sheet */
-.sheetbg{position:absolute;inset:0;background:rgba(20,16,12,.45);z-index:60;display:flex;align-items:flex-end;
+/* modal sheet */
+.sheetbg{position:fixed;inset:0;background:rgba(20,16,12,.45);z-index:200;display:flex;align-items:center;justify-content:center;
+  padding:max(20px,env(safe-area-inset-top)) 20px max(20px,env(safe-area-inset-bottom));
   animation:fadeUp .25s ease both;}
-.sheet{width:100%;background:var(--paper);border-radius:26px 26px 0 0;padding:10px 22px calc(env(safe-area-inset-bottom) + 26px);
-  box-shadow:0 -10px 40px rgba(0,0,0,.25);animation:sheetup .32s cubic-bezier(.2,.8,.2,1) both;}
-@keyframes sheetup{from{transform:translateY(100%)}to{transform:none}}
-.sheetbar{width:40px;height:4px;border-radius:4px;background:#D8D2C6;margin:0 auto 14px;}
+.sheet{width:100%;max-width:400px;background:var(--paper);border-radius:20px;padding:20px 22px 24px;
+  box-shadow:0 20px 60px rgba(0,0,0,.22);animation:fadeUp .28s ease both;}
+.sheetbar{display:none;}
+.sheet-form{padding:20px 22px 24px;}
+.sheet-form .sheet-date{display:inline-block;font-size:12px;font-weight:700;color:var(--accent-deep);background:var(--accent-soft);padding:5px 11px;border-radius:8px;margin-bottom:10px;}
+.sheet-form .sheet-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;}
+.sheet-form .sheet-head h3{margin:0;font-weight:800;font-size:18px;line-height:1.35;}
+.sheet-field{margin-bottom:12px;}
+.sheet-field label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;}
+.sheet-input{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-family:inherit;font-size:15px;color:var(--ink);background:#fff;outline:none;transition:border-color .15s,box-shadow .15s;-webkit-appearance:none;appearance:none;}
+.sheet-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+.sheet-input::placeholder{color:#C0B9AC;}
+.sheet-row{display:grid;grid-template-columns:1fr 1.6fr;gap:10px;}
+.sheet-actions{display:flex;gap:10px;margin-top:18px;}
+.sheet-actions .btn{flex:1;padding:14px;font-size:15px;}
+.sheet-x{display:flex;border:none;background:#EFEBE2;color:var(--muted);width:34px;height:34px;border-radius:11px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;line-height:1;font-family:inherit;}
+@media (max-width:380px){.sheet-row{grid-template-columns:1fr;}}
 .stepnum{width:26px;height:26px;border-radius:9px;background:var(--accent-soft);color:var(--accent-deep);
   font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
 .segpill{display:inline-flex;background:#EFEBE2;border-radius:10px;padding:3px;gap:3px;}
@@ -207,6 +393,7 @@ const I = {
   text:(p)=> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M5 6h14M5 12h14M5 18h9"/></svg>,
   heading:(p)=> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M6 4v16M18 4v16M6 12h12"/></svg>,
   list:(p)=> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.2" fill="currentColor" stroke="none"/></svg>,
+  meet:(p)=> <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M8 6h13M8 12h13M8 18h8"/><path d="M4 7v10"/><circle cx="4" cy="7" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="17" r="1.5" fill="currentColor" stroke="none"/></svg>,
   quote:(p)=> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M7 7c-2 0-3 1.5-3 3.5S5 14 7 14c0 2-1 3-3 3M18 7c-2 0-3 1.5-3 3.5S16 14 18 14c0 2-1 3-3 3"/></svg>,
   table:(p)=> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 10h16M4 14.5h16M10 5v14M16 5v14"/></svg>,
   divider:(p)=> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" {...p}><path d="M4 12h16"/></svg>,
@@ -261,6 +448,19 @@ const T=(seg,key)=> (TERMS[seg]||TERMS.business)[key];
 const PRI = { high:{l:"● 높음", c:"#DD5E39"}, mid:{l:"● 보통", c:"#C9A23A"}, low:{l:"● 낮음", c:"#8C857A"} };
 const STAGES = [["todo","할 일"],["doing","진행 중"],["done","완료"]];
 
+function formatBytes(n){
+  if(!n) return "0B";
+  if(n>=1073741824) return `${(n/1073741824).toFixed(n>=10737418240?0:1)}GB`;
+  if(n>=1048576) return `${(n/1048576).toFixed(1)}MB`;
+  if(n>=1024) return `${Math.round(n/1024)}KB`;
+  return `${n}B`;
+}
+
+const inputFieldStyle={
+  width:"100%",padding:"13px 14px",borderRadius:12,border:"1px solid var(--line)",
+  fontFamily:"inherit",fontSize:14,background:"#fff",outline:"none",marginBottom:10,
+};
+
 /* ---- i18n (진입 플로우: 로그인 · 온보딩) ---- */
 const LANG = {
   ko:{ label:"한", tagline:"녹음하면, 알아서 정리되는 비서",
@@ -306,7 +506,8 @@ const LANG = {
 };
 
 function App(){
-  const [boot,setBoot] = useState("loading"); // loading | auth | welcome | app
+  const [boot,setBoot] = useState("loading"); // loading | auth | reconnect | welcome | app
+  const [bootError,setBootError] = useState("");
   const [user,setUser] = useState(null);
   const [tab,setTab] = useState("today");
   const [client,setClient] = useState(null);
@@ -327,6 +528,7 @@ function App(){
   const [kbArticles,setKbArticles] = useState([]);
   const [revenue,setRevenue] = useState({ supplyAmount:0, total:0, pipeline:0, wonCount:0, pipelineCount:0 });
   const [lastSummary,setLastSummary] = useState(null);
+  const [lastMediaKey,setLastMediaKey] = useState(null);
   const timer = useRef(null);
 
   const loadAppData = useCallback(async ()=>{
@@ -339,22 +541,30 @@ function App(){
     setRevenue(data.revenue||{ supplyAmount:0, total:0, pipeline:0, wonCount:0, pipelineCount:0 });
   },[]);
 
-  useEffect(()=>{
-    (async()=>{
-      const t = loadToken();
-      if(!t){ setBoot("auth"); return; }
-      setToken(t);
-      try{
-        const { user:u } = await api.me();
-        setUser(u);
-        await loadAppData();
-        setBoot(u.onboardingDone ? "app" : "welcome");
-      }catch{
+  const restoreSession = useCallback(async ()=>{
+    const t = loadToken();
+    if(!t){ setBootError(""); setBoot("auth"); return; }
+    setToken(t);
+    setBoot("loading");
+    setBootError("");
+    try{
+      const { user:u } = await api.me();
+      setUser(u);
+      await loadAppData();
+      setBoot(u.onboardingDone ? "app" : "welcome");
+    }catch(e){
+      if(isAuthError(e)){
         clearToken();
+        setBootError("");
         setBoot("auth");
+      }else{
+        setBootError(e?.message||"서버에 연결할 수 없습니다");
+        setBoot("reconnect");
       }
-    })();
+    }
   },[loadAppData]);
+
+  useEffect(()=>{ restoreSession(); },[restoreSession]);
 
   useEffect(()=>{
     if(phase==="rec"){ timer.current=setInterval(()=>setSecs(s=>s+1),1000); }
@@ -363,7 +573,6 @@ function App(){
   },[phase]);
 
   const handleAuth = async (result)=>{
-    saveToken(result.token);
     setToken(result.token);
     setUser(result.user);
     await loadAppData();
@@ -380,9 +589,19 @@ function App(){
   },[user]);
 
   const goTab=(t)=>{ setClient(null); setKbView(null); setPricing(false); setCardScan(false); setOverlay(null); setDetail(null); if(t!=="record"){ setTab(t);} };
-  const startRec=()=>{ setTab("record"); setPhase("rec"); setSecs(0); setHl(0); setLastSummary(null); };
+  const startRec=()=>{ setTab("record"); setPhase("rec"); setSecs(0); setHl(0); setLastSummary(null); setLastMediaKey(null); };
+  const friendlyAiError=(msg)=>{
+    if(!msg) return "요약에 실패했습니다.";
+    if(/일시적으로 바쁩니다|high demand|503|UNAVAILABLE/i.test(msg))
+      return "AI 서버가 일시적으로 바빠요. 녹음 파일은 저장됐으니 1~2분 후 다시 시도해주세요.";
+    if(/429|quota|한도/i.test(msg))
+      return "AI 사용 한도에 도달했어요. 잠시 후 다시 시도해주세요.";
+    if(/Gemini \d+:/.test(msg)) return "AI 처리 중 오류가 났어요. 잠시 후 다시 시도해주세요.";
+    return msg;
+  };
   const handleRecordComplete=async ({ mode, mediaKey, imageKeys, attendees, contactId, companyName })=>{
     setPhase("proc");
+    setLastMediaKey(mediaKey||imageKeys?.[0]||null);
     try{
       const { jobId } = await api.enqueueSummary(mediaKey||null,{
         template:"영업",
@@ -393,15 +612,19 @@ function App(){
         imageKeys: imageKeys??[],
       });
       let job;
-      for(let i=0;i<60;i++){
-        await new Promise(r=>setTimeout(r,500));
+      for(let i=0;i<180;i++){
+        await new Promise(r=>setTimeout(r,1000));
         job = await api.getJob(jobId);
         if(job?.status==="done"||job?.status==="error") break;
       }
-      if(job?.status==="done") setLastSummary(job.result);
-      else if(job?.status==="error") alert(job.error||"요약 실패");
+      if(job?.status==="done"){
+        setLastSummary(job.result);
+        if(job.result?.mediaKey) setLastMediaKey(job.result.mediaKey);
+      }
+      else if(job?.status==="error") alert(friendlyAiError(job.error));
+      else alert("요약이 예상보다 오래 걸리고 있어요. 잠시 후 기록 목록에서 확인해주세요.");
       await loadAppData();
-    }catch(e){ alert(e.message||"처리 실패"); console.warn("record",e); }
+    }catch(e){ alert(friendlyAiError(e.message)||"처리 실패"); console.warn("record",e); }
     setPhase("sum");
   };
   const mmss=(n)=>`${String(Math.floor(n/60)).padStart(2,"0")}:${String(n%60).padStart(2,"0")}`;
@@ -419,38 +642,57 @@ function App(){
   };
   const refreshContacts = async ()=>{ await loadAppData(); };
 
-  if(boot==="loading") return (
+  if(boot==="loading"||boot==="reconnect") return (
     <div className="sa-root"><style>{CSS}</style>
-      <div className="phone" style={{alignItems:"center",justifyContent:"center"}}>
-        <div className="spinner"/>
+      <div className="app-shell">
+        <div className="app-main app-main-centered" style={{textAlign:"center"}}>
+          {boot==="loading" ? <div className="spinner"/> : (
+            <>
+              <div style={{fontWeight:700,fontSize:16,marginBottom:8}}>연결을 확인하고 있어요</div>
+              <div className="small" style={{lineHeight:1.5,marginBottom:18}}>{bootError||"서버에 연결할 수 없습니다"}</div>
+              <button className="btn btn-accent" style={{padding:"12px 20px"}} onClick={restoreSession}>다시 시도</button>
+              <button className="btn btn-ghost" style={{padding:"12px 20px",marginTop:10}} onClick={()=>{ clearToken(); setBootError(""); setBoot("auth"); }}>다시 로그인</button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 
+  const showMobileNav = boot==="app" && kbView?.mode!=="edit";
+
   return (
     <div className="sa-root">
       <style>{CSS}</style>
-      <div className="phone">
-        <div className="notch"/>
-        <div className="statusbar">
-          <span>9:41</span>
-          <span style={{display:"flex",gap:6,alignItems:"center"}}>
-            <span style={{fontSize:11}}>5G</span>
-            <span style={{width:22,height:11,border:"1.5px solid var(--ink)",borderRadius:3,position:"relative",display:"inline-block"}}>
-              <span style={{position:"absolute",inset:1.5,right:6,background:"var(--ink)",borderRadius:1}}/>
-            </span>
-          </span>
-        </div>
-
-        <div className="screen" key={boot+tab+phase+(client?client.id:"")+(pricing?"P":"")+(overlay||"")+(detail?detail.type:"")}>
+      <div className="app-shell">
+        {boot==="app" && (
+          <aside className="app-sidebar">
+            <div className="app-brand">Story<span>ahub</span></div>
+            <nav className="app-sidenav">
+              <NavBtn layout="side" on={tab==="today"&&!client} icon={I.home} label="투데이" onClick={()=>goTab("today")}/>
+              <NavBtn layout="side" on={tab==="clients"||!!client} icon={I.users} label={T(segment,"contacts")} onClick={()=>goTab("clients")}/>
+              <NavBtn layout="side" on={tab==="meetings"} icon={I.meet} label="미팅" onClick={()=>goTab("meetings")}/>
+              <NavBtn layout="side" on={tab==="calendar"} icon={I.cal} label="캘린더" onClick={()=>goTab("calendar")}/>
+              <NavBtn layout="side" on={tab==="kb"} icon={I.book} label="지식백과" onClick={()=>goTab("kb")}/>
+              <button type="button" className="side-rec" onClick={startRec}>{I.mic({width:18,height:18})} 녹음 시작</button>
+            </nav>
+            <div className="app-sidebar-foot">AI 비서 · 녹음·인맥·일정·지식</div>
+          </aside>
+        )}
+        <div className="app-main">
+        <div className={"screen"+(kbView?" screen-kb":"")} key={boot+tab+phase+(client?client.id:"")+(pricing?"P":"")+(overlay||"")+(detail?detail.type:"")+(kbView?.mode||"")}>
           {boot==="auth" ? <AuthScreen onSuccess={handleAuth}/>
           : boot==="welcome" ? <WelcomeScreen user={user} contactCount={getClients().length}
               onStartRec={async ()=>{ await completeWelcome(); startRec(); }}
               onAddContact={async ()=>{ await completeWelcome(); setTab("clients"); setCardScan(true); }}
               onDone={completeWelcome}/>
-          : detail ? <Detail d={detail} todos={todos} back={()=>setDetail(null)} onTodoToggle={toggleTodo}/>
+          : detail ? <Detail d={detail} todos={todos} back={()=>setDetail(null)} onTodoToggle={toggleTodo} onTodoUpdated={loadAppData} refreshTodos={loadAppData} onDeleted={()=>{ setDetail(null); loadAppData(); }}/>
           : overlay==="search" ? <GlobalSearch back={()=>setOverlay(null)} openClient={(c)=>{setOverlay(null);setTab("clients");setClient(c);}}
-              meetings={meetings} kbArticles={kbArticles}/>
+              openTask={(t)=>{setOverlay(null);setDetail({type:"task",data:t});}}
+              openMeeting={(m)=>{setOverlay(null);setDetail({type:"meeting",data:m});}}
+              meetings={meetings} kbArticles={kbArticles} todos={todos}/>
+          : overlay==="todos" ? <TodoArchive back={()=>setOverlay(null)} openDetail={(t)=>setDetail({type:"task",data:t})}/>
+          : overlay==="mypage" ? <MyPage user={user} back={()=>setOverlay("settings")} onUserUpdated={setUser}/>
           : overlay==="settings" ? <Settings user={user} back={()=>setOverlay(null)} go={(o)=>setOverlay(o)}
               openPricing={()=>{setOverlay(null);setPricing(true);}}
               onLogout={()=>{ clearToken(); setUser(null); setBoot("auth"); setOverlay(null); }}/>
@@ -459,30 +701,38 @@ function App(){
           : pricing ? <Pricing back={()=>setPricing(false)} segment={segment} trialLeft={user?.trialDaysLeft}/>
           : tab==="record" ? <RecordScreen phase={phase} secs={secs} mmss={mmss} hl={hl} setHl={setHl}
                               onComplete={handleRecordComplete} todos={todos} toggleTodo={toggleTodo}
-                              summary={lastSummary}
+                              summary={lastSummary} mediaKey={lastMediaKey}
                               goClients={()=>{setTab("clients");setPhase("idle");}} />
-          : client ? <ClientDetail c={client} back={()=>setClient(null)} startRec={startRec} seg={segment} onRefresh={loadAppData}/>
+          : client ? <ClientDetail c={client} back={()=>setClient(null)} startRec={startRec} seg={segment} onRefresh={loadAppData}
+              onDeleted={()=>{ setClient(null); loadAppData(); }}
+              openMeeting={(m)=>setDetail({type:"meeting",data:m.mediaKey!==undefined?m:meetingToUi(m)})}/>
           : tab==="today" ? <Today user={user} startRec={startRec} todos={todos} toggleTodo={toggleTodo} setTodoStatus={setTodoStatus}
                               eventsToday={eventsToday} meetings={meetings} revenue={revenue}
-                              openClient={(c)=>setClient(c)} seeSummary={()=>{setTab("record");setPhase("sum");}}
+                              openClient={(c)=>setClient(c)} seeSummary={(m)=>openDetail("meeting",m)}
                               openPricing={()=>setPricing(true)} segment={segment}
                               openSearch={()=>setOverlay("search")} openSettings={()=>setOverlay("settings")}
+                              openTodoArchive={()=>setOverlay("todos")}
+                              openMeetings={()=>goTab("meetings")}
+                              kbArticles={kbArticles}
+                              openKb={(a)=>setKbView({article:a,mode:"read"})}
                               openDetail={(t,data)=>setDetail({type:t,data})} onRefresh={loadAppData}/>
-          : tab==="clients" ? (cardScan ? <CardScan back={()=>setCardScan(false)} onSaved={refreshContacts} seg={segment}/> : <Clients group={group} setGroup={setGroup} open={(c)=>setClient(c)} onAdd={()=>setCardScan(true)} seg={segment}/>)
+          : tab==="clients" ? (cardScan ? <CardScan back={()=>setCardScan(false)} onSaved={refreshContacts} seg={segment}/> : <Clients group={group} setGroup={setGroup} open={(c)=>setClient(c)} onAdd={()=>setCardScan(true)} onRefresh={loadAppData} seg={segment}/>)
+          : tab==="meetings" ? <MeetingsTab meetings={meetings} openDetail={(m)=>setDetail({type:"meeting",data:m})} startRec={startRec} onRefresh={loadAppData}/>
           : tab==="calendar" ? <Calendar openDetail={(t,data)=>setDetail({type:t,data})}/>
           : kbView ? (
             kbView.mode==="edit"
-              ? <KbEditor article={kbView.article} back={()=>setKbView(null)} onSaved={loadAppData} onDeleted={loadAppData}/>
+              ? <KbEditor article={kbView.article} back={()=>setKbView(null)} onSaved={loadAppData} onDeleted={loadAppData}
+                  categories={kbCategories(kbArticles).filter((c)=>c!=="전체")}/>
               : <KbReadView article={kbView.article} back={()=>setKbView(null)} onEdit={()=>setKbView({article:kbView.article,mode:"edit"})}/>
           )
           : <Knowledge articles={kbArticles} openWrite={(a)=>setKbView({article:a||{blocks:[]},mode:a?.id?"read":"edit"})}/>}
         </div>
 
-        {/* bottom nav */}
-        {boot==="app" && (
+        {showMobileNav && (
         <div className="nav">
           <NavBtn on={tab==="today"&&!client} icon={I.home} label="투데이" onClick={()=>goTab("today")}/>
           <NavBtn on={tab==="clients"||client} icon={I.users} label={T(segment,"contacts")} onClick={()=>goTab("clients")}/>
+          <NavBtn on={tab==="meetings"} icon={I.meet} label="미팅" onClick={()=>goTab("meetings")}/>
           <button className="fab" onClick={startRec} aria-label="녹음">{I.mic()}</button>
           <NavBtn on={tab==="calendar"} icon={I.cal} label="캘린더" onClick={()=>goTab("calendar")}/>
           <NavBtn on={tab==="kb"} icon={I.book} label="지식백과" onClick={()=>goTab("kb")}/>
@@ -490,22 +740,29 @@ function App(){
         )}
 
         {showInstall && <InstallSheet close={()=>setShowInstall(false)} onConfirm={()=>{ dismissInstall(); setShowInstall(false); }}/>}
+        </div>
       </div>
     </div>
   );
 }
 
-function NavBtn({on,icon,label,onClick}){
-  return <button className={"navitem"+(on?" on":"")} onClick={onClick}>{icon({})}<span>{label}</span></button>;
+function NavBtn({on,icon,label,onClick,layout="bottom"}){
+  if(layout==="side") return <button type="button" className={"sidenavitem"+(on?" on":"")} onClick={onClick}>{icon({width:20,height:20})}<span>{label}</span></button>;
+  return <button type="button" className={"navitem"+(on?" on":"")} onClick={onClick}>{icon({})}<span>{label}</span></button>;
 }
 
 /* ---------------- TODAY ---------------- */
-function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSummary,openPricing,segment,openSearch,openSettings,openDetail,eventsToday,meetings,revenue,onRefresh}){
+function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSummary,openPricing,segment,openSearch,openSettings,openTodoArchive,openMeetings,openDetail,eventsToday,meetings,revenue,onRefresh,kbArticles=[],openKb}){
   const clients=getClients();
   const near=clients.filter(c=>c.group&&c.group!=="미분류").slice(0,3);
-  const doneCount=todos.filter(t=>t.done).length;
+  const doneCount=todos.filter(isTodoDone).length;
   const isBiz=segment==="business";
+  const reviewItems=!isBiz ? [
+    ...meetings.slice(0,2).map((m)=>({key:`m-${m.id}`,title:m.oneLine||m.t,sub:m.createdLabel||m.d,onClick:()=>seeSummary(m)})),
+    ...kbArticles.slice(0,3).map((a)=>({key:`k-${a.id}`,title:a.t,sub:a.c||"지식백과",onClick:()=>openKb?.(a)})),
+  ].slice(0,3) : [];
   const [todoView,setTodoView]=useState("check");
+  const [focusTodoAdd,setFocusTodoAdd]=useState(false);
   const now=new Date();
   const dateLabel=now.toLocaleDateString("ko-KR",{month:"long",day:"numeric",weekday:"long"});
   const greetName=(user?.name||"회원").split(" ")[0];
@@ -549,15 +806,15 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
       )}
 
       {/* 후속 챙기기(미완료 액션) */}
-      {todos.filter(t=>!t.done).length>0 && (
+      {todos.filter(t=>!isTodoDone(t)).length>0 && (
       <div className="pad" style={{marginTop:18}}>
         <div className="card" style={{padding:"13px 15px",borderLeft:"4px solid var(--accent)",cursor:"pointer"}} onClick={()=>openDetail("followup")}>
           <div className="row" style={{gap:9,alignItems:"flex-start"}}>
             <span style={{color:"var(--accent-deep)",marginTop:1}}>{I.bolt({})}</span>
             <div style={{flex:1}}>
-              <div style={{fontWeight:700,fontSize:13.5}}>후속 챙기기 · {todos.filter(t=>!t.done).length}건</div>
+              <div style={{fontWeight:700,fontSize:13.5}}>후속 챙기기 · {todos.filter(t=>!isTodoDone(t)).length}건</div>
               <div className="small" style={{marginTop:4,lineHeight:1.5}}>
-                {todos.filter(t=>!t.done).slice(0,2).map(t=>t.t).join(" · ")}
+                {todos.filter(t=>!isTodoDone(t)).slice(0,2).map(t=>t.t).join(" · ")}
               </div>
             </div>
             <span style={{color:"var(--muted)"}}>{I.chevR({})}</span>
@@ -610,42 +867,37 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
         </div>
       </div>
 
-      {/* 할 일 — 체크 / 보드 전환 */}
+      {/* 할 일 — 대분류·소분류 / 보드 전환 */}
       <div className="pad row between" style={{alignItems:"flex-end"}}>
-        <div className="section-h" style={{marginBottom:0}}>할 일 <span className="small" style={{fontWeight:700}}>{doneCount}/{todos.length}</span></div>
-        <div className="seg" style={{width:128}}>
-          <button className={todoView==="check"?"on":""} onClick={()=>setTodoView("check")} style={{padding:"6px 0",fontSize:12.5}}>체크</button>
-          <button className={todoView==="board"?"on":""} onClick={()=>setTodoView("board")} style={{padding:"6px 0",fontSize:12.5}}>보드</button>
+        <div>
+          <div className="section-h" style={{marginBottom:2}}>오늘 할 일 <span className="small" style={{fontWeight:700}}>{doneCount}/{todos.length}</span></div>
+          <div className="small">대분류 · 소분류로 나눠 관리해요</div>
+        </div>
+        <div className="row" style={{gap:8,alignItems:"center"}}>
+          <button type="button" className="chip" style={{color:"var(--muted)"}} onClick={openTodoArchive}>전체</button>
+          <button type="button" className="chip" style={{color:"var(--accent-deep)"}} onClick={()=>{ setFocusTodoAdd(true); setTimeout(()=>setFocusTodoAdd(false),300); }}>+ 대분류</button>
+          <div className="seg" style={{width:128}}>
+            <button type="button" className={todoView==="check"?"on":""} onClick={()=>setTodoView("check")} style={{padding:"6px 0",fontSize:12.5}}>체크</button>
+            <button type="button" className={todoView==="board"?"on":""} onClick={()=>setTodoView("board")} style={{padding:"6px 0",fontSize:12.5}}>보드</button>
+          </div>
         </div>
       </div>
       <div className="pad" style={{marginTop:10}}>
         {todoView==="check" ? (
-          <div className="card" style={{padding:"6px 16px"}}>
-            {todos.map((t,i)=>(
-              <div key={i} className="list-item row" style={{gap:11,padding:"13px 0"}}>
-                <span style={{width:4,alignSelf:"stretch",borderRadius:3,background:PRI[t.pri].c,flex:"0 0 auto"}}/>
-                <span onClick={()=>toggleTodo(i)} style={{cursor:"pointer"}}><Checkbox on={t.done}/></span>
-                <div style={{flex:1,cursor:"pointer"}} onClick={()=>openDetail("task",{...t,i})}>
-                  <div style={{textDecoration:t.done?"line-through":"none",color:t.done?"var(--muted)":"var(--ink)",fontWeight:500,fontSize:14.5}}>{t.t}</div>
-                  <div className="row" style={{gap:6,marginTop:4}}>
-                    <span style={{fontSize:10.5,fontWeight:700,color:PRI[t.pri].c}}>{PRI[t.pri].l}</span>
-                    {t.due!=="-"&&<span className="small" style={{fontSize:11}}>· {t.due}</span>}
-                  </div>
-                </div>
-                <span style={{color:"var(--muted)"}} onClick={()=>openDetail("task",{...t,i})}>{I.chevron({})}</span>
-              </div>
-            ))}
-          </div>
+          <NestedTodoList todos={todos} onRefresh={onRefresh} openDetail={(t)=>openDetail("task",t)} showAdd focusAdd={focusTodoAdd}/>
         ) : (
-          <TodoBoard todos={todos} setTodoStatus={setTodoStatus} openDetail={openDetail} onRefresh={onRefresh}/>
+          <TodoBoard todos={todos} setTodoStatus={setTodoStatus} openDetail={openDetail}/>
         )}
       </div>
 
       {/* 최근 요약 */}
-      <div className="pad"><div className="section-h">{isBiz?"최근 기록 요약":"최근 강의 요약"}</div></div>
-      <div className="pad">
+      <div className="pad row between" style={{alignItems:"flex-end"}}>
+        <div className="section-h" style={{marginBottom:0}}>{isBiz?"최근 기록":"최근 강의"}</div>
+        <button className="chip" style={{color:"var(--muted)"}} onClick={openMeetings}>미팅 내역</button>
+      </div>
+      <div className="pad" style={{marginTop:10}}>
         {latestMeeting ? (
-        <div className="card" style={{padding:16,cursor:"pointer"}} onClick={seeSummary}>
+        <div className="card" style={{padding:16,cursor:"pointer"}} onClick={()=>seeSummary(latestMeeting)}>
           <div className="row between">
             <div className="row" style={{gap:10}}>
               <div className="avatar">{(latestMeeting.contact?.company||latestMeeting.oneLine||"?")[0]}</div>
@@ -657,6 +909,7 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
           <div style={{marginTop:12,fontSize:13.5,lineHeight:1.55,color:"#4a463f"}}>
             {latestMeeting.oneLine||"요약 없음"}
           </div>
+          {latestMeeting.hasAudio && <div className="small" style={{marginTop:10,color:"var(--accent-deep)",fontWeight:600}}>🎧 녹음 듣기</div>}
         </div>
         ) : (
         <div className="card" style={{padding:18,textAlign:"center"}}>
@@ -666,8 +919,8 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
         )}
       </div>
 
-      {/* 비즈니스: 내 주변 거래처 / 학생: 복습 추천 */}
-      {isBiz && near.length>0 ? <>
+      {/* 비즈니스: 인맥 (데이터 있을 때만) */}
+      {isBiz && near.length>0 && <>
       <div className="pad row between"><div className="section-h">인맥</div></div>
       <div className="pad" style={{marginBottom:10}}>
         <div className="card" style={{padding:"4px 16px"}}>
@@ -687,13 +940,17 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
           ))}
         </div>
       </div>
-      </> : <>
+      </>}
+
+      {/* 학생 모드: 복습 추천 — 실제 기록·지식백과가 있을 때만 */}
+      {!isBiz && reviewItems.length>0 && <>
       <div className="pad"><div className="section-h">오늘 복습 추천</div></div>
       <div className="pad" style={{marginBottom:10}}>
         <div className="card" style={{padding:"4px 16px"}}>
-          {[["영어 단어 50개 ","오답 노트"],["물리 2단원 ","요약 카드"],["수학 미적분 ","개념 정리"]].map((r,i,a)=>(
-            <div key={i} className="list-item row between" style={{padding:"14px 0",borderBottom:i<a.length-1?"1px solid var(--line)":"none"}}>
-              <div style={{fontWeight:600,fontSize:14}}>{r[0]}<span className="small" style={{fontWeight:500}}>· {r[1]}</span></div>
+          {reviewItems.map((r,i,a)=>(
+            <div key={r.key} className="list-item row between" style={{padding:"14px 0",borderBottom:i<a.length-1?"1px solid var(--line)":"none",cursor:"pointer"}}
+              onClick={r.onClick}>
+              <div style={{fontWeight:600,fontSize:14}}>{r.title}<span className="small" style={{fontWeight:500}}> · {r.sub}</span></div>
               <span style={{color:"var(--muted)"}}>{I.chevron({})}</span>
             </div>
           ))}
@@ -730,7 +987,7 @@ function TagChip({t}){
   return <span className={"tag"+(c&&c!=="accent"?" "+c:"")}>{t}</span>;
 }
 
-function Clients({group,setGroup,open,onAdd,seg}){
+function Clients({group,setGroup,open,onAdd,onRefresh,seg}){
   const CLIENTS=getClients();
   const GROUPS=contactGroups(CLIENTS);
   const [view,setView]=useState("list");
@@ -769,7 +1026,7 @@ function Clients({group,setGroup,open,onAdd,seg}){
         </div>
       </div>
 
-      {view==="map" ? <ClientMap open={open}/> : (
+      {view==="map" ? <ClientMap open={open} onRefresh={onRefresh}/> : (
       <>
       {/* 그룹(소속) 필터 */}
       <div className="pad row" style={{gap:8,marginTop:14,overflowX:"auto"}}>
@@ -828,51 +1085,149 @@ function Clients({group,setGroup,open,onAdd,seg}){
   );
 }
 
-function ClientMap({open}){
+function ClientMap({open,onRefresh}){
   const CLIENTS=getClients();
-  const near=CLIENTS.filter(c=>c.group&&c.group!=="미분류");
-  const [sel,setSel]=useState(near[0]||CLIENTS[0]);
+  const [myPos,setMyPos]=useState(null);
+  const [geoErr,setGeoErr]=useState("");
+  const [geocoding,setGeocoding]=useState(false);
+  const [sel,setSel]=useState(null);
+
+  useEffect(()=>{
+    let cancelled=false;
+    setGeocoding(true);
+    api.geocodePendingContacts()
+      .then((res)=>{
+        if(cancelled) return;
+        if(res?.contacts?.length) setClients(res.contacts.map(contactToUi));
+        onRefresh?.();
+      })
+      .catch(()=>{})
+      .finally(()=>{ if(!cancelled) setGeocoding(false); });
+    return ()=>{ cancelled=true; };
+  },[]);
+
+  useEffect(()=>{
+    if(!navigator.geolocation){ setGeoErr("이 기기에서는 위치를 사용할 수 없어요"); return; }
+    navigator.geolocation.getCurrentPosition(
+      (p)=>setMyPos({lat:p.coords.latitude,lng:p.coords.longitude}),
+      ()=>setGeoErr("내 위치를 쓰려면 위치 권한을 허용해주세요"),
+      {enableHighAccuracy:true,timeout:12000,maximumAge:60000}
+    );
+  },[]);
+
+  const located=CLIENTS.filter(c=>c.lat!=null&&c.lng!=null);
+  const withDist=located.map(c=>{
+    const km=myPos?haversineKm(myPos.lat,myPos.lng,c.lat,c.lng):null;
+    return {...c,km};
+  }).sort((a,b)=>(a.km??9999)-(b.km??9999));
+
+  const near=myPos?withDist.filter(c=>c.km<=10):withDist;
+  const mapCenter=myPos||(located[0]?{lat:located[0].lat,lng:located[0].lng}:null);
+  const spanKm=2.5;
+
+  useEffect(()=>{
+    if(!sel && near[0]) setSel(near[0]);
+    else if(sel && !near.find(c=>c.id===sel.id) && near[0]) setSel(near[0]);
+  },[near.length,sel?.id]);
+
+  const pinPos=(c)=>{
+    if(!mapCenter) return {left:"50%",top:"50%"};
+    const dx=(c.lng-mapCenter.lng)*111320*Math.cos((mapCenter.lat*Math.PI)/180);
+    const dy=-(c.lat-mapCenter.lat)*110540;
+    const pxPerM=140/spanKm/1000;
+    const left=50+(dx*pxPerM/1.7);
+    const top=50+(dy*pxPerM/1.7);
+    return {left:`${Math.max(6,Math.min(94,left))}%`,top:`${Math.max(6,Math.min(94,top))}%`};
+  };
+
   if(!CLIENTS.length) return (
     <div className="pad small" style={{textAlign:"center",padding:"40px 0"}}>인맥을 추가하면 지도에 표시돼요</div>
   );
-  if(!sel) return null;
+
   return (
     <div className="fade">
-      <div className="pad row" style={{gap:5,marginTop:14,color:"var(--muted)",fontSize:12.5,fontWeight:600}}>
-        {I.pin({})} 위치 정보가 있는 인맥 {near.length}곳
+      <div className="pad row between" style={{gap:8,marginTop:14,color:"var(--muted)",fontSize:12.5,fontWeight:600}}>
+        <span className="row" style={{gap:5}}>
+          {I.pin({})} 위치 정보가 있는 인맥 {located.length}곳
+          {geocoding && <span className="small"> · 변환 중…</span>}
+        </span>
+        {myPos && near[0]?.km!=null && <span className="tag green" style={{fontSize:11}}>반경 10km</span>}
       </div>
+      {geoErr && <div className="pad small" style={{paddingTop:0,color:"var(--accent-deep)"}}>{geoErr}</div>}
+      {located.length===0 && !geocoding && (
+        <div className="pad small" style={{paddingTop:0,lineHeight:1.55}}>
+          주소가 있는 인맥이 아직 좌표로 변환되지 않았어요. 명함 스캔 시 주소를 넣거나, 잠시 후 다시 열어보세요.
+        </div>
+      )}
       <div className="mapwrap">
-        <div className="mypulse"/>
-        <div className="mydot"/>
+        {[1,2].map(i=>(
+          <div key={i} className="ring" style={{width:`${i*38}%`,height:`${i*38}%`}}>
+            <span className="ringlbl" style={{top:-8}}>{i===1?"1km":"2km"}</span>
+          </div>
+        ))}
+        {myPos && <><div className="mypulse"/><div className="mydot"/></>}
+        {located.map(c=>{
+          const pos=pinPos(c);
+          const active=sel?.id===c.id;
+          return (
+            <div key={c.id} className="cpin" style={{left:pos.left,top:pos.top}} onClick={()=>setSel(c)}>
+              <div className="cpinhead" style={{background:active?"var(--accent)":"#5C6BC0",width:active?38:34,height:active?38:34}}>
+                <span>{c.init}</span>
+              </div>
+            </div>
+          );
+        })}
       </div>
+      {sel ? (
       <div className="pad" style={{marginTop:12,marginBottom:12}}>
         <div className="card" style={{padding:16}}>
           <div className="row between">
             <div className="row" style={{gap:12}}>
               <div className="avatar">{sel.init}</div>
-              <div><div style={{fontWeight:700,fontSize:14.5}}>{sel.co}</div>
-                <div className="small">{sel.person}</div></div>
+              <div>
+                <div style={{fontWeight:700,fontSize:14.5}}>{sel.co}</div>
+                <div className="small">{sel.person}</div>
+              </div>
             </div>
-            <span className="tag gray">{sel.group}</span>
+            <div className="row" style={{gap:6}}>
+              {sel.km!=null && <span className="tag green">{formatDistanceKm(sel.km)}</span>}
+              <span className="tag gray">{sel.group}</span>
+            </div>
           </div>
-          {sel.area && <div className="small" style={{marginTop:10,display:"flex",alignItems:"center",gap:5}}>{I.pin({})} {sel.area}</div>}
+          {sel.area && <div className="small" style={{marginTop:10,display:"flex",alignItems:"flex-start",gap:5,lineHeight:1.45}}>{I.pin({})} {sel.area}</div>}
           <div className="row" style={{gap:10,marginTop:14}}>
             <button className="btn btn-ghost" style={{flex:1,padding:12}} onClick={()=>open(sel)}>상세 보기</button>
+            {sel.area && (
+              <button className="btn btn-ghost" style={{flex:1,padding:12}}
+                onClick={()=>{
+                  const url=kakaoDirectionsUrl({ address:sel.area, lat:sel.lat, lng:sel.lng, label:sel.co||sel.person||"목적지" });
+                  if(url) window.open(url,"_blank","noopener");
+                }}>
+                길찾기
+              </button>
+            )}
           </div>
         </div>
         {near.length>1 && (
           <div className="row" style={{gap:8,marginTop:12,overflowX:"auto"}}>
             {near.map(c=>(
-              <button key={c.id} className={"chip"+(sel.id===c.id?" on":"")} onClick={()=>setSel(c)}>{c.co||c.person}</button>
+              <button key={c.id} className={"chip"+(sel.id===c.id?" on":"")} onClick={()=>setSel(c)}>
+                {c.co||c.person}{c.km!=null?` · ${formatDistanceKm(c.km)}`:""}
+              </button>
             ))}
           </div>
         )}
       </div>
+      ) : (
+        <div className="pad small" style={{textAlign:"center",padding:"20px 0 28px",lineHeight:1.55}}>
+          {located.length===0?"주소가 등록된 인맥을 추가해주세요":"지도에서 핀을 선택하세요"}
+        </div>
+      )}
     </div>
   );
 }
 
-function ClientDetail({c,back,startRec,seg,onRefresh}){
+function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting}){
   const mt=T(seg,"meeting");
   const CLIENTS=getClients();
   const [fav,setFav]=useState(!!c.fav);
@@ -881,7 +1236,8 @@ function ClientDetail({c,back,startRec,seg,onRefresh}){
   const [tags,setTags]=useState(c.tags||[]);
   const [pickReferrer,setPickReferrer]=useState(false);
   const [addingDeal,setAddingDeal]=useState(false);
-  const [dealForm,setDealForm]=useState({title:"",stage:"리드",supplyAmount:""});
+  const [dealSaving,setDealSaving]=useState(false);
+  const [dealForm,setDealForm]=useState({title:"",stage:"리드",supplyAmount:"",quoteFile:null});
   const reload=()=>api.getContact(c.id).then(setDetail).catch(()=>setDetail(null));
   useEffect(()=>{
     setLoading(true);
@@ -901,20 +1257,48 @@ function ClientDetail({c,back,startRec,seg,onRefresh}){
       reload();
     }catch(e){ alert(e.message); }
   };
+  const pickQuoteFile=async ()=>{
+    try{
+      const file=await pickAnyFile();
+      setDealForm(p=>({...p,quoteFile:file}));
+    }catch(e){
+      if(!isPickCancelled(e) && e?.message!=="파일이 선택되지 않았습니다") alert(e.message);
+    }
+  };
+  const attachQuoteToDeal=async (d)=>{
+    try{
+      const file=await pickAnyFile();
+      setDealSaving(true);
+      const quoteKey=await uploadFile(file);
+      await api.saveDeal({
+        id:d.id,
+        quoteKey,
+      });
+      reload();
+      onRefresh?.();
+    }catch(e){
+      if(!isPickCancelled(e) && e?.message!=="파일이 선택되지 않았습니다") alert(e.message||"첨부 실패");
+    }finally{ setDealSaving(false); }
+  };
   const saveDeal=async ()=>{
     if(!dealForm.title.trim()) return alert("딜 제목을 입력하세요");
+    setDealSaving(true);
     try{
+      let quoteKey;
+      if(dealForm.quoteFile) quoteKey=await uploadFile(dealForm.quoteFile);
       await api.saveDeal({
         contactId: c.id,
         title: dealForm.title.trim(),
         stage: dealForm.stage,
         supplyAmount: parseInt(String(dealForm.supplyAmount).replace(/\D/g,""),10)||0,
+        ...(quoteKey?{quoteKey}:{}),
       });
       setAddingDeal(false);
-      setDealForm({title:"",stage:"리드",supplyAmount:""});
+      setDealForm({title:"",stage:"리드",supplyAmount:"",quoteFile:null});
       reload();
       onRefresh?.();
     }catch(e){ alert(e.message); }
+    finally{ setDealSaving(false); }
   };
   const toggleOpenTodo=async (t)=>{
     if(!t.id) return;
@@ -933,6 +1317,14 @@ function ClientDetail({c,back,startRec,seg,onRefresh}){
   const upcoming=(detail?.upcomingEvents||[]).map(eventToUi);
   const openTodos=(detail?.openTodos||[]).map(todoToUi);
   const meetHistory=detail?.meetings||[];
+  const deleteDeal=async (d)=>{
+    if(!confirm(`"${d.title||"딜"}"을(를) 삭제할까요?`)) return;
+    try{
+      await api.deleteDeal(d.id);
+      reload();
+      onRefresh?.();
+    }catch(e){ alert(e.message); }
+  };
   return (
     <div className="fade">
       <div className="pad row between" style={{marginTop:8}}>
@@ -1056,7 +1448,27 @@ function ClientDetail({c,back,startRec,seg,onRefresh}){
               <input value={dealForm.supplyAmount} onChange={e=>setDealForm(p=>({...p,supplyAmount:e.target.value}))} placeholder="공급가액(원)"
                 style={{flex:1,border:"1px solid var(--line)",borderRadius:12,padding:"12px",fontFamily:"inherit",fontSize:14}}/>
             </div>
-            <button className="btn btn-accent" style={{width:"100%",padding:12}} onClick={saveDeal}>저장</button>
+            <div style={{marginBottom:10}}>
+              <div className="small" style={{fontWeight:700,marginBottom:6}}>견적서 파일</div>
+              {dealForm.quoteFile ? (
+                <div className="row between card" style={{padding:"10px 12px",gap:8}}>
+                  <div className="row" style={{gap:8,minWidth:0,flex:1}}>
+                    {I.quote({style:{color:"var(--accent-deep)",flex:"0 0 auto"}})}
+                    <span style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{dealForm.quoteFile.name}</span>
+                  </div>
+                  <button type="button" className="chip" style={{padding:"5px 10px",fontSize:12}}
+                    onClick={()=>setDealForm(p=>({...p,quoteFile:null}))}>제거</button>
+                </div>
+              ) : (
+                <button type="button" className="btn btn-ghost" style={{width:"100%",padding:12,fontSize:13,display:"flex",justifyContent:"center",gap:7}}
+                  onClick={pickQuoteFile}>
+                  {I.plus({width:15,height:15})} PDF · 엑셀 · 이미지 첨부
+                </button>
+              )}
+            </div>
+            <button className="btn btn-accent" style={{width:"100%",padding:12}} onClick={saveDeal} disabled={dealSaving}>
+              {dealSaving?"저장 중…":"저장"}
+            </button>
           </div>
         )}
         {deals.length===0 && !deal && !addingDeal ? (
@@ -1070,7 +1482,12 @@ function ClientDetail({c,back,startRec,seg,onRefresh}){
         <div key={d.id} className="card" style={{padding:16,marginBottom:10}}>
           <div className="row between" style={{marginBottom:4}}>
             <div className="small" style={{fontSize:11}}>{d.title}</div>
-            <span className="tag amber">{d.stage}</span>
+            <div className="row" style={{gap:6}}>
+              <span className="tag amber">{d.stage}</span>
+              <button type="button" className="iconbtn" style={{width:32,height:32}} onClick={()=>deleteDeal(d)} aria-label="딜 삭제">
+                {I.trash({width:15,height:15,style:{color:"var(--muted)"}})}
+              </button>
+            </div>
           </div>
           <div className="brk"><span className="small">공급가액</span><span style={{fontWeight:700}}>₩ {sup.toLocaleString()}</span></div>
           <div className="brk"><span className="small">부가세 (10%)</span><span style={{fontWeight:600}}>₩ {vat.toLocaleString()}</span></div>
@@ -1078,12 +1495,48 @@ function ClientDetail({c,back,startRec,seg,onRefresh}){
             <span style={{fontWeight:700,fontSize:14}}>합계 (×1.1)</span>
             <span style={{fontWeight:800,fontSize:18}}>₩ {(sup+vat).toLocaleString()}</span>
           </div>
+          {d.quoteKey ? (
+            <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid var(--line)"}}>
+              <div className="small" style={{fontWeight:700,marginBottom:4}}>견적서</div>
+              <TodoAttachmentRow att={{
+                key:d.quoteKey,
+                name:fileNameFromKey(d.quoteKey),
+                kind:/\.(png|jpe?g|gif|webp)$/i.test(d.quoteKey)?"image":"file",
+              }}/>
+            </div>
+          ) : (
+            <button type="button" className="btn btn-ghost" style={{width:"100%",marginTop:12,padding:10,fontSize:13}}
+              disabled={dealSaving} onClick={()=>attachQuoteToDeal(d)}>
+              {I.plus({width:14,height:14})} 견적서 첨부
+            </button>
+          )}
         </div>
         );})}
         {deals.length>1 && deals.slice(1).map(d=>(
-          <div key={d.id} className="card row between" style={{padding:14,marginBottom:8}}>
-            <span style={{fontWeight:600}}>{d.title}</span>
-            <span className="tag amber">{d.stage}</span>
+          <div key={d.id} className="card" style={{padding:14,marginBottom:8}}>
+            <div className="row between">
+              <span style={{fontWeight:600}}>{d.title}</span>
+              <div className="row" style={{gap:6}}>
+                <span className="tag amber">{d.stage}</span>
+                <button type="button" className="iconbtn" style={{width:32,height:32}} onClick={()=>deleteDeal(d)} aria-label="딜 삭제">
+                  {I.trash({width:15,height:15,style:{color:"var(--muted)"}})}
+                </button>
+              </div>
+            </div>
+            {d.quoteKey ? (
+              <div style={{marginTop:10}}>
+                <TodoAttachmentRow att={{
+                  key:d.quoteKey,
+                  name:fileNameFromKey(d.quoteKey),
+                  kind:/\.(png|jpe?g|gif|webp)$/i.test(d.quoteKey)?"image":"file",
+                }}/>
+              </div>
+            ) : (
+              <button type="button" className="chip" style={{marginTop:10,color:"var(--accent-deep)",fontSize:12}}
+                disabled={dealSaving} onClick={()=>attachQuoteToDeal(d)}>
+                + 견적서
+              </button>
+            )}
           </div>
         ))}
         </>
@@ -1146,20 +1599,156 @@ function ClientDetail({c,back,startRec,seg,onRefresh}){
             const d=m.createdAt?new Date(m.createdAt):null;
             const label=d?`${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}`:"";
             return (
-            <div key={m.id} className="row" style={{gap:13,padding:"15px 0",borderBottom:i<a.length-1?"1px solid var(--line)":"none"}}>
+            <div key={m.id} className="row" style={{gap:13,padding:"15px 0",borderBottom:i<a.length-1?"1px solid var(--line)":"none",cursor:"pointer"}}
+              onClick={()=>openMeeting?.(meetingToUi(m))}>
               <div style={{width:42,fontWeight:700,fontSize:13,color:"var(--accent-deep)"}}>{label}</div>
-              <div style={{flex:1,fontSize:13.5,lineHeight:1.5}}>{m.oneLine||"요약 없음"}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13.5,lineHeight:1.5}}>{m.oneLine||"요약 없음"}</div>
+                {m.mediaKey && isAudioMediaKey(m.mediaKey) && <span className="small" style={{marginTop:4,display:"inline-flex",alignItems:"center",gap:4}}>🎧 녹음 있음</span>}
+              </div>
               <span style={{color:"var(--muted)"}}>{I.chevron({})}</span>
             </div>
           );})}
         </div>
       </div>
+      <DeleteBar label={c.person||c.co||"인맥"} onDelete={()=>api.deleteContact(c.id)} afterDelete={onDeleted}/>
+    </div>
+  );
+}
+
+/* ---------------- MEDIA PLAYER (저장된 녹음·사진) ---------------- */
+function MediaPlayer({mediaKey,compact}){
+  const [url,setUrl]=useState(null);
+  const [err,setErr]=useState("");
+  const [loading,setLoading]=useState(!!mediaKey);
+  const load=useCallback(()=>{
+    if(!mediaKey){ setUrl(null); setLoading(false); return; }
+    setLoading(true); setErr("");
+    mediaUrl(mediaKey).then(setUrl).catch((e)=>setErr(e.message||"로드 실패")).finally(()=>setLoading(false));
+  },[mediaKey]);
+  useEffect(()=>{ load(); },[load]);
+  useEffect(()=>()=>{ if(url?.startsWith("blob:")) URL.revokeObjectURL(url); },[url]);
+  if(!mediaKey) return null;
+  if(loading) return <div className="small" style={{padding:"12px 0"}}>녹음 불러오는 중…</div>;
+  if(err) return (
+    <div className="card" style={{padding:14,background:"#FFF8F6"}}>
+      <div className="small" style={{color:"var(--accent-deep)",lineHeight:1.5}}>{err}</div>
+      <button className="chip" style={{marginTop:10,color:"var(--accent-deep)"}} onClick={load}>다시 시도</button>
+    </div>
+  );
+  if(isImageMediaKey(mediaKey) && url){
+    return <img src={url} alt="" style={{width:"100%",borderRadius:12,maxHeight:compact?220:360,objectFit:"cover"}}/>;
+  }
+  if(url){
+    return (
+      <div className="card" style={{padding:"14px 16px",background:"#FBF9F4"}}>
+        <div className="row" style={{gap:8,marginBottom:10,alignItems:"center"}}>
+          {I.mic({width:16,height:16,style:{color:"var(--accent-deep)"}})}
+          <span style={{fontWeight:700,fontSize:13}}>녹음 재생</span>
+        </div>
+        <audio controls preload="metadata" src={url} style={{width:"100%",height:44}}
+          onError={()=>setErr("재생할 수 없는 형식이거나 파일이 손상됐어요")}/>
+      </div>
+    );
+  }
+  return null;
+}
+
+function MeetingDetailView({data,back,refreshTodos,onDeleted}){
+  const seed=data||{};
+  const [meeting,setMeeting]=useState(seed);
+  const [meetingTodos,setMeetingTodos]=useState([]);
+  const [loading,setLoading]=useState(!!seed.id);
+  useEffect(()=>{
+    if(!seed.id){ setLoading(false); return; }
+    setLoading(true);
+    api.getMeeting(seed.id).then((m)=>{
+      setMeeting(meetingToUi(m));
+      setMeetingTodos((m.todos||[]).map(todoToUi));
+    }).catch(()=>{}).finally(()=>setLoading(false));
+  },[seed.id]);
+  const s=meeting.summary||meeting._raw?.summary;
+  const mediaKey=meeting.mediaKey||meeting._raw?.mediaKey;
+  const contact=meeting.contact;
+  const displayTodos=meetingTodos.length
+    ? meetingTodos
+    : (s?.actions||[]).map((a,i)=>({id:`action-${i}`,t:a.task,due:a.due?formatWhen(a.due):"-",status:"todo",done:false,pseudo:true}));
+  const toggleMeetingTodo=async (todo)=>{
+    if(todo.pseudo||!todo.id) return;
+    const next=todo.status==="done"?"todo":"done";
+    await api.updateTodo(todo.id,{status:next});
+    setMeetingTodos(p=>p.map(t=>t.id===todo.id?{...t,status:next,done:next==="done"}:t));
+    refreshTodos?.();
+  };
+  return (
+    <div className="fade">
+      <DetailHead back={back} eyebrow="기록" title={contact?.company||contact?.person||meeting.oneLine||"미팅 기록"}/>
+      <div className="pad" style={{marginTop:12,marginBottom:16}}>
+        {loading && <div className="small" style={{textAlign:"center",padding:12}}>불러오는 중…</div>}
+        {contact && (
+          <div className="card row" style={{padding:14,gap:11,marginBottom:14}}>
+            <div className="avatar">{(contact.company||contact.person||"?")[0]}</div>
+            <div><div style={{fontWeight:700,fontSize:14.5}}>{contact.company||"기록"}</div>
+              <div className="small">{contact.person||""}{meeting.createdLabel?` · ${meeting.createdLabel}`:""}</div></div>
+          </div>
+        )}
+        <div className="section-h" style={{marginTop:0}}>{mediaKey?(isAudioMediaKey(mediaKey)?"녹음 듣기":"첨부 미디어"):"녹음"}</div>
+        {mediaKey ? (
+          <div style={{marginBottom:14}}><MediaPlayer mediaKey={mediaKey}/></div>
+        ) : (
+          <div className="card small" style={{padding:16,marginBottom:14,lineHeight:1.55,color:"var(--muted)"}}>
+            저장된 녹음 파일이 없어요. (요약만 저장된 기록이거나 사진 기록일 수 있어요)
+          </div>
+        )}
+        <MeetingInsights summary={s} oneLine={meeting.oneLine||s?.one_line}/>
+        {displayTodos.length>0 && (
+          <>
+            <div className="section-h" style={{marginTop:16}}>이 미팅에서 나온 할 일</div>
+            <div className="card" style={{padding:"4px 16px",marginBottom:14}}>
+              {displayTodos.map((todo,i)=>(
+                <div key={todo.id||i} className="row between" style={{padding:"13px 0",borderBottom:i<displayTodos.length-1?"1px solid var(--line)":"none",gap:10,
+                  cursor:todo.pseudo?"default":"pointer",opacity:todo.done||todo.status==="done"?0.65:1}}
+                  onClick={()=>!todo.pseudo&&toggleMeetingTodo(todo)}>
+                  <div className="row" style={{gap:10,flex:1,minWidth:0}}>
+                    {!todo.pseudo && <Checkbox on={todo.done||todo.status==="done"}/>}
+                    <span style={{fontWeight:600,fontSize:14,lineHeight:1.4,
+                      textDecoration:todo.done||todo.status==="done"?"line-through":"none"}}>{todo.t}</span>
+                  </div>
+                  {todo.due&&todo.due!=="-" && <span className="tag gray" style={{flex:"0 0 auto",fontSize:11}}>{todo.due}</span>}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        {s?.next_meeting?.date && (
+          <>
+            <div className="section-h" style={{marginTop:16}}>다음 약속</div>
+            <div className="card row between" style={{padding:16}}>
+              <div className="row" style={{gap:13}}>
+                <div style={{width:46,height:46,borderRadius:14,background:"var(--green-soft)",color:"var(--green)",
+                  display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:"0 0 auto"}}>
+                  <span style={{fontSize:10,fontWeight:700}}>{s.next_meeting.date.split("-")[1]}월</span>
+                  <span style={{fontSize:18,fontWeight:800,lineHeight:1}}>{s.next_meeting.date.split("-")[2]}</span>
+                </div>
+                <div>
+                  <div style={{fontWeight:700,fontSize:14.5}}>{contact?.company||"다음 미팅"}</div>
+                  <div className="small">{s.next_meeting.time||""}{s.next_meeting.place?` · ${s.next_meeting.place}`:""}</div>
+                </div>
+              </div>
+              {I.cal({width:20,height:20,style:{color:"var(--muted)"}})}
+            </div>
+          </>
+        )}
+      </div>
+      {meeting.id && (
+        <DeleteBar label={meeting.oneLine||"미팅 기록"} onDelete={()=>api.deleteMeeting(meeting.id)} afterDelete={onDeleted}/>
+      )}
     </div>
   );
 }
 
 /* ---------------- RECORD + SUMMARY ---------------- */
-function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goClients,summary}){
+function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goClients,summary,mediaKey}){
   const CLIENTS=getClients();
   const [att,setAtt]=useState(()=>CLIENTS.slice(0,2).map(c=>c.id));
   const [pick,setPick]=useState(false);
@@ -1185,7 +1774,7 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
       const file=await pickImageFile(true);
       const preview=URL.createObjectURL(file);
       setPhotos(p=>[...p,{file,preview}]);
-    }catch(e){ if(e.message!=="파일이 선택되지 않았습니다") alert(e.message); }
+    }catch(e){ if(!isPickCancelled(e)) alert(e.message); }
   };
 
   const finish=async ()=>{
@@ -1211,14 +1800,14 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
     }catch(e){ alert(e.message||"업로드 실패"); setFinishing(false); }
   };
 
-  if(phase==="sum") return <Summary todos={todos} toggleTodo={toggleTodo} goClients={goClients} att={att} summary={summary}/>;
+  if(phase==="sum") return <Summary todos={todos} toggleTodo={toggleTodo} goClients={goClients} att={att} summary={summary} mediaKey={mediaKey}/>;
   if(phase==="proc") return (
     <div className="fade" style={{padding:"120px 30px",textAlign:"center"}}>
       <div className="spinner" style={{margin:"0 auto"}}/>
       <div style={{marginTop:22,fontWeight:700,fontSize:17}}>정리하는 중…</div>
       <div className="small" style={{marginTop:8,lineHeight:1.6}}>
-        {mode==="photo" ? <>사진 속 글자를 읽고(OCR)<br/>요약·액션·다음 약속을 추출하고 있어요</>
-                        : <>음성을 텍스트로 변환하고<br/>요약·액션·다음 약속을 추출하고 있어요</>}
+        {mode==="photo" ? <>사진 속 글자를 읽고(OCR)<br/>타임라인·키워드·할 일을 추출하고 있어요</>
+                        : <>화자별 대화를 전사하고<br/>타임라인·키워드·할 일을 추출하고 있어요</>}
       </div>
     </div>
   );
@@ -1332,11 +1921,10 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
   );
 }
 
-function Summary({todos,toggleTodo,goClients,att=[],summary}){
+function Summary({todos,toggleTodo,goClients,att=[],summary,mediaKey}){
   const CLIENTS=getClients();
   const s=summary?.summary;
   const oneLine=s?.one_line||"요약이 생성되었습니다";
-  const keyPoints=s?.key_points||[];
   const primary=CLIENTS.find(c=>att.includes(c.id))||CLIENTS[0];
   return (
     <div className="fade">
@@ -1345,6 +1933,13 @@ function Summary({todos,toggleTodo,goClients,att=[],summary}){
         <div className="row between"><div className="h-title">정리 완료</div>
           <span className="tag green">{I.check({})} 저장됨</span></div>
       </div>
+
+      {mediaKey && (
+        <div className="pad" style={{marginTop:14}}>
+          <div className="section-h" style={{marginTop:0}}>녹음 듣기</div>
+          <MediaPlayer mediaKey={mediaKey}/>
+        </div>
+      )}
 
       {primary && (
       <div className="pad" style={{marginTop:14}}>
@@ -1359,7 +1954,6 @@ function Summary({todos,toggleTodo,goClients,att=[],summary}){
       </div>
       )}
 
-      {/* 참석자 */}
       <div className="pad row between"><div className="section-h">참석자</div>
         <span className="tag green" style={{marginTop:20}}>→ 각 연락처에 기록</span></div>
       <div className="pad row" style={{gap:8,flexWrap:"wrap"}}>
@@ -1371,30 +1965,15 @@ function Summary({todos,toggleTodo,goClients,att=[],summary}){
         );})}
       </div>
 
-      {/* 한줄요약 */}
-      <div className="pad" style={{marginTop:16}}>
-        <div className="card" style={{padding:16,background:"var(--accent-soft)",border:"1px solid #F3D8CB"}}>
-          <div style={{fontSize:11,fontWeight:700,letterSpacing:".1em",color:"var(--accent-deep)"}}>한 줄 요약</div>
-          <div style={{marginTop:7,fontSize:15,fontWeight:600,lineHeight:1.55}}>{oneLine}</div>
-        </div>
+      <div className="pad" style={{marginTop:8}}>
+        <MeetingInsights summary={s} oneLine={oneLine}/>
       </div>
 
-      {/* 핵심 논의 */}
-      <div className="pad"><div className="section-h">핵심 논의</div></div>
-      <div className="pad"><div className="card" style={{padding:"4px 16px"}}>
-        {(keyPoints.length?keyPoints:["핵심 논의 항목이 여기 표시됩니다"]).map((t,i,a)=>(
-          <div key={i} className="row" style={{gap:11,padding:"13px 0",borderBottom:i<a.length-1?"1px solid var(--line)":"none"}}>
-            <span style={{width:6,height:6,borderRadius:"50%",background:"var(--accent)",flex:"0 0 auto",marginTop:7}}/>
-            <div style={{fontSize:14,lineHeight:1.5}}>{t}</div>
-          </div>
-        ))}
-      </div></div>
-
-      {/* 액션플랜 → 투두 */}
-      <div className="pad row between"><div className="section-h">액션플랜</div>
-        <span className="tag" style={{marginTop:20}}>→ 할 일에 자동 추가</span></div>
+      {s?.actions?.length>0 && (
+      <>
+      <div className="pad row between"><div className="section-h">할 일 (자동 추가됨)</div></div>
       <div className="pad"><div className="card" style={{padding:"6px 16px"}}>
-        {todos.slice(0,2).map((t,i)=>(
+        {todos.slice(0, Math.max(s.actions.length, 2)).map((t,i)=>(
           <div key={i} className="list-item row" style={{gap:12,padding:"13px 0"}} onClick={()=>toggleTodo(i)}>
             <Checkbox on={t.done}/>
             <div style={{flex:1,fontSize:14,fontWeight:500,textDecoration:t.done?"line-through":"none",color:t.done?"var(--muted)":"var(--ink)"}}>{t.t}</div>
@@ -1402,8 +1981,9 @@ function Summary({todos,toggleTodo,goClients,att=[],summary}){
           </div>
         ))}
       </div></div>
+      </>
+      )}
 
-      {/* 다음 약속 → 일정 */}
       {s?.next_meeting?.date && (
       <>
       <div className="pad row between"><div className="section-h">다음 약속</div>
@@ -1494,6 +2074,14 @@ function Calendar({openDetail}){
       .then(list=>setEvents((list||[]).map(eventToUi)))
       .catch(()=>setEvents([]));
   };
+  const deleteEvent=async (e,ev)=>{
+    ev?.stopPropagation();
+    if(!confirm(`"${e.title}" 일정을 삭제할까요?`)) return;
+    try{
+      await api.deleteEvent(e.id);
+      reloadEvents();
+    }catch(err){ alert(err.message||"삭제 실패"); }
+  };
   const saveNewEvent=async ()=>{
     if(!newEv.title.trim()) return alert("제목을 입력하세요");
     setSavingEv(true);
@@ -1544,23 +2132,7 @@ function Calendar({openDetail}){
           <div className="section-h" style={{marginTop:0}}>{month+1}월 {selDay}일 일정</div>
           <button className="chip" style={{color:"var(--accent-deep)"}} onClick={()=>setAdding(true)}>+ 일정 추가</button>
         </div>
-        {evRows.length===0 && !adding && <div className="small" style={{textAlign:"center",padding:"30px 0"}}>일정이 없습니다</div>}
-        {adding && (
-          <div className="card fade" style={{padding:16,marginBottom:12}}>
-            <input value={newEv.title} onChange={e=>setNewEv(p=>({...p,title:e.target.value}))} placeholder="일정 제목"
-              style={{width:"100%",border:"1px solid var(--line)",borderRadius:12,padding:"12px 13px",fontFamily:"inherit",fontSize:14,marginBottom:10}}/>
-            <div className="row" style={{gap:10,marginBottom:10}}>
-              <input type="time" value={newEv.time} onChange={e=>setNewEv(p=>({...p,time:e.target.value}))}
-                style={{flex:1,border:"1px solid var(--line)",borderRadius:12,padding:"12px 13px",fontFamily:"inherit",fontSize:14}}/>
-              <input value={newEv.place} onChange={e=>setNewEv(p=>({...p,place:e.target.value}))} placeholder="장소"
-                style={{flex:2,border:"1px solid var(--line)",borderRadius:12,padding:"12px 13px",fontFamily:"inherit",fontSize:14}}/>
-            </div>
-            <div className="row" style={{gap:8}}>
-              <button className="btn btn-accent" style={{flex:1,padding:12}} onClick={saveNewEvent} disabled={savingEv}>{savingEv?"저장 중…":"저장"}</button>
-              <button className="btn btn-ghost" style={{flex:1,padding:12}} onClick={()=>setAdding(false)}>취소</button>
-            </div>
-          </div>
-        )}
+        {evRows.length===0 && <div className="small" style={{textAlign:"center",padding:"30px 0"}}>일정이 없습니다</div>}
         {evRows.map((e,i)=>{
           const key=selDay+"-"+e.id; const r=remFor(key); const on=r&&r.length&&!r.includes("없음");
           return (
@@ -1570,6 +2142,9 @@ function Calendar({openDetail}){
                 <div style={{width:48,flex:"0 0 auto"}}><div style={{fontWeight:700,fontSize:14,color:"var(--accent-deep)"}}>{e.time}</div></div>
                 <div style={{width:3,alignSelf:"stretch",borderRadius:3,background:"var(--accent)"}}/>
                 <div style={{flex:1}}><div style={{fontWeight:600,fontSize:14.5}}>{e.title}</div><div className="small">{e.place}</div></div>
+                <button type="button" className="iconbtn" style={{width:34,height:34,flex:"0 0 auto"}} onClick={(ev)=>deleteEvent(e,ev)} aria-label="일정 삭제">
+                  {I.trash({width:15,height:15,style:{color:"var(--muted)"}})}
+                </button>
                 <span style={{color:"var(--muted)"}}>{I.chevron({})}</span>
               </div>
               <div className="row between" style={{marginTop:11,paddingTop:11,borderTop:"1px solid var(--line)"}}
@@ -1584,11 +2159,61 @@ function Calendar({openDetail}){
         })}
       </div>
 
+      {adding && <AddEventSheet
+        dateLabel={`${month+1}월 ${selDay}일`}
+        newEv={newEv}
+        setNewEv={setNewEv}
+        onSave={saveNewEvent}
+        saving={savingEv}
+        onClose={()=>{ setAdding(false); setNewEv({title:"",time:"10:00",place:""}); }}/>}
+
       {sheet && <ReminderSheet title={sheet.type==="default"?"기본 알림":"일정 알림"}
         subtitle={sheet.type==="event"?sheet.title:"새 일정에 자동 적용돼요"}
         value={sheet.type==="default"?defRem:remFor(sheet.key)}
         onApply={applyRem} close={()=>setSheet(null)}/>}
     </div>
+  );
+}
+
+function SheetPortal({children}){ return createPortal(children, document.body); }
+
+function AddEventSheet({dateLabel,newEv,setNewEv,onSave,saving,onClose}){
+  return (
+    <SheetPortal>
+    <div className="sheetbg" onClick={onClose}>
+      <div className="sheet sheet-form" onClick={e=>e.stopPropagation()}>
+        <div className="sheetbar"/>
+        <div className="sheet-date">{dateLabel}</div>
+        <div className="sheet-head">
+          <h3>일정 추가</h3>
+          <button type="button" className="sheet-x" onClick={onClose} aria-label="닫기">×</button>
+        </div>
+        <div className="sheet-field">
+          <label htmlFor="ev-title">제목</label>
+          <input id="ev-title" className="sheet-input" value={newEv.title}
+            onChange={e=>setNewEv(p=>({...p,title:e.target.value}))} placeholder="미팅, 통화, 방문…"/>
+        </div>
+        <div className="sheet-row">
+          <div className="sheet-field" style={{marginBottom:0}}>
+            <label htmlFor="ev-time">시간</label>
+            <input id="ev-time" type="time" className="sheet-input" value={newEv.time}
+              onChange={e=>setNewEv(p=>({...p,time:e.target.value}))}/>
+          </div>
+          <div className="sheet-field" style={{marginBottom:0}}>
+            <label htmlFor="ev-place">장소</label>
+            <input id="ev-place" className="sheet-input" value={newEv.place}
+              onChange={e=>setNewEv(p=>({...p,place:e.target.value}))} placeholder="선택"/>
+          </div>
+        </div>
+        <div className="sheet-actions">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>취소</button>
+          <button type="button" className="btn btn-accent" onClick={onSave} disabled={saving}>
+            {saving?"저장 중…":"저장"}
+          </button>
+        </div>
+      </div>
+    </div>
+    </SheetPortal>
   );
 }
 
@@ -1602,6 +2227,7 @@ function ReminderSheet({title,subtitle,value,onApply,close}){
   };
   const save=()=>{ onApply(val); close(); };
   return (
+    <SheetPortal>
     <div className="sheetbg" onClick={close}>
       <div className="sheet" onClick={e=>e.stopPropagation()}>
         <div className="sheetbar"/>
@@ -1624,6 +2250,7 @@ function ReminderSheet({title,subtitle,value,onApply,close}){
         <div className="small" style={{textAlign:"center",marginTop:12,lineHeight:1.5}}>알림을 받으려면 홈 화면 추가 시 푸시 권한을 허용해 주세요.</div>
       </div>
     </div>
+    </SheetPortal>
   );
 }
 
@@ -1688,42 +2315,79 @@ function Knowledge({articles,openWrite}){
   const ql=q.trim().toLowerCase();
   let list=cat==="전체"?articles:articles.filter(a=>a.c===cat);
   if(ql) list=list.filter(a=>kbSearchText(a).includes(ql));
+  const feat=list[0] && cat==="전체" && !ql ? list[0] : null;
+  const rest=feat ? list.slice(1) : list;
+  const thumbIcon=(k)=>k==="file"?I.file({width:22,height:22}):k==="img"?I.image({width:22,height:22}):I.book({width:22,height:22});
+
   return (
-    <div className="fade">
-      <div className="pad" style={{marginTop:8}}>
-        <div className="h-eyebrow">Knowledge Base</div>
-        <div className="row between"><div className="h-title">지식백과</div>
-          <button className="iconbtn" style={{color:"var(--accent-deep)"}} onClick={()=>openWrite(null)}>{I.plus({width:20,height:20})}</button></div>
-      </div>
-      <div className="pad" style={{marginTop:14}}>
-        <div className="card row" style={{padding:"10px 14px",gap:10}}>
-          {I.search({})}
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="제목 · 내용 검색"
-            style={{flex:1,border:"none",outline:"none",background:"transparent",fontFamily:"inherit",fontSize:14}}/>
-          {q && <span onClick={()=>setQ("")} style={{cursor:"pointer",color:"var(--muted)"}}>✕</span>}
+    <div className="fade" style={{position:"relative",minHeight:"100%"}}>
+      <div className="pad" style={{marginTop:8,paddingBottom:100}}>
+        <div className="h-eyebrow">Knowledge</div>
+        <div className="h-title">지식백과</div>
+        <div className="small" style={{marginTop:4}}>강의·자료·노하우를 글로 정리하고 언제든 검색해요</div>
+
+        <div className="kbh-search">
+          {I.search({width:18,height:18})}
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="제목 · 내용 · 태그 검색"/>
+          {q && <span onClick={()=>setQ("")} style={{cursor:"pointer"}}>✕</span>}
         </div>
-      </div>
-      <div className="pad row" style={{gap:8,marginTop:14,overflowX:"auto"}}>
-        {cats.map(c=><button key={c} className={"chip"+(cat===c?" on":"")} onClick={()=>setCat(c)}>{c}</button>)}
-      </div>
-      <div className="pad" style={{marginTop:16,marginBottom:10}}>
+
+        <div className="kbh-cats">
+          {cats.map(c=>(
+            <button key={c} type="button" className={"kbh-cat"+(cat===c?" on":"")} onClick={()=>setCat(c)}>{c}</button>
+          ))}
+        </div>
+
         {list.length===0 && (
-          <div className="card small" style={{padding:28,textAlign:"center",lineHeight:1.6}}>
-            아직 글이 없어요.<br/>+ 버튼으로 첫 글을 작성해 보세요.
+          <div className="small" style={{textAlign:"center",padding:"50px 0",lineHeight:1.6}}>
+            {q?`"${q}"에 대한 글이 없어요.`:"아직 글이 없어요."}<br/>새 글로 정리해 보세요.
           </div>
         )}
-        {list.map((a)=>(
-          <div key={a.id} className="card" style={{padding:16,marginBottom:10,cursor:"pointer"}} onClick={()=>openWrite(a)}>
-            <div className="row between">
-              <span className="tag gray">{a.c}</span><span className="small">{a.d}</span>
+
+        {feat && (
+          <>
+            <div className="kbh-sech">추천</div>
+            <div className="kbh-feat" onClick={()=>openWrite(feat)}>
+              <div className="cover" style={{background:`linear-gradient(135deg,${kbThumbMeta(feat).color},var(--accent-deep))`}}/>
+              <span className="kbh-pin">📌 최신 · {feat.c}</span>
+              <div className="body">
+                <div className="ttl">{feat.t}</div>
+                <div className="ex">{kbExcerpt(feat)}</div>
+                <div className="kbh-info">
+                  {(feat.tags||[]).slice(0,2).map(t=><span key={t} className="tag gray">{t}</span>)}
+                  <span className="kbh-dot">{feat.d} · {kbReadMinutes(feat)}분</span>
+                  {kbFileCount(feat)>0 && <span className="kbh-attach">📎 {kbFileCount(feat)}</span>}
+                </div>
+              </div>
             </div>
-            <div style={{fontWeight:700,fontSize:15,marginTop:10,lineHeight:1.4}}>{a.t}</div>
-            <div className="row" style={{gap:6,marginTop:11,flexWrap:"wrap"}}>
-              {a.tags.map(t=><span key={t} className="tag" style={{background:"#F0ECE3",color:"var(--muted)"}}>#{t}</span>)}
+          </>
+        )}
+
+        {rest.length>0 && <div className="kbh-sech">최신 글</div>}
+        <div className="kbh-list">
+        {rest.map(a=>{
+          const meta=kbThumbMeta(a);
+          return (
+            <div key={a.id} className="kbh-item" onClick={()=>openWrite(a)}>
+              <div className="kbh-thumb" style={{background:meta.color}}>{thumbIcon(meta.icon)}</div>
+              <div style={{minWidth:0,flex:1}}>
+                <div className="ttl">{a.t}</div>
+                <div className="ex">{kbExcerpt(a)}</div>
+                <div className="kbh-info">
+                  <span className="tag gray">{a.c}</span>
+                  <span className="kbh-dot">{a.d} · {kbReadMinutes(a)}분</span>
+                  {kbFileCount(a)>0 && <span className="kbh-attach">📎 {kbFileCount(a)}</span>}
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
+        </div>
       </div>
+
+      <button type="button" className="kbh-fab" onClick={()=>openWrite(null)}>
+        {I.plus({width:18,height:18})} 새 글 쓰기
+      </button>
     </div>
   );
 }
@@ -2012,6 +2676,7 @@ function InstallSheet({close,onConfirm}){
     ],
   };
   return (
+    <SheetPortal>
     <div className="sheetbg" onClick={close}>
       <div className="sheet" onClick={e=>e.stopPropagation()}>
         <div className="sheetbar"/>
@@ -2051,10 +2716,13 @@ function InstallSheet({close,onConfirm}){
         <button className="btn" style={{width:"100%",padding:12,marginTop:8,background:"transparent",color:"var(--muted)"}} onClick={close}>나중에 하기</button>
       </div>
     </div>
+    </SheetPortal>
   );
 }
 
 /* ---------------- CARD SCAN (명함 스캔 → 항목 추출) ---------------- */
+const isMobileDevice=()=>/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
 function CardScan({back,onSaved}){
   const [step,setStep]=useState("capture");
   const [fields,setFields]=useState({
@@ -2064,15 +2732,28 @@ function CardScan({back,onSaved}){
   const [group,setGroup]=useState("미분류");
   const [tags,setTags]=useState([]);
   const [cardImageKey,setCardImageKey]=useState(null);
+  const [preview,setPreview]=useState(null);
   const [ocrError,setOcrError]=useState("");
+  const fileRef=useRef(null);
+  const previewRef=useRef(null);
   const GROUPS=contactGroups(getClients());
   const [saving,setSaving]=useState(false);
   const set=(k,v)=>setFields(p=>({...p,[k]:v}));
-  const scan=async ()=>{
+
+  useEffect(()=>{
+    previewRef.current=preview;
+    return ()=>{ if(previewRef.current) URL.revokeObjectURL(previewRef.current); };
+  },[preview]);
+
+  const processFile=async (file)=>{
+    if(!file?.type?.startsWith("image/")){
+      setOcrError("이미지 파일만 선택할 수 있습니다.");
+      return;
+    }
     setOcrError("");
+    setPreview(URL.createObjectURL(file));
+    setStep("scanning");
     try{
-      const file=await pickImageFile(true);
-      setStep("scanning");
       const mime=file.type||"image/jpeg";
       let result;
       try{
@@ -2098,9 +2779,45 @@ function CardScan({back,onSaved}){
       const msg=e.message||"OCR 실패";
       setOcrError(msg);
       setStep("capture");
-      alert(msg.includes("fetch")?"서버에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인해주세요.":msg);
+      alert(msg.includes("fetch")||msg.includes("연결")?"서버에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인해주세요.":msg);
     }
   };
+
+  const pickFromDialog=async (capture=false)=>{
+    setOcrError("");
+    try{
+      const file=await pickImageFile(capture);
+      await processFile(file);
+    }catch(e){
+      if(isPickCancelled(e)) return;
+      const msg=e.message||"파일 선택 실패";
+      setOcrError(msg);
+      alert(msg);
+    }
+  };
+
+  const onFileInput=e=>{
+    const file=e.target.files?.[0];
+    e.target.value="";
+    if(file) processFile(file);
+  };
+
+  const onDrop=e=>{
+    e.preventDefault();
+    const file=e.dataTransfer.files?.[0];
+    if(file) processFile(file);
+  };
+
+  useEffect(()=>{
+    const onPaste=e=>{
+      if(step!=="capture") return;
+      const item=[...e.clipboardData.items].find(i=>i.type.startsWith("image/"));
+      const file=item?.getAsFile();
+      if(file) processFile(file);
+    };
+    window.addEventListener("paste",onPaste);
+    return ()=>window.removeEventListener("paste",onPaste);
+  },[step]);
   const save=async ()=>{
     setSaving(true);
     try{
@@ -2140,13 +2857,26 @@ function CardScan({back,onSaved}){
 
       {step==="capture" && (
         <div className="pad fade" style={{marginTop:10}}>
-          <div style={{borderRadius:18,border:"2px dashed var(--line)",background:"#FBFAF6",
-            padding:"50px 20px",textAlign:"center"}}>
+          <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={onFileInput}/>
+          <div role="button" tabIndex={0}
+            onClick={()=>fileRef.current?.click()}
+            onKeyDown={e=>{ if(e.key==="Enter"||e.key===" ") fileRef.current?.click(); }}
+            onDragOver={e=>e.preventDefault()}
+            onDrop={onDrop}
+            style={{borderRadius:18,border:"2px dashed var(--line)",background:"#FBFAF6",
+              padding:"50px 20px",textAlign:"center",cursor:"pointer"}}>
             <div style={{display:"flex",justifyContent:"center",color:"var(--accent-deep)"}}>{I.image({width:34,height:34})}</div>
-            <div style={{fontWeight:800,fontSize:16,marginTop:14}}>명함을 촬영하세요</div>
-            <div className="small" style={{marginTop:6,lineHeight:1.5}}>한 장씩 또는 여러 장 연속 촬영<br/>글자가 선명하게 보이도록</div>
+            <div style={{fontWeight:800,fontSize:16,marginTop:14}}>명함 사진을 올려주세요</div>
+            <div className="small" style={{marginTop:6,lineHeight:1.5}}>
+              클릭 · 드래그 · 붙여넣기(Cmd+V)<br/>또는 아래 버튼으로 선택
+            </div>
           </div>
-          <button className="btn btn-accent" style={{width:"100%",padding:16,marginTop:16,fontSize:15}} onClick={scan}>촬영 / 사진 선택</button>
+          <button className="btn btn-accent" style={{width:"100%",padding:16,marginTop:16,fontSize:15}}
+            onClick={()=>pickFromDialog(false)}>사진 / 파일 선택</button>
+          {isMobileDevice() && (
+            <button className="btn" style={{width:"100%",padding:14,marginTop:10,fontSize:14}}
+              onClick={()=>pickFromDialog(true)}>카메라로 촬영</button>
+          )}
           {ocrError && <div className="small" style={{color:"var(--accent-deep)",textAlign:"center",marginTop:10}}>{ocrError}</div>}
           <div className="small" style={{textAlign:"center",marginTop:12,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
             <span className="tag green" style={{fontSize:11}}>무제한 무료</span> 명함 스캔은 모든 플랜에서 무료예요</div>
@@ -2211,19 +2941,10 @@ function CardScan({back,onSaved}){
 }
 
 /* ---------------- TODO BOARD (칸반: 할일/진행중/완료) ---------------- */
-function TodoBoard({todos,setTodoStatus,openDetail,onRefresh}){
+function TodoBoard({todos,setTodoStatus,openDetail}){
   const idx=(t)=>todos.indexOf(t);
-  const addTodo=async ()=>{
-    const title=prompt("할 일 제목을 입력하세요");
-    if(!title?.trim()) return;
-    try{
-      await api.createTodo({ title: title.trim() });
-      onRefresh?.();
-    }catch(e){ alert(e.message); }
-  };
   return (
     <div>
-      <button className="addrow" style={{marginBottom:14}} onClick={addTodo}>+ 할 일 추가</button>
       {STAGES.map(([s,label],si)=>{
         const items=todos.filter(t=>t.status===s);
         return (
@@ -2272,15 +2993,161 @@ function TodoBoard({todos,setTodoStatus,openDetail,onRefresh}){
   );
 }
 
-/* ---------------- GLOBAL SEARCH (인맥·기록·지식백과 통합) ---------------- */
-function GlobalSearch({back,openClient,meetings=[],kbArticles=[]}){
+/* ---------------- MEETINGS TAB (미팅 내역 · 요약 · 할 일) ---------------- */
+function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh}){
+  const bootRef=useRef(bootMeetings);
+  bootRef.current=bootMeetings;
+  const [items,setItems]=useState(bootMeetings);
+  const [loading,setLoading]=useState(!bootMeetings.length);
+  const [loadErr,setLoadErr]=useState("");
+  const reload=()=>{
+    setLoading(true);
+    setLoadErr("");
+    return api.listMeetings()
+      .then((rows)=>setItems((rows||[]).map(meetingToUi)))
+      .catch((e)=>{
+        setLoadErr(e?.message||"미팅 목록을 불러오지 못했어요");
+        setItems((prev)=>prev.length?prev:bootRef.current);
+      })
+      .finally(()=>setLoading(false));
+  };
+  useEffect(()=>{ reload(); },[]);
+  useEffect(()=>{
+    if(bootMeetings.length) setItems((prev)=>(prev.length>=bootMeetings.length?prev:bootMeetings));
+  },[bootMeetings]);
+  const preview=(m)=>{
+    const pts=m.summary?.key_points;
+    if(Array.isArray(pts)&&pts.length) return pts[0];
+    return m.oneLine||"";
+  };
+  return (
+    <div className="fade">
+      <div className="pad" style={{marginTop:8}}>
+        <div className="h-eyebrow">녹음 · 요약 · 후속 할 일</div>
+        <div className="h-title">미팅 내역</div>
+        <div className="small" style={{marginTop:6,lineHeight:1.55}}>
+          {loading&&!items.length?"불러오는 중…":`${items.length}건 · 항목을 누르면 요약과 할 일을 볼 수 있어요`}
+        </div>
+      </div>
+      {loadErr && (
+        <div className="pad" style={{marginTop:4}}>
+          <div className="card small" style={{padding:14,lineHeight:1.55,background:"var(--accent-soft)",border:"1px solid #F0D4C8",color:"var(--accent-deep)"}}>
+            {loadErr}
+            <button className="chip" style={{marginLeft:8,color:"var(--accent-deep)"}} onClick={()=>reload().then(()=>onRefresh?.())}>다시 시도</button>
+          </div>
+        </div>
+      )}
+      <div className="pad" style={{marginTop:8,marginBottom:16}}>
+        {!loading && items.length===0 && !loadErr && (
+          <div className="card" style={{padding:36,textAlign:"center"}}>
+            <div style={{fontWeight:700,fontSize:16,marginBottom:8}}>아직 미팅 기록이 없어요</div>
+            <div className="small" style={{lineHeight:1.6,marginBottom:18}}>녹음을 끝내면 요약·할 일·다음 약속이 자동으로 정리돼요.</div>
+            <button className="btn btn-accent" style={{padding:"12px 24px"}} onClick={startRec}>첫 녹음 시작</button>
+          </div>
+        )}
+        {items.map((m)=>{
+          const pts=m.summary?.key_points;
+          const ptCount=Array.isArray(pts)?pts.length:0;
+          return (
+            <div key={m.id} className="card list-item" style={{padding:16,marginBottom:10}} onClick={()=>openDetail?.(m)}>
+              <div className="row between" style={{gap:10}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div className="row" style={{gap:6,marginBottom:8,flexWrap:"wrap"}}>
+                    <span className="tag gray">{m.createdLabel||"기록"}</span>
+                    {m.hasAudio && <span className="tag" style={{background:"var(--accent-soft)",color:"var(--accent-deep)"}}>🎧 녹음</span>}
+                    {m.source==="photo" && <span className="tag" style={{background:"#E8EEF5",color:"#4A6FA5"}}>📷 사진</span>}
+                    {m.todoCount>0 && (
+                      <span className="tag" style={{background:"var(--green-soft)",color:"var(--green)"}}>
+                        할 일 {m.openTodoCount>0?`${m.openTodoCount}/${m.todoCount}`:m.todoCount}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{fontWeight:700,fontSize:15,lineHeight:1.45}}>{m.oneLine||m.t}</div>
+                  {(m.contact?.company||m.contact?.person) && (
+                    <div className="small" style={{marginTop:5}}>{m.contact.company||m.contact.person}{m.contact.company&&m.contact.person?` · ${m.contact.person}`:""}</div>
+                  )}
+                  {preview(m) && preview(m)!==(m.oneLine||m.t) && (
+                    <div className="small" style={{marginTop:8,lineHeight:1.5,color:"var(--muted)",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>
+                      {preview(m)}
+                    </div>
+                  )}
+                  {ptCount>1 && <div className="small" style={{marginTop:6,color:"var(--accent-deep)",fontWeight:600}}>핵심 {ptCount}건</div>}
+                </div>
+                <span style={{color:"var(--muted)",flex:"0 0 auto",alignSelf:"center"}}>{I.chevron({})}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- TODO ARCHIVE (전체 검색 · 히스토리 · 첨부) ---------------- */
+function TodoArchive({back,openDetail}){
+  const [q,setQ]=useState("");
+  const [query,setQuery]=useState("");
+  const [status,setStatus]=useState("");
+  const [items,setItems]=useState([]);
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{
+    const t=setTimeout(()=>setQuery(q),300);
+    return ()=>clearTimeout(t);
+  },[q]);
+  const reload=useCallback(async ()=>{
+    setLoading(true);
+    try{
+      const rows=await api.listTodos({ q: query.trim()||undefined, status: status||undefined });
+      setItems(rows.map(todoToUi));
+    }catch(e){ alert(e.message||"불러오기 실패"); }
+    finally{ setLoading(false); }
+  },[query,status]);
+  useEffect(()=>{ reload(); },[reload]);
+  const filters=[["","전체"],["todo","할 일"],["doing","진행 중"],["done","완료"]];
+  return (
+    <div className="fade">
+      <div className="pad row between" style={{marginTop:8}}>
+        <button className="iconbtn" onClick={back}>{I.back({})}</button>
+        <div className="h-eyebrow" style={{marginTop:0}}>할 일 전체</div>
+        <div style={{width:42}}/>
+      </div>
+      <div className="pad" style={{marginTop:6}}>
+        <div className="row" style={{gap:9,background:"#F4F1EA",borderRadius:12,padding:"11px 13px",color:"var(--muted)"}}>
+          {I.search({width:17,height:17})}
+          <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="제목 · 상세 · 결과 · 히스토리 · 첨부 검색"
+            style={{flex:1,border:"none",outline:"none",background:"transparent",fontFamily:"inherit",fontSize:14,color:"var(--ink)"}}/>
+        </div>
+        <div className="row" style={{gap:7,marginTop:12,flexWrap:"wrap"}}>
+          {filters.map(([s,l])=>(
+            <button key={s||"all"} className={"chip"+(status===s?" on":"")} onClick={()=>setStatus(s)}>{l}</button>
+          ))}
+        </div>
+        <div className="small" style={{marginTop:10}}>
+          {loading ? "불러오는 중…" : `${items.length}건 · 항목을 누르면 히스토리와 첨부를 볼 수 있어요`}
+        </div>
+      </div>
+      <div className="pad" style={{marginTop:4,marginBottom:12}}>
+        {!loading && items.length===0 && (
+          <div className="small" style={{textAlign:"center",padding:"40px 0",lineHeight:1.6}}>
+            {q.trim()||status ? "검색 결과가 없어요" : "등록된 할 일이 없어요"}
+          </div>
+        )}
+        <NestedTodoList todos={items} onRefresh={reload} openDetail={openDetail} showAdd/>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- GLOBAL SEARCH (인맥·기록·지식백과·할 일 통합) ---------------- */
+function GlobalSearch({back,openClient,openTask,openMeeting,meetings=[],kbArticles=[],todos=[]}){
   const CLIENTS=getClients();
   const [q,setQ]=useState("");
   const ql=q.trim().toLowerCase();
   const people=CLIENTS.filter(c=>(c.person+c.co).toLowerCase().includes(ql));
   const recs=meetings.filter(r=>r.t.toLowerCase().includes(ql));
   const kb=kbArticles.filter(r=>kbSearchText(r).includes(ql));
-  const empty=ql && people.length+recs.length+kb.length===0;
+  const taskItems=todos.filter(t=>todoSearchText(t._raw||t).includes(ql)||t.t.toLowerCase().includes(ql));
+  const empty=ql && people.length+recs.length+kb.length+taskItems.length===0;
   const Section=(title,items,render)=> items.length>0 && (
     <div style={{marginTop:18}}>
       <div className="section-h" style={{marginTop:0}}>{title}</div>
@@ -2293,12 +3160,12 @@ function GlobalSearch({back,openClient,meetings=[],kbArticles=[]}){
         <button className="iconbtn" onClick={back}>{I.back({})}</button>
         <div className="row" style={{flex:1,gap:9,background:"#F4F1EA",borderRadius:12,padding:"11px 13px",color:"var(--muted)"}}>
           {I.search({width:17,height:17})}
-          <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="인맥 · 기록 · 지식백과 검색"
+          <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="인맥 · 할 일 · 기록 · 지식백과 검색"
             style={{flex:1,border:"none",outline:"none",background:"transparent",fontFamily:"inherit",fontSize:14,color:"var(--ink)"}}/>
         </div>
       </div>
       <div className="pad" style={{marginBottom:12}}>
-        {!ql && <div className="small" style={{textAlign:"center",padding:"50px 0",lineHeight:1.6}}>이름·회사·기록·지식백과를<br/>한 번에 검색해요</div>}
+        {!ql && <div className="small" style={{textAlign:"center",padding:"50px 0",lineHeight:1.6}}>이름·할 일·기록·지식백과를<br/>한 번에 검색해요</div>}
         {empty && <div className="small" style={{textAlign:"center",padding:"50px 0"}}>“{q}” 검색 결과가 없어요</div>}
         {Section("인맥", people, c=>(
           <div key={c.id} className="list-item row between" style={{cursor:"pointer"}} onClick={()=>openClient(c)}>
@@ -2307,14 +3174,178 @@ function GlobalSearch({back,openClient,meetings=[],kbArticles=[]}){
             <span style={{color:"var(--muted)"}}>{I.chevron({})}</span>
           </div>
         ))}
+        {Section("할 일", taskItems, (t)=>(
+          <div key={t.id} className="list-item row between" style={{cursor:"pointer"}} onClick={()=>openTask?.(t)}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:600,fontSize:14}}>{t.t}</div>
+              <div className="small">{t.statusLabel}{t.attachmentCount>0?` · 첨부 ${t.attachmentCount}`:""}{t.historyCount>0?` · 기록 ${t.historyCount}`:""}</div>
+            </div>
+            <span style={{color:"var(--muted)"}}>{I.chevron({})}</span>
+          </div>
+        ))}
         {Section("기록", recs, (r)=>(
-          <div key={r.id} className="list-item row between"><div><div style={{fontWeight:600,fontSize:14}}>{r.t}</div><div className="small">{r.d}</div></div>
+          <div key={r.id} className="list-item row between" style={{cursor:"pointer"}} onClick={()=>openMeeting?.(r)}>
+            <div><div style={{fontWeight:600,fontSize:14}}>{r.t}</div>
+              <div className="small">{r.d}{r.hasAudio?" · 🎧":""}</div></div>
             <span style={{color:"var(--muted)"}}>{I.chevron({})}</span></div>
         ))}
         {Section("지식백과", kb, (r)=>(
           <div key={r.id} className="list-item row between"><div><div style={{fontWeight:600,fontSize:14}}>{r.t}</div><div className="small">{r.c||"지식백과"}</div></div>
             <span style={{color:"var(--muted)"}}>{I.chevron({})}</span></div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- MY PAGE ---------------- */
+function MyPage({user,back,onUserUpdated}){
+  const [usage,setUsage]=useState(null);
+  const [usageLoading,setUsageLoading]=useState(true);
+  const [name,setName]=useState(user?.name||"");
+  const [savingName,setSavingName]=useState(false);
+  const [nameMsg,setNameMsg]=useState("");
+  const [curPw,setCurPw]=useState("");
+  const [newPw,setNewPw]=useState("");
+  const [newPw2,setNewPw2]=useState("");
+  const [savingPw,setSavingPw]=useState(false);
+  const [pwMsg,setPwMsg]=useState("");
+  const canChangePw=user?.provider==="email";
+
+  useEffect(()=>{ setName(user?.name||""); },[user?.name]);
+
+  useEffect(()=>{
+    setUsageLoading(true);
+    api.getUsage().then(setUsage).catch(()=>setUsage(null)).finally(()=>setUsageLoading(false));
+  },[]);
+
+  const trialLabel=user?.trialDaysLeft!=null?`체험 ${user.trialDaysLeft}일`:"체험 중";
+  const joined=user?.createdAt?new Date(user.createdAt).toLocaleDateString("ko-KR",{year:"numeric",month:"long",day:"numeric"}):"";
+  const st=usage?.storage;
+  const pct=st?.percent??0;
+  const overLimit=st && st.usedBytes>st.limitBytes;
+
+  const saveName=async ()=>{
+    const trimmed=name.trim();
+    if(!trimmed){ setNameMsg("이름을 입력하세요"); return; }
+    setSavingName(true); setNameMsg("");
+    try{
+      const { user:u }=await api.updateMe({ name:trimmed });
+      onUserUpdated?.(u);
+      setNameMsg("저장됐어요");
+    }catch(e){ setNameMsg(e.message||"저장 실패"); }
+    finally{ setSavingName(false); }
+  };
+
+  const savePassword=async ()=>{
+    if(newPw!==newPw2){ setPwMsg("새 비밀번호가 일치하지 않습니다"); return; }
+    if(newPw.length<6){ setPwMsg("비밀번호는 6자 이상"); return; }
+    setSavingPw(true); setPwMsg("");
+    try{
+      const { token }=await api.changePassword(curPw,newPw);
+      if(token){ saveToken(token,{ remember:true }); setToken(token); }
+      setCurPw(""); setNewPw(""); setNewPw2("");
+      setPwMsg("비밀번호가 변경됐어요");
+    }catch(e){ setPwMsg(e.message||"변경 실패"); }
+    finally{ setSavingPw(false); }
+  };
+
+  return (
+    <div className="fade">
+      <div className="pad row between" style={{marginTop:8}}>
+        <button className="iconbtn" onClick={back}>{I.back({})}</button>
+        <div className="h-eyebrow" style={{marginTop:0}}>마이페이지</div>
+        <div style={{width:42}}/>
+      </div>
+      <div className="pad" style={{marginTop:10,marginBottom:16}}>
+        <div className="card row" style={{padding:16,gap:13,marginBottom:16}}>
+          <div className="avatar" style={{width:52,height:52,borderRadius:16,fontSize:20}}>{(user?.name||"?")[0]}</div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:800,fontSize:16}}>{user?.name||"회원"}</div>
+            <div className="small" style={{marginTop:3}}>{user?.email}</div>
+            {joined && <div className="small" style={{marginTop:4}}>가입 {joined}</div>}
+          </div>
+          <span className="tag green">{trialLabel}</span>
+        </div>
+
+        <div className="section-h" style={{marginTop:0}}>저장 용량</div>
+        <div className="card" style={{padding:16,marginBottom:16}}>
+          {usageLoading ? <div className="small">용량 불러오는 중…</div> : !st ? (
+            <div className="small">용량 정보를 불러오지 못했어요</div>
+          ) : (
+            <>
+              <div className="row between" style={{marginBottom:10}}>
+                <span style={{fontWeight:700,fontSize:14}}>{formatBytes(st.usedBytes)} 사용 중</span>
+                <span className="small">한도 {st.limitLabel}</span>
+              </div>
+              <div style={{height:10,borderRadius:99,background:"#EDE9E0",overflow:"hidden"}}>
+                <div style={{height:"100%",width:`${Math.min(100,pct)}%`,borderRadius:99,
+                  background:overLimit?"#DD5E39":pct>80?"#C9A23A":"var(--accent)",transition:"width .3s"}}/>
+              </div>
+              <div className="row between" style={{marginTop:8}}>
+                <span className="small">{st.fileCount}개 파일</span>
+                <span className="small" style={{fontWeight:700,color:overLimit?"#DD5E39":"var(--muted)"}}>{pct}%</span>
+              </div>
+              {overLimit && <div className="small" style={{marginTop:10,color:"#B23B2E",lineHeight:1.5}}>
+                한도를 초과했어요. 오래된 파일을 정리하거나 플랜을 올려주세요.
+              </div>}
+              {st.breakdown?.length>0 && <>
+                <div style={{height:1,background:"var(--line)",margin:"14px 0"}}/>
+                {st.breakdown.map((b)=>(
+                  <div key={b.key} className="row between" style={{padding:"7px 0"}}>
+                    <span className="small">{b.label} · {b.count}개</span>
+                    <span style={{fontWeight:600,fontSize:13}}>{formatBytes(b.bytes)}</span>
+                  </div>
+                ))}
+              </>}
+            </>
+          )}
+        </div>
+
+        <div className="section-h">내 데이터</div>
+        <div className="card" style={{padding:16,marginBottom:16}}>
+          <div className="row" style={{gap:8,flexWrap:"wrap"}}>
+            {[
+              ["인맥",usage?.counts?.contacts],
+              ["기록",usage?.counts?.meetings],
+              ["할 일",usage?.counts?.todos],
+              ["지식백과",usage?.counts?.kbArticles],
+              ["딜",usage?.counts?.deals],
+            ].map(([l,n])=>(
+              <div key={l} style={{flex:"1 1 30%",minWidth:88,textAlign:"center",padding:"10px 6px",background:"#FBF9F4",borderRadius:12}}>
+                <div style={{fontWeight:800,fontSize:18}}>{usageLoading?"—":(n??0)}</div>
+                <div className="small">{l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="section-h">프로필 수정</div>
+        <div className="card" style={{padding:16,marginBottom:16}}>
+          <div className="small" style={{marginBottom:8}}>이름</div>
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder="이름" style={inputFieldStyle}/>
+          {nameMsg && <div className="small" style={{marginBottom:8,color:nameMsg.includes("실패")||nameMsg.includes("입력")?"var(--accent-deep)":"var(--green)"}}>{nameMsg}</div>}
+          <button className="btn btn-accent" style={{width:"100%",padding:12}} disabled={savingName} onClick={saveName}>
+            {savingName?"저장 중…":"이름 저장"}
+          </button>
+          <div className="small" style={{marginTop:12,lineHeight:1.5}}>이메일({user?.email})은 로그인 ID라 여기서는 변경할 수 없어요.</div>
+        </div>
+
+        {canChangePw && <>
+          <div className="section-h">비밀번호 변경</div>
+          <div className="card" style={{padding:16,marginBottom:16}}>
+            <input type="password" value={curPw} onChange={e=>setCurPw(e.target.value)} placeholder="현재 비밀번호"
+              autoComplete="current-password" style={inputFieldStyle}/>
+            <input type="password" value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder="새 비밀번호 (6자 이상)"
+              autoComplete="new-password" style={inputFieldStyle}/>
+            <input type="password" value={newPw2} onChange={e=>setNewPw2(e.target.value)} placeholder="새 비밀번호 확인"
+              autoComplete="new-password" style={inputFieldStyle}/>
+            {pwMsg && <div className="small" style={{marginBottom:8,color:pwMsg.includes("변경됐")?"var(--green)":"var(--accent-deep)"}}>{pwMsg}</div>}
+            <button className="btn btn-accent" style={{width:"100%",padding:12}} disabled={savingPw||!curPw||!newPw||!newPw2} onClick={savePassword}>
+              {savingPw?"변경 중…":"비밀번호 변경"}
+            </button>
+          </div>
+        </>}
       </div>
     </div>
   );
@@ -2336,7 +3367,7 @@ function Settings({back,go,user,onLogout,openPricing}){
         <div className="h-eyebrow" style={{marginTop:0}}>설정</div><div style={{width:42}}/>
       </div>
       <div className="pad" style={{marginTop:10}}>
-        <div className="card row" style={{padding:16,gap:13,marginBottom:16}}>
+        <div className="card row" style={{padding:16,gap:13,marginBottom:16,cursor:"pointer"}} onClick={()=>go("mypage")}>
           <div className="avatar" style={{width:48,height:48,borderRadius:16}}>{(user?.name||"?")[0]}</div>
           <div style={{flex:1}}><div style={{fontWeight:700,fontSize:15}}>{user?.name||"회원"}</div><div className="small">{user?.email}</div></div>
           <span className="tag green">{trialLabel}</span>
@@ -2344,6 +3375,7 @@ function Settings({back,go,user,onLogout,openPricing}){
 
         <div className="section-h" style={{marginTop:0}}>계정 · 구독</div>
         <div className="card" style={{padding:"4px 16px",marginBottom:16}}>
+          {Row(I.gear({width:18,height:18}),"마이페이지","용량 · 프로필",()=>go("mypage"))}
           {Row(I.bolt({width:18,height:18}),"플랜 · 결제",trialLabel,openPricing)}
           {Row(I.bell({width:18,height:18}),"알림","1시간 전",()=>{})}
           {Row(I.users({width:18,height:18}),"공유 · 초대 관리",null,()=>{})}
@@ -2438,60 +3470,199 @@ function DetailHead({back,eyebrow,title}){
   );
 }
 
-function TaskDetailView({data,back}){
-  const t=data||{};
-  const raw=t._raw||{};
-  const [status,setStatus]=useState(t.status||"todo");
-  const [detail,setDetailText]=useState(raw.detail||"");
-  const [saving,setSaving]=useState(false);
-  const history=Array.isArray(raw.history)?raw.history:[];
-  const stLabel={todo:"할 일",doing:"진행 중",done:"완료"}[status]||"할 일";
-  const stColor=status==="done"?"green":status==="doing"?"amber":"gray";
-  const patchStatus=async (s)=>{
-    if(!t.id) return;
-    setSaving(true);
-    try{ await api.updateTodo(t.id,{ status:s }); setStatus(s); }
-    catch(e){ alert(e.message); }
-    finally{ setSaving(false); }
-  };
-  const saveDetail=async ()=>{
-    if(!t.id) return;
-    try{ await api.updateTodo(t.id,{ detail }); }catch(e){ alert(e.message); }
+function DeleteBar({label,onDelete,afterDelete}){
+  const [busy,setBusy]=useState(false);
+  const go=async ()=>{
+    if(!confirm(`"${label}"을(를) 삭제할까요?\n삭제 후에는 복구할 수 없어요.`)) return;
+    setBusy(true);
+    try{
+      await onDelete();
+      afterDelete?.();
+    }catch(e){ alert(e.message||"삭제 실패"); }
+    finally{ setBusy(false); }
   };
   return (
+    <div className="pad" style={{marginTop:4,marginBottom:24}}>
+      <button type="button" className="btn btn-ghost" style={{width:"100%",padding:14,color:"#B85C4A",borderColor:"#E8D5D0",display:"flex",justifyContent:"center",gap:8}}
+        disabled={busy} onClick={go}>
+        {I.trash({width:16,height:16})} {busy?"삭제 중…":"삭제"}
+      </button>
+    </div>
+  );
+}
+
+function fileNameFromKey(key){
+  if(!key) return "첨부파일";
+  const name=key.split("/").pop()||"첨부파일";
+  try{ return decodeURIComponent(name); }catch{ return name; }
+}
+
+function TodoAttachmentRow({att}){
+  const [url,setUrl]=useState(null);
+  const [err,setErr]=useState(false);
+  useEffect(()=>{
+    if(!att?.key) return;
+    mediaUrl(att.key).then(setUrl).catch(()=>setErr(true));
+  },[att?.key]);
+  const isImage=att?.kind==="image"||(att?.name||"").match(/\.(png|jpe?g|gif|webp)$/i);
+  const open=()=>{ if(url) window.open(url,"_blank","noopener"); };
+  return (
+    <div className="row between" style={{padding:"12px 0",borderBottom:"1px solid var(--line)",cursor:url?"pointer":"default"}} onClick={open}>
+      <div className="row" style={{gap:10,flex:1,minWidth:0}}>
+        {isImage && url ? (
+          <img src={url} alt="" style={{width:44,height:44,borderRadius:8,objectFit:"cover",flex:"0 0 auto"}}/>
+        ) : (
+          <div style={{width:44,height:44,borderRadius:8,background:"var(--accent-soft)",display:"flex",alignItems:"center",justifyContent:"center",flex:"0 0 auto"}}>
+            {I.download({width:18,height:18,style:{color:"var(--accent-deep)"}})}
+          </div>
+        )}
+        <div style={{minWidth:0}}>
+          <div style={{fontWeight:600,fontSize:13.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{att?.name||"첨부파일"}</div>
+          <div className="small">{err?"열기 실패":url?"탭해서 열기":"불러오는 중…"}</div>
+        </div>
+      </div>
+      {url && <span style={{color:"var(--muted)"}}>{I.chevron({})}</span>}
+    </div>
+  );
+}
+
+function TaskDetailView({data,back,onUpdated,onDeleted}){
+  const seed=data||{};
+  const [task,setTask]=useState(seed);
+  const [status,setStatus]=useState(seed.status||"todo");
+  const [detail,setDetailText]=useState(seed._raw?.detail||"");
+  const [result,setResult]=useState(seed._raw?.result||"");
+  const [saving,setSaving]=useState(false);
+  const [uploading,setUploading]=useState(false);
+  const [loading,setLoading]=useState(!!seed.id);
+
+  const applyTodo=(row)=>{
+    const ui=todoToUi(row);
+    setTask(ui);
+    setStatus(ui.status);
+    setDetailText(row.detail||"");
+    setResult(row.result||"");
+  };
+
+  const reload=useCallback(async ()=>{
+    if(!seed.id) return;
+    setLoading(true);
+    try{
+      const row=await api.getTodo(seed.id);
+      applyTodo(row);
+      onUpdated?.();
+    }catch(e){ alert(e.message||"불러오기 실패"); }
+    finally{ setLoading(false); }
+  },[seed.id,onUpdated]);
+
+  const refreshSubs=useCallback(async ()=>{
+    if(!task.id) return;
+    try{
+      const row=await api.getTodo(task.id);
+      applyTodo(row);
+      onUpdated?.();
+    }catch(e){ alert(e.message||"불러오기 실패"); }
+  },[task.id,onUpdated]);
+
+  useEffect(()=>{ reload(); },[reload]);
+
+  const history=Array.isArray(task.history)?task.history:[];
+  const attachments=Array.isArray(task.attachments)?task.attachments:[];
+  const stLabel={todo:"할 일",doing:"진행 중",done:"완료"}[status]||"할 일";
+  const stColor=status==="done"?"green":status==="doing"?"amber":"gray";
+
+  const patch=async (body)=>{
+    if(!task.id) return null;
+    setSaving(true);
+    try{
+      const row=await api.updateTodo(task.id,body);
+      applyTodo(row);
+      onUpdated?.();
+      return row;
+    }catch(e){ alert(e.message); return null; }
+    finally{ setSaving(false); }
+  };
+
+  const patchStatus=(s)=>patch({ status:s });
+  const saveDetail=()=>patch({ detail });
+  const saveResult=()=>patch({ result });
+
+  const addAttachment=async ()=>{
+    if(!task.id) return;
+    try{
+      const file=await pickAnyFile();
+      setUploading(true);
+      const key=await uploadFile(file);
+      const kind=file.type?.startsWith("image/")?"image":"file";
+      await patch({
+        attachment:{ key, name:file.name||"첨부파일", kind, uploadedAt:new Date().toISOString() },
+      });
+    }catch(e){
+      if(e?.message!=="파일이 선택되지 않았습니다") alert(e.message||"첨부 실패");
+    }finally{ setUploading(false); }
+  };
+
+  return (
     <div className="fade">
-      <DetailHead back={back} eyebrow="할 일" title={t.t||"할 일"}/>
-      <div className="pad" style={{marginTop:12}}>
+      <DetailHead back={back} eyebrow="할 일" title={task.t||"할 일"}/>
+      <div className="pad" style={{marginTop:12,marginBottom:12}}>
+        {loading && <div className="small" style={{textAlign:"center",padding:"12px 0"}}>최신 정보 불러오는 중…</div>}
         <div className="card" style={{padding:16}}>
           <div className="row" style={{gap:8,flexWrap:"wrap"}}>
             <span className={"tag "+stColor}>{stLabel}</span>
-            {t.due&&t.due!=="-"&&<span className="tag gray">기한 {t.due}</span>}
+            {task.due&&task.due!=="-"&&<span className="tag gray">기한 {task.due}</span>}
+            {task.createdLabel&&<span className="tag gray">등록 {task.createdLabel}</span>}
           </div>
           <div className="row" style={{gap:7,marginTop:13}}>
             {[["todo","할 일"],["doing","진행 중"],["done","완료"]].map(([s,l])=>(
-              <button key={s} disabled={saving} className={"chip"+(status===s?" on":"")} style={{flex:1,justifyContent:"center",display:"flex"}}
+              <button key={s} disabled={saving||loading} className={"chip"+(status===s?" on":"")} style={{flex:1,justifyContent:"center",display:"flex"}}
                 onClick={()=>patchStatus(s)}>{l}</button>
             ))}
           </div>
         </div>
+
+        <div className="section-h">소분류</div>
+        <NestedTodoList todos={[task]} onRefresh={refreshSubs} showAdd={false} compact/>
+
         <div className="section-h">상세</div>
         <div className="card" style={{padding:16}}>
           <textarea value={detail} onChange={e=>setDetailText(e.target.value)} onBlur={saveDetail}
             placeholder="설명을 적어보세요…"
             style={{width:"100%",minHeight:80,border:"none",outline:"none",fontFamily:"inherit",fontSize:13.5,lineHeight:1.6,resize:"vertical"}}/>
         </div>
-        {history.length>0 && <>
-          <div className="section-h">처리 히스토리</div>
-          <div className="card" style={{padding:"4px 16px"}}>
-            {history.map((h,i)=>(
-              <div key={i} style={{padding:"13px 0",borderBottom:i<history.length-1?"1px solid var(--line)":"none"}}>
-                <div style={{fontWeight:600,fontSize:13.5}}>{h.what}</div>
-                <div className="small">{h.when} · {h.who}</div>
-              </div>
-            ))}
-          </div>
-        </>}
+
+        <div className="section-h">처리 결과</div>
+        <div className="card" style={{padding:16}}>
+          <textarea value={result} onChange={e=>setResult(e.target.value)} onBlur={saveResult}
+            placeholder="완료 후 결과·메모를 남겨보세요…"
+            style={{width:"100%",minHeight:72,border:"none",outline:"none",fontFamily:"inherit",fontSize:13.5,lineHeight:1.6,resize:"vertical"}}/>
+        </div>
+
+        <div className="section-h row between" style={{alignItems:"center"}}>
+          <span>첨부파일 {attachments.length>0&&<span className="small">({attachments.length})</span>}</span>
+          <button className="chip" style={{color:"var(--accent-deep)"}} disabled={uploading||!task.id} onClick={addAttachment}>
+            {uploading?"업로드 중…":"+ 추가"}
+          </button>
+        </div>
+        <div className="card" style={{padding:"4px 16px"}}>
+          {attachments.length===0 && <div className="small" style={{textAlign:"center",padding:"18px 0"}}>첨부파일이 없어요</div>}
+          {attachments.map((a,i)=><TodoAttachmentRow key={a.key||i} att={a}/>)}
+        </div>
+
+        <div className="section-h">처리 히스토리 {history.length>0&&<span className="small">({history.length})</span>}</div>
+        <div className="card" style={{padding:"4px 16px"}}>
+          {history.length===0 && <div className="small" style={{textAlign:"center",padding:"18px 0"}}>변경 기록이 없어요</div>}
+          {history.map((h,i)=>(
+            <div key={i} style={{padding:"13px 0",borderBottom:i<history.length-1?"1px solid var(--line)":"none"}}>
+              <div style={{fontWeight:600,fontSize:13.5}}>{h.what}</div>
+              <div className="small">{formatWhen(h.when)} · {h.who||"나"}</div>
+            </div>
+          ))}
+        </div>
       </div>
+      {task.id && (
+        <DeleteBar label={task.t||"할 일"} onDelete={()=>api.deleteTodo(task.id)} afterDelete={onDeleted}/>
+      )}
     </div>
   );
 }
@@ -2555,7 +3726,7 @@ function FollowupDetailView({back,todos,onTodoToggle}){
   );
 }
 
-function EventDetailView({data,back}){
+function EventDetailView({data,back,onDeleted}){
   const e=data||{};
   const label=e.month?`${e.month}월 ${e.day}일`:"";
   return (
@@ -2567,15 +3738,19 @@ function EventDetailView({data,back}){
           <div className="brk"><span className="small">장소</span><span style={{fontWeight:600}}>{e.place||"-"}</span></div>
         </div>
       </div>
+      {e.id && (
+        <DeleteBar label={e.title||"일정"} onDelete={()=>api.deleteEvent(e.id)} afterDelete={onDeleted}/>
+      )}
     </div>
   );
 }
 
-function Detail({d,back,todos=[],onTodoToggle}){
-  if(d.type==="task") return <TaskDetailView data={d.data} back={back}/>;
+function Detail({d,back,todos=[],onTodoToggle,onTodoUpdated,refreshTodos,onDeleted}){
+  if(d.type==="meeting") return <MeetingDetailView data={d.data} back={back} refreshTodos={refreshTodos} onDeleted={onDeleted}/>;
+  if(d.type==="task") return <TaskDetailView data={d.data} back={back} onUpdated={onTodoUpdated} onDeleted={onDeleted}/>;
   if(d.type==="revenue") return <RevenueDetailView back={back}/>;
   if(d.type==="followup") return <FollowupDetailView back={back} todos={todos} onTodoToggle={onTodoToggle}/>;
-  return <EventDetailView data={d.data} back={back}/>;
+  return <EventDetailView data={d.data} back={back} onDeleted={onDeleted}/>;
 }
 
 export default App;

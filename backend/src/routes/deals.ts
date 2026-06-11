@@ -30,14 +30,43 @@ dealsRouter.get("/", async (req: AuthedRequest, res) => {
 dealsRouter.post("/", async (req: AuthedRequest, res) => {
   const userId = req.userId!;
   const { id, contactId, title, stage, supplyAmount, quoteKey } = req.body ?? {};
-  const wonAt = stage === "성사" ? new Date() : null;
-  const data = { contactId, title, stage: stage ?? "리드", supplyAmount: supplyAmount ?? 0, quoteKey, wonAt };
+
   if (id) {
     const existing = await prisma.deal.findFirst({ where: { id, userId } });
     if (!existing) return res.status(404).json({ error: "not found" });
+
+    const data: Record<string, unknown> = {};
+    if (contactId !== undefined) data.contactId = contactId;
+    if (title !== undefined) data.title = title;
+    if (stage !== undefined) {
+      data.stage = stage;
+      data.wonAt = stage === "성사" ? existing.wonAt ?? new Date() : null;
+    }
+    if (supplyAmount !== undefined) data.supplyAmount = supplyAmount;
+    if (quoteKey !== undefined) data.quoteKey = quoteKey;
+
     const deal = await prisma.deal.update({ where: { id }, data });
     return res.json({ ...deal, ...withVat(deal.supplyAmount) });
   }
-  const deal = await prisma.deal.create({ data: { ...data, userId } });
+
+  const deal = await prisma.deal.create({
+    data: {
+      userId,
+      contactId: contactId ?? null,
+      title: title ?? "딜",
+      stage: stage ?? "리드",
+      supplyAmount: supplyAmount ?? 0,
+      quoteKey: quoteKey ?? null,
+      wonAt: stage === "성사" ? new Date() : null,
+    },
+  });
   res.json({ ...deal, ...withVat(deal.supplyAmount) });
+});
+
+dealsRouter.delete("/:id", async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const d = await prisma.deal.findFirst({ where: { id: req.params.id, userId } });
+  if (!d) return res.status(404).json({ error: "not found" });
+  await prisma.deal.delete({ where: { id: d.id } });
+  res.status(204).send();
 });

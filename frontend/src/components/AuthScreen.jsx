@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { api, saveToken, setToken } from "../api/client.js";
+import { api, saveToken, setToken, EMAIL_KEY, getRememberLogin } from "../api/client.js";
 
 export default function AuthScreen({ onSuccess }) {
   const [mode, setMode] = useState("login"); // login | register
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => localStorage.getItem(EMAIL_KEY) || "");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [remember, setRemember] = useState(getRememberLogin);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -16,10 +17,12 @@ export default function AuthScreen({ onSuccess }) {
     try {
       const result =
         mode === "register"
-          ? await api.register(email.trim(), password, name.trim() || undefined)
-          : await api.login(email.trim(), password);
-      saveToken(result.token);
+          ? await api.register(email.trim(), password, name.trim() || undefined, remember)
+          : await api.login(email.trim(), password, remember);
+      saveToken(result.token, { remember });
       setToken(result.token);
+      if (remember) localStorage.setItem(EMAIL_KEY, email.trim());
+      else localStorage.removeItem(EMAIL_KEY);
       onSuccess(result);
     } catch (err) {
       setError(err.message || "오류가 발생했습니다");
@@ -93,6 +96,18 @@ export default function AuthScreen({ onSuccess }) {
             autoComplete={mode === "register" ? "new-password" : "current-password"}
             style={inputStyle}
           />
+
+          {mode === "login" && (
+            <label className="row" style={{ gap: 8, marginBottom: 14, cursor: "pointer", alignItems: "center" }}>
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: "var(--accent-deep)" }}
+              />
+              <span style={{ fontSize: 13.5, color: "var(--ink)" }}>로그인 상태 유지</span>
+            </label>
+          )}
 
           {error && (
             <div style={{ color: "var(--accent-deep)", fontSize: 13, marginBottom: 12, lineHeight: 1.4 }}>{error}</div>

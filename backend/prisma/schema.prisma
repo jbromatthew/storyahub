@@ -66,6 +66,8 @@ model Meeting {           // 기록 (녹음/통화/사진)
   summary     Json?                       // {key_points, actions, next_meeting, attendees, confidence, needs_review}
   attendees   String[]                    // 태그된 참석자 contactId 목록
   createdAt   DateTime @default(now())
+
+  todos       Todo[]
 }
 
 model Todo {              // 할 일
@@ -78,9 +80,12 @@ model Todo {              // 할 일
   due       DateTime?
   detail    String?
   attachments Json?                        // [{name, key, kind}]
+  subs      Json?                          // [{id, text, done}] 하위 할 일
   history   Json?                          // [{when, who, what}]
   result    String?
   contactId String?
+  meetingId String?
+  meeting   Meeting? @relation(fields: [meetingId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
 }
 

@@ -51,25 +51,58 @@ export function fileToBase64(file) {
   });
 }
 
+/** 인증된 스트림 → blob URL (오디오 재생 CORS 회피) */
 export async function mediaUrl(mediaKey) {
   if (!mediaKey) return null;
   if (urlCache.has(mediaKey)) return urlCache.get(mediaKey);
-  const { url } = await api.getUploadUrl(mediaKey);
+  const token = getToken();
+  if (!token) throw new Error("로그인이 필요합니다");
+  const res = await fetch(
+    `${getApiBase()}/uploads/stream?key=${encodeURIComponent(mediaKey)}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) {
+    let msg = "미디어 로드 실패";
+    try {
+      const j = await res.json();
+      msg = j.error || msg;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
   urlCache.set(mediaKey, url);
   return url;
 }
 
-export function pickImageFile(capture = true) {
+export class PickCancelled extends Error {
+  constructor() {
+    super("cancelled");
+    this.name = "PickCancelled";
+  }
+}
+
+export function isPickCancelled(err) {
+  return err instanceof PickCancelled || err?.name === "PickCancelled";
+}
+
+/** @param {boolean} capture true면 모바일 카메라 우선 (데스크톱에서는 false 권장) */
+export function pickImageFile(capture = false) {
   return new Promise((resolve, reject) => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
     if (capture) input.capture = "environment";
-    input.onchange = () => {
-      const file = input.files?.[0];
+    const finish = (file) => {
+      input.remove();
       if (file) resolve(file);
-      else reject(new Error("파일이 선택되지 않았습니다"));
+      else reject(new PickCancelled());
     };
+    input.addEventListener("change", () => finish(input.files?.[0]));
+    input.addEventListener("cancel", () => finish(null));
+    document.body.appendChild(input);
     input.click();
   });
 }

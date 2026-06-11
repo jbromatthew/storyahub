@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, ListObjectsV2Command, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../env.js";
 
@@ -33,4 +33,31 @@ export async function getObjectBytes(key: string): Promise<Buffer> {
   const bytes = await res.Body?.transformToByteArray();
   if (!bytes) throw new Error("R2 object empty");
   return Buffer.from(bytes);
+}
+
+export function r2Configured(): boolean {
+  return !!(env.r2.endpoint && env.r2.accessKeyId && env.r2.secretAccessKey && env.r2.bucket);
+}
+
+export async function listUserObjects(userId: string): Promise<{ key: string; size: number }[]> {
+  if (!r2Configured()) return [];
+  const prefix = `u/${userId}/`;
+  const out: { key: string; size: number }[] = [];
+  let token: string | undefined;
+  do {
+    const res = await s3.send(
+      new ListObjectsV2Command({ Bucket: env.r2.bucket, Prefix: prefix, ContinuationToken: token })
+    );
+    for (const o of res.Contents ?? []) {
+      if (o.Key && o.Size != null) out.push({ key: o.Key, size: o.Size });
+    }
+    token = res.IsTruncated ? res.NextContinuationToken : undefined;
+  } while (token);
+  return out;
+}
+
+export async function headObjectSize(key: string): Promise<number> {
+  if (!r2Configured()) return 0;
+  const res = await s3.send(new HeadObjectCommand({ Bucket: env.r2.bucket, Key: key }));
+  return res.ContentLength ?? 0;
 }

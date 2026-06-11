@@ -1,17 +1,52 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
+import { geocodeAddress } from "../services/geocode.js";
 
 export const contactsRouter = Router();
 contactsRouter.use(auth);
+
+async function applyGeocode(address: string | null | undefined, lat?: number | null, lng?: number | null) {
+  if (lat != null && lng != null) return { lat, lng };
+  if (!address?.trim()) return { lat: null, lng: null };
+  const point = await geocodeAddress(address.trim());
+  return point ? { lat: point.lat, lng: point.lng } : { lat: null, lng: null };
+}
 
 contactsRouter.get("/", async (req: AuthedRequest, res) => {
   const items = await prisma.contact.findMany({ where: { userId: req.userId }, orderBy: { createdAt: "desc" } });
   res.json(items);
 });
 
+contactsRouter.post("/geocode-pending", async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const pending = await prisma.contact.findMany({
+    where: {
+      userId,
+      address: { not: null },
+      OR: [{ lat: null }, { lng: null }],
+    },
+  });
+
+  let updated = 0;
+  for (const c of pending) {
+    if (!c.address?.trim()) continue;
+    const point = await geocodeAddress(c.address);
+    if (!point) continue;
+    await prisma.contact.update({
+      where: { id: c.id },
+      data: { lat: point.lat, lng: point.lng },
+    });
+    updated++;
+  }
+
+  const items = await prisma.contact.findMany({ where: { userId }, orderBy: { createdAt: "desc" } });
+  res.json({ updated, contacts: items });
+});
+
 contactsRouter.post("/", async (req: AuthedRequest, res) => {
   const { person, company, phone, email, address, group, tags, cardImageKey } = req.body ?? {};
+  const coords = await applyGeocode(address);
   const c = await prisma.contact.create({
     data: {
       userId: req.userId!,
@@ -20,6 +55,7 @@ contactsRouter.post("/", async (req: AuthedRequest, res) => {
       phone,
       email,
       address,
+      ...coords,
       group,
       tags: tags ?? [],
       cardImageKey: cardImageKey ?? null,
@@ -35,6 +71,17 @@ contactsRouter.patch("/:id", async (req: AuthedRequest, res) => {
 
   const { person, company, phone, email, address, group, tags, favorite, referredById, meetCount, wonAmount } =
     req.body ?? {};
+
+  const nextAddress = address !== undefined ? address : cur.address;
+  const addressChanged = address !== undefined && address !== cur.address;
+  let lat = cur.lat;
+  let lng = cur.lng;
+  if (addressChanged) {
+    const coords = await applyGeocode(nextAddress);
+    lat = coords.lat;
+    lng = coords.lng;
+  }
+
   const c = await prisma.contact.update({
     where: { id: cur.id },
     data: {
@@ -42,7 +89,9 @@ contactsRouter.patch("/:id", async (req: AuthedRequest, res) => {
       company: company ?? cur.company,
       phone: phone ?? cur.phone,
       email: email ?? cur.email,
-      address: address ?? cur.address,
+      address: nextAddress,
+      lat,
+      lng,
       group: group !== undefined ? group : cur.group,
       tags: tags ?? cur.tags,
       favorite: favorite !== undefined ? favorite : cur.favorite,
@@ -73,4 +122,22 @@ contactsRouter.get("/:id", async (req: AuthedRequest, res) => {
     }),
   ]);
   res.json({ ...c, upcomingEvents, openTodos });
+});
+
+contactsRouter.delete("/:id", async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const id = req.params.id;
+  const cur = await prisma.contact.findFirst({ where: { id, userId } });
+  if (!cur) return res.status(404).json({ error: "not found" });
+
+  await prisma.$transaction([
+    prisma.contact.updateMany({ where: { referredById: id }, data: { referredById: null } }),
+    prisma.meeting.updateMany({ where: { contactId: id }, data: { contactId: null } }),
+    prisma.todo.updateMany({ where: { contactId: id }, data: { contactId: null } }),
+    prisma.event.updateMany({ where: { contactId: id }, data: { contactId: null } }),
+    prisma.deal.updateMany({ where: { contactId: id }, data: { contactId: null } }),
+    prisma.contact.delete({ where: { id } }),
+  ]);
+
+  res.status(204).send();
 });

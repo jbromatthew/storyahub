@@ -49,3 +49,11 @@ calendarRouter.patch("/:id", async (req: AuthedRequest, res) => {
   });
   res.json(e);
 });
+
+calendarRouter.delete("/:id", async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const cur = await prisma.event.findFirst({ where: { id: req.params.id, userId } });
+  if (!cur) return res.status(404).json({ error: "not found" });
+  await prisma.event.delete({ where: { id: cur.id } });
+  res.status(204).send();
+});

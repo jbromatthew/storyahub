@@ -1,7 +1,8 @@
 import { Router, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
-import { presignPut, presignGet, putObjectBytes } from "../services/r2.js";
+import { presignPut, presignGet, putObjectBytes, getObjectBytes } from "../services/r2.js";
+import { mimeFromKey } from "../services/stt.js";
 import { env } from "../env.js";
 
 export const uploadsRouter = Router();
@@ -39,6 +40,24 @@ uploadsRouter.post("/presign", async (req: AuthedRequest, res) => {
   const key = `u/${req.userId}/${randomUUID()}/${filename}`;
   const url = await presignPut(key, contentType ?? "application/octet-stream");
   res.json({ key, url });
+});
+
+// 브라우저 <audio> 재생용 — R2 presigned URL은 CORS 때문에 로컬에서 막히는 경우가 많아 서버 경유
+uploadsRouter.get("/stream", async (req: AuthedRequest, res) => {
+  try {
+    const key = String(req.query.key ?? "");
+    if (!key.startsWith(`u/${req.userId}/`)) return res.status(403).json({ error: "forbidden" });
+    if (!env.r2.endpoint || !env.r2.accessKeyId) {
+      return res.status(503).json({ error: "R2가 설정되지 않았습니다" });
+    }
+    const buf = await getObjectBytes(key);
+    res.setHeader("Content-Type", mimeFromKey(key));
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.send(buf);
+  } catch (e) {
+    console.error("stream", e);
+    res.status(404).json({ error: "파일을 찾을 수 없습니다" });
+  }
 });
 
 // 다운로드/열람용 presigned URL
