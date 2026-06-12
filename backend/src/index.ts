@@ -11,9 +11,10 @@ import { contactsRouter } from "./routes/contacts.js";
 import { meetingsRouter } from "./routes/meetings.js";
 import { todosRouter } from "./routes/todos.js";
 import { dealsRouter } from "./routes/deals.js";
-import { calendarRouter } from "./routes/calendar.js";
+import { calendarRouter, calendarShareRouter } from "./routes/calendar.js";
 import { kbRouter } from "./routes/kb.js";
 import { uploadsRouter, directUploadHandler } from "./routes/uploads.js";
+import { placesRouter } from "./routes/places.js";
 import { ocrRouter } from "./routes/ocr.js";
 import { startPurgeScheduler } from "./services/purge.js";
 
@@ -25,7 +26,7 @@ app.post(
   "/uploads/direct",
   auth,
   requireAccess,
-  express.raw({ type: () => true, limit: "25mb" }),
+  express.raw({ type: () => true, limit: "150mb" }),
   directUploadHandler
 );
 
@@ -41,9 +42,21 @@ app.use("/meetings", meetingsRouter);
 app.use("/todos", todosRouter);
 app.use("/deals", dealsRouter);
 app.use("/calendar", calendarRouter);
+app.use("/calendar/share", calendarShareRouter);
 app.use("/kb", kbRouter);
 app.use("/uploads", uploadsRouter);
+app.use("/places", placesRouter);
 app.use("/ocr", ocrRouter);
+
+app.use((err: Error & { type?: string; status?: number; statusCode?: number }, _req, res, next) => {
+  if (res.headersSent) return next(err);
+  const tooLarge = err.type === "entity.too.large" || err.status === 413 || err.statusCode === 413;
+  if (tooLarge) {
+    return res.status(413).json({ error: "파일이 너무 큽니다 (최대 150MB)" });
+  }
+  console.error("unhandled", err);
+  res.status(500).json({ error: err.message || "서버 오류" });
+});
 
 app.listen(env.port, () => {
   console.log(`Storyahub API listening on http://localhost:${env.port}`);

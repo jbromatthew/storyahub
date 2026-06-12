@@ -6,6 +6,7 @@ import { prisma } from "../db.js";
 import { auth, signToken, type AuthedRequest } from "../middleware/auth.js";
 import { getAccessStatus, extendPlanUntil } from "../services/access.js";
 import { getUserUsage } from "../services/usage.js";
+import { mergePreferences, normalizePreferencesPatch } from "../services/preferences.js";
 
 export const authRouter = Router();
 
@@ -33,6 +34,7 @@ export function publicUser(u: User) {
     allowFileUpload: access.allowFileUpload,
     recordingUsedSec: access.recordingUsedSec,
     recordingLimitSec: access.recordingLimitSec,
+    preferences: mergePreferences(u.preferences),
     createdAt: u.createdAt,
   };
 }
@@ -166,6 +168,15 @@ authRouter.patch("/me", auth, async (req: AuthedRequest, res) => {
       ...(name !== undefined ? { name: String(name).trim() } : {}),
       ...(onboardingDone !== undefined ? { onboardingDone: Boolean(onboardingDone) } : {}),
     },
+  });
+  res.json({ user: publicUser(user) });
+});
+
+authRouter.patch("/me/preferences", auth, async (req: AuthedRequest, res) => {
+  const prefs = normalizePreferencesPatch(req.body?.preferences ?? req.body);
+  const user = await prisma.user.update({
+    where: { id: req.userId },
+    data: { preferences: prefs as object },
   });
   res.json({ user: publicUser(user) });
 });

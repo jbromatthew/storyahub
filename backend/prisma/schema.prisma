@@ -22,6 +22,7 @@ model User {
   usedRecordingSec Int      @default(0)       // 체험·유료 플랜 녹음 사용량(초)
   recordingPeriodStart DateTime?              // 유료 플랜 월간 리셋 기준
   accessEndedAt   DateTime?                    // 체험/구독 만료 시각 (데이터 삭제 예정일 계산용)
+  preferences     Json?                        // 카테고리·태그 프리셋 (인맥/지식백과/미팅)
   createdAt       DateTime  @default(now())
 
   contacts  Contact[]
@@ -30,6 +31,7 @@ model User {
   deals      Deal[]
   events     Event[]
   kbArticles KbArticle[]
+  savedPlaces SavedPlace[]
   couponRedemptions CouponRedemption[]
 }
 
@@ -93,11 +95,13 @@ model Meeting {           // 기록 (녹음/통화/사진)
   user        User     @relation(fields: [userId], references: [id])
   contactId   String?
   contact     Contact? @relation(fields: [contactId], references: [id])
-  source      String                      // live | call | photo
+  source      String                      // live | call | photo | upload
   mediaKey    String?                     // R2 객체 키 (원본 미디어)
   oneLine     String?
   summary     Json?                       // {key_points, actions, next_meeting, attendees, confidence, needs_review}
   attendees   String[]                    // 태그된 참석자 contactId 목록
+  category    String?                     // 사용자 정의 분류 (미팅/통화 등)
+  tags        String[]  @default([])      // 사용자 정의 태그
   createdAt   DateTime @default(now())
 
   todos       Todo[]
@@ -144,10 +148,42 @@ model Event {             // 캘린더 일정
   startsAt  DateTime
   endsAt    DateTime?
   place     String?
+  savedPlaceId String?
+  savedPlace   SavedPlace? @relation(fields: [savedPlaceId], references: [id], onDelete: SetNull)
+  placeLat  Float?                         // 길찾기용 (저장 맛집 선택 시)
+  placeLng  Float?
   contactId String?
+  contactIds String[] @default([])       // 함께할 인맥 (복수)
+  category  String?                      // 캘린더 분류 (직장, 개인 등)
+  color     String?                        // 표시 색
+  notes     String?                        // 메모
+  shareToken String? @unique               // 일정 공유 링크
   reminders String[]                        // ["1시간 전","1일 전"] 등 (기본값 자동 적용)
   googleId  String?                          // Google 캘린더 연동 id
   createdAt DateTime @default(now())
+}
+
+model SavedPlace {        // 맛집·장소 (카카오맵 연동)
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  name         String
+  category     String?                      // 한식, 카페, 미팅용 등
+  tags         String[] @default([])
+  address      String?
+  roadAddress  String?
+  phone        String?
+  lat          Float
+  lng          Float
+  kakaoPlaceId String?
+  placeUrl     String?                      // 카카오맵 장소 URL
+  favorite     Boolean  @default(false)
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  events       Event[]
+
+  @@unique([userId, kakaoPlaceId])
 }
 
 model KbArticle {         // 지식백과
@@ -155,8 +191,10 @@ model KbArticle {         // 지식백과
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   title     String
-  category  String?
+  section   String   @default("knowledge")   // book | lecture | knowledge
+  category  String?                          // 분류 내 하위 카테고리
   tags      String[]
+  bookMeta  Json?                            // 책: { author, coverKey, isbn, publisher }
   blocks    Json                            // 노션형 블록 배열
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -5,11 +5,17 @@ import WelcomeScreen from "./components/WelcomeScreen.jsx";
 import KbEditor, { KbReadView, kbSearchText } from "./components/KbEditor.jsx";
 import NestedTodoList, { isTodoDone } from "./components/NestedTodoList.jsx";
 import MeetingInsights from "./components/MeetingInsights.jsx";
+import CategoryTagSettings from "./components/CategoryTagSettings.jsx";
+import PlacesView from "./components/PlacesView.jsx";
+import CalendarView from "./components/CalendarView.jsx";
 import { api, loadToken, saveToken, clearToken, setToken, isAuthError, isAccessError } from "./api/client.js";
-import { uploadBlob, uploadFile, pickImageFile, pickAnyFile, fileToBase64, mediaUrl, AudioRecorder, isPickCancelled } from "./api/upload.js";
-import { setClients, getClients } from "./store.js";
-import { contactToUi, todoToUi, todoSearchText, formatWhen, eventToUi, kbToUi, meetingToUi, isAudioMediaKey, isImageMediaKey, contactGroups, kbCategories, haversineKm, formatDistanceKm, kakaoDirectionsUrl, kbExcerpt, kbReadMinutes, kbFileCount, kbThumbMeta } from "./mappers.js";
+import { uploadBlob, uploadFile, pickImageFile, pickAudioFile, audioDurationSec, pickAnyFile, fileToBase64, mediaUrl, AudioRecorder, isPickCancelled } from "./api/upload.js";
+import { setClients, getClients, setPlaces, getPlaces } from "./store.js";
+import { contactToUi, todoToUi, todoSearchText, formatWhen, eventToUi, kbToUi, meetingToUi, isAudioMediaKey, isImageMediaKey, kbCategories, KB_SECTIONS, kbSectionLabel, kbCoverKey, haversineKm, formatDistanceKm, kakaoDirectionsUrl, kbExcerpt, kbReadMinutes, kbFileCount, kbThumbMeta, placeToUi } from "./mappers.js";
 import { confirmDelete } from "./confirmDelete.js";
+import ToastHost from "./components/ToastHost.jsx";
+import { toastError, toastSuccess, notifyError } from "./toast.js";
+import { userPreferences, tagColor, mergedContactGroups, contactGroupOptions } from "./preferences.js";
 
 /* ------------------------------------------------------------------
    Storyahub — 비서앱 UI
@@ -90,7 +96,7 @@ const CSS = `
   padding-bottom:env(safe-area-inset-bottom,0px);
   background:rgba(247,244,238,.92);backdrop-filter:blur(14px);border-top:1px solid var(--line);
   z-index:40;}
-.nav-grid{display:grid;grid-template-columns:repeat(5,1fr);width:100%;align-items:end;padding:8px 4px 0;}
+.nav-grid{display:grid;grid-template-columns:repeat(6,1fr);width:100%;align-items:end;padding:8px 2px 0;}
 .navitem{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px;font-weight:600;
   color:var(--muted);background:none;border:none;cursor:pointer;width:100%;padding:0 2px;transition:.15s;}
 .navitem.on{color:var(--accent-deep);}
@@ -152,8 +158,28 @@ const CSS = `
 @keyframes pulse{0%{transform:scale(1);opacity:.5}70%{transform:scale(1.8);opacity:0}100%{opacity:0}}
 @keyframes bars{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
 @keyframes spin{to{transform:rotate(360deg)}}
+.proc-bar{height:8px;border-radius:99px;background:#EFEBE2;overflow:hidden;margin:22px auto 0;max-width:280px;}
+.proc-bar>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--accent-deep));transition:width .4s ease;}
+.proc-steps{margin-top:20px;text-align:left;max-width:280px;margin-left:auto;margin-right:auto;}
+.proc-step{font-size:13px;padding:7px 0;color:var(--muted);display:flex;align-items:center;gap:8px;}
+.proc-step.on{color:var(--ink);font-weight:700;}
+.proc-step.done{color:var(--green);}
+.proc-pct{font-size:13px;font-weight:700;color:var(--accent-deep);margin-top:14px;font-variant-numeric:tabular-nums;}
 .spinner{width:34px;height:34px;border-radius:50%;border:3px solid var(--line);
   border-top-color:var(--accent);animation:spin .8s linear infinite;}
+.toast-host{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:9999;
+  display:flex;flex-direction:column;gap:8px;width:min(380px,calc(100vw - 28px));pointer-events:none;}
+@media(min-width:900px){.toast-host{bottom:28px;}}
+.toast{display:flex;align-items:flex-start;gap:10px;padding:13px 16px;border-radius:14px;box-shadow:0 10px 32px rgba(20,16,12,.16);
+  animation:fadeUp .28s ease both;pointer-events:auto;font-size:13.5px;line-height:1.45;font-weight:600;}
+.toast-error{background:#FFF8F6;border:1px solid #F3D8CB;color:#8B3A22;}
+.toast-success{background:#E7F0EA;border:1px solid #C5DCC9;color:#2D5A3D;}
+.toast-info{background:#fff;border:1px solid var(--line);color:var(--ink);}
+.toast-icon{width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;}
+.toast-error .toast-icon{background:#F3D8CB;color:#8B3A22;}
+.toast-success .toast-icon{background:var(--green);color:#fff;}
+.toast-info .toast-icon{background:#EFEBE2;color:var(--muted);}
+.toast-msg{flex:1;word-break:keep-all;}
 .divider{height:1px;background:var(--line);margin:14px 0;}
 .small{font-size:12.5px;color:var(--muted);}
 
@@ -231,7 +257,9 @@ const CSS = `
   border-radius:14px;padding:12px 14px;margin-top:4px;}
 .nt-newtask input{flex:1;border:none;outline:none;background:transparent;font-family:inherit;font-size:14.5px;color:var(--ink);}
 .nt-send{border:none;background:var(--accent);color:#fff;border-radius:10px;width:34px;height:34px;cursor:pointer;
-  font-size:18px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+  font-size:18px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;touch-action:manipulation;
+  position:relative;z-index:1;}
+.nt-send:disabled{opacity:.55;cursor:wait;}
 .nt-pridot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
 .nt-hint{font-size:12.5px;color:var(--muted);margin-bottom:10px;line-height:1.55;}
 .nt-split{border:none;background:var(--accent-soft);color:var(--accent-deep);font-family:inherit;font-size:11px;font-weight:700;
@@ -255,7 +283,13 @@ const CSS = `
 .kbh-feat .ex{color:var(--muted);font-size:13px;line-height:1.55;margin-top:7px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .kbh-pin{position:absolute;top:12px;left:12px;background:rgba(0,0,0,.35);color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;}
 .kbh-item{display:flex;gap:14px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:10px;cursor:pointer;}
-.kbh-thumb{width:66px;height:66px;border-radius:12px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:#fff;}
+.kbh-thumb{width:66px;height:66px;border-radius:12px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:#fff;overflow:hidden;}
+.kbh-thumb img{width:100%;height:100%;object-fit:cover;}
+.kbh-thumb.book{width:52px;height:72px;border-radius:8px;}
+.kbh-seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px;}
+.kbh-seg button{border:1px solid var(--line);background:#fff;border-radius:14px;padding:14px 8px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;color:var(--ink);display:flex;flex-direction:column;align-items:center;gap:6px;line-height:1.3;}
+.kbh-seg button.on{background:var(--ink);color:#fff;border-color:var(--ink);}
+.kbh-seg .sub{font-size:11px;font-weight:500;opacity:.75;}
 .kbh-item .ttl{font-weight:700;font-size:15px;letter-spacing:-.01em;line-height:1.35;}
 .kbh-item .ex{color:var(--muted);font-size:12.5px;line-height:1.5;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .kbh-info{display:flex;align-items:center;gap:7px;margin-top:8px;flex-wrap:wrap;}
@@ -323,6 +357,59 @@ const CSS = `
 .mcell.sel{background:var(--accent);color:#fff;}
 .mdot{width:5px;height:5px;border-radius:50%;background:var(--accent);margin-top:3px;}
 .mcell.sel .mdot{background:#fff;}
+
+/* Apple-style calendar */
+.cal-wrap{height:100%;min-height:0;display:flex;flex-direction:column;}
+.cal-layout{display:flex;flex:1;min-height:0;gap:0;}
+.cal-sidebar{display:none;width:220px;flex-shrink:0;border-right:1px solid var(--line);padding:14px 12px;overflow-y:auto;background:#FAF8F4;}
+@media(min-width:900px){.cal-sidebar{display:block;}}
+.cal-mini-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.cal-mini-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:16px;}
+.cal-mini-dow{font-size:10px;font-weight:700;text-align:center;color:var(--muted);padding:2px 0;}
+.cal-mini-cell{border:none;background:none;font-family:inherit;font-size:11px;font-weight:600;border-radius:6px;padding:4px 0;cursor:pointer;color:var(--ink);}
+.cal-mini-cell.muted{color:transparent;cursor:default;}
+.cal-mini-cell.sel{background:var(--accent);color:#fff;}
+.cal-mini-cell.today{box-shadow:inset 0 0 0 1.5px var(--accent);}
+.cal-cal-item{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;padding:6px 0;cursor:pointer;}
+.cal-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0;}
+.cal-main{flex:1;min-width:0;overflow-y:auto;}
+.cal-toolbar{padding-top:8px!important;padding-bottom:8px!important;}
+.cal-month{margin-top:0;}
+.cal-mgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+.cal-mgrid.head{background:#fff;border:none;margin-bottom:6px;gap:0;}
+.cal-dow{text-align:center;font-size:12px;font-weight:700;color:var(--muted);padding:6px 0;}
+.cal-dow.sun{color:var(--accent-deep);}
+.cal-mgrid.body{background:var(--line);}
+.cal-cell{min-height:88px;background:#fff;padding:4px 5px;cursor:pointer;display:flex;flex-direction:column;gap:2px;}
+@media(min-width:900px){.cal-cell{min-height:100px;}}
+.cal-cell.muted{background:#FBFAF7;cursor:default;}
+.cal-cell.today .cal-daynum{color:var(--accent-deep);font-weight:800;}
+.cal-cell.sel{box-shadow:inset 0 0 0 2px var(--accent);}
+.cal-daynum{font-size:12px;font-weight:700;padding:2px 4px;}
+.cal-evlist{display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden;}
+.cal-evpill{border:none;border-radius:4px;color:#fff;font-family:inherit;font-size:10px;font-weight:700;padding:2px 5px;text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35;}
+.cal-evmore{font-size:10px;color:var(--muted);padding-left:4px;}
+.cal-daylist{margin-bottom:20px;}
+.cal-dayrow{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);cursor:pointer;}
+.cal-daybar{width:4px;align-self:stretch;border-radius:3px;flex-shrink:0;}
+.cal-pop-bg{position:fixed;inset:0;background:rgba(20,16,12,.35);z-index:300;display:flex;align-items:flex-start;justify-content:center;padding:max(60px,8vh) 16px 24px;}
+.cal-pop{width:100%;max-width:420px;background:#F2F2F7;border-radius:14px;padding:14px 16px 16px;box-shadow:0 24px 60px rgba(0,0,0,.22);animation:fadeUp .22s ease both;}
+.cal-pop-tabs{display:flex;gap:6px;margin-bottom:12px;}
+.cal-pop-tabs .on{background:#3A3A3C;color:#fff;font-size:12px;font-weight:700;padding:5px 12px;border-radius:8px;}
+.cal-pop-row.title-row{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;}
+.cal-pop-title{flex:1;border:none;background:#fff;border-radius:10px;padding:12px 13px;font-family:inherit;font-size:16px;font-weight:600;outline:none;}
+.cal-color-pick{display:flex;gap:5px;flex-wrap:wrap;padding-top:6px;}
+.cal-color-pick button{width:18px;height:18px;border-radius:4px;border:2px solid transparent;cursor:pointer;padding:0;}
+.cal-color-pick button.on{border-color:var(--ink);box-shadow:0 0 0 1px #fff inset;}
+.cal-pop-field{margin-bottom:8px;}
+.cal-pop-field input,.cal-pop-field textarea{width:100%;border:none;background:#fff;border-radius:10px;padding:11px 13px;font-family:inherit;font-size:14px;outline:none;resize:vertical;}
+.cal-pop-field.time-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.cal-pop-field.time-row input{flex:1;min-width:0;}
+.cal-pop-link{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;border:none;background:#fff;border-radius:10px;padding:11px 13px;font-family:inherit;font-size:13.5px;text-align:left;cursor:pointer;margin-bottom:8px;color:var(--ink);}
+.cal-pop-link span{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%;}
+.cal-rem-chips,.cal-contact-pick{display:flex;flex-wrap:wrap;gap:6px;margin:-2px 0 10px;}
+.cal-pop-actions{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap;}
+.cal-pop-sub{margin-top:8px;text-align:center;color:var(--muted);}
 
 /* pricing */
 .plancard{border:1px solid var(--line);border-radius:18px;padding:16px;background:#fff;position:relative;}
@@ -392,6 +479,7 @@ const I = {
   heading:(p)=> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M6 4v16M18 4v16M6 12h12"/></svg>,
   list:(p)=> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.2" fill="currentColor" stroke="none"/></svg>,
   meet:(p)=> <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M8 6h13M8 12h13M8 18h8"/><path d="M4 7v10"/><circle cx="4" cy="7" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="17" r="1.5" fill="currentColor" stroke="none"/></svg>,
+  place:(p)=> <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M12 3c-4 0-7 2.5-7 6.5C5 14 12 21 12 21s7-7 7-11.5C19 5.5 16 3 12 3z"/><circle cx="12" cy="9.5" r="1.8"/><path d="M8 21h8"/></svg>,
   quote:(p)=> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M7 7c-2 0-3 1.5-3 3.5S5 14 7 14c0 2-1 3-3 3M18 7c-2 0-3 1.5-3 3.5S16 14 18 14c0 2-1 3-3 3"/></svg>,
   table:(p)=> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 10h16M4 14.5h16M10 5v14M16 5v14"/></svg>,
   divider:(p)=> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" {...p}><path d="M4 12h16"/></svg>,
@@ -411,8 +499,6 @@ const I = {
 };
 
 /* --------- data --------- */
-const TAG_COLORS={ "결제완료":"green", "결제대기":"amber", "핫리드":"accent", "신규":"blue", "VIP":"accent", "보류":"gray" };
-const PRESET_TAGS=["결제완료","결제대기","핫리드","신규","VIP","보류"];
 const INSTALL_DISMISS_KEY="storyahub_install_dismissed";
 const isInstallDismissed=()=>localStorage.getItem(INSTALL_DISMISS_KEY)==="1";
 const dismissInstall=()=>localStorage.setItem(INSTALL_DISMISS_KEY,"1");
@@ -527,11 +613,28 @@ function App(){
   const [revenue,setRevenue] = useState({ supplyAmount:0, total:0, pipeline:0, wonCount:0, pipelineCount:0 });
   const [lastSummary,setLastSummary] = useState(null);
   const [lastMediaKey,setLastMediaKey] = useState(null);
+  const [recordProc,setRecordProc] = useState({ mode:"rec", progress:0, label:"", step:"upload" });
   const timer = useRef(null);
+
+  const startRecordProcessing=useCallback(({ mode, step, label, progress })=>{
+    setRecordProc({
+      mode: mode || "rec",
+      step: step || "upload",
+      label: label || "처리 중…",
+      progress: progress ?? 8,
+    });
+    setPhase("proc");
+  },[]);
+
+  const bumpRecordProc=useCallback((patch)=>{
+    setRecordProc((p)=>({ ...p, ...(typeof patch==="function" ? patch(p) : patch) }));
+  },[]);
+  const failRecordProcessing=useCallback(()=>{ setPhase("setup"); },[]);
 
   const loadAppData = useCallback(async ()=>{
     const [data, kb] = await Promise.all([api.bootstrap(), api.listKb()]);
     setClients(data.contacts.map(contactToUi));
+    setPlaces((data.places || []).map(placeToUi));
     setTodos(data.todos.map(todoToUi));
     setEventsToday((data.eventsToday||[]).map(eventToUi));
     setMeetings((data.meetings||[]).map(meetingToUi));
@@ -590,14 +693,18 @@ function App(){
   const startRec=()=>{
     if(user && user.hasAccess===false){
       setPricing(true);
-      return alert("이용 기간이 만료되었습니다. 요금제를 선택해 주세요.");
+      toastError("이용 기간이 만료되었습니다. 요금제를 선택해 주세요.");
+      return;
     }
     if(user?.isTrial && user.recordingLimitSec && user.recordingUsedSec>=user.recordingLimitSec){
       setPricing(true);
-      return alert("체험 녹음 한도(1시간)를 모두 사용했습니다.");
+      toastError("체험 녹음 한도(1시간)를 모두 사용했습니다.");
+      return;
     }
-    setTab("record"); setPhase("rec"); setSecs(0); setHl(0); setLastSummary(null); setLastMediaKey(null);
+    setTab("record"); setPhase("setup"); setSecs(0); setHl(0); setLastSummary(null); setLastMediaKey(null);
   };
+  const startLiveRec=useCallback(()=>{ setSecs(0); setHl(0); setPhase("rec"); },[]);
+  const cancelLiveRec=useCallback(()=>{ setSecs(0); setHl(0); setPhase("setup"); },[]);
   const friendlyAiError=(msg)=>{
     if(!msg) return "요약에 실패했습니다.";
     if(/일시적으로 바쁩니다|high demand|503|UNAVAILABLE/i.test(msg))
@@ -607,42 +714,54 @@ function App(){
     if(/Gemini \d+:/.test(msg)) return "AI 처리 중 오류가 났어요. 잠시 후 다시 시도해주세요.";
     return msg;
   };
-  const handleRecordComplete=async ({ mode, mediaKey, imageKeys, attendees, contactId, companyName })=>{
-    setPhase("proc");
+  const handleRecordComplete=async ({ mode, mediaKey, imageKeys, attendees, contactId, companyName, durationSec })=>{
     setLastMediaKey(mediaKey||imageKeys?.[0]||null);
+    const isPhoto=mode==="photo";
+    bumpRecordProc((p)=>({
+      mode: mode || "rec",
+      step: isPhoto ? "ocr" : "transcribe",
+      label: isPhoto ? "사진에서 글자 읽는 중…" : "음성을 전사하는 중…",
+      progress: Math.max(p.progress, 38),
+    }));
     let ok=false;
     try{
+      const source = isPhoto ? "photo" : mode==="upload" ? "upload" : "live";
       const { jobId } = await api.enqueueSummary(mediaKey||null,{
         template:"영업",
         contactId: contactId??null,
         companyName,
-        source: mode==="photo"?"photo":"live",
+        source,
         attendees,
         imageKeys: imageKeys??[],
-        durationSec: mode==="photo"?0:secs,
+        durationSec: isPhoto ? 0 : (durationSec ?? secs),
       });
+      bumpRecordProc((p)=>({ step: "summarize", label: "요약 · 할 일 추출 중…", progress: Math.max(p.progress, 55) }));
+      const estSec=Math.min(120, Math.max(25, Math.round((durationSec ?? secs) / 6) || 40));
       let job;
       for(let i=0;i<180;i++){
         await new Promise(r=>setTimeout(r,1000));
         job = await api.getJob(jobId);
+        const tick=38 + Math.min(56, Math.round(((i + 1) / estSec) * 56));
+        bumpRecordProc({ progress: tick });
         if(job?.status==="done"||job?.status==="error") break;
       }
       if(job?.status==="done"){
+        bumpRecordProc({ step: "done", label: "완료", progress: 100 });
         setLastSummary(job.result);
         if(job.result?.mediaKey) setLastMediaKey(job.result.mediaKey);
         ok=true;
       }
-      else if(job?.status==="error") alert(friendlyAiError(job.error));
-      else alert("요약이 예상보다 오래 걸리고 있어요. 잠시 후 기록 목록에서 확인해주세요.");
+      else if(job?.status==="error") toastError(friendlyAiError(job.error));
+      else toastError("요약이 예상보다 오래 걸리고 있어요. 잠시 후 기록 목록에서 확인해주세요.");
       await loadAppData();
       const { user:u }=await api.me().catch(()=>({}));
       if(u) setUser(u);
     }catch(e){
       if(isAccessError(e)){ setPricing(true); setUser(u=>u?{...u,hasAccess:false}:u); }
-      alert(friendlyAiError(e.message)||"처리 실패");
+      notifyError(e, friendlyAiError(e.message)||"처리 실패");
       console.warn("record",e);
     }
-    setPhase(ok?"sum":"idle");
+    setPhase(ok?"sum":"setup");
   };
   const mmss=(n)=>`${String(Math.floor(n/60)).padStart(2,"0")}:${String(n%60).padStart(2,"0")}`;
   const toggleTodo=async (i)=>{
@@ -660,7 +779,7 @@ function App(){
   const refreshContacts = async ()=>{ await loadAppData(); };
 
   if(boot==="loading"||boot==="reconnect") return (
-    <div className="sa-root"><style>{CSS}</style>
+    <div className="sa-root"><style>{CSS}</style><ToastHost/>
       <div className="app-shell">
         <div className="app-main app-main-centered" style={{textAlign:"center"}}>
           {boot==="loading" ? <div className="spinner"/> : (
@@ -677,10 +796,12 @@ function App(){
   );
 
   const showMobileNav = boot==="app" && kbView?.mode!=="edit";
+  const prefs = userPreferences(user);
 
   return (
     <div className="sa-root">
       <style>{CSS}</style>
+      <ToastHost/>
       <div className="app-shell">
         {boot==="app" && (
           <aside className="app-sidebar">
@@ -688,10 +809,11 @@ function App(){
             <nav className="app-sidenav">
               <NavBtn layout="side" on={tab==="today"&&!client} icon={I.home} label="투데이" onClick={()=>goTab("today")}/>
               <NavBtn layout="side" on={tab==="clients"||!!client} icon={I.users} label={T(segment,"contacts")} onClick={()=>goTab("clients")}/>
+              <NavBtn layout="side" on={tab==="places"} icon={I.place} label="맛집" onClick={()=>goTab("places")}/>
               <NavBtn layout="side" on={tab==="meetings"} icon={I.meet} label="미팅" onClick={()=>goTab("meetings")}/>
               <NavBtn layout="side" on={tab==="calendar"} icon={I.cal} label="캘린더" onClick={()=>goTab("calendar")}/>
               <NavBtn layout="side" on={tab==="kb"} icon={I.book} label="지식백과" onClick={()=>goTab("kb")}/>
-              <button type="button" className="side-rec" onClick={startRec}>{I.mic({width:18,height:18})} 녹음 시작</button>
+              <button type="button" className="side-rec" onClick={startRec}>{I.mic({width:18,height:18})} 미팅 기록</button>
             </nav>
             <div className="app-sidebar-foot">AI 비서 · 녹음·인맥·일정·지식</div>
           </aside>
@@ -703,8 +825,9 @@ function App(){
               onStartRec={async ()=>{ await completeWelcome(); startRec(); }}
               onAddContact={async ()=>{ await completeWelcome(); setTab("clients"); setCardScan(true); }}
               onDone={completeWelcome}/>
-          : detail ? <Detail d={detail} todos={todos} back={()=>setDetail(null)} onTodoToggle={toggleTodo} onTodoUpdated={loadAppData} refreshTodos={loadAppData} onDeleted={()=>{ setDetail(null); loadAppData(); }}/>
+          : detail ? <Detail d={detail} todos={todos} back={()=>setDetail(null)} onTodoToggle={toggleTodo} onTodoUpdated={loadAppData} refreshTodos={loadAppData} onDeleted={()=>{ setDetail(null); loadAppData(); }} prefs={prefs}/>
           : overlay==="search" ? <GlobalSearch back={()=>setOverlay(null)} openClient={(c)=>{setOverlay(null);setTab("clients");setClient(c);}}
+              openPlace={(p)=>{setOverlay(null);goTab("places");}}
               openTask={(t)=>{setOverlay(null);setDetail({type:"task",data:t});}}
               openMeeting={(m)=>{setOverlay(null);setDetail({type:"meeting",data:m});}}
               meetings={meetings} kbArticles={kbArticles} todos={todos}/>
@@ -715,13 +838,18 @@ function App(){
               onLogout={()=>{ clearToken(); setUser(null); setBoot("auth"); setOverlay(null); }}/>
           : overlay==="trash" ? <Trash back={()=>setOverlay("settings")}/>
           : overlay==="export" ? <ExportData back={()=>setOverlay("settings")}/>
+          : overlay==="categorytags" ? <CategoryTagSettings user={user} back={()=>setOverlay("settings")} onUserUpdated={setUser}/>
           : pricing ? <Pricing back={()=>setPricing(false)} segment={segment} user={user} onUserUpdated={setUser}/>
           : tab==="record" ? <RecordScreen phase={phase} secs={secs} mmss={mmss} hl={hl} setHl={setHl}
                               onComplete={handleRecordComplete} todos={todos} toggleTodo={toggleTodo}
                               summary={lastSummary} mediaKey={lastMediaKey} user={user}
+                              proc={recordProc} onProcessingStart={startRecordProcessing} onProcFailed={failRecordProcessing}
+                              onStartLive={startLiveRec} onCancelLive={cancelLiveRec}
+                              onBack={()=>{ setTab("today"); setPhase("idle"); }}
                               goClients={()=>{setTab("clients");setPhase("idle");}} />
           : client ? <ClientDetail c={client} back={()=>setClient(null)} startRec={startRec} seg={segment} onRefresh={loadAppData}
               onDeleted={()=>{ setClient(null); loadAppData(); }}
+              contactPresets={prefs.contacts}
               openMeeting={(m)=>setDetail({type:"meeting",data:m.mediaKey!==undefined?m:meetingToUi(m)})}/>
           : tab==="today" ? <Today user={user} startRec={startRec} todos={todos} toggleTodo={toggleTodo} setTodoStatus={setTodoStatus}
                               eventsToday={eventsToday} meetings={meetings} revenue={revenue}
@@ -733,16 +861,21 @@ function App(){
                               kbArticles={kbArticles}
                               openKb={(a)=>setKbView({article:a,mode:"read"})}
                               openDetail={(t,data)=>setDetail({type:t,data})} onRefresh={loadAppData}/>
-          : tab==="clients" ? (cardScan ? <CardScan back={()=>setCardScan(false)} onSaved={refreshContacts} seg={segment}/> : <Clients group={group} setGroup={setGroup} open={(c)=>setClient(c)} onAdd={()=>setCardScan(true)} onRefresh={loadAppData} seg={segment}/>)
-          : tab==="meetings" ? <MeetingsTab meetings={meetings} openDetail={(m)=>setDetail({type:"meeting",data:m})} startRec={startRec} onRefresh={loadAppData}/>
-          : tab==="calendar" ? <Calendar openDetail={(t,data)=>setDetail({type:t,data})}/>
+          : tab==="clients" ? (cardScan ? <CardScan back={()=>setCardScan(false)} onSaved={refreshContacts} contactPresets={prefs.contacts}/> : <Clients group={group} setGroup={setGroup} open={(c)=>setClient(c)} onAdd={()=>setCardScan(true)} onRefresh={loadAppData} seg={segment} contactPresets={prefs.contacts} onOpenOrganize={()=>setOverlay("categorytags")}/>)
+          : tab==="places" ? <PlacesView placePresets={prefs.places} onRefresh={loadAppData}/>
+          : tab==="meetings" ? <MeetingsTab meetings={meetings} openDetail={(m)=>setDetail({type:"meeting",data:m})} startRec={startRec} onRefresh={loadAppData} meetingPresets={prefs.meeting}/>
+          : tab==="calendar" ? <CalendarView openDetail={(t,data)=>setDetail({type:t,data})} organizePrefs={prefs}/>
           : kbView ? (
             kbView.mode==="edit"
               ? <KbEditor article={kbView.article} back={()=>setKbView(null)} onSaved={loadAppData} onDeleted={loadAppData}
-                  categories={kbCategories(kbArticles).filter((c)=>c!=="전체")}/>
+                  prefs={prefs}
+                  categories={kbCategories(kbArticles, kbView.article?.section).filter((c)=>c!=="전체")}/>
               : <KbReadView article={kbView.article} back={()=>setKbView(null)} onEdit={()=>setKbView({article:kbView.article,mode:"edit"})}/>
           )
-          : <Knowledge articles={kbArticles} openWrite={(a)=>setKbView({article:a||{blocks:[]},mode:a?.id?"read":"edit"})}/>}
+          : <Knowledge articles={kbArticles} openWrite={(a,section)=>setKbView({
+              article: a || { section: section || "knowledge", blocks: section === "book" ? [{ type: "h", val: "독후감" }, { type: "text", val: "" }] : [] },
+              mode: a?.id ? "read" : "edit",
+            })}/>}
         </div>
 
         {showMobileNav && (
@@ -750,9 +883,10 @@ function App(){
           <div className="nav-grid">
             <NavBtn on={tab==="today"&&!client} icon={I.home} label="투데이" onClick={()=>goTab("today")}/>
             <NavBtn on={tab==="clients"||client} icon={I.users} label={T(segment,"contacts")} onClick={()=>goTab("clients")}/>
+            <NavBtn on={tab==="places"} icon={I.place} label="맛집" onClick={()=>goTab("places")}/>
             <NavBtn on={tab==="meetings"} icon={I.meet} label="미팅" onClick={()=>goTab("meetings")}/>
-            <NavBtn on={tab==="kb"} icon={I.book} label="지식백과" onClick={()=>goTab("kb")}/>
             <NavBtn on={tab==="calendar"} icon={I.cal} label="캘린더" onClick={()=>goTab("calendar")}/>
+            <NavBtn on={tab==="kb"} icon={I.book} label="지식" onClick={()=>goTab("kb")}/>
           </div>
         </div>
         )}
@@ -818,7 +952,7 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
         <div className="card" style={{padding:18,background:"var(--accent-soft)",border:"1px solid #F3D8CB"}}>
           <div style={{fontWeight:700,fontSize:15}}>첫 기록을 시작해보세요</div>
           <div className="small" style={{marginTop:6,lineHeight:1.55}}>녹음을 끄면 요약 · 할 일 · 다음 약속이 자동으로 정리돼요.</div>
-          <button className="btn btn-accent" style={{width:"100%",padding:13,marginTop:14,fontSize:14}} onClick={startRec}>첫 녹음 시작</button>
+          <button className="btn btn-accent" style={{width:"100%",padding:13,marginTop:14,fontSize:14}} onClick={startRec}>첫 미팅 기록</button>
         </div>
       </div>
       )}
@@ -868,7 +1002,7 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
       <div className="pad" style={{marginTop:18}}>
         <button className="btn btn-accent" onClick={startRec}
           style={{width:"100%",padding:"16px",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",gap:9}}>
-          {I.mic({width:20,height:20})} {isBiz?"녹음 · 사진으로 기록":"강의 녹음 시작"}
+          {I.mic({width:20,height:20})} {isBiz?"미팅 기록":"강의 기록"}
         </button>
       </div>
 
@@ -893,7 +1027,10 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
         </div>
         <div className="row" style={{gap:8,alignItems:"center"}}>
           <button type="button" className="chip" style={{color:"var(--muted)"}} onClick={openTodoArchive}>전체</button>
-          <button type="button" className="chip" style={{color:"var(--accent-deep)"}} onClick={()=>{ setFocusTodoAdd(true); setTimeout(()=>setFocusTodoAdd(false),300); }}>+ 대분류</button>
+          <button type="button" className="chip" style={{color:"var(--accent-deep)"}} onClick={()=>{
+            setFocusTodoAdd(true);
+            window.setTimeout(()=>setFocusTodoAdd(false), 500);
+          }}>+ 대분류</button>
           <div className="seg" style={{width:128}}>
             <button type="button" className={todoView==="check"?"on":""} onClick={()=>setTodoView("check")} style={{padding:"6px 0",fontSize:12.5}}>체크</button>
             <button type="button" className={todoView==="board"?"on":""} onClick={()=>setTodoView("board")} style={{padding:"6px 0",fontSize:12.5}}>보드</button>
@@ -932,7 +1069,7 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
         ) : (
         <div className="card" style={{padding:18,textAlign:"center"}}>
           <div className="small">아직 기록이 없어요</div>
-          <button className="btn btn-accent" style={{marginTop:12,padding:"11px 20px",fontSize:13}} onClick={startRec}>첫 녹음하기</button>
+          <button className="btn btn-accent" style={{marginTop:12,padding:"11px 20px",fontSize:13}} onClick={startRec}>첫 기록하기</button>
         </div>
         )}
       </div>
@@ -1001,13 +1138,13 @@ function Checkbox({on}){
 
 /* ---------------- CLIENTS ---------------- */
 function TagChip({t}){
-  const c=TAG_COLORS[t];
+  const c=tagColor(t);
   return <span className={"tag"+(c&&c!=="accent"?" "+c:"")}>{t}</span>;
 }
 
-function Clients({group,setGroup,open,onAdd,onRefresh,seg}){
+function Clients({group,setGroup,open,onAdd,onRefresh,seg,contactPresets={},onOpenOrganize}){
   const CLIENTS=getClients();
-  const GROUPS=contactGroups(CLIENTS);
+  const GROUPS=mergedContactGroups({ contacts: contactPresets }, CLIENTS);
   const [view,setView]=useState("list");
   const [tag,setTag]=useState("전체");
   const [favs,setFavs]=useState(()=>new Set(CLIENTS.filter(c=>c.fav).map(c=>c.id)));
@@ -1020,7 +1157,7 @@ function Clients({group,setGroup,open,onAdd,onRefresh,seg}){
     const next=!favs.has(id);
     setFavs(p=>{const n=new Set(p); next?n.add(id):n.delete(id); return n;});
     try{ await api.updateContact(id,{ favorite: next }); }
-    catch(err){ setFavs(p=>{const n=new Set(p); next?n.delete(id):n.add(id); return n;}); alert(err.message); }
+    catch(err){ setFavs(p=>{const n=new Set(p); next?n.delete(id):n.add(id); return n;}); notifyError(err, err.message); }
   };
   const term=T(seg,"contacts");
   const allTags=["전체",...Array.from(new Set(CLIENTS.flatMap(c=>c.tags||[])))];
@@ -1049,7 +1186,7 @@ function Clients({group,setGroup,open,onAdd,onRefresh,seg}){
       {/* 그룹(소속) 필터 */}
       <div className="pad row" style={{gap:8,marginTop:14,overflowX:"auto"}}>
         {GROUPS.map(g=><button key={g} className={"chip"+(group===g?" on":"")} onClick={()=>setGroup(g)}>{g}</button>)}
-        <button className="chip" style={{color:"var(--muted)"}}>+ 그룹</button>
+        <button className="chip" style={{color:"var(--muted)"}} onClick={onOpenOrganize}>+ 그룹 설정</button>
       </div>
       {/* 태그(상태) 필터 */}
       <div className="pad row" style={{gap:7,marginTop:9,overflowX:"auto",alignItems:"center"}}>
@@ -1245,13 +1382,16 @@ function ClientMap({open,onRefresh}){
   );
 }
 
-function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting}){
+function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,contactPresets={groups:[],tags:[]}}){
   const mt=T(seg,"meeting");
   const CLIENTS=getClients();
+  const contactTags=contactPresets.tags||[];
+  const groupOptions=contactGroupOptions({ contacts: contactPresets }, CLIENTS);
   const [fav,setFav]=useState(!!c.fav);
   const [detail,setDetail]=useState(null);
   const [loading,setLoading]=useState(true);
   const [tags,setTags]=useState(c.tags||[]);
+  const [grp,setGrp]=useState(c.group||"미분류");
   const [pickReferrer,setPickReferrer]=useState(false);
   const [addingDeal,setAddingDeal]=useState(false);
   const [dealSaving,setDealSaving]=useState(false);
@@ -1261,11 +1401,18 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting}){
     setLoading(true);
     reload().finally(()=>setLoading(false));
   },[c.id]);
-  useEffect(()=>{ setTags(c.tags||[]); },[c.id,c.tags]);
+  useEffect(()=>{ setTags(c.tags||[]); setGrp(c.group||"미분류"); },[c.id,c.tags,c.group]);
   const patchTags=async (next)=>{
     setTags(next);
     try{ await api.updateContact(c.id,{ tags: next }); onRefresh?.(); }
-    catch(e){ alert(e.message); setTags(c.tags||[]); }
+    catch(e){ notifyError(e, e.message); setTags(c.tags||[]); }
+  };
+  const patchGroup=async (next)=>{
+    setGrp(next);
+    try{
+      await api.updateContact(c.id,{ group: next==="미분류"?null:next });
+      onRefresh?.();
+    }catch(e){ notifyError(e, e.message); setGrp(c.group||"미분류"); }
   };
   const setReferrer=async (refId)=>{
     try{
@@ -1273,14 +1420,14 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting}){
       setPickReferrer(false);
       onRefresh?.();
       reload();
-    }catch(e){ alert(e.message); }
+    }catch(e){ notifyError(e, e.message); }
   };
   const pickQuoteFile=async ()=>{
     try{
       const file=await pickAnyFile();
       setDealForm(p=>({...p,quoteFile:file}));
     }catch(e){
-      if(!isPickCancelled(e) && e?.message!=="파일이 선택되지 않았습니다") alert(e.message);
+      if(!isPickCancelled(e) && e?.message!=="파일이 선택되지 않았습니다") notifyError(e, e.message);
     }
   };
   const attachQuoteToDeal=async (d)=>{
@@ -1295,11 +1442,11 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting}){
       reload();
       onRefresh?.();
     }catch(e){
-      if(!isPickCancelled(e) && e?.message!=="파일이 선택되지 않았습니다") alert(e.message||"첨부 실패");
+      if(!isPickCancelled(e) && e?.message!=="파일이 선택되지 않았습니다") notifyError(e, e.message||"첨부 실패");
     }finally{ setDealSaving(false); }
   };
   const saveDeal=async ()=>{
-    if(!dealForm.title.trim()) return alert("딜 제목을 입력하세요");
+    if(!dealForm.title.trim()){ toastError("딜 제목을 입력하세요"); return; }
     setDealSaving(true);
     try{
       let quoteKey;
@@ -1315,7 +1462,7 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting}){
       setDealForm({title:"",stage:"리드",supplyAmount:"",quoteFile:null});
       reload();
       onRefresh?.();
-    }catch(e){ alert(e.message); }
+    }catch(e){ notifyError(e, e.message); }
     finally{ setDealSaving(false); }
   };
   const toggleOpenTodo=async (t)=>{
@@ -1341,7 +1488,7 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting}){
       await api.deleteDeal(d.id);
       reload();
       onRefresh?.();
-    }catch(e){ alert(e.message); }
+    }catch(e){ notifyError(e, e.message); }
   };
   return (
     <div className="fade">
@@ -1353,7 +1500,7 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting}){
             const next=!fav;
             setFav(next);
             try{ await api.updateContact(c.id,{ favorite: next }); }
-            catch(e){ setFav(!next); alert(e.message); }
+            catch(e){ setFav(!next); notifyError(e, e.message); }
           }}>{I.star({})}</button>
         </div>
       </div>
@@ -1372,7 +1519,7 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting}){
         <div className="row" style={{gap:10,marginTop:16}}>
           <button className="btn btn-accent" style={{flex:1,padding:13,display:"flex",justifyContent:"center",gap:7}}
             onClick={()=>c.phone&&window.open(`tel:${c.phone.replace(/\s/g,"")}`)} disabled={!c.phone}>{I.phone({})} 전화</button>
-          <button className="btn btn-ghost" style={{flex:1,padding:13}} onClick={startRec}>{mt} 녹음</button>
+          <button className="btn btn-ghost" style={{flex:1,padding:13}} onClick={startRec}>{mt} 기록</button>
         </div>
       </div>
 
@@ -1561,19 +1708,27 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting}){
         )}
       </div>
 
-      {/* 태그 (자유·복수) */}
-      <div className="pad row between"><div className="section-h">태그</div>
-        <span className="small" style={{marginTop:22}}>그룹 {c.group}</span></div>
-      <div className="pad row" style={{gap:7,flexWrap:"wrap",marginBottom:8}}>
-        {tags.map(t=>{const col=TAG_COLORS[t];return(
+      {/* 그룹 · 태그 */}
+      <div className="pad row between"><div className="section-h">그룹 · 태그</div></div>
+      <div className="pad" style={{paddingTop:0,marginBottom:4}}>
+        <div className="small" style={{fontWeight:700,marginBottom:8}}>그룹</div>
+        <div className="row" style={{gap:7,flexWrap:"wrap",marginBottom:14}}>
+          {groupOptions.map(g=>(
+            <button key={g} type="button" className={"chip"+(grp===g?" on":"")} onClick={()=>patchGroup(g)}>{g}</button>
+          ))}
+        </div>
+        <div className="small" style={{fontWeight:700,marginBottom:8}}>태그</div>
+        <div className="row" style={{gap:7,flexWrap:"wrap",marginBottom:8}}>
+        {tags.map(t=>{const col=tagColor(t);return(
           <span key={t} className={"tag"+(col&&col!=="accent"?" "+col:"")} style={{padding:"7px 11px",gap:6,cursor:"pointer"}}
             onClick={()=>patchTags(tags.filter(x=>x!==t))}>
             {t} ✕
           </span>
         );})}
-        {PRESET_TAGS.filter(t=>!tags.includes(t)).map(t=>(
+        {contactTags.filter(t=>!tags.includes(t)).map(t=>(
           <button key={t} type="button" className="chip" style={{padding:"7px 12px",fontSize:12}} onClick={()=>patchTags([...tags,t])}>+ {t}</button>
         ))}
+        </div>
       </div>
 
       {/* 이 사람과의 예정 일정 */}
@@ -1672,19 +1827,42 @@ function MediaPlayer({mediaKey,compact}){
   return null;
 }
 
-function MeetingDetailView({data,back,refreshTodos,onDeleted}){
+function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={categories:[],tags:[]}}){
   const seed=data||{};
   const [meeting,setMeeting]=useState(seed);
   const [meetingTodos,setMeetingTodos]=useState([]);
   const [loading,setLoading]=useState(!!seed.id);
+  const [metaTags,setMetaTags]=useState(seed.tags||[]);
+  const [category,setCategory]=useState(seed.category||"");
   useEffect(()=>{
     if(!seed.id){ setLoading(false); return; }
     setLoading(true);
     api.getMeeting(seed.id).then((m)=>{
-      setMeeting(meetingToUi(m));
+      const ui=meetingToUi(m);
+      setMeeting(ui);
+      setMetaTags(ui.tags||[]);
+      setCategory(ui.category||"");
       setMeetingTodos((m.todos||[]).map(todoToUi));
     }).catch(()=>{}).finally(()=>setLoading(false));
   },[seed.id]);
+  const patchMeeting=async (body)=>{
+    if(!meeting.id) return;
+    const m=await api.updateMeeting(meeting.id,body);
+    const ui=meetingToUi(m);
+    setMeeting(ui);
+    setMetaTags(ui.tags||[]);
+    setCategory(ui.category||"");
+  };
+  const toggleMetaTag=async (t)=>{
+    const next=metaTags.includes(t)?metaTags.filter(x=>x!==t):[...metaTags,t];
+    setMetaTags(next);
+    try{ await patchMeeting({ tags: next }); }catch(e){ notifyError(e); setMetaTags(metaTags); }
+  };
+  const setMeetingCategory=async (c)=>{
+    const next=category===c?"":c;
+    setCategory(next);
+    try{ await patchMeeting({ category: next||null }); }catch(e){ notifyError(e); setCategory(category); }
+  };
   const s=meeting.summary||meeting._raw?.summary;
   const mediaKey=meeting.mediaKey||meeting._raw?.mediaKey;
   const contact=meeting.contact;
@@ -1710,6 +1888,24 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted}){
               <div className="small">{contact.person||""}{meeting.createdLabel?` · ${meeting.createdLabel}`:""}</div></div>
           </div>
         )}
+        <div className="section-h" style={{marginTop:0}}>분류 · 태그</div>
+        <div className="card" style={{padding:14,marginBottom:14}}>
+          <div className="small" style={{fontWeight:700,marginBottom:8}}>카테고리</div>
+          <div className="row" style={{gap:7,flexWrap:"wrap",marginBottom:12}}>
+            {(meetingPresets.categories||[]).map((c)=>(
+              <button key={c} type="button" className={"chip"+(category===c?" on":"")} style={{padding:"6px 12px",fontSize:12}}
+                onClick={()=>setMeetingCategory(c)}>{c}</button>
+            ))}
+            {!meetingPresets.categories?.length && <span className="small">설정 → 카테고리 · 태그에서 추가하세요</span>}
+          </div>
+          <div className="small" style={{fontWeight:700,marginBottom:8}}>태그</div>
+          <div className="row" style={{gap:7,flexWrap:"wrap"}}>
+            {(meetingPresets.tags||[]).map((t)=>(
+              <button key={t} type="button" className={"chip"+(metaTags.includes(t)?" on":"")} style={{padding:"6px 12px",fontSize:12}}
+                onClick={()=>toggleMetaTag(t)}>#{t}</button>
+            ))}
+          </div>
+        </div>
         <div className="section-h" style={{marginTop:0}}>{mediaKey?(isAudioMediaKey(mediaKey)?"녹음 듣기":"첨부 미디어"):"녹음"}</div>
         {mediaKey ? (
           <div style={{marginBottom:14}}><MediaPlayer mediaKey={mediaKey}/></div>
@@ -1766,38 +1962,134 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted}){
 }
 
 /* ---------------- RECORD + SUMMARY ---------------- */
-function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goClients,summary,mediaKey,user}){
+function RecordProcessing({proc}){
+  const isPhoto=proc?.mode==="photo";
+  const steps=isPhoto
+    ? [
+        { id:"upload", label:"사진 업로드" },
+        { id:"ocr", label:"글자 읽기 (OCR)" },
+        { id:"summarize", label:"요약 · 할 일 추출" },
+        { id:"done", label:"저장" },
+      ]
+    : [
+        { id:"upload", label: proc?.mode==="upload" ? "녹음 파일 업로드" : "녹음 저장" },
+        { id:"transcribe", label:"음성 전사" },
+        { id:"summarize", label:"요약 · 할 일 추출" },
+        { id:"done", label:"저장" },
+      ];
+  const order=steps.map(s=>s.id);
+  const cur=order.indexOf(proc?.step);
+  const pct=Math.min(100, Math.max(0, proc?.progress ?? 0));
+  return (
+    <div className="fade" style={{padding:"100px 28px 40px",textAlign:"center"}}>
+      <div className="spinner" style={{margin:"0 auto"}}/>
+      <div style={{marginTop:22,fontWeight:700,fontSize:17}}>정리하는 중…</div>
+      <div className="proc-pct">{pct}%</div>
+      <div className="proc-bar"><i style={{width:`${pct}%`}}/></div>
+      <div className="small" style={{marginTop:14,lineHeight:1.6}}>{proc?.label || "잠시만 기다려주세요"}</div>
+      <div className="proc-steps">
+        {steps.map((s,i)=>{
+          const done=cur>i || proc?.step==="done";
+          const on=proc?.step===s.id;
+          return (
+            <div key={s.id} className={"proc-step"+(done?" done":on?" on":"")}>
+              <span>{done?"✓":on?"●":"○"}</span>
+              <span>{s.label}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="small" style={{marginTop:18,color:"var(--muted)",lineHeight:1.5}}>
+        {isPhoto ? "사진이 많으면 조금 더 걸릴 수 있어요" : "녹음이 길수록 전사·요약에 시간이 더 걸려요"}
+      </div>
+    </div>
+  );
+}
+
+function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goClients,summary,mediaKey,user,proc,onProcessingStart,onProcFailed,onStartLive,onCancelLive,onBack}){
   const CLIENTS=getClients();
   const [att,setAtt]=useState(()=>CLIENTS.slice(0,2).map(c=>c.id));
   const [pick,setPick]=useState(false);
   const [q,setQ]=useState("");
-  const [mode,setMode]=useState("rec");
+  /** null=선택 전 | rec | upload | photo */
+  const [inputMode,setInputMode]=useState(null);
+  const liveOn=phase==="rec";
   const [photos,setPhotos]=useState([]);
+  const [audioFile,setAudioFile]=useState(null);
+  const [audioDur,setAudioDur]=useState(0);
   const [finishing,setFinishing]=useState(false);
+  const [interrupted,setInterrupted]=useState(false);
   const recorderRef=useRef(null);
   const toggleAtt=(id)=>setAtt(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
   const found=CLIENTS.filter(c=>(c.person+c.co).toLowerCase().includes(q.trim().toLowerCase()));
   const primary=CLIENTS.find(c=>att.includes(c.id))||CLIENTS[0];
+  const finishLabel=finishing?"업로드 중…":"녹음 종료 · 요약하기";
+
+  const resetChoose=()=>{
+    setInputMode(null);
+    setAudioFile(null);
+    setAudioDur(0);
+    setInterrupted(false);
+  };
+
+  const cancelLive=()=>{
+    onCancelLive?.();
+    resetChoose();
+  };
+
+  useEffect(()=>{ if(phase==="setup"||phase==="sum") setFinishing(false); },[phase]);
 
   useEffect(()=>{
-    if(phase!=="rec"||mode!=="rec") return;
-    const rec=new AudioRecorder();
+    if(!liveOn) return;
+    setInterrupted(false);
+    const rec=new AudioRecorder({
+      onInterrupted: ()=>{
+        setInterrupted(true);
+        onCancelLive?.();
+        setInputMode(null);
+      },
+    });
     recorderRef.current=rec;
-    rec.start().catch(e=>alert("마이크 권한이 필요합니다: "+e.message));
-    return ()=>{ rec.stream?.getTracks().forEach(t=>t.stop()); };
-  },[phase,mode]);
+    rec.start().catch(e=>toastError("마이크 권한이 필요합니다: "+e.message));
+    return ()=>{ rec.dispose(); };
+  },[liveOn,onCancelLive]);
 
   const addPhoto=async ()=>{
     try{
       const file=await pickImageFile(true);
       const preview=URL.createObjectURL(file);
       setPhotos(p=>[...p,{file,preview}]);
-    }catch(e){ if(!isPickCancelled(e)) alert(e.message); }
+    }catch(e){ if(!isPickCancelled(e)) notifyError(e, e.message); }
+  };
+
+  const pickAudio=async ()=>{
+    try{
+      const file=await pickAudioFile();
+      setAudioFile(file);
+      setInputMode("upload");
+      setAudioDur(0);
+      const dur=await audioDurationSec(file);
+      setAudioDur(dur);
+    }catch(e){ if(!isPickCancelled(e)) notifyError(e, e.message); }
+  };
+
+  const startLive=()=>{
+    setInputMode("rec");
+    onStartLive?.();
+  };
+
+  const formatBytes=(n)=>{
+    if(n<1024) return `${n}B`;
+    if(n<1024*1024) return `${(n/1024).toFixed(1)}KB`;
+    return `${(n/(1024*1024)).toFixed(1)}MB`;
   };
 
   const finish=async ()=>{
     if(finishing) return;
     setFinishing(true);
+    const mode=inputMode;
+    const uploadLabel=mode==="upload" ? "녹음 파일 업로드 중…" : mode==="photo" ? "사진 업로드 중…" : "녹음 저장 중…";
+    onProcessingStart?.({ mode, step:"upload", label:uploadLabel, progress:12 });
     try{
       const payload={
         mode,
@@ -1809,43 +2101,40 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
         if(!recorderRef.current) throw new Error("녹음이 준비되지 않았습니다");
         const blob=await recorderRef.current.stop();
         const ext=blob.type.includes("webm")?"webm":"m4a";
-        payload.mediaKey=await uploadBlob(blob,`recording-${Date.now()}.${ext}`,blob.type);
+        payload.mediaKey=await uploadBlob(blob,`recording-${Date.now()}.${ext}`,blob.type||"audio/webm");
+        payload.durationSec=secs;
+      }else if(mode==="upload"){
+        if(!audioFile) throw new Error("녹음 파일을 선택해주세요");
+        const maxAudio=150*1024*1024;
+        if(audioFile.size>maxAudio){
+          const mb=(audioFile.size/(1024*1024)).toFixed(1);
+          throw new Error(`파일이 너무 큽니다 (${mb}MB · 최대 150MB)`);
+        }
+        payload.mediaKey=await uploadFile(audioFile,{ audio:true });
+        payload.durationSec=audioDur || Math.max(1, Math.round(audioFile.size/(128*1024/8)));
       }else{
         if(!photos.length) throw new Error("사진을 추가해주세요");
-        payload.imageKeys=await Promise.all(photos.map((p,i)=>uploadFile(p.file)));
+        payload.imageKeys=await Promise.all(photos.map((p)=>uploadFile(p.file)));
       }
+      onProcessingStart?.({ mode, step: mode==="photo" ? "ocr" : "transcribe", label:"업로드 완료 · AI 처리 시작…", progress:32 });
       await onComplete(payload);
-    }catch(e){ alert(e.message||"업로드 실패"); setFinishing(false); }
+    }catch(e){
+      notifyError(e, e.message||"업로드 실패");
+      setFinishing(false);
+      onProcFailed?.();
+    }
   };
 
   if(phase==="sum") return <Summary todos={todos} toggleTodo={toggleTodo} goClients={goClients} att={att} summary={summary} mediaKey={mediaKey}/>;
-  if(phase==="proc") return (
-    <div className="fade" style={{padding:"120px 30px",textAlign:"center"}}>
-      <div className="spinner" style={{margin:"0 auto"}}/>
-      <div style={{marginTop:22,fontWeight:700,fontSize:17}}>정리하는 중…</div>
-      <div className="small" style={{marginTop:8,lineHeight:1.6}}>
-        {mode==="photo" ? <>사진 속 글자를 읽고(OCR)<br/>타임라인·키워드·할 일을 추출하고 있어요</>
-                        : <>화자별 대화를 전사하고<br/>타임라인·키워드·할 일을 추출하고 있어요</>}
-      </div>
-    </div>
-  );
+  if(phase==="proc") return <RecordProcessing proc={proc}/>;
   // 입력 화면
   return (
     <div className="fade" style={{padding:"24px 24px 30px"}}>
-      <div className="h-eyebrow" style={{textAlign:"center"}}>새 기록{primary?` · ${primary.co||primary.person}`:""}</div>
-
-      {/* 녹음 / 사진 모드 */}
-      <div className="seg" style={{marginTop:14}}>
-        <button className={mode==="rec"?"on":""} onClick={()=>setMode("rec")}>녹음</button>
-        <button className={mode==="photo"?"on":""} onClick={()=>{
-          if(user?.isTrial||user?.allowFileUpload===false){ alert("체험 기간에는 파일 업로드가 불가합니다. 녹음만 이용할 수 있어요."); return; }
-          setMode("photo");
-        }}>사진 · 문서</button>
+      <div className="row between" style={{alignItems:"center"}}>
+        <button type="button" className="chip" style={{color:"var(--muted)",padding:"6px 10px"}} onClick={onBack}>← 돌아가기</button>
+        <div className="h-eyebrow" style={{textAlign:"center",flex:1}}>새 기록{primary?` · ${primary.co||primary.person}`:""}</div>
+        <span style={{width:72}}/>
       </div>
-      {user?.isTrial && <div className="small" style={{marginTop:10,textAlign:"center",color:"#8a6d3b"}}>
-        체험 중: 녹음 1시간 한도 · 파일 업로드 불가
-      </div>}
-
       {/* 참석자 태그 */}
       <div style={{marginTop:16}}>
         <div className="small" style={{fontWeight:700,marginBottom:8}}>참석자</div>
@@ -1882,9 +2171,53 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
         )}
       </div>
 
-      {mode==="rec" ? (
+      {!inputMode && !liveOn ? (
       <>
-      <div style={{position:"relative",width:150,height:150,margin:"30px auto 0"}}>
+      {interrupted && (
+        <div className="card fade" style={{padding:"12px 14px",marginTop:14,background:"#FFF8F6",border:"1px solid #F3D8CB"}}>
+          <div className="small" style={{color:"var(--accent-deep)",lineHeight:1.55,fontWeight:600}}>
+            녹음이 중단됐어요. 다시 시작하거나 파일을 올려주세요.
+          </div>
+        </div>
+      )}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:22}}>
+        <button className="btn btn-accent" style={{padding:"22px 12px",fontSize:14,flexDirection:"column",gap:8,display:"flex",alignItems:"center",justifyContent:"center"}}
+          onClick={startLive}>
+          {I.mic({width:24,height:24})}
+          <span>녹음 시작</span>
+        </button>
+        <button className="btn" style={{padding:"22px 12px",fontSize:14,background:"var(--ink)",color:"#fff",flexDirection:"column",gap:8,display:"flex",alignItems:"center",justifyContent:"center"}}
+          onClick={pickAudio}>
+          {I.plus({width:24,height:24})}
+          <span>파일 올리기</span>
+        </button>
+      </div>
+      <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center",color:"var(--muted)"}}>
+        m4a, mp3, wav, webm 등 · 보이스 메모·통화 녹음도 가능해요
+      </div>
+      {!(user?.isTrial||user?.allowFileUpload===false) && (
+        <button type="button" className="chip" style={{display:"block",width:"fit-content",margin:"16px auto 0",color:"var(--muted)"}}
+          onClick={()=>setInputMode("photo")}>사진 · 문서로 기록</button>
+      )}
+      {user?.isTrial && <div className="small" style={{marginTop:12,textAlign:"center",color:"#8a6d3b"}}>
+        체험 중: 녹음·음성 파일 1시간 한도
+      </div>}
+      </>
+      ) : liveOn ? (
+      <>
+      {interrupted && (
+        <div className="card fade" style={{padding:"12px 14px",marginTop:14,background:"#FFF8F6",border:"1px solid #F3D8CB"}}>
+          <div className="small" style={{color:"var(--accent-deep)",lineHeight:1.55,fontWeight:600}}>
+            녹음이 중단됐어요. 폰을 잠그거나 다른 앱으로 나가면 녹음이 멈출 수 있어요.
+          </div>
+        </div>
+      )}
+      <div className="card" style={{padding:"11px 14px",marginTop:14,background:"#FBF9F4",border:"1px solid var(--line)"}}>
+        <div className="small" style={{lineHeight:1.5,textAlign:"center"}}>
+          녹음 중 · 화면이 꺼지지 않도록 유지해요
+        </div>
+      </div>
+      <div style={{position:"relative",width:150,height:150,margin:"24px auto 0"}}>
         <span style={{position:"absolute",inset:0,borderRadius:"50%",background:"var(--accent)",animation:"pulse 2s ease-out infinite"}}/>
         <span style={{position:"absolute",inset:0,borderRadius:"50%",background:"var(--accent)",animation:"pulse 2s ease-out infinite",animationDelay:"1s"}}/>
         <div style={{position:"absolute",inset:32,borderRadius:"50%",background:"var(--accent)",
@@ -1893,7 +2226,6 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
         </div>
       </div>
       <div style={{textAlign:"center",fontSize:38,fontWeight:700,letterSpacing:".02em",marginTop:26,fontVariantNumeric:"tabular-nums"}}>{mmss(secs)}</div>
-      {/* waveform */}
       <div className="row" style={{justifyContent:"center",gap:4,height:34,marginTop:14}}>
         {Array.from({length:21}).map((_,i)=>(
           <span key={i} style={{width:4,height:"100%",borderRadius:3,background:"var(--accent)",opacity:.85,
@@ -1903,15 +2235,40 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
       <div className="row" style={{gap:12,marginTop:18}}>
         <button className="btn btn-ghost" style={{flex:1,padding:14,display:"flex",justifyContent:"center",gap:7,color:"var(--accent-deep)"}}
           onClick={()=>setHl(h=>h+1)}>{I.star({})} 하이라이트{hl>0?` ${hl}`:""}</button>
+        <button className="btn btn-ghost" style={{flex:1,padding:14,color:"var(--muted)"}}
+          onClick={()=>{ if(confirm("녹음을 취소할까요?")) cancelLive(); }}>취소</button>
       </div>
       <button className="btn" style={{width:"100%",marginTop:12,padding:16,background:"var(--ink)",color:"#fff",fontSize:15}}
-        onClick={finish} disabled={finishing}>{finishing?"업로드 중…":"녹음 종료 · 요약하기"}</button>
+        onClick={finish} disabled={finishing}>{finishLabel}</button>
       <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center"}}>참석자를 태그하면 요약이 각 연락처 이력에 쌓여요.</div>
       </>
-      ) : (
+      ) : inputMode==="upload" && audioFile ? (
       <>
-      {/* 사진 · 문서 모드 */}
-      <div className="small" style={{fontWeight:700,marginTop:22,marginBottom:8}}>사진 · 문서 ({photos.length})</div>
+      <div className="card" style={{padding:"14px 16px",marginTop:22,background:"#FBF9F4"}}>
+        <div className="row between" style={{gap:10,alignItems:"flex-start"}}>
+          <div className="row" style={{gap:10,flex:1,minWidth:0}}>
+            {I.mic({width:18,height:18,style:{color:"var(--accent-deep)",flexShrink:0,marginTop:2}})}
+            <div style={{minWidth:0}}>
+              <div style={{fontWeight:600,fontSize:14,wordBreak:"break-all"}}>{audioFile.name}</div>
+              <div className="small" style={{marginTop:4}}>
+                {formatBytes(audioFile.size)}{audioDur>0?` · ${mmss(audioDur)}`:""}
+              </div>
+            </div>
+          </div>
+          <span onClick={resetChoose} style={{cursor:"pointer",opacity:.55,fontSize:18,lineHeight:1,flexShrink:0}}>✕</span>
+        </div>
+      </div>
+      <button className="chip" style={{width:"100%",marginTop:10,padding:12,color:"var(--accent-deep)"}} onClick={pickAudio}>
+        다른 파일 선택
+      </button>
+      <button className="btn" style={{width:"100%",marginTop:18,padding:16,background:"var(--ink)",color:"#fff",fontSize:15}}
+        onClick={finish} disabled={finishing}>{finishLabel}</button>
+      <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center"}}>참석자를 태그하면 요약이 각 연락처 이력에 쌓여요.</div>
+      </>
+      ) : inputMode==="photo" ? (
+      <>
+      <button type="button" className="chip" style={{marginTop:14,color:"var(--muted)"}} onClick={()=>setInputMode(null)}>← 녹음 · 파일로</button>
+      <div className="small" style={{fontWeight:700,marginTop:14,marginBottom:8}}>사진 · 문서 ({photos.length})</div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
         {photos.map((p,i)=>(
           <div key={i} style={{aspectRatio:"1/1",borderRadius:14,background:"#ECE8E0",position:"relative",overflow:"hidden"}}>
@@ -1940,7 +2297,7 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
         onClick={finish}>{finishing?"업로드 중…":"사진으로 정리하기"}</button>
       <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center"}}>녹음 없이 사진만으로도 미팅을 기록할 수 있어요.</div>
       </>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -2048,311 +2405,63 @@ function Summary({todos,toggleTodo,goClients,att=[],summary,mediaKey}){
   );
 }
 
-/* ---------------- CALENDAR ---------------- */
-const REM_OPTS=["없음","10분 전","30분 전","1시간 전","1일 전"];
-function monthStart(d){ const x=new Date(d); x.setDate(1); x.setHours(0,0,0,0); return x; }
-function Calendar({openDetail}){
-  const [mode,setMode]=useState("month");
-  const [viewMonth,setViewMonth]=useState(()=>monthStart(new Date()));
-  const [selDay,setSelDay]=useState(()=>new Date().getDate());
-  const [events,setEvents]=useState([]);
-  const [defRem,setDefRem]=useState(["1시간 전"]);
-  const [rem,setRem]=useState({});
-  const [sheet,setSheet]=useState(null);
-  const [adding,setAdding]=useState(false);
-  const [newEv,setNewEv]=useState({title:"",time:"10:00",place:""});
-  const [savingEv,setSavingEv]=useState(false);
-  const days=["일","월","화","수","목","금","토"];
-  const year=viewMonth.getFullYear();
-  const month=viewMonth.getMonth();
-  const monthLabel=`${year}년 ${month+1}월`;
-  const today=new Date();
-
-  useEffect(()=>{
-    const from=monthStart(viewMonth);
-    const to=new Date(year, month+1, 0, 23, 59, 59);
-    api.listEvents(from.toISOString(), to.toISOString())
-      .then(list=>setEvents((list||[]).map(eventToUi)))
-      .catch(()=>setEvents([]));
-  },[viewMonth, year, month]);
-
-  const eventsOnDay=(day)=>events.filter(e=>e.year===year&&e.month===month+1&&e.day===day);
-  const evRows=eventsOnDay(selDay);
-  const remFor=(key)=> rem[key]!==undefined ? rem[key] : defRem;
-  const remLabel=(arr)=> (!arr||arr.length===0||arr.includes("없음")) ? "알림 없음" : arr[0]+(arr.length>1?` 외 ${arr.length-1}`:"");
-  const applyRem=async (val)=>{
-    if(!sheet) return;
-    if(sheet.type==="default") setDefRem(val);
-    else {
-      setRem(p=>({...p,[sheet.key]:val}));
-      if(sheet.eventId){
-        try{ await api.updateEvent(sheet.eventId,{ reminders: val }); reloadEvents(); }
-        catch(e){ alert(e.message); }
-      }
-    }
-  };
-  const reloadEvents=()=>{
-    const from=monthStart(viewMonth);
-    const to=new Date(year, month+1, 0, 23, 59, 59);
-    api.listEvents(from.toISOString(), to.toISOString())
-      .then(list=>setEvents((list||[]).map(eventToUi)))
-      .catch(()=>setEvents([]));
-  };
-  const deleteEvent=async (e,ev)=>{
-    ev?.stopPropagation();
-    if(!confirmDelete(e.title||"일정")) return;
-    try{
-      await api.deleteEvent(e.id);
-      reloadEvents();
-    }catch(err){ alert(err.message||"삭제 실패"); }
-  };
-  const saveNewEvent=async ()=>{
-    if(!newEv.title.trim()) return alert("제목을 입력하세요");
-    setSavingEv(true);
-    try{
-      const [hh,mm]=(newEv.time||"10:00").split(":").map(Number);
-      const startsAt=new Date(year, month, selDay, hh||10, mm||0);
-      await api.createEvent({
-        title: newEv.title.trim(),
-        startsAt: startsAt.toISOString(),
-        place: newEv.place.trim()||undefined,
-        reminders: defRem,
-      });
-      setAdding(false);
-      setNewEv({title:"",time:"10:00",place:""});
-      reloadEvents();
-    }catch(e){ alert(e.message||"일정 저장 실패"); }
-    finally{ setSavingEv(false); }
-  };
-
-  return (
-    <div className="fade">
-      <div className="pad" style={{marginTop:8}}>
-        <div className="h-eyebrow">{monthLabel}</div>
-        <div className="row between"><div className="h-title">캘린더</div>
-          <div className="seg" style={{width:130}}>
-            <button className={mode==="week"?"on":""} onClick={()=>setMode("week")}>주</button>
-            <button className={mode==="month"?"on":""} onClick={()=>setMode("month")}>월</button>
-          </div>
-        </div>
-      </div>
-
-      <div className="pad" style={{marginTop:12}}>
-        <div className="card row between" style={{padding:"12px 15px",cursor:"pointer"}} onClick={()=>setSheet({type:"default"})}>
-          <div className="row" style={{gap:9}}>{I.bell({width:17,height:17,style:{color:"var(--accent-deep)"}})}
-            <span style={{fontWeight:600,fontSize:13.5}}>기본 알림</span></div>
-          <div className="row" style={{gap:6,color:"var(--muted)"}}>
-            <span style={{fontWeight:700,fontSize:13,color:"var(--ink)"}}>{remLabel(defRem)}</span>{I.chevron({width:16,height:16})}
-          </div>
-        </div>
-      </div>
-
-      {mode==="week" ? <WeekStrip days={days} year={year} month={month} selDay={selDay} setSelDay={setSelDay} events={events}/>
-        : <MonthGrid days={days} year={year} month={month} selDay={selDay} setSelDay={setSelDay} events={events} today={today}/>}
-
-      <div className="divider" style={{margin:"16px 20px 0"}}/>
-      <div className="pad" style={{marginTop:16,marginBottom:10}}>
-        <div className="row between" style={{marginBottom:10}}>
-          <div className="section-h" style={{marginTop:0}}>{month+1}월 {selDay}일 일정</div>
-          <button className="chip" style={{color:"var(--accent-deep)"}} onClick={()=>setAdding(true)}>+ 일정 추가</button>
-        </div>
-        {evRows.length===0 && <div className="small" style={{textAlign:"center",padding:"30px 0"}}>일정이 없습니다</div>}
-        {evRows.map((e,i)=>{
-          const key=selDay+"-"+e.id; const r=remFor(key); const on=r&&r.length&&!r.includes("없음");
-          return (
-            <div key={e.id} className="card" style={{padding:15,marginBottom:10}}>
-              <div className="row" style={{gap:13,cursor:"pointer"}}
-                onClick={()=>openDetail&&openDetail("event",e)}>
-                <div style={{width:48,flex:"0 0 auto"}}><div style={{fontWeight:700,fontSize:14,color:"var(--accent-deep)"}}>{e.time}</div></div>
-                <div style={{width:3,alignSelf:"stretch",borderRadius:3,background:"var(--accent)"}}/>
-                <div style={{flex:1}}><div style={{fontWeight:600,fontSize:14.5}}>{e.title}</div><div className="small">{e.place}</div></div>
-                <button type="button" className="iconbtn" style={{width:34,height:34,flex:"0 0 auto"}} onClick={(ev)=>deleteEvent(e,ev)} aria-label="일정 삭제">
-                  {I.trash({width:15,height:15,style:{color:"var(--muted)"}})}
-                </button>
-                <span style={{color:"var(--muted)"}}>{I.chevron({})}</span>
-              </div>
-              <div className="row between" style={{marginTop:11,paddingTop:11,borderTop:"1px solid var(--line)"}}
-                onClick={()=>setSheet({type:"event",key,title:e.title,eventId:e.id})} >
-                <div className="row" style={{gap:7,color:on?"var(--accent-deep)":"var(--muted)",cursor:"pointer"}}>
-                  {I.bell({width:15,height:15})}<span style={{fontSize:12.5,fontWeight:600}}>{remLabel(r)}</span>
-                </div>
-                <span className="small" style={{cursor:"pointer"}}>변경</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {adding && <AddEventSheet
-        dateLabel={`${month+1}월 ${selDay}일`}
-        newEv={newEv}
-        setNewEv={setNewEv}
-        onSave={saveNewEvent}
-        saving={savingEv}
-        onClose={()=>{ setAdding(false); setNewEv({title:"",time:"10:00",place:""}); }}/>}
-
-      {sheet && <ReminderSheet title={sheet.type==="default"?"기본 알림":"일정 알림"}
-        subtitle={sheet.type==="event"?sheet.title:"새 일정에 자동 적용돼요"}
-        value={sheet.type==="default"?defRem:remFor(sheet.key)}
-        onApply={applyRem} close={()=>setSheet(null)}/>}
-    </div>
-  );
-}
-
-function SheetPortal({children}){ return createPortal(children, document.body); }
-
-function AddEventSheet({dateLabel,newEv,setNewEv,onSave,saving,onClose}){
-  return (
-    <SheetPortal>
-    <div className="sheetbg" onClick={onClose}>
-      <div className="sheet sheet-form" onClick={e=>e.stopPropagation()}>
-        <div className="sheetbar"/>
-        <div className="sheet-date">{dateLabel}</div>
-        <div className="sheet-head">
-          <h3>일정 추가</h3>
-          <button type="button" className="sheet-x" onClick={onClose} aria-label="닫기">×</button>
-        </div>
-        <div className="sheet-field">
-          <label htmlFor="ev-title">제목</label>
-          <input id="ev-title" className="sheet-input" value={newEv.title}
-            onChange={e=>setNewEv(p=>({...p,title:e.target.value}))} placeholder="미팅, 통화, 방문…"/>
-        </div>
-        <div className="sheet-row">
-          <div className="sheet-field" style={{marginBottom:0}}>
-            <label htmlFor="ev-time">시간</label>
-            <input id="ev-time" type="time" className="sheet-input" value={newEv.time}
-              onChange={e=>setNewEv(p=>({...p,time:e.target.value}))}/>
-          </div>
-          <div className="sheet-field" style={{marginBottom:0}}>
-            <label htmlFor="ev-place">장소</label>
-            <input id="ev-place" className="sheet-input" value={newEv.place}
-              onChange={e=>setNewEv(p=>({...p,place:e.target.value}))} placeholder="선택"/>
-          </div>
-        </div>
-        <div className="sheet-actions">
-          <button type="button" className="btn btn-ghost" onClick={onClose}>취소</button>
-          <button type="button" className="btn btn-accent" onClick={onSave} disabled={saving}>
-            {saving?"저장 중…":"저장"}
-          </button>
-        </div>
-      </div>
-    </div>
-    </SheetPortal>
-  );
-}
-
-function ReminderSheet({title,subtitle,value,onApply,close}){
-  const [val,setVal]=useState(value||["없음"]);
-  const toggle=(opt)=>{
-    if(opt==="없음"){ setVal(["없음"]); return; }
-    let a=val.filter(x=>x!=="없음");
-    a = a.includes(opt) ? a.filter(x=>x!==opt) : [...a,opt];
-    setVal(a.length?a:["없음"]);
-  };
-  const save=()=>{ onApply(val); close(); };
-  return (
-    <SheetPortal>
-    <div className="sheetbg" onClick={close}>
-      <div className="sheet" onClick={e=>e.stopPropagation()}>
-        <div className="sheetbar"/>
-        <div className="h-eyebrow">{title}</div>
-        <div style={{fontWeight:800,fontSize:18,marginTop:4}}>알림 시점</div>
-        <div className="small" style={{marginTop:4}}>{subtitle} · 여러 개 선택할 수 있어요</div>
-        <div style={{marginTop:14}}>
-          {REM_OPTS.map(o=>{
-            const on=val.includes(o);
-            return (
-              <div key={o} className="row between" style={{padding:"13px 2px",borderBottom:"1px solid var(--line)",cursor:"pointer"}} onClick={()=>toggle(o)}>
-                <span style={{fontWeight:on?700:500,fontSize:14.5,color:on?"var(--ink)":"var(--muted)"}}>{o}</span>
-                <span style={{width:22,height:22,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",
-                  border:on?"none":"2px solid var(--line)",background:on?"var(--accent)":"transparent",color:"#fff"}}>{on&&I.check({})}</span>
-              </div>
-            );
-          })}
-        </div>
-        <button className="btn btn-accent" style={{width:"100%",padding:15,marginTop:18,fontSize:15}} onClick={save}>적용</button>
-        <div className="small" style={{textAlign:"center",marginTop:12,lineHeight:1.5}}>알림을 받으려면 홈 화면 추가 시 푸시 권한을 허용해 주세요.</div>
-      </div>
-    </div>
-    </SheetPortal>
-  );
-}
-
-function WeekStrip({days,year,month,selDay,setSelDay,events}){
-  const start=new Date(year,month,Math.max(1,selDay-3));
-  const nums=Array.from({length:7},(_,i)=>{
-    const d=new Date(start); d.setDate(start.getDate()+i);
-    return {day:d.getDate(), month:d.getMonth(), year:d.getFullYear(), dow:d.getDay()};
-  });
-  return (
-    <div className="pad row between" style={{marginTop:18,gap:4}}>
-      {nums.map((n,i)=>{
-        const has=events.some(e=>e.year===n.year&&e.month===n.month+1&&e.day===n.day);
-        const on=n.year===year&&n.month===month&&n.day===selDay;
-        return (
-        <button key={i} onClick={()=>setSelDay(n.day)} style={{flex:1,border:"none",background:"none",cursor:"pointer",padding:"6px 0"}}>
-          <div className="small" style={{fontWeight:600}}>{days[n.dow]}</div>
-          <div style={{margin:"7px auto 0",width:36,height:36,borderRadius:13,display:"flex",alignItems:"center",justifyContent:"center",
-            fontWeight:700,fontSize:15,background:on?"var(--accent)":"transparent",color:on?"#fff":"var(--ink)"}}>{n.day}</div>
-          {has&&!on && <div style={{width:4,height:4,borderRadius:"50%",background:"var(--accent)",margin:"3px auto 0"}}/>}
-        </button>
-      );})}
-    </div>
-  );
-}
-
-function MonthGrid({days,year,month,selDay,setSelDay,events,today}){
-  const firstDow=new Date(year,month,1).getDay();
-  const daysInMonth=new Date(year,month+1,0).getDate();
-  const cells=[];
-  for(let i=0;i<firstDow;i++) cells.push({n:null,muted:true});
-  for(let d=1;d<=daysInMonth;d++) cells.push({n:d,muted:false});
-  while(cells.length%7!==0) cells.push({n:null,muted:true});
-  const isToday=(d)=>today.getFullYear()===year&&today.getMonth()===month&&today.getDate()===d;
-  return (
-    <div className="pad" style={{marginTop:16}}>
-      <div className="mgrid" style={{marginBottom:6}}>
-        {days.map((d,i)=><div key={d} className="small" style={{textAlign:"center",fontWeight:700,
-          color:i===0?"var(--accent-deep)":"var(--muted)",paddingBottom:4}}>{d}</div>)}
-      </div>
-      <div className="mgrid">
-        {cells.map((c,idx)=>{
-          const has=!c.muted && events.some(e=>e.year===year&&e.month===month+1&&e.day===c.n);
-          const cls="mcell"+(c.muted?" muted":"")+(!c.muted&&c.n===selDay?" sel":(!c.muted&&isToday(c.n)?" today":""));
-          return (
-            <div key={idx} className={cls} onClick={()=>!c.muted&&c.n&&setSelDay(c.n)}>
-              <span>{c.n||""}</span>
-              {has && <span className="mdot"/>}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 /* ---------------- KNOWLEDGE ---------------- */
+function KbThumb({article}){
+  const [url,setUrl]=useState(null);
+  const coverKey=kbCoverKey(article);
+  const meta=kbThumbMeta(article);
+  const isBook=(article?.section||"knowledge")==="book";
+  useEffect(()=>{
+    if(!coverKey){ setUrl(null); return; }
+    let alive=true;
+    mediaUrl(coverKey).then((u)=>{ if(alive) setUrl(u); }).catch(()=>{});
+    return ()=>{ alive=false; };
+  },[coverKey]);
+  const cls="kbh-thumb"+(isBook?" book":"");
+  if(url) return <div className={cls}><img src={url} alt=""/></div>;
+  const icon=meta.icon==="file"?I.file({width:22,height:22})
+    :meta.icon==="mic"?I.mic({width:22,height:22,style:{color:"#fff"}})
+    :meta.icon==="book"?I.book({width:22,height:22})
+    :I.book({width:22,height:22});
+  return <div className={cls} style={{background:meta.color}}>{icon}</div>;
+}
+
 function Knowledge({articles,openWrite}){
+  const [section,setSection]=useState("book");
   const [cat,setCat]=useState("전체");
   const [q,setQ]=useState("");
-  const cats=kbCategories(articles);
+  const cats=kbCategories(articles, section);
   const ql=q.trim().toLowerCase();
-  let list=cat==="전체"?articles:articles.filter(a=>a.c===cat);
+  let list=articles.filter(a=>(a.section||"knowledge")===section);
+  if(cat!=="전체") list=list.filter(a=>a.c===cat);
   if(ql) list=list.filter(a=>kbSearchText(a).includes(ql));
   const feat=list[0] && cat==="전체" && !ql ? list[0] : null;
   const rest=feat ? list.slice(1) : list;
-  const thumbIcon=(k)=>k==="file"?I.file({width:22,height:22}):k==="img"?I.image({width:22,height:22}):I.book({width:22,height:22});
+  const sectionInfo=KB_SECTIONS.find(s=>s.id===section);
+  const emptyMsg=section==="book"?"아직 책 기록이 없어요. 독후감을 남겨보세요."
+    :section==="lecture"?"아직 강연 정리가 없어요.":"아직 지식 글이 없어요.";
 
   return (
     <div className="fade" style={{position:"relative",minHeight:"100%"}}>
       <div className="pad" style={{marginTop:8,paddingBottom:100}}>
         <div className="h-eyebrow">Knowledge</div>
         <div className="h-title">지식백과</div>
-        <div className="small" style={{marginTop:4}}>강의·자료·노하우를 글로 정리하고 언제든 검색해요</div>
+        <div className="small" style={{marginTop:4}}>책·강연·지식을 나눠 정리하고 검색해요</div>
 
-        <div className="kbh-search">
+        <div className="kbh-seg">
+          {KB_SECTIONS.map(s=>(
+            <button key={s.id} type="button" className={section===s.id?"on":""}
+              onClick={()=>{ setSection(s.id); setCat("전체"); }}>
+              <span>{s.icon} {s.label}</span>
+              <span className="sub">{s.desc}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="kbh-search" style={{marginTop:16}}>
           {I.search({width:18,height:18})}
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="제목 · 내용 · 태그 검색"/>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder={`${sectionInfo?.label || ""} · 제목 · 내용 검색`}/>
           {q && <span onClick={()=>setQ("")} style={{cursor:"pointer"}}>✕</span>}
         </div>
 
@@ -2364,7 +2473,7 @@ function Knowledge({articles,openWrite}){
 
         {list.length===0 && (
           <div className="small" style={{textAlign:"center",padding:"50px 0",lineHeight:1.6}}>
-            {q?`"${q}"에 대한 글이 없어요.`:"아직 글이 없어요."}<br/>새 글로 정리해 보세요.
+            {q?`"${q}"에 대한 글이 없어요.`:emptyMsg}
           </div>
         )}
 
@@ -2372,10 +2481,11 @@ function Knowledge({articles,openWrite}){
           <>
             <div className="kbh-sech">추천</div>
             <div className="kbh-feat" onClick={()=>openWrite(feat)}>
-              <div className="cover" style={{background:`linear-gradient(135deg,${kbThumbMeta(feat).color},var(--accent-deep))`}}/>
+              <KbFeatCover article={feat}/>
               <span className="kbh-pin">📌 최신 · {feat.c}</span>
               <div className="body">
                 <div className="ttl">{feat.t}</div>
+                {feat.section==="book" && feat.bookMeta?.author && <div className="small" style={{marginTop:4,fontWeight:600}}>{feat.bookMeta.author}</div>}
                 <div className="ex">{kbExcerpt(feat)}</div>
                 <div className="kbh-info">
                   {(feat.tags||[]).slice(0,2).map(t=><span key={t} className="tag gray">{t}</span>)}
@@ -2387,15 +2497,14 @@ function Knowledge({articles,openWrite}){
           </>
         )}
 
-        {rest.length>0 && <div className="kbh-sech">최신 글</div>}
+        {rest.length>0 && <div className="kbh-sech">{kbSectionLabel(section)} 목록</div>}
         <div className="kbh-list">
-        {rest.map(a=>{
-          const meta=kbThumbMeta(a);
-          return (
+        {rest.map(a=>(
             <div key={a.id} className="kbh-item" onClick={()=>openWrite(a)}>
-              <div className="kbh-thumb" style={{background:meta.color}}>{thumbIcon(meta.icon)}</div>
+              <KbThumb article={a}/>
               <div style={{minWidth:0,flex:1}}>
                 <div className="ttl">{a.t}</div>
+                {a.section==="book" && a.bookMeta?.author && <div className="small" style={{marginTop:2,fontWeight:600}}>{a.bookMeta.author}</div>}
                 <div className="ex">{kbExcerpt(a)}</div>
                 <div className="kbh-info">
                   <span className="tag gray">{a.c}</span>
@@ -2404,16 +2513,27 @@ function Knowledge({articles,openWrite}){
                 </div>
               </div>
             </div>
-          );
-        })}
+        ))}
         </div>
       </div>
 
-      <button type="button" className="kbh-fab" onClick={()=>openWrite(null)}>
-        {I.plus({width:18,height:18})} 새 글 쓰기
+      <button type="button" className="kbh-fab" onClick={()=>openWrite(null, section)}>
+        {I.plus({width:18,height:18})} {section==="book"?"책 추가":section==="lecture"?"강연 정리":"새 글"}
       </button>
     </div>
   );
+}
+
+function KbFeatCover({article}){
+  const [url,setUrl]=useState(null);
+  const coverKey=kbCoverKey(article);
+  const meta=kbThumbMeta(article);
+  useEffect(()=>{
+    if(!coverKey) return;
+    mediaUrl(coverKey).then(setUrl).catch(()=>{});
+  },[coverKey]);
+  if(url) return <div className="cover" style={{background:"#ECE8E0"}}><img src={url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>;
+  return <div className="cover" style={{background:`linear-gradient(135deg,${meta.color},var(--accent-deep))`}}/>;
 }
 
 /* ---------------- PRICING (3-트랙) ---------------- */
@@ -2432,9 +2552,9 @@ function Pricing({back,segment,user,onUserUpdated}){
     try{
       const { user:u }=await api.subscribe(planId);
       onUserUpdated?.(u);
-      alert(`${planId.toUpperCase()} 플랜이 적용됐어요. (PG 연동 전 테스트 결제)`);
+      toastSuccess(`${planId.toUpperCase()} 플랜이 적용됐어요. (PG 연동 전 테스트 결제)`);
       back?.();
-    }catch(e){ alert(e.message||"결제 처리 실패"); }
+    }catch(e){ notifyError(e, e.message||"결제 처리 실패"); }
     finally{ setBusy(null); }
   };
 
@@ -2447,9 +2567,13 @@ function Pricing({back,segment,user,onUserUpdated}){
       onUserUpdated?.(u);
       setCoupon("");
       setCouponMsg("쿠폰이 적용됐어요");
-      alert("쿠폰이 적용됐어요");
+      toastSuccess("쿠폰이 적용됐어요");
       back?.();
-    }catch(e){ setCouponMsg(e.message||"쿠폰 적용 실패"); }
+    }catch(e){
+      const msg=e.message||"쿠폰 적용 실패";
+      setCouponMsg(msg);
+      notifyError(e, msg);
+    }
   };
 
   return (
@@ -2512,7 +2636,7 @@ function Pricing({back,segment,user,onUserUpdated}){
         <div className="card" style={{padding:16,background:"#FFF6E5",border:"1px solid #F2E3BE"}}>
           <div style={{fontWeight:800,fontSize:13.5}}>무료 체험 안내</div>
           <div style={{marginTop:8,fontSize:13,lineHeight:1.6,color:"#6b5e3a"}}>
-            · 3일 무료 체험 · 녹음 1시간 한도 · 파일 업로드 불가<br/>
+            · 3일 무료 체험 · 녹음·음성 파일 1시간 한도 · 사진 업로드 불가<br/>
             · Lite 10h/50GB · Pro 30h/200GB · Ultra 100h/1TB (월)<br/>
             · 미결제 시 7일간 읽기 전용 보관 후 데이터 전체 삭제
           </div>
@@ -2729,6 +2853,10 @@ function Login({lang,setLang,onLogin}){
   );
 }
 
+function SheetPortal({ children }) {
+  return createPortal(children, document.body);
+}
+
 /* ---------------- INSTALL GUIDE (PWA 홈 화면 추가) ---------------- */
 function InstallSheet({close,onConfirm}){
   const [os,setOs]=useState(()=>{
@@ -2801,7 +2929,8 @@ function InstallSheet({close,onConfirm}){
 /* ---------------- CARD SCAN (명함 스캔 → 항목 추출) ---------------- */
 const isMobileDevice=()=>/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-function CardScan({back,onSaved}){
+function CardScan({back,onSaved,contactPresets={groups:[],tags:[]}}){
+  const contactTags=contactPresets.tags||[];
   const [step,setStep]=useState("capture");
   const [fields,setFields]=useState({
     name:"", title:"", co:"",
@@ -2814,7 +2943,7 @@ function CardScan({back,onSaved}){
   const [ocrError,setOcrError]=useState("");
   const fileRef=useRef(null);
   const previewRef=useRef(null);
-  const GROUPS=contactGroups(getClients());
+  const GROUPS=contactGroupOptions({ contacts: contactPresets }, getClients());
   const [saving,setSaving]=useState(false);
   const set=(k,v)=>setFields(p=>({...p,[k]:v}));
 
@@ -2857,7 +2986,7 @@ function CardScan({back,onSaved}){
       const msg=e.message||"OCR 실패";
       setOcrError(msg);
       setStep("capture");
-      alert(msg.includes("fetch")||msg.includes("연결")?"서버에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인해주세요.":msg);
+      toastError(msg.includes("fetch")||msg.includes("연결")?"서버에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인해주세요.":msg);
     }
   };
 
@@ -2870,7 +2999,7 @@ function CardScan({back,onSaved}){
       if(isPickCancelled(e)) return;
       const msg=e.message||"파일 선택 실패";
       setOcrError(msg);
-      alert(msg);
+      toastError(msg);
     }
   };
 
@@ -2912,7 +3041,7 @@ function CardScan({back,onSaved}){
       onSaved?.();
       setStep("done");
       setTimeout(back,1100);
-    }catch(e){ alert(e.message); }
+    }catch(e){ notifyError(e, e.message); }
     finally{ setSaving(false); }
   };
 
@@ -2991,11 +3120,11 @@ function CardScan({back,onSaved}){
           </div>
           <div className="small" style={{fontWeight:700,marginBottom:8}}>태그</div>
           <div className="row" style={{gap:7,marginBottom:18,flexWrap:"wrap"}}>
-            {tags.map(t=>{const col=TAG_COLORS[t];return (
+            {tags.map(t=>{const col=tagColor(t);return (
               <span key={t} className={"tag"+(col&&col!=="accent"?" "+col:"")} style={{padding:"7px 11px",cursor:"pointer"}}
                 onClick={()=>setTags(p=>p.filter(x=>x!==t))}>{t} ✕</span>
             );})}
-            {PRESET_TAGS.filter(t=>!tags.includes(t)).map(t=>(
+            {contactTags.filter(t=>!tags.includes(t)).map(t=>(
               <button key={t} type="button" className="chip" style={{padding:"7px 12px",fontSize:12}}
                 onClick={()=>setTags(p=>[...p,t])}>+ {t}</button>
             ))}
@@ -3072,12 +3201,13 @@ function TodoBoard({todos,setTodoStatus,openDetail}){
 }
 
 /* ---------------- MEETINGS TAB (미팅 내역 · 요약 · 할 일) ---------------- */
-function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh}){
+function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh,meetingPresets={categories:[],tags:[]}}){
   const bootRef=useRef(bootMeetings);
   bootRef.current=bootMeetings;
-  const [items,setItems]=useState(bootMeetings);
+  const [items,setItems]=useState(()=>(bootMeetings||[]).map(meetingToUi));
   const [loading,setLoading]=useState(!bootMeetings.length);
   const [loadErr,setLoadErr]=useState("");
+  const [catFilter,setCatFilter]=useState("전체");
   const reload=()=>{
     setLoading(true);
     setLoadErr("");
@@ -3091,21 +3221,30 @@ function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh}){
   };
   useEffect(()=>{ reload(); },[]);
   useEffect(()=>{
-    if(bootMeetings.length) setItems((prev)=>(prev.length>=bootMeetings.length?prev:bootMeetings));
+    if(bootMeetings.length) setItems((prev)=>(prev.length>=bootMeetings.length?prev:bootMeetings.map(meetingToUi)));
   },[bootMeetings]);
   const preview=(m)=>{
     const pts=m.summary?.key_points;
     if(Array.isArray(pts)&&pts.length) return pts[0];
     return m.oneLine||"";
   };
+  const catFilters=["전체",...(meetingPresets.categories||[])];
+  const shown=catFilter==="전체"?items:items.filter(m=>(m.category||"")===catFilter);
   return (
     <div className="fade">
       <div className="pad" style={{marginTop:8}}>
         <div className="h-eyebrow">녹음 · 요약 · 후속 할 일</div>
         <div className="h-title">미팅 내역</div>
         <div className="small" style={{marginTop:6,lineHeight:1.55}}>
-          {loading&&!items.length?"불러오는 중…":`${items.length}건 · 항목을 누르면 요약과 할 일을 볼 수 있어요`}
+          {loading&&!items.length?"불러오는 중…":`${shown.length}건 · 항목을 누르면 요약과 할 일을 볼 수 있어요`}
         </div>
+        {catFilters.length>1 && (
+          <div className="row" style={{gap:7,marginTop:12,flexWrap:"wrap"}}>
+            {catFilters.map((c)=>(
+              <button key={c} type="button" className={"chip"+(catFilter===c?" on":"")} onClick={()=>setCatFilter(c)}>{c}</button>
+            ))}
+          </div>
+        )}
       </div>
       {loadErr && (
         <div className="pad" style={{marginTop:4}}>
@@ -3116,14 +3255,14 @@ function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh}){
         </div>
       )}
       <div className="pad" style={{marginTop:8,marginBottom:16}}>
-        {!loading && items.length===0 && !loadErr && (
+        {!loading && shown.length===0 && !loadErr && (
           <div className="card" style={{padding:36,textAlign:"center"}}>
-            <div style={{fontWeight:700,fontSize:16,marginBottom:8}}>아직 미팅 기록이 없어요</div>
+            <div style={{fontWeight:700,fontSize:16,marginBottom:8}}>{catFilter!=="전체"?"해당 분류의 기록이 없어요":"아직 미팅 기록이 없어요"}</div>
             <div className="small" style={{lineHeight:1.6,marginBottom:18}}>녹음을 끝내면 요약·할 일·다음 약속이 자동으로 정리돼요.</div>
-            <button className="btn btn-accent" style={{padding:"12px 24px"}} onClick={startRec}>첫 녹음 시작</button>
+            <button className="btn btn-accent" style={{padding:"12px 24px"}} onClick={startRec}>첫 미팅 기록</button>
           </div>
         )}
-        {items.map((m)=>{
+        {shown.map((m)=>{
           const pts=m.summary?.key_points;
           const ptCount=Array.isArray(pts)?pts.length:0;
           return (
@@ -3131,9 +3270,11 @@ function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh}){
               <div className="row between" style={{gap:10}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div className="row" style={{gap:6,marginBottom:8,flexWrap:"wrap"}}>
+                    {m.category && <span className="tag" style={{background:"var(--accent-soft)",color:"var(--accent-deep)"}}>{m.category}</span>}
                     <span className="tag gray">{m.createdLabel||"기록"}</span>
                     {m.hasAudio && <span className="tag" style={{background:"var(--accent-soft)",color:"var(--accent-deep)"}}>🎧 녹음</span>}
                     {m.source==="photo" && <span className="tag" style={{background:"#E8EEF5",color:"#4A6FA5"}}>📷 사진</span>}
+                    {m.source==="upload" && <span className="tag" style={{background:"#EDE8F5",color:"#6A4A9A"}}>📁 파일</span>}
                     {m.todoCount>0 && (
                       <span className="tag" style={{background:"var(--green-soft)",color:"var(--green)"}}>
                         할 일 {m.openTodoCount>0?`${m.openTodoCount}/${m.todoCount}`:m.todoCount}
@@ -3177,7 +3318,7 @@ function TodoArchive({back,openDetail}){
     try{
       const rows=await api.listTodos({ q: query.trim()||undefined, status: status||undefined });
       setItems(rows.map(todoToUi));
-    }catch(e){ alert(e.message||"불러오기 실패"); }
+    }catch(e){ notifyError(e, e.message||"불러오기 실패"); }
     finally{ setLoading(false); }
   },[query,status]);
   useEffect(()=>{ reload(); },[reload]);
@@ -3217,15 +3358,17 @@ function TodoArchive({back,openDetail}){
 }
 
 /* ---------------- GLOBAL SEARCH (인맥·기록·지식백과·할 일 통합) ---------------- */
-function GlobalSearch({back,openClient,openTask,openMeeting,meetings=[],kbArticles=[],todos=[]}){
+function GlobalSearch({back,openClient,openPlace,openTask,openMeeting,meetings=[],kbArticles=[],todos=[]}){
   const CLIENTS=getClients();
+  const PLACES=getPlaces();
   const [q,setQ]=useState("");
   const ql=q.trim().toLowerCase();
   const people=CLIENTS.filter(c=>(c.person+c.co).toLowerCase().includes(ql));
+  const savedPlaces=PLACES.filter(p=>(p.name+p.area+p.category).toLowerCase().includes(ql));
   const recs=meetings.filter(r=>r.t.toLowerCase().includes(ql));
   const kb=kbArticles.filter(r=>kbSearchText(r).includes(ql));
   const taskItems=todos.filter(t=>todoSearchText(t._raw||t).includes(ql)||t.t.toLowerCase().includes(ql));
-  const empty=ql && people.length+recs.length+kb.length+taskItems.length===0;
+  const empty=ql && people.length+savedPlaces.length+recs.length+kb.length+taskItems.length===0;
   const Section=(title,items,render)=> items.length>0 && (
     <div style={{marginTop:18}}>
       <div className="section-h" style={{marginTop:0}}>{title}</div>
@@ -3238,17 +3381,26 @@ function GlobalSearch({back,openClient,openTask,openMeeting,meetings=[],kbArticl
         <button className="iconbtn" onClick={back}>{I.back({})}</button>
         <div className="row" style={{flex:1,gap:9,background:"#F4F1EA",borderRadius:12,padding:"11px 13px",color:"var(--muted)"}}>
           {I.search({width:17,height:17})}
-          <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="인맥 · 할 일 · 기록 · 지식백과 검색"
+          <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="인맥 · 맛집 · 할 일 · 기록 · 지식 검색"
             style={{flex:1,border:"none",outline:"none",background:"transparent",fontFamily:"inherit",fontSize:14,color:"var(--ink)"}}/>
         </div>
       </div>
       <div className="pad" style={{marginBottom:12}}>
-        {!ql && <div className="small" style={{textAlign:"center",padding:"50px 0",lineHeight:1.6}}>이름·할 일·기록·지식백과를<br/>한 번에 검색해요</div>}
+        {!ql && <div className="small" style={{textAlign:"center",padding:"50px 0",lineHeight:1.6}}>이름·맛집·할 일·기록·지식을<br/>한 번에 검색해요</div>}
         {empty && <div className="small" style={{textAlign:"center",padding:"50px 0"}}>“{q}” 검색 결과가 없어요</div>}
         {Section("인맥", people, c=>(
           <div key={c.id} className="list-item row between" style={{cursor:"pointer"}} onClick={()=>openClient(c)}>
             <div className="row" style={{gap:11}}><div className="avatar">{c.init}</div>
               <div><div style={{fontWeight:700,fontSize:14}}>{c.person}</div><div className="small">{c.co}</div></div></div>
+            <span style={{color:"var(--muted)"}}>{I.chevron({})}</span>
+          </div>
+        ))}
+        {Section("맛집 · 장소", savedPlaces, p=>(
+          <div key={p.id} className="list-item row between" style={{cursor:"pointer"}} onClick={()=>openPlace?.(p)}>
+            <div className="row" style={{gap:11}}>
+              <div className="avatar" style={{background:"#FFF0EB",color:"#C45C3E"}}>{p.init}</div>
+              <div><div style={{fontWeight:700,fontSize:14}}>{p.name}</div><div className="small">{p.category} · {p.area}</div></div>
+            </div>
             <span style={{color:"var(--muted)"}}>{I.chevron({})}</span>
           </div>
         ))}
@@ -3387,7 +3539,7 @@ function MyPage({user,back,onUserUpdated}){
             <span style={{fontWeight:700,fontSize:14}}>{Math.round(rec.recordingUsedSec/60)}분 사용</span>
             <span className="small">한도 {rec.recordingLimitLabel}</span>
           </div>
-          {rec.isTrial && <div className="small" style={{lineHeight:1.5}}>체험 중에는 파일 업로드가 불가하고 녹음만 1시간까지 가능해요.</div>}
+          {rec.isTrial && <div className="small" style={{lineHeight:1.5}}>체험 중에는 사진·문서 업로드가 불가하고, 녹음·음성 파일은 1시간까지 가능해요.</div>}
         </div></>}
 
         <div className="section-h">내 데이터</div>
@@ -3477,6 +3629,7 @@ function Settings({back,go,user,onLogout,openPricing}){
 
         <div className="section-h">앱</div>
         <div className="card" style={{padding:"4px 16px",marginBottom:16}}>
+          {Row(I.book({width:18,height:18}),"분류 · 태그","인맥 · 캘린더 · 미팅 · 맛집 · 지식",()=>go("categorytags"))}
           {Row(I.book({width:18,height:18}),"언어","한국어",()=>{})}
           {Row(I.download({width:18,height:18}),"홈 화면에 추가",null,()=>{})}
         </div>
@@ -3530,7 +3683,7 @@ function ExportData({back}){
       a.href=URL.createObjectURL(blob);
       a.download=`storyahub-backup-${Date.now()}.json`;
       a.click();
-    }catch(e){ alert(e.message||"내보내기 실패"); }
+    }catch(e){ notifyError(e, e.message||"내보내기 실패"); }
     finally{ setExporting(false); }
   };
   return (
@@ -3566,7 +3719,7 @@ function DeleteBar({label,onDelete,afterDelete}){
     try{
       await onDelete();
       afterDelete?.();
-    }catch(e){ alert(e.message||"삭제 실패"); }
+    }catch(e){ notifyError(e, e.message||"삭제 실패"); }
     finally{ setBusy(false); }
   };
   return (
@@ -3639,7 +3792,7 @@ function TaskDetailView({data,back,onUpdated,onDeleted}){
       const row=await api.getTodo(seed.id);
       applyTodo(row);
       onUpdated?.();
-    }catch(e){ alert(e.message||"불러오기 실패"); }
+    }catch(e){ notifyError(e, e.message||"불러오기 실패"); }
     finally{ setLoading(false); }
   },[seed.id,onUpdated]);
 
@@ -3649,7 +3802,7 @@ function TaskDetailView({data,back,onUpdated,onDeleted}){
       const row=await api.getTodo(task.id);
       applyTodo(row);
       onUpdated?.();
-    }catch(e){ alert(e.message||"불러오기 실패"); }
+    }catch(e){ notifyError(e, e.message||"불러오기 실패"); }
   },[task.id,onUpdated]);
 
   useEffect(()=>{ reload(); },[reload]);
@@ -3667,7 +3820,7 @@ function TaskDetailView({data,back,onUpdated,onDeleted}){
       applyTodo(row);
       onUpdated?.();
       return row;
-    }catch(e){ alert(e.message); return null; }
+    }catch(e){ notifyError(e, e.message); return null; }
     finally{ setSaving(false); }
   };
 
@@ -3686,7 +3839,7 @@ function TaskDetailView({data,back,onUpdated,onDeleted}){
         attachment:{ key, name:file.name||"첨부파일", kind, uploadedAt:new Date().toISOString() },
       });
     }catch(e){
-      if(e?.message!=="파일이 선택되지 않았습니다") alert(e.message||"첨부 실패");
+      if(e?.message!=="파일이 선택되지 않았습니다") notifyError(e, e.message||"첨부 실패");
     }finally{ setUploading(false); }
   };
 
@@ -3817,14 +3970,49 @@ function FollowupDetailView({back,todos,onTodoToggle}){
 function EventDetailView({data,back,onDeleted}){
   const e=data||{};
   const label=e.month?`${e.month}월 ${e.day}일`:"";
+  const contacts=getClients().filter(c=>(e.contactIds||[]).includes(c.id)||c.id===e.contactId);
+  const linkedPlace=e.savedPlaceId?getPlaces().find(p=>p.id===e.savedPlaceId):null;
+  const navLat=e.placeLat??linkedPlace?.lat;
+  const navLng=e.placeLng??linkedPlace?.lng;
+  const navLabel=(e.place||linkedPlace?.name||"목적지").split(" · ")[0];
+  const directionsUrl=(navLat!=null&&navLng!=null)||e.place||linkedPlace?.area
+    ? kakaoDirectionsUrl({ address:e.place||linkedPlace?.area, lat:navLat, lng:navLng, label:navLabel })
+    : "";
+  const share=async ()=>{
+    if(!e.id) return;
+    try{
+      const {shareUrl}=await api.shareEvent(e.id);
+      const text=`${e.title}\n${label} ${e.time}${e.place?`\n${e.place}`:""}`;
+      if(navigator.share){ await navigator.share({title:e.title,text,url:shareUrl}); return; }
+      if(shareUrl&&navigator.clipboard){ await navigator.clipboard.writeText(shareUrl); toastSuccess("공유 링크를 복사했어요"); }
+    }catch(err){ notifyError(err,"공유 실패"); }
+  };
   return (
     <div className="fade">
       <DetailHead back={back} eyebrow="일정" title={e.title||"일정"}/>
       <div className="pad" style={{marginTop:14,marginBottom:12}}>
         <div className="card" style={{padding:16}}>
-          <div className="brk"><span className="small">시간</span><span style={{fontWeight:700}}>{label} · {e.time}</span></div>
+          <div className="brk"><span className="small">시간</span><span style={{fontWeight:700}}>{label} · {e.time}{e.endTime?`–${e.endTime}`:""}</span></div>
+          <div className="brk"><span className="small">분류</span><span style={{fontWeight:600}}>{e.category||"캘린더"}</span></div>
           <div className="brk"><span className="small">장소</span><span style={{fontWeight:600}}>{e.place||"-"}</span></div>
+          {contacts.length>0 && (
+            <div className="brk"><span className="small">함께할 인맥</span>
+              <span style={{fontWeight:600}}>{contacts.map(c=>c.person||c.co).join(", ")}</span></div>
+          )}
+          {linkedPlace && (
+            <div className="brk"><span className="small">맛집</span><span style={{fontWeight:600}}>{linkedPlace.category}</span></div>
+          )}
+          {e.notes && <div className="brk"><span className="small">메모</span><span style={{fontWeight:500,lineHeight:1.5}}>{e.notes}</span></div>}
         </div>
+        {directionsUrl && (
+          <button type="button" className="btn btn-accent" style={{width:"100%",padding:14,marginTop:10}}
+            onClick={()=>window.open(directionsUrl,"_blank","noopener")}>
+            카카오맵 길찾기
+          </button>
+        )}
+        {e.id && (
+          <button type="button" className="btn btn-ghost" style={{width:"100%",padding:13,marginTop:10}} onClick={share}>일정 공유</button>
+        )}
       </div>
       {e.id && (
         <DeleteBar label={e.title||"일정"} onDelete={()=>api.deleteEvent(e.id)} afterDelete={onDeleted}/>
@@ -3833,8 +4021,8 @@ function EventDetailView({data,back,onDeleted}){
   );
 }
 
-function Detail({d,back,todos=[],onTodoToggle,onTodoUpdated,refreshTodos,onDeleted}){
-  if(d.type==="meeting") return <MeetingDetailView data={d.data} back={back} refreshTodos={refreshTodos} onDeleted={onDeleted}/>;
+function Detail({d,back,todos=[],onTodoToggle,onTodoUpdated,refreshTodos,onDeleted,prefs}){
+  if(d.type==="meeting") return <MeetingDetailView data={d.data} back={back} refreshTodos={refreshTodos} onDeleted={onDeleted} meetingPresets={prefs?.meeting}/>;
   if(d.type==="task") return <TaskDetailView data={d.data} back={back} onUpdated={onTodoUpdated} onDeleted={onDeleted}/>;
   if(d.type==="revenue") return <RevenueDetailView back={back}/>;
   if(d.type==="followup") return <FollowupDetailView back={back} todos={todos} onTodoToggle={onTodoToggle}/>;

@@ -20,17 +20,45 @@ export const uploadsRouter = Router();
 uploadsRouter.use(auth, requireAccess);
 
 function safeFilename(raw: string): string {
-  const name = decodeURIComponent(raw || "upload").split(/[/\\]/).pop() || "upload";
+  let decoded = raw || "upload";
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    /* 이미 디코딩된 파일명 */
+  }
+  const name = decoded.split(/[/\\]/).pop() || "upload";
   return name.replace(/[^\w.\-가-힣]/g, "_").slice(0, 120) || "upload";
 }
 
-async function assertUploadAllowed(userId: string, contentType: string, size: number) {
+const AUDIO_EXTS = new Set(["m4a", "mp3", "wav", "webm", "aac", "ogg", "mp4", "caf"]);
+
+function isAudioFilename(filename: string): boolean {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  return !!ext && AUDIO_EXTS.has(ext);
+}
+
+/** m4a는 브라우저/OS에 따라 video/mp4·octet-stream으로 올라오는 경우가 많음 */
+function normalizeUploadContentType(contentType: string, filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  if (ext === "m4a") return "audio/mp4";
+  if (ext === "mp3") return "audio/mpeg";
+  if (ext === "wav") return "audio/wav";
+  if (ext === "webm") return "audio/webm";
+  if (ext === "aac") return "audio/aac";
+  if (ext === "ogg") return "audio/ogg";
+  if (ext === "caf") return "audio/x-caf";
+  if (contentType.startsWith("audio/")) return contentType;
+  if (isAudioFilename(filename)) return "audio/mp4";
+  return contentType || "application/octet-stream";
+}
+
+async function assertUploadAllowed(userId: string, contentType: string, size: number, filename = "") {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw Object.assign(new Error("not found"), { status: 404 });
 
   const status = getAccessStatus(user);
   const blocked = fileUploadBlocked(status);
-  const isRecordingAudio = contentType.startsWith("audio/");
+  const isRecordingAudio = contentType.startsWith("audio/") || isAudioFilename(filename);
 
   if (blocked && !isRecordingAudio) {
     throw Object.assign(new Error(blocked), { status: 403 });
@@ -57,8 +85,15 @@ export async function directUploadHandler(req: AuthedRequest, res: Response) {
     if (!buf.length) return res.status(400).json({ error: "파일 본문이 비어 있습니다" });
 
     const filename = safeFilename(String(req.headers["x-filename"] ?? "upload"));
-    const contentType = String(req.headers["content-type"] ?? "application/octet-stream");
-    await assertUploadAllowed(req.userId!, contentType, buf.length);
+    const contentType = normalizeUploadContentType(
+      String(req.headers["content-type"] ?? "application/octet-stream"),
+      filename
+    );
+    const maxBytes = 150 * 1024 * 1024;
+    if (buf.length > maxBytes) {
+      return res.status(413).json({ error: "파일이 너무 큽니다 (최대 150MB)" });
+    }
+    await assertUploadAllowed(req.userId!, contentType, buf.length, filename);
 
     const key = buildUserMediaKey(req.userId!, `${randomUUID()}/${filename}`);
     await putObjectBytes(key, buf, contentType);

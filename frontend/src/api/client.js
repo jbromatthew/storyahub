@@ -1,4 +1,8 @@
-const BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
+import { toastError, TOAST_ERROR_STATUSES } from "../toast.js";
+
+const BASE =
+  import.meta.env.VITE_API_BASE ??
+  (import.meta.env.DEV ? "" : "http://localhost:4000");
 const TOKEN_KEY = "storyahub_token";
 const SESSION_TOKEN_KEY = "storyahub_token_session";
 export const REMEMBER_KEY = "storyahub_remember";
@@ -84,6 +88,7 @@ async function req(path, { method = "GET", body, headers = {} } = {}) {
     } catch {
       msg = await res.text();
     }
+    if (TOAST_ERROR_STATUSES.has(res.status)) toastError(msg);
     throw new ApiError(msg, res.status);
   }
   return res.status === 204 ? null : res.json();
@@ -97,6 +102,8 @@ export const api = {
   me: () => req("/auth/me"),
   getUsage: () => req("/auth/me/usage"),
   updateMe: (data) => req("/auth/me", { method: "PATCH", body: data }),
+  updatePreferences: (preferences) =>
+    req("/auth/me/preferences", { method: "PATCH", body: { preferences } }),
   changePassword: (currentPassword, newPassword) =>
     req("/auth/me/password", { method: "PATCH", body: { currentPassword, newPassword } }),
   completeOnboarding: () => req("/auth/me", { method: "PATCH", body: { onboardingDone: true } }),
@@ -112,6 +119,21 @@ export const api = {
   getContact: (id) => req(`/contacts/${id}`),
   deleteContact: (id) => req(`/contacts/${id}`, { method: "DELETE" }),
 
+  listPlaces: () => req("/places"),
+  searchPlaces: ({ q, lat, lng, nearby, page } = {}) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (lat != null) params.set("lat", String(lat));
+    if (lng != null) params.set("lng", String(lng));
+    if (nearby) params.set("nearby", "1");
+    if (page) params.set("page", String(page));
+    const qs = params.toString();
+    return req(`/places/search${qs ? `?${qs}` : ""}`);
+  },
+  createPlace: (data) => req("/places", { method: "POST", body: data }),
+  updatePlace: (id, data) => req(`/places/${id}`, { method: "PATCH", body: data }),
+  deletePlace: (id) => req(`/places/${id}`, { method: "DELETE" }),
+
   listTodos: ({ q, status } = {}) => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
@@ -126,6 +148,7 @@ export const api = {
 
   listMeetings: () => req("/meetings"),
   getMeeting: (id) => req(`/meetings/${id}`),
+  updateMeeting: (id, data) => req(`/meetings/${id}`, { method: "PATCH", body: data }),
   deleteMeeting: (id) => req(`/meetings/${id}`, { method: "DELETE" }),
   enqueueSummary: (mediaKey, meta) =>
     req("/meetings/summarize", { method: "POST", body: { mediaKey, meta } }),
@@ -139,9 +162,13 @@ export const api = {
   createEvent: (data) => req("/calendar", { method: "POST", body: data }),
   updateEvent: (id, data) => req(`/calendar/${id}`, { method: "PATCH", body: data }),
   deleteEvent: (id) => req(`/calendar/${id}`, { method: "DELETE" }),
+  shareEvent: (id) => req(`/calendar/${id}/share`, { method: "POST" }),
 
   listKb: () => req("/kb"),
   saveKb: (data) => req("/kb", { method: "POST", body: data }),
+  searchBooks: (q, { page = 1, size = 10 } = {}) =>
+    req(`/kb/books/search?q=${encodeURIComponent(q)}&page=${page}&size=${size}`),
+  importBookCover: (url) => req("/kb/books/cover", { method: "POST", body: { url } }),
 
   ocrCard: (data) => req("/ocr/card", { method: "POST", body: data }),
   ocrDocument: (mediaKeys) => req("/ocr/document", { method: "POST", body: { mediaKeys } }),

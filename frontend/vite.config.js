@@ -22,5 +22,22 @@ export default defineConfig({
       }
     })
   ],
-  server: { port: 5173 }
+  server: {
+    port: 5173,
+    strictPort: true,
+    proxy: {
+      "/health": "http://localhost:4000",
+      "/auth": "http://localhost:4000",
+      "/bootstrap": "http://localhost:4000",
+      "/contacts": "http://localhost:4000",
+      "/meetings": "http://localhost:4000",
+      "/todos": "http://localhost:4000",
+      "/deals": "http://localhost:4000",
+      "/calendar": "http://localhost:4000",
+      "/kb": "http://localhost:4000",
+      "/uploads": "http://localhost:4000",
+      "/places": "http://localhost:4000",
+      "/ocr": "http://localhost:4000",
+    },
+  },
 });

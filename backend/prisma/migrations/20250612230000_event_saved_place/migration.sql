@@ -1,0 +1,7 @@
+-- AlterTable
+ALTER TABLE "Event" ADD COLUMN "savedPlaceId" TEXT,
+ADD COLUMN "placeLat" DOUBLE PRECISION,
+ADD COLUMN "placeLng" DOUBLE PRECISION;
+
+-- AddForeignKey
+ALTER TABLE "Event" ADD CONSTRAINT "Event_savedPlaceId_fkey" FOREIGN KEY ("savedPlaceId") REFERENCES "SavedPlace"("id") ON DELETE SET NULL ON UPDATE CASCADE;

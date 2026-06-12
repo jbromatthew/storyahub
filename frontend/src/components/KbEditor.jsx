@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from
 import { api } from "../api/client.js";
 import { confirmDelete } from "../confirmDelete.js";
 import { uploadFile, pickImageFile, pickAnyFile, mediaUrl, isPickCancelled } from "../api/upload.js";
-
-const PRESET_TAGS = ["결제완료", "결제대기", "핫리드", "신규", "VIP", "보류"];
+import { KB_SECTIONS, kbSectionLabel, kbCoverKey } from "../mappers.js";
+import { kbPresets, tagColor } from "../preferences.js";
+import { notifyError } from "../toast.js";
 
 export const BLOCK_TYPES = [
   { type: "text", label: "텍스트", desc: "일반 문단", slash: "텍스트" },
@@ -405,24 +406,259 @@ const BLOG_MENU = [
   ["divider", "구분선"],
 ];
 
+function BookSearchSheet({ onClose, onPick }) {
+  const [q, setQ] = useState("");
+  const [query, setQuery] = useState("");
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [isEnd, setIsEnd] = useState(true);
+  const [picking, setPicking] = useState("");
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const term = query.trim();
+    if (!term) {
+      setItems([]);
+      setIsEnd(true);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      setLoading(true);
+      api
+        .searchBooks(term, { page: 1, size: 12 })
+        .then((r) => {
+          setItems(r.items || []);
+          setIsEnd(r.isEnd);
+          setPage(1);
+        })
+        .catch((e) => {
+          notifyError(e, "책 검색 실패");
+          setItems([]);
+        })
+        .finally(() => setLoading(false));
+    }, 320);
+    return () => window.clearTimeout(t);
+  }, [query]);
+
+  const submit = (e) => {
+    e?.preventDefault();
+    setQuery(q.trim());
+  };
+
+  const loadMore = async () => {
+    if (loading || isEnd || !query.trim()) return;
+    setLoading(true);
+    try {
+      const r = await api.searchBooks(query.trim(), { page: page + 1, size: 12 });
+      setItems((p) => [...p, ...(r.items || [])]);
+      setIsEnd(r.isEnd);
+      setPage((p) => p + 1);
+    } catch (e) {
+      notifyError(e, "책 검색 실패");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const pick = async (book) => {
+    setPicking(book.title);
+    try {
+      await onPick(book);
+      onClose();
+    } catch (e) {
+      notifyError(e, "책 불러오기 실패");
+    } finally {
+      setPicking("");
+    }
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 8000,
+        background: "rgba(20,16,12,.45)",
+        display: "flex",
+        alignItems: "flex-end",
+        justifyContent: "center",
+        padding: "0 0 max(12px, env(safe-area-inset-bottom))",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: "min(520px, 100%)",
+          maxHeight: "min(82vh, 640px)",
+          background: "#fff",
+          borderRadius: "20px 20px 14px 14px",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          boxShadow: "0 -8px 40px rgba(20,16,12,.18)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ padding: "16px 18px 12px", borderBottom: "1px solid var(--line)" }}>
+          <div className="row between" style={{ marginBottom: 12 }}>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>책 검색</div>
+            <button type="button" className="iconbtn" onClick={onClose} aria-label="닫기">✕</button>
+          </div>
+          <form onSubmit={submit} className="row" style={{ gap: 8 }}>
+            <input
+              ref={inputRef}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="제목 · 저자 · ISBN"
+              style={{
+                flex: 1,
+                border: "1px solid var(--line)",
+                borderRadius: 12,
+                padding: "12px 13px",
+                fontFamily: "inherit",
+                fontSize: 14,
+                outline: "none",
+              }}
+            />
+            <button type="submit" className="btn btn-accent" style={{ padding: "12px 16px", flexShrink: 0 }}>
+              검색
+            </button>
+          </form>
+          <div className="small" style={{ marginTop: 8, lineHeight: 1.45 }}>
+            카카오 다음 도서 검색 · 표지·저자 정보를 자동으로 채워요
+          </div>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px 12px 16px" }}>
+          {!query.trim() && (
+            <div className="small" style={{ textAlign: "center", padding: "36px 12px", lineHeight: 1.55 }}>
+              읽은 책 제목이나 저자를 검색해 보세요
+            </div>
+          )}
+          {query.trim() && !loading && items.length === 0 && (
+            <div className="small" style={{ textAlign: "center", padding: "36px 12px" }}>
+              “{query}” 검색 결과가 없어요
+            </div>
+          )}
+          {items.map((book) => (
+            <button
+              key={`${book.isbn || book.title}-${book.url}`}
+              type="button"
+              disabled={!!picking}
+              onClick={() => pick(book)}
+              style={{
+                width: "100%",
+                display: "flex",
+                gap: 12,
+                alignItems: "flex-start",
+                textAlign: "left",
+                padding: "12px 10px",
+                border: "none",
+                borderBottom: "1px solid var(--line)",
+                background: picking === book.title ? "#FFF8F6" : "transparent",
+                cursor: picking ? "wait" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              <div
+                style={{
+                  width: 52,
+                  height: 72,
+                  flexShrink: 0,
+                  borderRadius: 8,
+                  overflow: "hidden",
+                  background: "#F4F1EA",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 22,
+                }}
+              >
+                {book.thumbnail ? (
+                  <img src={book.thumbnail} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : (
+                  "📚"
+                )}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.35 }}>{book.title}</div>
+                <div className="small" style={{ marginTop: 4 }}>
+                  {[book.authors?.join(", "), book.publisher].filter(Boolean).join(" · ")}
+                </div>
+                {book.isbn && <div className="small" style={{ marginTop: 2, opacity: 0.75 }}>ISBN {book.isbn}</div>}
+              </div>
+              <span style={{ color: "var(--muted)", flexShrink: 0, marginTop: 4 }}>
+                {picking === book.title ? "…" : "선택"}
+              </span>
+            </button>
+          ))}
+          {items.length > 0 && !isEnd && (
+            <button
+              type="button"
+              className="chip"
+              style={{ display: "block", width: "100%", marginTop: 12, padding: 12 }}
+              disabled={loading}
+              onClick={loadMore}
+            >
+              {loading ? "불러오는 중…" : "더 보기"}
+            </button>
+          )}
+          {loading && items.length === 0 && (
+            <div className="small" style={{ textAlign: "center", padding: "28px 0" }}>검색 중…</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function parseArticleBlocks(article) {
   const raw = article?.blocks || [];
   const cover = raw.find((b) => b.type === "cover");
   const blocks = raw.filter((b) => b.type !== "cover");
+  const section = article?.section || "knowledge";
+  const defaultBlocks =
+    section === "book"
+      ? [
+          { type: "h", val: "독후감" },
+          { type: "text", val: "" },
+        ]
+      : [{ type: "text", val: "" }];
   return {
-    coverKey: cover?.mediaKey || null,
-    blocks: blocks.length ? blocks : [{ type: "text", val: "" }],
+    coverKey: cover?.mediaKey || article?.bookMeta?.coverKey || null,
+    blocks: blocks.length ? blocks : defaultBlocks,
   };
 }
 
-export default function KbEditor({ article, back, onSaved, onDeleted, categories = [] }) {
+export default function KbEditor({ article, back, onSaved, onDeleted, categories = [], prefs }) {
   const isNew = !article?.id;
   const titleRef = useRef(null);
   const initial = parseArticleBlocks(article);
+  const [section, setSection] = useState(article?.section || "knowledge");
   const initialCat = article?.c && article.c !== "미분류" ? article.c : "";
   const [cat, setCat] = useState(initialCat);
   const [tags, setTags] = useState(article?.tags || []);
+  const [bookMeta, setBookMeta] = useState(() => ({
+    author: article?.bookMeta?.author || "",
+    isbn: article?.bookMeta?.isbn || "",
+    publisher: article?.bookMeta?.publisher || "",
+    coverKey: article?.bookMeta?.coverKey || null,
+  }));
   const [coverKey, setCoverKey] = useState(initial.coverKey);
+  const [bookSearchOpen, setBookSearchOpen] = useState(false);
+  const [tagInput, setTagInput] = useState("");
+  const isBook = section === "book";
+  const sectionPresets = kbPresets(prefs, section);
+  const catSuggestions = [
+    ...new Set([...sectionPresets.categories, ...categories.filter((c) => c && c !== "미분류")]),
+  ];
+  const tagPresets = sectionPresets.tags;
   const [blocks, setBlocks] = useState(initial.blocks);
   const [focusIdx, setFocusIdx] = useState(-1);
   const [slash, setSlash] = useState(null);
@@ -548,7 +784,7 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
       }
       setSaved(false);
     } catch (e) {
-      if (!isPickCancelled(e) && e?.message !== "파일이 선택되지 않았습니다") alert(e.message);
+      if (!isPickCancelled(e) && e?.message !== "파일이 선택되지 않았습니다") notifyError(e, e.message);
     }
   }, [updateBlock]);
 
@@ -558,15 +794,46 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
     setPendingUpload(null);
   }, [pendingUpload, uploadBlockMedia]);
 
+  const applyBookFromSearch = async (book) => {
+    if (titleRef.current) titleRef.current.textContent = book.title || "";
+    const author = (book.authors || []).join(", ");
+    let nextCoverKey = coverKey;
+    if (book.thumbnail) {
+      const { key } = await api.importBookCover(book.thumbnail);
+      nextCoverKey = key;
+      setCoverKey(key);
+      try {
+        const url = await mediaUrl(key);
+        setImageUrls((p) => ({ ...p, [key]: url }));
+      } catch {
+        setImageUrls((p) => ({ ...p, [key]: book.thumbnail }));
+      }
+    }
+    setBookMeta({
+      author,
+      isbn: book.isbn || "",
+      publisher: book.publisher || "",
+      coverKey: nextCoverKey || null,
+    });
+    if (book.contents) {
+      const snippet = book.contents.replace(/\s+/g, " ").trim().slice(0, 600);
+      setBlocks((p) =>
+        p.map((b, i) => (i === 1 && b.type === "text" && !(b.val || "").trim() ? { ...b, val: snippet } : b))
+      );
+    }
+    setSaved(false);
+  };
+
   const uploadCover = async () => {
     try {
       const file = await pickImageFile(false);
       const key = await uploadFile(file);
       setCoverKey(key);
+      setBookMeta((p) => ({ ...p, coverKey: key }));
       setImageUrls((p) => ({ ...p, [key]: URL.createObjectURL(file) }));
       setSaved(false);
     } catch (e) {
-      if (!isPickCancelled(e)) alert(e.message);
+      if (!isPickCancelled(e)) notifyError(e, e.message);
     }
   };
 
@@ -579,18 +846,29 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
       const title = (titleRef.current?.textContent || "").trim() || "제목 없음";
       const payload = blocks.map(({ preview, ...rest }) => rest);
       if (coverKey) payload.unshift({ type: "cover", mediaKey: coverKey });
+      const meta =
+        section === "book"
+          ? {
+              author: (bookMeta.author || "").trim(),
+              isbn: (bookMeta.isbn || "").trim(),
+              publisher: (bookMeta.publisher || "").trim(),
+              coverKey: coverKey || bookMeta.coverKey || null,
+            }
+          : null;
       await api.saveKb({
         id: article?.id,
         title,
+        section,
         category: cat.trim() || "미분류",
         tags,
+        bookMeta: meta,
         blocks: payload,
       });
       onSaved?.();
       setSaved(true);
       if (!silent) setTimeout(back, 700);
     } catch (e) {
-      if (!silent) alert(e.message || "저장 실패");
+      if (!silent) notifyError(e, e.message || "저장 실패");
     } finally {
       setSaving(false);
     }
@@ -604,7 +882,7 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
       onDeleted?.();
       back();
     } catch (e) {
-      alert(e.message);
+      notifyError(e, e.message);
     }
   };
 
@@ -631,32 +909,79 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
 
       <div className="kbe-scroll">
         <div className="kbe-inner">
-        <div className="kbe-cover" onClick={uploadCover}>
+        {isNew && (
+          <div className="seg" style={{ marginTop: 16, marginBottom: 4 }}>
+            {KB_SECTIONS.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={section === s.id ? "on" : ""}
+                onClick={() => {
+                  setSection(s.id);
+                  setSaved(false);
+                  if (s.id === "book" && blocks.length === 1 && blocks[0].type === "text" && !blocks[0].val) {
+                    setBlocks([{ type: "h", val: "독후감" }, { type: "text", val: "" }]);
+                  }
+                }}
+              >
+                {s.icon} {s.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="kbe-cover" onClick={uploadCover} style={isBook ? { aspectRatio: "2/3", maxHeight: 320, margin: "16px auto 0", maxWidth: 220 } : undefined}>
           {coverKey && imageUrls[coverKey] ? (
-            <img src={imageUrls[coverKey]} alt="" />
+            <img src={imageUrls[coverKey]} alt="" style={isBook ? { objectFit: "cover" } : undefined} />
           ) : (
             <>
-              <div style={{ fontSize: 28, color: "var(--accent-deep)" }}>🖼</div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>대표 이미지 추가</div>
-              <div className="small">글 상단에 표시돼요 (선택)</div>
+              <div style={{ fontSize: 28, color: "var(--accent-deep)" }}>{isBook ? "📚" : "🖼"}</div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{isBook ? "책 표지 추가" : "대표 이미지 추가"}</div>
+              <div className="small">{isBook ? "표지가 썸네일로 보여요" : "글 상단에 표시돼요 (선택)"}</div>
             </>
           )}
         </div>
 
+        {isBook && (
+          <div style={{ marginTop: 14 }}>
+            <button
+              type="button"
+              className="chip"
+              style={{ width: "100%", padding: 12, color: "var(--accent-deep)", borderColor: "#F3D8CB" }}
+              onClick={() => setBookSearchOpen(true)}
+            >
+              🔍 책 검색으로 불러오기
+            </button>
+            {bookSearchOpen && (
+              <BookSearchSheet onClose={() => setBookSearchOpen(false)} onPick={applyBookFromSearch} />
+            )}
+            <div className="sheet-field" style={{ marginTop: 12 }}>
+              <label>저자</label>
+              <input
+                value={bookMeta.author}
+                onChange={(e) => { setBookMeta((p) => ({ ...p, author: e.target.value })); setSaved(false); }}
+                placeholder="저자명"
+                style={{ width: "100%", padding: "11px 12px", borderRadius: 11, border: "1px solid var(--line)", fontFamily: "inherit", fontSize: 14 }}
+              />
+            </div>
+          </div>
+        )}
+
         <div className="kbe-meta">
+          <span className="tag gray" style={{ padding: "6px 10px", fontSize: 12 }}>{kbSectionLabel(section)}</span>
           <input
             value={cat}
             onChange={(e) => { setCat(e.target.value); setSaved(false); }}
             onFocus={() => setFocusIdx(-1)}
             list="kb-cat-suggestions"
-            placeholder="카테고리"
+            placeholder="하위 카테고리"
             className="chip cat"
             style={{ border: "1px solid var(--line)", borderRadius: 20, padding: "7px 13px", fontSize: 13, fontWeight: 700, background: cat ? "var(--accent-soft)" : "#fff", color: "var(--accent-deep)", outline: "none", width: "auto", minWidth: 100 }}
           />
           <datalist id="kb-cat-suggestions">
-            {categories.map((c) => <option key={c} value={c} />)}
+            {catSuggestions.map((c) => <option key={c} value={c} />)}
           </datalist>
-          {categories.filter((c) => c !== cat).slice(0, 3).map((c) => (
+          {catSuggestions.filter((c) => c !== cat).slice(0, 4).map((c) => (
             <button key={c} type="button" className="chip" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => { setCat(c); setSaved(false); setFocusIdx(-1); }}>{c}</button>
           ))}
         </div>
@@ -666,21 +991,36 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
           className="editable kbe-title"
           contentEditable
           suppressContentEditableWarning
-          data-ph="제목"
+          data-ph={isBook ? "책 제목" : "제목"}
           onFocus={() => setFocusIdx(-1)}
         />
         <div className="kbe-titleline" />
 
         <div className="kbe-tags">
           {tags.map((t) => (
-            <span key={t} className="tag gray" style={{ padding: "5px 10px", fontSize: 12 }}>
+            <span key={t} className={`tag ${tagColor(t)}`} style={{ padding: "5px 10px", fontSize: 12 }}>
               #{t}
-              <span style={{ cursor: "pointer", marginLeft: 4 }} onClick={() => setTags((p) => p.filter((x) => x !== t))}>✕</span>
+              <span style={{ cursor: "pointer", marginLeft: 4 }} onClick={() => { setTags((p) => p.filter((x) => x !== t)); setSaved(false); }}>✕</span>
             </span>
           ))}
-          {PRESET_TAGS.filter((t) => !tags.includes(t)).slice(0, 3).map((t) => (
-            <button key={t} type="button" className="chip" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => setTags((p) => [...p, t])}>+ {t}</button>
+          {tagPresets.filter((t) => !tags.includes(t)).slice(0, 6).map((t) => (
+            <button key={t} type="button" className="chip" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => { setTags((p) => [...p, t]); setSaved(false); }}>+ {t}</button>
           ))}
+          <input
+            value={tagInput}
+            onChange={(e) => setTagInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              const v = tagInput.trim();
+              if (!v || tags.includes(v)) return;
+              setTags((p) => [...p, v]);
+              setTagInput("");
+              setSaved(false);
+            }}
+            placeholder="+ 태그 입력"
+            style={{ border: "none", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 12, minWidth: 90, padding: "5px 4px", color: "var(--muted)" }}
+          />
         </div>
 
         {blocks.map((b, i) => (
@@ -747,15 +1087,15 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
 export function KbReadView({ article, back, onEdit }) {
   const [imageUrls, setImageUrls] = useState({});
   const rawBlocks = article?.blocks || [];
-  const coverBlock = rawBlocks.find((b) => b.type === "cover");
+  const coverKey = kbCoverKey(article);
   const blocks = rawBlocks.filter((b) => b.type !== "cover");
 
   useEffect(() => {
     (async () => {
       const urls = {};
-      if (coverBlock?.mediaKey) {
+      if (coverKey) {
         try {
-          urls[coverBlock.mediaKey] = await mediaUrl(coverBlock.mediaKey);
+          urls[coverKey] = await mediaUrl(coverKey);
         } catch {
           /* ignore */
         }
@@ -783,14 +1123,17 @@ export function KbReadView({ article, back, onEdit }) {
           </button>
         </div>
       </div>
-      {coverBlock?.mediaKey && imageUrls[coverBlock.mediaKey] && (
-        <div className="kbe-cover-read">
-          <img src={imageUrls[coverBlock.mediaKey]} alt="" />
+      {coverKey && imageUrls[coverKey] && (
+        <div className="kbe-cover-read" style={article?.section === "book" ? { maxHeight: 360 } : undefined}>
+          <img src={imageUrls[coverKey]} alt="" style={article?.section === "book" ? { objectFit: "contain", background: "#F4F1EA" } : undefined} />
         </div>
       )}
       <div className="kbe-read-body">
-        <div className="h-eyebrow">{article?.c}</div>
+        <div className="h-eyebrow">{kbSectionLabel(article?.section)} · {article?.c}</div>
         <div className="h-title" style={{ marginTop: 6 }}>{article?.t}</div>
+        {article?.section === "book" && article?.bookMeta?.author && (
+          <div className="small" style={{ marginTop: 8, fontWeight: 600 }}>{article.bookMeta.author}</div>
+        )}
         {article?.tags?.length > 0 && (
           <div className="row" style={{ gap: 6, marginTop: 12, flexWrap: "wrap" }}>
             {article.tags.map((t) => (
@@ -851,7 +1194,8 @@ export function KbReadView({ article, back, onEdit }) {
 }
 
 export function kbSearchText(article) {
-  const parts = [article.t, article.c, ...(article.tags || [])];
+  const parts = [article.t, article.c, kbSectionLabel(article.section), ...(article.tags || [])];
+  if (article.bookMeta?.author) parts.push(article.bookMeta.author);
   for (const b of article.blocks || []) parts.push(blockText(b));
   return parts.join(" ").toLowerCase();
 }

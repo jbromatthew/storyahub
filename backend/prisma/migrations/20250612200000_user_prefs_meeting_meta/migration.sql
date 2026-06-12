@@ -1,0 +1,5 @@
+-- 사용자 카테고리·태그 프리셋 + 미팅 분류
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "preferences" JSONB;
+
+ALTER TABLE "Meeting" ADD COLUMN IF NOT EXISTS "category" TEXT;
+ALTER TABLE "Meeting" ADD COLUMN IF NOT EXISTS "tags" TEXT[] DEFAULT ARRAY[]::TEXT[];

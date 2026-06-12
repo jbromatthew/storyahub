@@ -133,35 +133,70 @@ export function todoToUi(t) {
 
 export function eventToUi(e) {
   const d = new Date(e.startsAt);
+  const end = e.endsAt ? new Date(e.endsAt) : null;
   const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const endTime = end
+    ? `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`
+    : null;
   const month = d.getMonth() + 1;
   const day = d.getDate();
   return {
     id: e.id,
     time,
+    endTime,
     title: e.title,
     place: e.place || "",
+    savedPlaceId: e.savedPlaceId || null,
+    placeLat: e.placeLat ?? null,
+    placeLng: e.placeLng ?? null,
+    notes: e.notes || "",
+    category: e.category || "캘린더",
+    color: e.color || null,
+    contactId: e.contactId || null,
+    contactIds: e.contactIds || [],
+    shareToken: e.shareToken || null,
     dateKey: `${d.getFullYear()}-${month}-${day}`,
     day,
     month,
     year: d.getFullYear(),
-    contactId: e.contactId || null,
+    startsAt: e.startsAt,
+    endsAt: e.endsAt,
+    reminders: e.reminders || [],
     _raw: e,
   };
+}
+
+export const KB_SECTIONS = [
+  { id: "book", label: "책", icon: "📚", desc: "독후감 · 책 표지" },
+  { id: "lecture", label: "강연", icon: "🎤", desc: "세미나 · 강의 정리" },
+  { id: "knowledge", label: "지식", icon: "💡", desc: "노하우 · 레퍼런스" },
+];
+
+export const KB_SECTION_DEFAULT_CATS = {
+  book: ["문학", "비즈니스", "자기계발", "에세이"],
+  lecture: ["세미나", "컨퍼런스", "강의", "워크숍"],
+  knowledge: ["노하우", "레퍼런스", "메모", "아이디어"],
+};
+
+export function kbSectionLabel(section) {
+  return KB_SECTIONS.find((s) => s.id === section)?.label || "지식";
 }
 
 export function kbToUi(a) {
   const d = a.updatedAt || a.createdAt;
   const date = d ? new Date(d) : null;
+  const section = a.section || "knowledge";
   return {
     id: a.id,
     t: a.title,
+    section,
     c: a.category || "미분류",
     d: date
       ? `${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`
       : "",
     tags: a.tags || [],
     blocks: a.blocks || [],
+    bookMeta: a.bookMeta || null,
     _raw: a,
   };
 }
@@ -195,6 +230,8 @@ export function meetingToUi(m) {
     contactId: m.contactId || null,
     todoCount: Array.isArray(m.todos) ? m.todos.length : 0,
     openTodoCount: Array.isArray(m.todos) ? m.todos.filter((t) => t.status !== "done").length : 0,
+    category: m.category || "",
+    tags: m.tags || [],
     _raw: m,
   };
 }
@@ -207,9 +244,19 @@ export function contactGroups(contacts) {
   return ["전체", ...Array.from(gs).sort()];
 }
 
-export function kbCategories(articles) {
-  const fromData = articles.map((a) => a.c).filter((c) => c && c !== "미분류");
+export function kbCategories(articles, section = null) {
+  const pool = section ? articles.filter((a) => (a.section || "knowledge") === section) : articles;
+  const fromData = pool.map((a) => a.c).filter((c) => c && c !== "미분류");
   return ["전체", ...Array.from(new Set(fromData)).sort()];
+}
+
+export function kbCoverKey(article) {
+  if (article?.bookMeta?.coverKey) return article.bookMeta.coverKey;
+  const blocks = article?.blocks || [];
+  const cover = blocks.find((b) => b.type === "cover");
+  if (cover?.mediaKey) return cover.mediaKey;
+  const img = blocks.find((b) => b.type === "image" && b.mediaKey);
+  return img?.mediaKey || null;
 }
 
 const KB_COLORS = ["#C2491F", "#7A6FF0", "#3F9A6A", "#C9A23A", "#5C6BC0", "#DB2777"];
@@ -246,13 +293,44 @@ export function kbThumbMeta(article) {
   const id = article?.id || article?.t || "";
   const hash = [...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0);
   const color = KB_COLORS[hash % KB_COLORS.length];
-  if (blocks.some((b) => b.type === "cover" && b.mediaKey)) return { color, icon: "img" };
-  if (blocks.some((b) => b.type === "image" && b.mediaKey)) return { color, icon: "img" };
+  const section = article?.section || "knowledge";
+  if (kbCoverKey(article)) return { color, icon: "img" };
+  if (section === "book") return { color, icon: "book" };
+  if (section === "lecture") return { color, icon: "mic" };
   if (blocks.some((b) => b.type === "file")) return { color, icon: "file" };
-  return { color, icon: "book" };
+  return { color, icon: "note" };
 }
 
 export function kbDateLabel(article) {
   if (article?.d) return article.d.replace(/^\d{2}\./, (m) => `${parseInt(m, 10)}월 `).replace(".", "일");
   return article?.createdLabel || "";
+}
+
+export function placeToUi(p) {
+  const name = p.name || "";
+  const init = name[0] || "🍽";
+  const addr = p.roadAddress || p.address || "";
+  return {
+    id: p.id,
+    name,
+    init,
+    category: p.category || "미분류",
+    tags: p.tags || [],
+    address: p.address || "",
+    roadAddress: p.roadAddress || "",
+    area: addr,
+    phone: p.phone || "",
+    lat: p.lat ?? null,
+    lng: p.lng ?? null,
+    kakaoPlaceId: p.kakaoPlaceId || null,
+    placeUrl: p.placeUrl || "",
+    fav: !!p.favorite,
+    notes: p.notes || "",
+    _raw: p,
+  };
+}
+
+export function placeGroups(list) {
+  const cats = new Set(list.map((p) => p.category || "미분류"));
+  return ["전체", ...Array.from(cats).sort()];
 }

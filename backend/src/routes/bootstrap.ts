@@ -16,7 +16,7 @@ bootstrapRouter.get("/", async (req: AuthedRequest, res) => {
   const dayEnd = new Date(dayStart);
   dayEnd.setDate(dayEnd.getDate() + 1);
 
-  const [user, contacts, todos, eventsToday, meetings, deals] = await Promise.all([
+  const [user, contacts, todos, eventsToday, meetings, deals, places] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId } }),
     prisma.contact.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
     prisma.todo.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
@@ -34,6 +34,7 @@ bootstrapRouter.get("/", async (req: AuthedRequest, res) => {
       },
     }),
     prisma.deal.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
+    prisma.savedPlace.findMany({ where: { userId }, orderBy: [{ favorite: "desc" }, { createdAt: "desc" }] }),
   ]);
 
   if (!user) return res.status(404).json({ error: "not found" });
@@ -51,6 +52,7 @@ bootstrapRouter.get("/", async (req: AuthedRequest, res) => {
     todos,
     eventsToday,
     meetings,
+    places,
     revenue: {
       supplyAmount: supplySum,
       vat: Math.round(supplySum * 0.1),

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { api } from "../api/client.js";
 import { confirmDelete } from "../confirmDelete.js";
+import { notifyError, toastError } from "../toast.js";
 
 const PRI = { high: "#DD5E39", mid: "#C9A23A", low: "#C0B9AC" };
 
@@ -99,23 +100,35 @@ export default function NestedTodoList({
 
   const addSub = async (t) => {
     const text = (adding[t.id] || "").trim();
-    if (!text) return;
+    if (!text) {
+      toastError("소분류 내용을 입력해 주세요");
+      return;
+    }
     const subs = [...(t.subs || []), { id: newSubId(), text, done: false }];
     setAdding((a) => ({ ...a, [t.id]: "" }));
-    await patch(t.id, { subs });
-    setOpen((p) => new Set(p).add(t.id));
+    try {
+      await patch(t.id, { subs });
+      setOpen((p) => new Set(p).add(t.id));
+    } catch (e) {
+      notifyError(e, "소분류 추가 실패");
+    }
   };
 
   const addTask = async () => {
     const title = newTitle.trim();
-    if (!title || saving) return;
+    if (!title) {
+      toastError("할 일 제목을 입력해 주세요");
+      addInputRef.current?.focus();
+      return;
+    }
+    if (saving) return;
     setSaving(true);
     try {
       await api.createTodo({ title, priority: "mid" });
       setNewTitle("");
       await onRefresh?.();
     } catch (e) {
-      alert(e.message || "추가 실패");
+      notifyError(e, e.message || "추가 실패");
     } finally {
       setSaving(false);
     }
@@ -128,7 +141,7 @@ export default function NestedTodoList({
       await api.deleteTodo(t.id);
       await onRefresh?.();
     } catch (err) {
-      alert(err.message || "삭제 실패");
+      notifyError(err, err.message || "삭제 실패");
     }
   };
 
@@ -240,13 +253,13 @@ export default function NestedTodoList({
                   </div>
                 ))}
                 <div className="nt-addrow">
-                  <span className="nt-iadd">
+                  <button type="button" className="nt-iadd" aria-label="소분류 추가" onClick={() => addSub(t)}>
                     <Plus />
-                  </span>
+                  </button>
                   <input
                     value={adding[t.id] || ""}
                     onChange={(e) => setAdding((a) => ({ ...a, [t.id]: e.target.value }))}
-                    onKeyDown={(e) => e.key === "Enter" && addSub(t)}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addSub(t))}
                     placeholder="하위 항목(소분류) 추가"
                   />
                 </div>
@@ -262,10 +275,16 @@ export default function NestedTodoList({
             ref={addInputRef}
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addTask()}
+            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTask())}
             placeholder="새 할 일(대분류) 추가"
           />
-          <button type="button" className="nt-send" onClick={addTask} disabled={saving}>
+          <button
+            type="button"
+            className="nt-send"
+            aria-label="할 일 추가"
+            onClick={(e) => { e.preventDefault(); addTask(); }}
+            disabled={saving}
+          >
             +
           </button>
         </div>

@@ -167,6 +167,34 @@ meetingsRouter.get("/:id", async (req: AuthedRequest, res) => {
   res.json({ ...m, todos });
 });
 
+meetingsRouter.patch("/:id", async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const m = await prisma.meeting.findFirst({ where: { id: req.params.id, userId } });
+  if (!m) return res.status(404).json({ error: "not found" });
+
+  const { category, tags } = req.body ?? {};
+  const data: { category?: string | null; tags?: string[] } = {};
+
+  if (category !== undefined) {
+    const c = String(category).trim();
+    data.category = c || null;
+  }
+  if (tags !== undefined) {
+    if (!Array.isArray(tags)) return res.status(400).json({ error: "tags must be array" });
+    data.tags = [...new Set(tags.map((t) => String(t).trim()).filter(Boolean))].slice(0, 20);
+  }
+
+  const updated = await prisma.meeting.update({
+    where: { id: m.id },
+    data,
+    include: {
+      contact: { select: { id: true, person: true, company: true } },
+      todos: { select: { id: true, status: true } },
+    },
+  });
+  res.json(updated);
+});
+
 meetingsRouter.delete("/:id", async (req: AuthedRequest, res) => {
   const userId = req.userId!;
   const m = await prisma.meeting.findFirst({ where: { id: req.params.id, userId } });
