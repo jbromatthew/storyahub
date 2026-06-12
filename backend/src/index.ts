@@ -1,4 +1,4 @@
-import express from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import { env } from "./env.js";
 import { prisma } from "./db.js";
@@ -48,7 +48,7 @@ app.use("/uploads", uploadsRouter);
 app.use("/places", placesRouter);
 app.use("/ocr", ocrRouter);
 
-app.use((err: Error & { type?: string; status?: number; statusCode?: number }, _req, res, next) => {
+app.use((err: Error & { type?: string; status?: number; statusCode?: number }, _req: Request, res: Response, next: NextFunction) => {
   if (res.headersSent) return next(err);
   const tooLarge = err.type === "entity.too.large" || err.status === 413 || err.statusCode === 413;
   if (tooLarge) {
