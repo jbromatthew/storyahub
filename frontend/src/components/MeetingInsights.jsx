@@ -87,7 +87,84 @@ function TalkRatioBar({ talkRatio }) {
   );
 }
 
+function truncateText(text, max = 100) {
+  if (!text) return "";
+  const t = String(text).trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max).trimEnd()}…`;
+}
+
+function UtteranceRow({ u, index, expanded, detailMode }) {
+  const [open, setOpen] = useState(false);
+  const text = u.text || "";
+  const isLong = text.length > 140;
+  const showFull = detailMode && (!isLong || open);
+  const displayText = showFull ? text : truncateText(text, detailMode ? 140 : 72);
+
+  return (
+    <div
+      style={{
+        padding: "12px 16px",
+        borderTop: index > 0 ? "1px solid var(--line)" : "none",
+      }}
+    >
+      <div className="row" style={{ gap: 10, alignItems: "flex-start" }}>
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: "50%",
+            background: speakerColor(u.speaker) + "22",
+            color: speakerColor(u.speaker),
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 11,
+            fontWeight: 800,
+            flex: "0 0 auto",
+          }}
+        >
+          {String(u.speaker).replace("참석자 ", "")}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="row" style={{ gap: 8, marginBottom: 4 }}>
+            <span style={{ fontWeight: 700, fontSize: 13 }}>{u.speaker}</span>
+            {(expanded || detailMode) && (
+              <span className="small" style={{ fontVariantNumeric: "tabular-nums" }}>
+                {u.time}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 14, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{displayText}</div>
+          {detailMode && isLong && !open && (
+            <button
+              type="button"
+              className="chip"
+              style={{ marginTop: 8, padding: "5px 10px", fontSize: 12, color: "var(--accent-deep)" }}
+              onClick={() => setOpen(true)}
+            >
+              더 보기
+            </button>
+          )}
+          {detailMode && isLong && open && (
+            <button
+              type="button"
+              className="chip"
+              style={{ marginTop: 8, padding: "5px 10px", fontSize: 12, color: "var(--muted)" }}
+              onClick={() => setOpen(false)}
+            >
+              접기
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TranscriptView({ utterances, talkRatio }) {
+  const [expanded, setExpanded] = useState(false);
+
   if (!utterances?.length) {
     return (
       <div className="card small" style={{ padding: 20, textAlign: "center", lineHeight: 1.55, color: "var(--muted)" }}>
@@ -96,54 +173,74 @@ function TranscriptView({ utterances, talkRatio }) {
     );
   }
 
+  const speakerCount = new Set(utterances.map((u) => u.speaker)).size;
+  const previewCount = 2;
+  const visible = expanded ? utterances : utterances.slice(0, previewCount);
+  const hiddenCount = utterances.length - visible.length;
+  const lastSnippet = !expanded && utterances.length > previewCount
+    ? truncateText(utterances[utterances.length - 1]?.text, 60)
+    : "";
+
   return (
-    <div className="card" style={{ padding: "8px 0" }}>
-      <div className="row" style={{ padding: "8px 16px 12px", gap: 8 }}>
-        <span className="tag green" style={{ fontSize: 11 }}>
-          ✓ 향상된 음성인식
-        </span>
+    <div className="card" style={{ padding: "8px 0", overflow: "hidden" }}>
+      <div className="row between" style={{ padding: "10px 16px 8px", gap: 8 }}>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <span className="tag green" style={{ fontSize: 11 }}>
+            ✓ 향상된 음성인식
+          </span>
+          <span className="tag gray" style={{ fontSize: 11 }}>
+            {utterances.length}개 발화 · {speakerCount}명
+          </span>
+        </div>
+        {!expanded && (
+          <span className="small" style={{ color: "var(--muted)", flex: "0 0 auto" }}>
+            미리보기
+          </span>
+        )}
       </div>
-      {utterances.map((u, i) => (
+
+      {visible.map((u, i) => (
+        <UtteranceRow key={`${u.time}-${i}`} u={u} index={i} expanded={expanded} detailMode={expanded} />
+      ))}
+
+      {!expanded && hiddenCount > 0 && (
         <div
-          key={i}
           style={{
-            padding: "12px 16px",
-            borderTop: i > 0 ? "1px solid var(--line)" : "none",
+            margin: "0 16px 12px",
+            padding: "12px 14px",
+            borderRadius: 12,
+            background: "linear-gradient(180deg, #FAF8F4 0%, #F4F1EA 100%)",
+            border: "1px dashed var(--line)",
           }}
         >
-          <div className="row" style={{ gap: 10, alignItems: "flex-start" }}>
-            <div
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: "50%",
-                background: speakerColor(u.speaker) + "22",
-                color: speakerColor(u.speaker),
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 11,
-                fontWeight: 800,
-                flex: "0 0 auto",
-              }}
-            >
-              {String(u.speaker).replace("참석자 ", "")}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="row" style={{ gap: 8, marginBottom: 4 }}>
-                <span style={{ fontWeight: 700, fontSize: 13 }}>{u.speaker}</span>
-                <span className="small" style={{ fontVariantNumeric: "tabular-nums" }}>
-                  {u.time}
-                </span>
-              </div>
-              <div style={{ fontSize: 14, lineHeight: 1.55 }}>{u.text}</div>
-            </div>
+          <div className="small" style={{ lineHeight: 1.55, color: "var(--muted)" }}>
+            +{hiddenCount}개 발화가 더 있어요
+            {lastSnippet ? (
+              <>
+                <br />
+                <span style={{ color: "#6b665c" }}>마지막: “{lastSnippet}”</span>
+              </>
+            ) : null}
           </div>
         </div>
-      ))}
-      <div style={{ padding: "0 16px 8px" }}>
-        <TalkRatioBar talkRatio={talkRatio} />
+      )}
+
+      <div style={{ padding: "0 16px 12px" }}>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          style={{ width: "100%", padding: 12, fontSize: 13, fontWeight: 700 }}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "대화 내용 접기" : `전체 대화 펼치기 (${utterances.length}건)`}
+        </button>
       </div>
+
+      {expanded && (
+        <div style={{ padding: "0 16px 8px" }}>
+          <TalkRatioBar talkRatio={talkRatio} />
+        </div>
+      )}
     </div>
   );
 }
@@ -263,10 +360,10 @@ function InsightsView({ summary }) {
 export default function MeetingInsights({ summary, oneLine }) {
   const utterances = summary?.utterances || [];
   const hasTranscript = utterances.length > 0;
-  const [tab, setTab] = useState(hasTranscript ? "transcript" : "insights");
+  const [tab, setTab] = useState("insights");
 
   useEffect(() => {
-    if (hasTranscript) setTab("transcript");
+    if (!hasTranscript) setTab("insights");
   }, [hasTranscript]);
 
   return (
