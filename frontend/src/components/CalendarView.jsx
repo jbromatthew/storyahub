@@ -14,6 +14,7 @@ import {
 } from "../calendarUtils.js";
 import { calendarList } from "../preferences.js";
 import { toastError, toastSuccess, notifyError } from "../toast.js";
+import KakaoPlacePicker from "./KakaoPlacePicker.jsx";
 
 const REM_OPTS = ["없음", "10분 전", "30분 전", "1시간 전", "1일 전"];
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
@@ -39,10 +40,11 @@ function emptyDraft(day, year, month, prefs) {
   };
 }
 
-function EventPopover({ draft, setDraft, contacts, places, calendars, onSave, onDelete, onClose, saving, anchorDay }) {
+function EventPopover({ draft, setDraft, contacts, places, calendars, onSave, onDelete, onClose, saving, anchorDay, onStartRec }) {
   const [remOpen, setRemOpen] = useState(false);
   const [pickContact, setPickContact] = useState(false);
   const [pickPlace, setPickPlace] = useState(false);
+  const [pickKakao, setPickKakao] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
   const [myPos, setMyPos] = useState(null);
 
@@ -71,6 +73,20 @@ function EventPopover({ draft, setDraft, contacts, places, calendars, onSave, on
       placeLat: p.lat,
       placeLng: p.lng,
     }));
+    setPickPlace(false);
+    setPickKakao(false);
+  };
+
+  const selectKakaoHit = (hit) => {
+    const label = hit.address ? `${hit.name} · ${hit.address}` : hit.name;
+    setDraft((prev) => ({
+      ...prev,
+      place: label,
+      savedPlaceId: null,
+      placeLat: hit.lat,
+      placeLng: hit.lng,
+    }));
+    setPickKakao(false);
     setPickPlace(false);
   };
 
@@ -180,7 +196,16 @@ function EventPopover({ draft, setDraft, contacts, places, calendars, onSave, on
             placeholder="위치 또는 영상 통화 추가"
           />
         </div>
-        <button type="button" className="cal-pop-link" onClick={() => setPickPlace((v) => !v)}>
+        <button type="button" className="cal-pop-link" onClick={() => { setPickKakao((v) => !v); setPickPlace(false); }}>
+          카카오맵에서 검색
+          <span>{draft.placeLat != null && !draft.savedPlaceId ? "선택됨" : "검색"}</span>
+        </button>
+        {pickKakao && (
+          <div className="cal-kakao-pick">
+            <KakaoPlacePicker compact onSelect={selectKakaoHit} />
+          </div>
+        )}
+        <button type="button" className="cal-pop-link" onClick={() => { setPickPlace((v) => !v); setPickKakao(false); }}>
           저장된 맛집 · 장소
           <span>{draft.savedPlaceId ? draft.place : sortedPlaces.length ? "선택" : "없음"}</span>
         </button>
@@ -205,17 +230,18 @@ function EventPopover({ draft, setDraft, contacts, places, calendars, onSave, on
             )}
           </div>
         )}
-        {draft.savedPlaceId && draft.placeLat != null && (
+        {draft.placeLat != null && (
           <button
             type="button"
             className="cal-pop-link"
             style={{ marginTop: -4 }}
             onClick={() => {
+              const name = draft.place.split(" · ")[0] || draft.place;
               const url = kakaoDirectionsUrl({
                 address: draft.place,
                 lat: draft.placeLat,
                 lng: draft.placeLng,
-                label: draft.place.split(" · ")[0] || "목적지",
+                label: name,
               });
               if (url) window.open(url, "_blank", "noopener");
             }}
@@ -277,6 +303,24 @@ function EventPopover({ draft, setDraft, contacts, places, calendars, onSave, on
           />
         </div>
         <div className="cal-pop-actions">
+          {draft.id && onStartRec && (
+            <button
+              type="button"
+              className="btn btn-accent"
+              style={{ width: "100%", padding: 13, marginBottom: 10 }}
+              onClick={() => {
+                onStartRec({
+                  id: draft.id,
+                  title: draft.title,
+                  contactIds: draft.contactIds || [],
+                  contactId: draft.contactIds?.[0] || null,
+                });
+                onClose();
+              }}
+            >
+              🎙 이 일정 미팅 녹음
+            </button>
+          )}
           {draft.id && (
             <button type="button" className="btn btn-ghost" style={{ color: "#B85C4A" }} onClick={onDelete}>
               삭제
@@ -301,7 +345,7 @@ function EventPopover({ draft, setDraft, contacts, places, calendars, onSave, on
   );
 }
 
-export default function CalendarView({ openDetail, organizePrefs }) {
+export default function CalendarView({ openDetail, organizePrefs, onStartRecFromEvent }) {
   const [viewMonth, setViewMonth] = useState(() => monthStart(new Date()));
   const [selDay, setSelDay] = useState(() => new Date().getDate());
   const [events, setEvents] = useState([]);
@@ -417,7 +461,7 @@ export default function CalendarView({ openDetail, organizePrefs }) {
   };
 
   const deleteDraft = async () => {
-    if (!draft?.id || !confirmDelete(draft.title || "일정")) return;
+    if (!draft?.id || !(await confirmDelete(draft.title || "일정"))) return;
     try {
       await api.deleteEvent(draft.id);
       closePop();
@@ -615,6 +659,7 @@ export default function CalendarView({ openDetail, organizePrefs }) {
           onClose={closePop}
           saving={saving}
           anchorDay={`${month + 1}월 ${popover.day}일`}
+          onStartRec={onStartRecFromEvent}
         />
       )}
     </div>

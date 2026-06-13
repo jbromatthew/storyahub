@@ -50,12 +50,14 @@ async function resolveTranscript(
 }
 
 meetingsRouter.get("/", async (req: AuthedRequest, res) => {
+  const eventId = req.query.eventId ? String(req.query.eventId) : undefined;
   const items = await prisma.meeting.findMany({
-    where: { userId: req.userId },
+    where: { userId: req.userId, ...(eventId ? { eventId } : {}) },
     orderBy: { createdAt: "desc" },
-    take: 100,
+    take: eventId ? 50 : 100,
     include: {
       contact: { select: { id: true, person: true, company: true } },
+      event: { select: { id: true, title: true, startsAt: true } },
       todos: { select: { id: true, status: true } },
     },
   });
@@ -81,55 +83,88 @@ meetingsRouter.post("/summarize", async (req: AccessRequest, res) => {
     });
   }
 
-  const jobId = enqueue(async () => {
-    const transcript = await resolveTranscript(userId, mediaKey, meta);
-    const summary = await summarize(transcript, meta?.template ?? "영업");
+  const sourceLabel =
+    meta?.source === "upload" ? "파일 업로드" : meta?.source === "photo" ? "사진 기록" : "녹음";
 
-    const meeting = await prisma.meeting.create({
-      data: {
-        userId,
-        contactId: meta?.contactId ?? null,
-        source: meta?.source ?? "live",
-        mediaKey: mediaKey ?? meta?.imageKeys?.[0] ?? null,
-        oneLine: summary.one_line,
-        summary: summary as any,
-        attendees: meta?.attendees ?? [],
-      },
-    });
+  let eventId: string | null = meta?.eventId ? String(meta.eventId) : null;
+  if (eventId) {
+    const ev = await prisma.event.findFirst({ where: { id: eventId, userId } });
+    if (!ev) eventId = null;
+  }
 
-    if (summary.actions?.length) {
-      await prisma.todo.createMany({
-        data: summary.actions.map((a) => ({
-          userId,
-          title: a.task,
-          priority: a.priority ?? "mid",
-          due: a.due ? new Date(a.due) : null,
-          contactId: meta?.contactId ?? null,
-          meetingId: meeting.id,
-        })),
-      });
-    }
-
-    if (summary.next_meeting?.date) {
-      const startsAt = new Date(`${summary.next_meeting.date}T${summary.next_meeting.time ?? "09:00"}:00`);
-      await prisma.event.create({
-        data: {
-          userId,
-          title: `${meta?.companyName ?? "후속"} 미팅`,
-          startsAt,
-          place: summary.next_meeting.place ?? null,
-          contactId: meta?.contactId ?? null,
-          reminders: ["1시간 전"],
-        },
-      });
-    }
-
-    if (durationSec > 0) await incrementRecordingSec(userId, durationSec);
-
-    return { meetingId: meeting.id, mediaKey: meeting.mediaKey, summary };
+  const meeting = await prisma.meeting.create({
+    data: {
+      userId,
+      contactId: meta?.contactId ?? null,
+      eventId,
+      source: meta?.source ?? "live",
+      mediaKey: mediaKey ?? meta?.imageKeys?.[0] ?? null,
+      oneLine: `${sourceLabel} 변환 중…`,
+      processStatus: "processing",
+      attendees: Array.isArray(meta?.attendees) ? meta.attendees.map(String) : [],
+    },
   });
 
-  res.status(202).json({ jobId });
+  const jobId = enqueue(async () => {
+    try {
+      const transcript = await resolveTranscript(userId, mediaKey, meta);
+      const summary = await summarize(transcript, meta?.template ?? "영업");
+
+      await prisma.meeting.update({
+        where: { id: meeting.id },
+        data: {
+          oneLine: summary.one_line,
+          summary: summary as any,
+          processStatus: "done",
+          processError: null,
+        },
+      });
+
+      if (summary.actions?.length) {
+        await prisma.todo.createMany({
+          data: summary.actions.map((a) => ({
+            userId,
+            title: a.task,
+            priority: a.priority ?? "mid",
+            due: a.due ? new Date(a.due) : null,
+            contactId: meta?.contactId ?? null,
+            meetingId: meeting.id,
+          })),
+        });
+      }
+
+      if (summary.next_meeting?.date) {
+        const startsAt = new Date(`${summary.next_meeting.date}T${summary.next_meeting.time ?? "09:00"}:00`);
+        await prisma.event.create({
+          data: {
+            userId,
+            title: `${meta?.companyName ?? "후속"} 미팅`,
+            startsAt,
+            place: summary.next_meeting.place ?? null,
+            contactId: meta?.contactId ?? null,
+            reminders: ["1시간 전"],
+          },
+        });
+      }
+
+      if (durationSec > 0) await incrementRecordingSec(userId, durationSec);
+
+      return { meetingId: meeting.id, mediaKey: meeting.mediaKey, summary };
+    } catch (e) {
+      const msg = (e as Error).message || "변환 실패";
+      await prisma.meeting.update({
+        where: { id: meeting.id },
+        data: {
+          processStatus: "error",
+          processError: msg,
+          oneLine: `${sourceLabel} 변환 실패`,
+        },
+      });
+      throw e;
+    }
+  });
+
+  res.status(202).json({ jobId, meetingId: meeting.id });
 });
 
 meetingsRouter.get("/job/:id", (req, res) => {
@@ -144,6 +179,7 @@ meetingsRouter.get("/:id", async (req: AuthedRequest, res) => {
     where: { id: req.params.id, userId },
     include: {
       contact: { select: { id: true, person: true, company: true } },
+      event: { select: { id: true, title: true, startsAt: true, place: true } },
       todos: { orderBy: { createdAt: "asc" } },
     },
   });

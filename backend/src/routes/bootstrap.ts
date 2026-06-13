@@ -30,6 +30,7 @@ bootstrapRouter.get("/", async (req: AuthedRequest, res) => {
       take: 100,
       include: {
         contact: { select: { id: true, person: true, company: true } },
+        event: { select: { id: true, title: true, startsAt: true } },
         todos: { select: { id: true, status: true } },
       },
     }),

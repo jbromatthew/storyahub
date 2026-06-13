@@ -136,7 +136,7 @@ export default function NestedTodoList({
 
   const deleteTask = async (t, e) => {
     e?.stopPropagation();
-    if (!confirmDelete(t.t || "할 일")) return;
+    if (!(await confirmDelete(t.t || "할 일"))) return;
     try {
       await api.deleteTodo(t.id);
       await onRefresh?.();

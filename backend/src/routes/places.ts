@@ -7,6 +7,14 @@ import { searchKakaoPlacesKeyword, searchKakaoPlacesNearby } from "../services/k
 export const placesRouter = Router();
 placesRouter.use(auth, requireAccess);
 
+const MAX_PLACE_PHOTOS = 5;
+
+function normalizePhotoKeys(raw: unknown): string[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) return [];
+  return raw.map(String).filter(Boolean).slice(0, MAX_PLACE_PHOTOS);
+}
+
 placesRouter.get("/search", async (req: AuthedRequest, res) => {
   const q = String(req.query.q ?? "").trim();
   const nearby = req.query.nearby === "1" || req.query.nearby === "true";
@@ -62,6 +70,7 @@ placesRouter.post("/", async (req: AuthedRequest, res) => {
     placeUrl,
     notes,
     favorite,
+    photoKeys,
   } = req.body ?? {};
 
   if (!name || lat == null || lng == null) {
@@ -95,6 +104,7 @@ placesRouter.post("/", async (req: AuthedRequest, res) => {
       placeUrl: placeUrl ?? null,
       notes: notes ?? null,
       favorite: !!favorite,
+      photoKeys: normalizePhotoKeys(photoKeys) ?? [],
     },
   });
   res.status(201).json(place);
@@ -105,12 +115,13 @@ placesRouter.patch("/:id", async (req: AuthedRequest, res) => {
   const existing = await prisma.savedPlace.findFirst({ where: { id: req.params.id, userId } });
   if (!existing) return res.status(404).json({ error: "not found" });
 
-  const { category, tags, notes, favorite } = req.body ?? {};
+  const { category, tags, notes, favorite, photoKeys } = req.body ?? {};
   const data: Record<string, unknown> = {};
   if (category !== undefined) data.category = category || null;
   if (tags !== undefined) data.tags = Array.isArray(tags) ? tags.map(String) : [];
   if (notes !== undefined) data.notes = notes || null;
   if (favorite !== undefined) data.favorite = !!favorite;
+  if (photoKeys !== undefined) data.photoKeys = normalizePhotoKeys(photoKeys) ?? [];
 
   const place = await prisma.savedPlace.update({ where: { id: existing.id }, data });
   res.json(place);

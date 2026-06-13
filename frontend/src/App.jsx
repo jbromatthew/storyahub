@@ -14,7 +14,9 @@ import { setClients, getClients, setPlaces, getPlaces } from "./store.js";
 import { contactToUi, todoToUi, todoSearchText, formatWhen, eventToUi, kbToUi, meetingToUi, isAudioMediaKey, isImageMediaKey, kbCategories, KB_SECTIONS, kbSectionLabel, kbCoverKey, haversineKm, formatDistanceKm, kakaoDirectionsUrl, kbExcerpt, kbReadMinutes, kbFileCount, kbThumbMeta, placeToUi } from "./mappers.js";
 import { confirmDelete } from "./confirmDelete.js";
 import ToastHost from "./components/ToastHost.jsx";
+import ConfirmHost from "./components/ConfirmHost.jsx";
 import { toastError, toastSuccess, notifyError } from "./toast.js";
+import { addPendingMeeting, removePendingMeeting, getPendingMeetingIds } from "./pendingMeetings.js";
 import { userPreferences, tagColor, mergedContactGroups, contactGroupOptions } from "./preferences.js";
 
 /* ------------------------------------------------------------------
@@ -408,6 +410,13 @@ const CSS = `
 .cal-pop-link{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;border:none;background:#fff;border-radius:10px;padding:11px 13px;font-family:inherit;font-size:13.5px;text-align:left;cursor:pointer;margin-bottom:8px;color:var(--ink);}
 .cal-pop-link span{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%;}
 .cal-rem-chips,.cal-contact-pick{display:flex;flex-wrap:wrap;gap:6px;margin:-2px 0 10px;}
+.cal-kakao-pick{margin:-2px 0 10px;padding:10px;background:#fff;border-radius:10px;}
+.kakao-place-pick .kakao-place-q{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:14px;margin-bottom:8px;outline:none;}
+.kakao-place-pick .kakao-place-q:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+.kakao-place-results{max-height:200px;overflow-y:auto;}
+.kakao-place-hit{display:block;width:100%;border:none;background:transparent;text-align:left;padding:10px 4px;border-bottom:1px solid var(--line);cursor:pointer;font-family:inherit;}
+.kakao-place-hit:last-child{border-bottom:none;}
+.kakao-place-hit:active{background:var(--accent-soft);}
 .cal-pop-actions{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap;}
 .cal-pop-sub{margin-top:8px;text-align:center;color:var(--muted);}
 
@@ -455,6 +464,41 @@ const CSS = `
 @media (max-width:380px){.sheet-row{grid-template-columns:1fr;}}
 .stepnum{width:26px;height:26px;border-radius:9px;background:var(--accent-soft);color:var(--accent-deep);
   font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.confirm-bg{z-index:500;}
+.confirm-sheet{max-width:340px;text-align:center;padding:26px 22px 22px;}
+.confirm-icon{width:52px;height:52px;border-radius:16px;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-size:22px;background:#FFF0EB;color:#B85C4A;}
+.confirm-title{margin:0;font-weight:800;font-size:18px;line-height:1.35;color:var(--ink);}
+.confirm-msg{margin:10px 0 0;font-size:14px;line-height:1.5;color:var(--muted);}
+.confirm-actions{display:flex;gap:10px;margin-top:22px;}
+.confirm-actions .btn{flex:1;padding:14px;font-size:15px;}
+.confirm-danger{background:#B85C4A;color:#fff;}
+.confirm-danger:active{opacity:.92;}
+.overflow-backdrop{position:fixed;inset:0;z-index:80;background:transparent;}
+.overflow-menu{position:absolute;top:calc(100% + 6px);right:0;z-index:90;min-width:148px;background:#fff;border:1px solid var(--line);
+  border-radius:14px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,.14);}
+.overflow-item{display:block;width:100%;border:none;background:none;font-family:inherit;font-size:14.5px;font-weight:600;
+  text-align:left;padding:12px 14px;border-radius:10px;cursor:pointer;color:var(--ink);}
+.overflow-item:active{background:#F4F1EA;}
+.overflow-item.danger{color:#B85C4A;}
+.place-photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.place-photo-cell{position:relative;aspect-ratio:1;border-radius:12px;overflow:hidden;background:#EFEBE2;}
+.place-photo-img{width:100%;height:100%;object-fit:cover;display:block;}
+.place-photo-empty{background:linear-gradient(135deg,#EFEBE2,#E8E2D8);}
+.place-photo-remove{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:8px;border:none;
+  background:rgba(20,16,12,.55);color:#fff;font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.place-photo-add{aspect-ratio:1;border-radius:12px;border:2px dashed var(--line);background:#FAF8F4;color:var(--muted);
+  font-size:28px;font-weight:300;cursor:pointer;font-family:inherit;}
+.place-photo-add:disabled{opacity:.5;cursor:default;}
+.webview-overlay{position:fixed;inset:0;z-index:450;background:var(--paper);display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);}
+.webview-bar{display:flex;align-items:center;gap:8px;padding:8px 12px 8px 8px;border-bottom:1px solid var(--line);background:var(--paper);flex-shrink:0;}
+.webview-back{flex:0 0 auto;}
+.webview-title{flex:1;font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;padding:0 4px;}
+.webview-ext{flex:0 0 auto;width:42px;height:42px;display:flex;align-items:center;justify-content:center;
+  border-radius:13px;color:var(--muted);text-decoration:none;font-size:18px;font-weight:700;}
+.webview-ext:active{background:#EFEBE2;}
+.webview-frame{flex:1;width:100%;border:none;background:#fff;}
 .segpill{display:inline-flex;background:#EFEBE2;border-radius:10px;padding:3px;gap:3px;}
 .segpill button{border:none;background:none;font-family:inherit;font-weight:700;font-size:12px;padding:6px 11px;border-radius:8px;color:var(--muted);cursor:pointer;}
 .segpill button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);}
@@ -614,6 +658,8 @@ function App(){
   const [lastSummary,setLastSummary] = useState(null);
   const [lastMediaKey,setLastMediaKey] = useState(null);
   const [recordProc,setRecordProc] = useState({ mode:"rec", progress:0, label:"", step:"upload" });
+  const [recordLink,setRecordLink] = useState(null);
+  const pollAbortRef = useRef(null);
   const timer = useRef(null);
 
   const startRecordProcessing=useCallback(({ mode, step, label, progress })=>{
@@ -631,6 +677,28 @@ function App(){
   },[]);
   const failRecordProcessing=useCallback(()=>{ setPhase("setup"); },[]);
 
+  const pollMeetingUntilDone=useCallback(async (meetingId,{ onProgress, signal }={})=>{
+    for(let i=0;i<600;i++){
+      if(signal?.aborted) return { aborted:true };
+      await new Promise(r=>setTimeout(r,2000));
+      try{
+        const m=await api.getMeeting(meetingId);
+        const status=m.processStatus||"done";
+        onProgress?.(i,m);
+        if(status==="done") return { ok:true, meeting:m };
+        if(status==="error") return { ok:false, error:m.processError };
+      }catch{ /* 재시도 */ }
+    }
+    return { ok:null, timeout:true };
+  },[]);
+
+  const continueRecordInBackground=useCallback(()=>{
+    pollAbortRef.current?.abort();
+    setPhase("setup");
+    setTab("meetings");
+    toastSuccess("백그라운드에서 변환 중이에요. 완료되면 알려드릴게요.");
+  },[]);
+
   const loadAppData = useCallback(async ()=>{
     const [data, kb] = await Promise.all([api.bootstrap(), api.listKb()]);
     setClients(data.contacts.map(contactToUi));
@@ -638,6 +706,9 @@ function App(){
     setTodos(data.todos.map(todoToUi));
     setEventsToday((data.eventsToday||[]).map(eventToUi));
     setMeetings((data.meetings||[]).map(meetingToUi));
+    for(const m of data.meetings||[]){
+      if(m.processStatus==="processing") addPendingMeeting(m.id);
+    }
     setKbArticles((kb||[]).map(kbToUi));
     setRevenue(data.revenue||{ supplyAmount:0, total:0, pipeline:0, wonCount:0, pipelineCount:0 });
   },[]);
@@ -690,7 +761,7 @@ function App(){
   },[user]);
 
   const goTab=(t)=>{ setClient(null); setKbView(null); setPricing(false); setCardScan(false); setOverlay(null); setDetail(null); if(t!=="record"){ setTab(t);} };
-  const startRec=()=>{
+  const startRec=(link=null)=>{
     if(user && user.hasAccess===false){
       setPricing(true);
       toastError("이용 기간이 만료되었습니다. 요금제를 선택해 주세요.");
@@ -701,7 +772,18 @@ function App(){
       toastError("체험 녹음 한도(1시간)를 모두 사용했습니다.");
       return;
     }
+    setRecordLink(link||null);
     setTab("record"); setPhase("setup"); setSecs(0); setHl(0); setLastSummary(null); setLastMediaKey(null);
+  };
+  const startRecFromEvent=(event)=>{
+    if(!event?.id) return;
+    const contactIds=event.contactIds?.length?event.contactIds:event.contactId?[event.contactId]:[];
+    startRec({
+      eventId:event.id,
+      eventTitle:event.title||"일정",
+      contactIds,
+      contactId:contactIds[0]||null,
+    });
   };
   const startLiveRec=useCallback(()=>{ setSecs(0); setHl(0); setPhase("rec"); },[]);
   const cancelLiveRec=useCallback(()=>{ setSecs(0); setHl(0); setPhase("setup"); },[]);
@@ -726,7 +808,7 @@ function App(){
     let ok=false;
     try{
       const source = isPhoto ? "photo" : mode==="upload" ? "upload" : "live";
-      const { jobId } = await api.enqueueSummary(mediaKey||null,{
+      const { meetingId } = await api.enqueueSummary(mediaKey||null,{
         template:"영업",
         contactId: contactId??null,
         companyName,
@@ -734,25 +816,36 @@ function App(){
         attendees,
         imageKeys: imageKeys??[],
         durationSec: isPhoto ? 0 : (durationSec ?? secs),
+        eventId: recordLink?.eventId??null,
       });
+      addPendingMeeting(meetingId);
+      await loadAppData();
       bumpRecordProc((p)=>({ step: "summarize", label: "요약 · 할 일 추출 중…", progress: Math.max(p.progress, 55) }));
+      setPhase("proc");
+      pollAbortRef.current=new AbortController();
       const estSec=Math.min(120, Math.max(25, Math.round((durationSec ?? secs) / 6) || 40));
-      let job;
-      for(let i=0;i<180;i++){
-        await new Promise(r=>setTimeout(r,1000));
-        job = await api.getJob(jobId);
-        const tick=38 + Math.min(56, Math.round(((i + 1) / estSec) * 56));
-        bumpRecordProc({ progress: tick });
-        if(job?.status==="done"||job?.status==="error") break;
-      }
-      if(job?.status==="done"){
+      const result=await pollMeetingUntilDone(meetingId,{
+        signal: pollAbortRef.current.signal,
+        onProgress:(i)=>{
+          const tick=38 + Math.min(56, Math.round(((i+1)/estSec)*56));
+          bumpRecordProc({ progress: tick });
+        },
+      });
+      if(result.aborted) return;
+      removePendingMeeting(meetingId);
+      if(result.ok){
         bumpRecordProc({ step: "done", label: "완료", progress: 100 });
-        setLastSummary(job.result);
-        if(job.result?.mediaKey) setLastMediaKey(job.result.mediaKey);
+        const ui=meetingToUi(result.meeting);
+        setLastSummary(ui.summary);
+        if(ui.mediaKey) setLastMediaKey(ui.mediaKey);
         ok=true;
+        setRecordLink(null);
+      }else if(result.ok===false){
+        toastError(friendlyAiError(result.error));
+      }else{
+        toastSuccess("백그라운드에서 변환 중이에요. 미팅 목록에서 확인할 수 있어요.");
+        setTab("meetings");
       }
-      else if(job?.status==="error") toastError(friendlyAiError(job.error));
-      else toastError("요약이 예상보다 오래 걸리고 있어요. 잠시 후 기록 목록에서 확인해주세요.");
       await loadAppData();
       const { user:u }=await api.me().catch(()=>({}));
       if(u) setUser(u);
@@ -778,8 +871,43 @@ function App(){
   };
   const refreshContacts = async ()=>{ await loadAppData(); };
 
+  useEffect(()=>{
+    if(boot!=="app") return;
+    let cancelled=false;
+    const tick=async ()=>{
+      const ids=getPendingMeetingIds();
+      if(!ids.length) return;
+      for(const id of ids){
+        try{
+          const m=await api.getMeeting(id);
+          const status=m.processStatus||"done";
+          if(status==="done"){
+            removePendingMeeting(id);
+            if(!cancelled){
+              toastSuccess("녹음 변환이 완료됐어요");
+              await loadAppData();
+              const { user:u }=await api.me().catch(()=>({}));
+              if(u) setUser(u);
+            }
+          }else if(status==="error"){
+            removePendingMeeting(id);
+            if(!cancelled){
+              toastError(friendlyAiError(m.processError));
+              await loadAppData();
+            }
+          }
+        }catch{ /* ignore */ }
+      }
+    };
+    tick();
+    const iv=setInterval(tick,4000);
+    const onVis=()=>{ if(document.visibilityState==="visible") tick(); };
+    document.addEventListener("visibilitychange",onVis);
+    return ()=>{ cancelled=true; clearInterval(iv); document.removeEventListener("visibilitychange",onVis); };
+  },[boot,loadAppData]);
+
   if(boot==="loading"||boot==="reconnect") return (
-    <div className="sa-root"><style>{CSS}</style><ToastHost/>
+    <div className="sa-root"><style>{CSS}</style><ToastHost/><ConfirmHost/>
       <div className="app-shell">
         <div className="app-main app-main-centered" style={{textAlign:"center"}}>
           {boot==="loading" ? <div className="spinner"/> : (
@@ -802,6 +930,7 @@ function App(){
     <div className="sa-root">
       <style>{CSS}</style>
       <ToastHost/>
+      <ConfirmHost/>
       <div className="app-shell">
         {boot==="app" && (
           <aside className="app-sidebar">
@@ -825,7 +954,11 @@ function App(){
               onStartRec={async ()=>{ await completeWelcome(); startRec(); }}
               onAddContact={async ()=>{ await completeWelcome(); setTab("clients"); setCardScan(true); }}
               onDone={completeWelcome}/>
-          : detail ? <Detail d={detail} todos={todos} back={()=>setDetail(null)} onTodoToggle={toggleTodo} onTodoUpdated={loadAppData} refreshTodos={loadAppData} onDeleted={()=>{ setDetail(null); loadAppData(); }} prefs={prefs}/>
+          : detail ? <Detail d={detail} todos={todos} back={()=>setDetail(null)} onTodoToggle={toggleTodo} onTodoUpdated={loadAppData} refreshTodos={loadAppData} onDeleted={()=>{ setDetail(null); loadAppData(); }} prefs={prefs}
+              meetings={meetings}
+              startRecFromEvent={(ev)=>{ setDetail(null); startRecFromEvent(ev); }}
+              openMeeting={(m)=>setDetail({type:"meeting",data:m})}
+              openEvent={(ev)=>setDetail({type:"event",data:ev})}/>
           : overlay==="search" ? <GlobalSearch back={()=>setOverlay(null)} openClient={(c)=>{setOverlay(null);setTab("clients");setClient(c);}}
               openPlace={(p)=>{setOverlay(null);goTab("places");}}
               openTask={(t)=>{setOverlay(null);setDetail({type:"task",data:t});}}
@@ -844,8 +977,10 @@ function App(){
                               onComplete={handleRecordComplete} todos={todos} toggleTodo={toggleTodo}
                               summary={lastSummary} mediaKey={lastMediaKey} user={user}
                               proc={recordProc} onProcessingStart={startRecordProcessing} onProcFailed={failRecordProcessing}
+                              onContinueInBackground={continueRecordInBackground}
                               onStartLive={startLiveRec} onCancelLive={cancelLiveRec}
-                              onBack={()=>{ setTab("today"); setPhase("idle"); }}
+                              recordLink={recordLink}
+                              onBack={()=>{ setRecordLink(null); setTab("today"); setPhase("idle"); }}
                               goClients={()=>{setTab("clients");setPhase("idle");}} />
           : client ? <ClientDetail c={client} back={()=>setClient(null)} startRec={startRec} seg={segment} onRefresh={loadAppData}
               onDeleted={()=>{ setClient(null); loadAppData(); }}
@@ -864,7 +999,7 @@ function App(){
           : tab==="clients" ? (cardScan ? <CardScan back={()=>setCardScan(false)} onSaved={refreshContacts} contactPresets={prefs.contacts}/> : <Clients group={group} setGroup={setGroup} open={(c)=>setClient(c)} onAdd={()=>setCardScan(true)} onRefresh={loadAppData} seg={segment} contactPresets={prefs.contacts} onOpenOrganize={()=>setOverlay("categorytags")}/>)
           : tab==="places" ? <PlacesView placePresets={prefs.places} onRefresh={loadAppData}/>
           : tab==="meetings" ? <MeetingsTab meetings={meetings} openDetail={(m)=>setDetail({type:"meeting",data:m})} startRec={startRec} onRefresh={loadAppData} meetingPresets={prefs.meeting}/>
-          : tab==="calendar" ? <CalendarView openDetail={(t,data)=>setDetail({type:t,data})} organizePrefs={prefs}/>
+          : tab==="calendar" ? <CalendarView openDetail={(t,data)=>setDetail({type:t,data})} organizePrefs={prefs} onStartRecFromEvent={startRecFromEvent}/>
           : kbView ? (
             kbView.mode==="edit"
               ? <KbEditor article={kbView.article} back={()=>setKbView(null)} onSaved={loadAppData} onDeleted={loadAppData}
@@ -1483,7 +1618,7 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,conta
   const openTodos=(detail?.openTodos||[]).map(todoToUi);
   const meetHistory=detail?.meetings||[];
   const deleteDeal=async (d)=>{
-    if(!confirmDelete(d.title||"딜")) return;
+    if(!(await confirmDelete(d.title||"딜"))) return;
     try{
       await api.deleteDeal(d.id);
       reload();
@@ -1827,7 +1962,7 @@ function MediaPlayer({mediaKey,compact}){
   return null;
 }
 
-function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={categories:[],tags:[]}}){
+function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={categories:[],tags:[]},openEvent}){
   const seed=data||{};
   const [meeting,setMeeting]=useState(seed);
   const [meetingTodos,setMeetingTodos]=useState([]);
@@ -1880,7 +2015,34 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
     <div className="fade">
       <DetailHead back={back} eyebrow="기록" title={contact?.company||contact?.person||meeting.oneLine||"미팅 기록"}/>
       <div className="pad" style={{marginTop:12,marginBottom:16}}>
+        {meeting.isProcessing && (
+          <div className="card small" style={{padding:14,marginBottom:14,lineHeight:1.55,background:"#E8F0FF",border:"1px solid #C5D8F5",color:"#3A6BB5"}}>
+            ⏳ 변환 중이에요. 잠시 후 새로고침하거나 미팅 목록에서 확인해 주세요.
+          </div>
+        )}
+        {meeting.isFailed && (
+          <div className="card small" style={{padding:14,marginBottom:14,lineHeight:1.55,background:"#FCEAE6",border:"1px solid #F0D4C8",color:"#B85C4A"}}>
+            <div style={{fontWeight:700,marginBottom:6}}>변환에 실패했어요</div>
+            {meeting.processError || "알 수 없는 오류"}
+            {meeting.hasAudio && <div style={{marginTop:8,color:"var(--muted)"}}>녹음 파일은 저장되어 있어요.</div>}
+          </div>
+        )}
         {loading && <div className="small" style={{textAlign:"center",padding:12}}>불러오는 중…</div>}
+        {meeting.eventId && meeting.eventTitle && (
+          <button type="button" className="card row between" style={{padding:14,marginBottom:14,width:"100%",textAlign:"left",cursor:"pointer"}}
+            onClick={()=>{
+              const rawEv=meeting._raw?.event;
+              if(rawEv) openEvent?.(eventToUi({...rawEv,contactIds:rawEv.contactIds||[]}));
+              else openEvent?.(eventToUi({id:meeting.eventId,title:meeting.eventTitle,startsAt:meeting.eventStartsAt||new Date().toISOString(),endsAt:null,place:"",category:"일정",contactIds:[]}));
+            }}>
+            <div>
+              <div className="small" style={{fontWeight:700,marginBottom:4}}>연결된 일정</div>
+              <div style={{fontWeight:700,fontSize:14.5}}>📅 {meeting.eventTitle}</div>
+              {meeting.eventStartsAt && <div className="small" style={{marginTop:4}}>{formatWhen(meeting.eventStartsAt)}</div>}
+            </div>
+            <span style={{color:"var(--muted)"}}>{I.chevron({})}</span>
+          </button>
+        )}
         {contact && (
           <div className="card row" style={{padding:14,gap:11,marginBottom:14}}>
             <div className="avatar">{(contact.company||contact.person||"?")[0]}</div>
@@ -1914,8 +2076,10 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
             저장된 녹음 파일이 없어요. (요약만 저장된 기록이거나 사진 기록일 수 있어요)
           </div>
         )}
-        <MeetingInsights summary={s} oneLine={meeting.oneLine||s?.one_line}/>
-        {displayTodos.length>0 && (
+        {!meeting.isFailed && !meeting.isProcessing && (
+          <MeetingInsights summary={s} oneLine={meeting.oneLine||s?.one_line}/>
+        )}
+        {!meeting.isFailed && !meeting.isProcessing && displayTodos.length>0 && (
           <>
             <div className="section-h" style={{marginTop:16}}>이 미팅에서 나온 할 일</div>
             <div className="card" style={{padding:"4px 16px",marginBottom:14}}>
@@ -1962,7 +2126,7 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
 }
 
 /* ---------------- RECORD + SUMMARY ---------------- */
-function RecordProcessing({proc}){
+function RecordProcessing({proc,onContinueInBackground}){
   const isPhoto=proc?.mode==="photo";
   const steps=isPhoto
     ? [
@@ -2002,13 +2166,25 @@ function RecordProcessing({proc}){
       <div className="small" style={{marginTop:18,color:"var(--muted)",lineHeight:1.5}}>
         {isPhoto ? "사진이 많으면 조금 더 걸릴 수 있어요" : "녹음이 길수록 전사·요약에 시간이 더 걸려요"}
       </div>
+      {onContinueInBackground && (
+        <button type="button" className="btn btn-ghost" style={{width:"100%",maxWidth:320,margin:"22px auto 0",padding:14,fontSize:14}}
+          onClick={onContinueInBackground}>
+          백그라운드에서 계속
+        </button>
+      )}
+      <div className="small" style={{marginTop:12,color:"var(--muted)",lineHeight:1.45,maxWidth:300,marginLeft:"auto",marginRight:"auto"}}>
+        앱을 나가도 서버에서 변환이 이어져요. 미팅 목록에서 진행·결과를 확인할 수 있어요.
+      </div>
     </div>
   );
 }
 
-function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goClients,summary,mediaKey,user,proc,onProcessingStart,onProcFailed,onStartLive,onCancelLive,onBack}){
+function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goClients,summary,mediaKey,user,proc,onProcessingStart,onProcFailed,onContinueInBackground,onStartLive,onCancelLive,onBack,recordLink}){
   const CLIENTS=getClients();
-  const [att,setAtt]=useState(()=>CLIENTS.slice(0,2).map(c=>c.id));
+  const [att,setAtt]=useState(()=>{
+    if(recordLink?.contactIds?.length) return recordLink.contactIds;
+    return CLIENTS.slice(0,2).map(c=>c.id);
+  });
   const [pick,setPick]=useState(false);
   const [q,setQ]=useState("");
   /** null=선택 전 | rec | upload | photo */
@@ -2038,6 +2214,11 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
   };
 
   useEffect(()=>{ if(phase==="setup"||phase==="sum") setFinishing(false); },[phase]);
+
+  useEffect(()=>{
+    if(!recordLink?.contactIds?.length) return;
+    setAtt(recordLink.contactIds);
+  },[recordLink]);
 
   useEffect(()=>{
     if(!liveOn) return;
@@ -2126,7 +2307,7 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
   };
 
   if(phase==="sum") return <Summary todos={todos} toggleTodo={toggleTodo} goClients={goClients} att={att} summary={summary} mediaKey={mediaKey}/>;
-  if(phase==="proc") return <RecordProcessing proc={proc}/>;
+  if(phase==="proc") return <RecordProcessing proc={proc} onContinueInBackground={onContinueInBackground}/>;
   // 입력 화면
   return (
     <div className="fade" style={{padding:"24px 24px 30px"}}>
@@ -2135,6 +2316,13 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
         <div className="h-eyebrow" style={{textAlign:"center",flex:1}}>새 기록{primary?` · ${primary.co||primary.person}`:""}</div>
         <span style={{width:72}}/>
       </div>
+      {recordLink?.eventTitle && (
+        <div className="card fade" style={{padding:"12px 14px",marginTop:14,background:"#E8F0FF",border:"1px solid #C5D8F5"}}>
+          <div className="small" style={{color:"#3A6BB5",lineHeight:1.55,fontWeight:600}}>
+            📅 <span style={{fontWeight:700}}>{recordLink.eventTitle}</span> 일정에 연결됩니다
+          </div>
+        </div>
+      )}
       {/* 참석자 태그 */}
       <div style={{marginTop:16}}>
         <div className="small" style={{fontWeight:700,marginBottom:8}}>참석자</div>
@@ -3275,6 +3463,9 @@ function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh,mee
                     {m.hasAudio && <span className="tag" style={{background:"var(--accent-soft)",color:"var(--accent-deep)"}}>🎧 녹음</span>}
                     {m.source==="photo" && <span className="tag" style={{background:"#E8EEF5",color:"#4A6FA5"}}>📷 사진</span>}
                     {m.source==="upload" && <span className="tag" style={{background:"#EDE8F5",color:"#6A4A9A"}}>📁 파일</span>}
+                    {m.isProcessing && <span className="tag" style={{background:"#E8F0FF",color:"#3A6BB5"}}>⏳ 변환 중</span>}
+                    {m.isFailed && <span className="tag" style={{background:"#FCEAE6",color:"#B85C4A"}}>⚠ 변환 실패</span>}
+                    {m.eventTitle && <span className="tag" style={{background:"#E8F0FF",color:"#3A6BB5"}}>📅 {m.eventTitle}</span>}
                     {m.todoCount>0 && (
                       <span className="tag" style={{background:"var(--green-soft)",color:"var(--green)"}}>
                         할 일 {m.openTodoCount>0?`${m.openTodoCount}/${m.todoCount}`:m.todoCount}
@@ -3714,7 +3905,7 @@ function DetailHead({back,eyebrow,title}){
 function DeleteBar({label,onDelete,afterDelete}){
   const [busy,setBusy]=useState(false);
   const go=async ()=>{
-    if(!confirmDelete(label)) return;
+    if(!(await confirmDelete(label))) return;
     setBusy(true);
     try{
       await onDelete();
@@ -3967,7 +4158,7 @@ function FollowupDetailView({back,todos,onTodoToggle}){
   );
 }
 
-function EventDetailView({data,back,onDeleted}){
+function EventDetailView({data,back,onDeleted,linkedMeetings=[],onStartRec,openMeeting}){
   const e=data||{};
   const label=e.month?`${e.month}월 ${e.day}일`:"";
   const contacts=getClients().filter(c=>(e.contactIds||[]).includes(c.id)||c.id===e.contactId);
@@ -4010,6 +4201,30 @@ function EventDetailView({data,back,onDeleted}){
             카카오맵 길찾기
           </button>
         )}
+        {e.id && onStartRec && (
+          <button type="button" className="btn btn-accent" style={{width:"100%",padding:14,marginTop:10}}
+            onClick={()=>onStartRec(e)}>
+            🎙 이 일정 미팅 녹음
+          </button>
+        )}
+        {linkedMeetings.length>0 && (
+          <>
+            <div className="section-h" style={{marginTop:18}}>연결된 미팅 기록</div>
+            <div className="card" style={{padding:"4px 16px"}}>
+              {linkedMeetings.map((m,i)=>(
+                <div key={m.id} className="row between" style={{padding:"14px 0",borderBottom:i<linkedMeetings.length-1?"1px solid var(--line)":"none",cursor:"pointer",gap:10}}
+                  onClick={()=>openMeeting?.(m)}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:14,lineHeight:1.45}}>{m.oneLine||m.t}</div>
+                    <div className="small" style={{marginTop:4}}>{m.createdLabel||"기록"}
+                      {m.isProcessing?" · 변환 중":m.isFailed?" · 변환 실패":""}</div>
+                  </div>
+                  <span style={{color:"var(--muted)",flex:"0 0 auto"}}>{I.chevron({})}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
         {e.id && (
           <button type="button" className="btn btn-ghost" style={{width:"100%",padding:13,marginTop:10}} onClick={share}>일정 공유</button>
         )}
@@ -4021,12 +4236,13 @@ function EventDetailView({data,back,onDeleted}){
   );
 }
 
-function Detail({d,back,todos=[],onTodoToggle,onTodoUpdated,refreshTodos,onDeleted,prefs}){
-  if(d.type==="meeting") return <MeetingDetailView data={d.data} back={back} refreshTodos={refreshTodos} onDeleted={onDeleted} meetingPresets={prefs?.meeting}/>;
+function Detail({d,back,todos=[],onTodoToggle,onTodoUpdated,refreshTodos,onDeleted,prefs,meetings=[],startRecFromEvent,openMeeting,openEvent}){
+  if(d.type==="meeting") return <MeetingDetailView data={d.data} back={back} refreshTodos={refreshTodos} onDeleted={onDeleted} meetingPresets={prefs?.meeting} openEvent={openEvent}/>;
   if(d.type==="task") return <TaskDetailView data={d.data} back={back} onUpdated={onTodoUpdated} onDeleted={onDeleted}/>;
   if(d.type==="revenue") return <RevenueDetailView back={back}/>;
   if(d.type==="followup") return <FollowupDetailView back={back} todos={todos} onTodoToggle={onTodoToggle}/>;
-  return <EventDetailView data={d.data} back={back} onDeleted={onDeleted}/>;
+  const linkedMeetings=(meetings||[]).filter(m=>m.eventId===d.data?.id);
+  return <EventDetailView data={d.data} back={back} onDeleted={onDeleted} linkedMeetings={linkedMeetings} onStartRec={startRecFromEvent} openMeeting={openMeeting}/>;
 }
 
 export default App;

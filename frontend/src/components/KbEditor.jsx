@@ -876,7 +876,7 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
 
   const handleDelete = async () => {
     if (!article?.id) return back();
-    if (!confirmDelete(article.title || "이 글")) return;
+    if (!(await confirmDelete(article.title || "이 글"))) return;
     try {
       await api.deleteKb(article.id);
       onDeleted?.();

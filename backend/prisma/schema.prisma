@@ -102,6 +102,10 @@ model Meeting {           // 기록 (녹음/통화/사진)
   attendees   String[]                    // 태그된 참석자 contactId 목록
   category    String?                     // 사용자 정의 분류 (미팅/통화 등)
   tags        String[]  @default([])      // 사용자 정의 태그
+  processStatus String  @default("done")  // processing | done | error
+  processError  String?                   // 변환 실패 메시지
+  eventId     String?
+  event       Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
 
   todos       Todo[]
@@ -161,6 +165,8 @@ model Event {             // 캘린더 일정
   reminders String[]                        // ["1시간 전","1일 전"] 등 (기본값 자동 적용)
   googleId  String?                          // Google 캘린더 연동 id
   createdAt DateTime @default(now())
+
+  meetings  Meeting[]
 }
 
 model SavedPlace {        // 맛집·장소 (카카오맵 연동)
@@ -179,6 +185,7 @@ model SavedPlace {        // 맛집·장소 (카카오맵 연동)
   placeUrl     String?                      // 카카오맵 장소 URL
   favorite     Boolean  @default(false)
   notes        String?
+  photoKeys    String[] @default([])           // 장소 사진 (최대 5)
   createdAt    DateTime @default(now())
 
   events       Event[]

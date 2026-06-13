@@ -216,14 +216,27 @@ export function meetingToUi(m) {
   const label = d
     ? `${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`
     : "";
+  const processStatus = m.processStatus || "done";
+  const isProcessing = processStatus === "processing";
+  const isFailed = processStatus === "error";
+  const oneLine =
+    isProcessing
+      ? m.oneLine || "변환 중…"
+      : isFailed
+        ? m.oneLine || "변환 실패"
+        : m.oneLine || m.summary?.one_line || "";
   return {
     id: m.id,
-    t: m.oneLine || m.summary?.one_line || "기록",
+    t: oneLine || "기록",
     d: `${label} · 기록`,
-    oneLine: m.oneLine || m.summary?.one_line || "",
+    oneLine,
     mediaKey: m.mediaKey || null,
     source: m.source || "live",
     summary: m.summary || null,
+    processStatus,
+    processError: m.processError || "",
+    isProcessing,
+    isFailed,
     createdLabel: d ? formatWhen(m.createdAt) : "",
     hasAudio: isAudioMediaKey(m.mediaKey),
     contact: m.contact || null,
@@ -232,6 +245,9 @@ export function meetingToUi(m) {
     openTodoCount: Array.isArray(m.todos) ? m.todos.filter((t) => t.status !== "done").length : 0,
     category: m.category || "",
     tags: m.tags || [],
+    eventId: m.eventId || m.event?.id || null,
+    eventTitle: m.event?.title || "",
+    eventStartsAt: m.event?.startsAt || null,
     _raw: m,
   };
 }
@@ -326,6 +342,7 @@ export function placeToUi(p) {
     placeUrl: p.placeUrl || "",
     fav: !!p.favorite,
     notes: p.notes || "",
+    photoKeys: p.photoKeys || [],
     _raw: p,
   };
 }

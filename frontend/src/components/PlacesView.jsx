@@ -4,7 +4,148 @@ import { api } from "../api/client.js";
 import { getPlaces, setPlaces } from "../store.js";
 import { placeToUi, placeGroups, haversineKm, formatDistanceKm, kakaoDirectionsUrl } from "../mappers.js";
 import { tagColor } from "../preferences.js";
-import { toastError, toastSuccess, notifyError } from "../toast.js";
+import { toastSuccess, notifyError } from "../toast.js";
+import { confirmDelete, confirmAction } from "../confirm.js";
+import { uploadFile, pickImageFile, mediaUrl, isPickCancelled } from "../api/upload.js";
+import WebViewOverlay from "./WebViewOverlay.jsx";
+
+const MAX_PLACE_PHOTOS = 5;
+
+function PlaceThumb({ photoKey, size = 44 }) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    if (!photoKey) return;
+    let alive = true;
+    mediaUrl(photoKey)
+      .then((u) => alive && setUrl(u))
+      .catch(() => alive && setUrl(null));
+    return () => {
+      alive = false;
+    };
+  }, [photoKey]);
+  if (!url) {
+    return (
+      <div
+        style={{
+          width: size,
+          height: size,
+          borderRadius: 10,
+          background: "#EFEBE2",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+  return (
+    <img
+      src={url}
+      alt=""
+      style={{ width: size, height: size, borderRadius: 10, objectFit: "cover", flexShrink: 0 }}
+    />
+  );
+}
+
+function PlacePhotoGrid({ keys, onChange, disabled }) {
+  const [urls, setUrls] = useState({});
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const next = {};
+      for (const k of keys) {
+        try {
+          next[k] = await mediaUrl(k);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (alive) setUrls(next);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [keys.join("|")]);
+
+  const addPhoto = async () => {
+    if (keys.length >= MAX_PLACE_PHOTOS || uploading) return;
+    setUploading(true);
+    try {
+      const file = await pickImageFile(false);
+      const key = await uploadFile(file);
+      onChange([...keys, key]);
+      toastSuccess("사진을 추가했어요");
+    } catch (e) {
+      if (!isPickCancelled(e)) notifyError(e, "사진 업로드 실패");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removePhoto = async (idx) => {
+    const ok = await confirmAction("이 사진을 삭제할까요?", "저장된 사진만 지워지고 장소 정보는 유지됩니다.");
+    if (!ok) return;
+    onChange(keys.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <div>
+      <div className="row between" style={{ marginBottom: 8 }}>
+        <div className="small" style={{ fontWeight: 700 }}>
+          사진
+        </div>
+        <span className="small" style={{ color: "var(--muted)" }}>
+          {keys.length}/{MAX_PLACE_PHOTOS}
+        </span>
+      </div>
+      <div className="place-photo-grid">
+        {keys.map((k, i) => (
+          <div key={k} className="place-photo-cell">
+            {urls[k] ? (
+              <img src={urls[k]} alt="" className="place-photo-img" />
+            ) : (
+              <div className="place-photo-img place-photo-empty" />
+            )}
+            {!disabled && (
+              <button type="button" className="place-photo-remove" aria-label="사진 삭제" onClick={() => removePhoto(i)}>
+                ×
+              </button>
+            )}
+          </div>
+        ))}
+        {keys.length < MAX_PLACE_PHOTOS && !disabled && (
+          <button type="button" className="place-photo-add" onClick={addPhoto} disabled={uploading}>
+            {uploading ? "…" : "+"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OverflowMenu({ items, onClose }) {
+  return (
+    <>
+      <div className="overflow-backdrop" onClick={onClose} aria-hidden />
+      <div className="overflow-menu" role="menu">
+        {items.map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            role="menuitem"
+            className={"overflow-item" + (item.danger ? " danger" : "")}
+            onClick={() => {
+              onClose();
+              item.onClick?.();
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
 
 function TagChip({ t }) {
   const c = tagColor(t);
@@ -314,7 +455,10 @@ function PlaceDetail({ p, back, placeTags = [], onUpdated, onDeleted }) {
   const [tags, setTags] = useState(p.tags || []);
   const [notes, setNotes] = useState(p.notes || "");
   const [fav, setFav] = useState(!!p.fav);
+  const [photoKeys, setPhotoKeys] = useState(p.photoKeys || []);
   const [saving, setSaving] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [placeWebUrl, setPlaceWebUrl] = useState(null);
 
   const save = async (patch) => {
     setSaving(true);
@@ -342,8 +486,13 @@ function PlaceDetail({ p, back, placeTags = [], onUpdated, onDeleted }) {
     save({ favorite: next });
   };
 
+  const updatePhotos = (next) => {
+    setPhotoKeys(next);
+    save({ photoKeys: next });
+  };
+
   const remove = async () => {
-    if (!window.confirm(`"${p.name}"을(를) 삭제할까요?`)) return;
+    if (!(await confirmDelete(p.name))) return;
     try {
       await api.deletePlace(p.id);
       setPlaces(getPlaces().filter((x) => x.id !== p.id));
@@ -357,13 +506,27 @@ function PlaceDetail({ p, back, placeTags = [], onUpdated, onDeleted }) {
 
   return (
     <div className="fade">
-      <div className="pad row between" style={{ marginTop: 8 }}>
+      {placeWebUrl && (
+        <WebViewOverlay url={placeWebUrl} title={p.name} onClose={() => setPlaceWebUrl(null)} />
+      )}
+      <div className="pad row between" style={{ marginTop: 8, position: "relative" }}>
         <button type="button" className="iconbtn" onClick={back}>
           ←
         </button>
-        <button type="button" className="iconbtn" style={{ color: fav ? "var(--accent)" : "#CFC8BB" }} onClick={toggleFav}>
-          ★
-        </button>
+        <div className="row" style={{ gap: 4, position: "relative" }}>
+          <button type="button" className="iconbtn" style={{ color: fav ? "var(--accent)" : "#CFC8BB" }} onClick={toggleFav}>
+            ★
+          </button>
+          <button type="button" className="iconbtn" aria-label="더보기" onClick={() => setMenuOpen((v) => !v)}>
+            ⋮
+          </button>
+          {menuOpen && (
+            <OverflowMenu
+              items={[{ label: "삭제", danger: true, onClick: remove }]}
+              onClose={() => setMenuOpen(false)}
+            />
+          )}
+        </div>
       </div>
       <div className="pad" style={{ marginTop: 4 }}>
         <div className="h-eyebrow">맛집 · 장소</div>
@@ -373,6 +536,9 @@ function PlaceDetail({ p, back, placeTags = [], onUpdated, onDeleted }) {
           {tags.map((t) => (
             <TagChip key={t} t={t} />
           ))}
+        </div>
+        <div style={{ marginTop: 18 }}>
+          <PlacePhotoGrid keys={photoKeys} onChange={updatePhotos} disabled={saving} />
         </div>
         {p.area && (
           <div className="small" style={{ marginTop: 14, lineHeight: 1.5 }}>
@@ -392,7 +558,7 @@ function PlaceDetail({ p, back, placeTags = [], onUpdated, onDeleted }) {
             카카오맵 길찾기
           </button>
           {p.placeUrl && (
-            <button className="btn btn-ghost" style={{ flex: 1, padding: 14 }} onClick={() => window.open(p.placeUrl, "_blank", "noopener")}>
+            <button className="btn btn-ghost" style={{ flex: 1, padding: 14 }} onClick={() => setPlaceWebUrl(p.placeUrl)}>
               장소 보기
             </button>
           )}
@@ -422,9 +588,6 @@ function PlaceDetail({ p, back, placeTags = [], onUpdated, onDeleted }) {
             style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--line)", fontFamily: "inherit", fontSize: 14 }}
           />
         </div>
-        <button type="button" className="btn btn-ghost" style={{ width: "100%", marginTop: 20, color: "#B85C4A" }} onClick={remove} disabled={saving}>
-          삭제
-        </button>
       </div>
     </div>
   );
@@ -532,9 +695,13 @@ export default function PlacesView({ placePresets = {}, onRefresh }) {
               {list.map((p) => (
                 <div key={p.id} className="list-item row between" onClick={() => setDetail(p)} style={{ cursor: "pointer" }}>
                   <div className="row" style={{ gap: 11, minWidth: 0 }}>
-                    <div className="avatar" style={{ background: "#FFF0EB", color: "#C45C3E" }}>
-                      {p.init}
-                    </div>
+                    {(p.photoKeys || [])[0] ? (
+                      <PlaceThumb photoKey={p.photoKeys[0]} size={44} />
+                    ) : (
+                      <div className="avatar" style={{ background: "#FFF0EB", color: "#C45C3E" }}>
+                        {p.init}
+                      </div>
+                    )}
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 14.5 }}>{p.name}</div>
                       <div className="small" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

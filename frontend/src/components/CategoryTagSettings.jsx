@@ -8,6 +8,7 @@ import {
   userPreferences,
 } from "../preferences.js";
 import { toastSuccess, notifyError } from "../toast.js";
+import { confirmAction } from "../confirm.js";
 
 const KB_SECTIONS = [
   { id: "book", label: "책" },
@@ -230,8 +231,8 @@ export default function CategoryTagSettings({ user, back, onUserUpdated }) {
     }
   };
 
-  const reset = () => {
-    if (!window.confirm("기본값으로 되돌릴까요?")) return;
+  const reset = async () => {
+    if (!(await confirmAction("기본값으로 되돌릴까요?", "카테고리·태그 설정이 처음 상태로 바뀝니다."))) return;
     setPrefs(JSON.parse(JSON.stringify(DEFAULT_PREFERENCES)));
   };
 
