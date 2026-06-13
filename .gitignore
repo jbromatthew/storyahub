@@ -10,3 +10,4 @@ build/
 coverage/
 .vite/
 prisma/dev.db
+scripts/deploy-frontend.env

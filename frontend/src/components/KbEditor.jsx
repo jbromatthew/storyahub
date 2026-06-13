@@ -3,8 +3,9 @@ import { api } from "../api/client.js";
 import { confirmDelete } from "../confirmDelete.js";
 import { uploadFile, pickImageFile, pickAnyFile, mediaUrl, isPickCancelled } from "../api/upload.js";
 import { KB_SECTIONS, kbSectionLabel, kbCoverKey } from "../mappers.js";
-import { kbPresets, tagColor } from "../preferences.js";
-import { notifyError } from "../toast.js";
+import { kbPresets, tagColor, mergePreferencesRaw } from "../preferences.js";
+import { notifyError, toastSuccess } from "../toast.js";
+import { confirmAction } from "../confirm.js";
 
 export const BLOCK_TYPES = [
   { type: "text", label: "텍스트", desc: "일반 문단", slash: "텍스트" },
@@ -636,7 +637,173 @@ function parseArticleBlocks(article) {
   };
 }
 
-export default function KbEditor({ article, back, onSaved, onDeleted, categories = [], prefs }) {
+function KbCategoryBar({ section, cat, setCat, prefs, onUserUpdated, onDirty, extraCategories = [] }) {
+  const [newCat, setNewCat] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const presetCategories = kbPresets(prefs, section).categories;
+  const categories = [
+    ...new Set([...presetCategories, ...extraCategories.filter((c) => c && c !== "미분류")]),
+  ];
+
+  useEffect(() => {
+    setEditing(false);
+    setNewCat("");
+  }, [section]);
+
+  const persistCategories = async (nextCategories) => {
+    setSaving(true);
+    try {
+      const base = mergePreferencesRaw(prefs);
+      const { user: u } = await api.updatePreferences({
+        ...base,
+        kb: {
+          ...base.kb,
+          [section]: {
+            ...base.kb[section],
+            categories: nextCategories,
+          },
+        },
+      });
+      onUserUpdated?.(u);
+    } catch (e) {
+      notifyError(e, "카테고리 저장 실패");
+      throw e;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addCategory = async () => {
+    const v = newCat.trim();
+    if (!v) return;
+    if (presetCategories.includes(v) || extraCategories.includes(v)) {
+      setCat(v);
+      setNewCat("");
+      onDirty?.();
+      return;
+    }
+    try {
+      await persistCategories([...presetCategories, v]);
+      setCat(v);
+      setNewCat("");
+      onDirty?.();
+      toastSuccess(`"${v}" 카테고리를 추가했어요`);
+    } catch {
+      /* notified */
+    }
+  };
+
+  const removeCategory = async (name) => {
+    if (presetCategories.length <= 1) {
+      notifyError(new Error("카테고리는 최소 1개 필요해요"));
+      return;
+    }
+    if (!presetCategories.includes(name)) return;
+    if (!(await confirmAction(`"${name}" 카테고리를 삭제할까요?`, "목록에서만 지워지고, 이미 쓴 글의 분류는 그대로예요."))) return;
+    const next = presetCategories.filter((c) => c !== name);
+    try {
+      await persistCategories(next);
+      if (cat === name) setCat("");
+      onDirty?.();
+    } catch {
+      /* notified */
+    }
+  };
+
+  return (
+    <div className="kbe-meta">
+      <span className="tag gray" style={{ padding: "6px 10px", fontSize: 12 }}>{kbSectionLabel(section)}</span>
+
+      {categories.map((c) => (
+        <span
+          key={c}
+          className={"chip" + (cat === c ? " on" : "")}
+          style={{
+            padding: editing ? "5px 8px 5px 10px" : "7px 13px",
+            fontSize: 13,
+            fontWeight: 700,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            cursor: "pointer",
+          }}
+          onClick={() => { if (!editing) { setCat(c); onDirty?.(); } }}
+        >
+          {c}
+          {editing && presetCategories.includes(c) && (
+            <button
+              type="button"
+              aria-label={`${c} 삭제`}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: "#B85C4A",
+                cursor: "pointer",
+                padding: "0 2px",
+                fontSize: 14,
+                lineHeight: 1,
+                fontFamily: "inherit",
+              }}
+              onClick={(e) => { e.stopPropagation(); removeCategory(c); }}
+            >
+              ✕
+            </button>
+          )}
+        </span>
+      ))}
+
+      {editing ? (
+        <div className="row" style={{ gap: 6, flex: "1 1 140px", minWidth: 140 }}>
+          <input
+            value={newCat}
+            onChange={(e) => setNewCat(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              addCategory();
+            }}
+            placeholder="새 카테고리"
+            disabled={saving}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              border: "1px solid var(--line)",
+              borderRadius: 20,
+              padding: "7px 13px",
+              fontSize: 13,
+              fontFamily: "inherit",
+              outline: "none",
+            }}
+          />
+          <button type="button" className="chip on" style={{ padding: "7px 12px", fontSize: 12, flex: "0 0 auto" }} disabled={saving || !newCat.trim()} onClick={addCategory}>
+            추가
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="chip"
+          style={{ padding: "7px 12px", fontSize: 12, color: "var(--accent-deep)" }}
+          onClick={() => setEditing(true)}
+        >
+          + 카테고리
+        </button>
+      )}
+
+      <button
+        type="button"
+        className="chip"
+        style={{ padding: "7px 10px", fontSize: 12, color: editing ? "var(--ink)" : "var(--muted)", marginLeft: editing ? 0 : "auto" }}
+        onClick={() => { setEditing((v) => !v); setNewCat(""); }}
+      >
+        {editing ? "완료" : "편집"}
+      </button>
+    </div>
+  );
+}
+
+export default function KbEditor({ article, back, onSaved, onDeleted, categories = [], prefs, onUserUpdated }) {
   const isNew = !article?.id;
   const titleRef = useRef(null);
   const initial = parseArticleBlocks(article);
@@ -655,9 +822,6 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
   const [tagInput, setTagInput] = useState("");
   const isBook = section === "book";
   const sectionPresets = kbPresets(prefs, section);
-  const catSuggestions = [
-    ...new Set([...sectionPresets.categories, ...categories.filter((c) => c && c !== "미분류")]),
-  ];
   const tagPresets = sectionPresets.tags;
   const [blocks, setBlocks] = useState(initial.blocks);
   const [focusIdx, setFocusIdx] = useState(-1);
@@ -967,24 +1131,15 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
           </div>
         )}
 
-        <div className="kbe-meta">
-          <span className="tag gray" style={{ padding: "6px 10px", fontSize: 12 }}>{kbSectionLabel(section)}</span>
-          <input
-            value={cat}
-            onChange={(e) => { setCat(e.target.value); setSaved(false); }}
-            onFocus={() => setFocusIdx(-1)}
-            list="kb-cat-suggestions"
-            placeholder="하위 카테고리"
-            className="chip cat"
-            style={{ border: "1px solid var(--line)", borderRadius: 20, padding: "7px 13px", fontSize: 13, fontWeight: 700, background: cat ? "var(--accent-soft)" : "#fff", color: "var(--accent-deep)", outline: "none", width: "auto", minWidth: 100 }}
-          />
-          <datalist id="kb-cat-suggestions">
-            {catSuggestions.map((c) => <option key={c} value={c} />)}
-          </datalist>
-          {catSuggestions.filter((c) => c !== cat).slice(0, 4).map((c) => (
-            <button key={c} type="button" className="chip" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => { setCat(c); setSaved(false); setFocusIdx(-1); }}>{c}</button>
-          ))}
-        </div>
+        <KbCategoryBar
+          section={section}
+          cat={cat}
+          setCat={setCat}
+          prefs={prefs}
+          onUserUpdated={onUserUpdated}
+          onDirty={() => setSaved(false)}
+          extraCategories={categories}
+        />
 
         <div
           ref={titleRef}

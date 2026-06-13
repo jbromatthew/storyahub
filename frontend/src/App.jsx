@@ -1004,6 +1004,7 @@ function App(){
             kbView.mode==="edit"
               ? <KbEditor article={kbView.article} back={()=>setKbView(null)} onSaved={loadAppData} onDeleted={loadAppData}
                   prefs={prefs}
+                  onUserUpdated={setUser}
                   categories={kbCategories(kbArticles, kbView.article?.section).filter((c)=>c!=="전체")}/>
               : <KbReadView article={kbView.article} back={()=>setKbView(null)} onEdit={()=>setKbView({article:kbView.article,mode:"edit"})}/>
           )
