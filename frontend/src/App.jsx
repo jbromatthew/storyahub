@@ -8,11 +8,14 @@ import MeetingInsights from "./components/MeetingInsights.jsx";
 import CategoryTagSettings from "./components/CategoryTagSettings.jsx";
 import PlacesView from "./components/PlacesView.jsx";
 import CalendarView from "./components/CalendarView.jsx";
-import { api, loadToken, saveToken, clearToken, setToken, isAuthError, isAccessError } from "./api/client.js";
+import { api, purgeLegacyTokenStorage, clearToken, isAuthError, isAccessError } from "./api/client.js";
 import { uploadBlob, uploadFile, pickImageFile, pickAudioFile, audioDurationSec, pickAnyFile, fileToBase64, mediaUrl, AudioRecorder, isPickCancelled } from "./api/upload.js";
 import { setClients, getClients, setPlaces, getPlaces } from "./store.js";
 import { contactToUi, todoToUi, todoSearchText, formatWhen, eventToUi, kbToUi, meetingToUi, isAudioMediaKey, isImageMediaKey, kbCategories, KB_SECTIONS, kbSectionLabel, kbCoverKey, haversineKm, formatDistanceKm, kakaoDirectionsUrl, kbExcerpt, kbReadMinutes, kbFileCount, kbThumbMeta, placeToUi } from "./mappers.js";
+import { useSwipeBack } from "./useSwipeBack.js";
+import ContactIntroSheet from "./components/ContactIntroSheet.jsx";
 import { confirmDelete } from "./confirmDelete.js";
+import { formatEventWhen } from "./calendarUtils.js";
 import ToastHost from "./components/ToastHost.jsx";
 import ConfirmHost from "./components/ConfirmHost.jsx";
 import { toastError, toastSuccess, notifyError } from "./toast.js";
@@ -369,33 +372,51 @@ const CSS = `
 .cal-mini-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:16px;}
 .cal-mini-dow{font-size:10px;font-weight:700;text-align:center;color:var(--muted);padding:2px 0;}
 .cal-mini-cell{border:none;background:none;font-family:inherit;font-size:11px;font-weight:600;border-radius:6px;padding:4px 0;cursor:pointer;color:var(--ink);}
+.cal-mini-cell.adjacent{color:#70757a;font-weight:500;}
 .cal-mini-cell.muted{color:transparent;cursor:default;}
 .cal-mini-cell.sel{background:var(--accent);color:#fff;}
 .cal-mini-cell.today{box-shadow:inset 0 0 0 1.5px var(--accent);}
 .cal-cal-item{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;padding:6px 0;cursor:pointer;}
 .cal-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0;}
 .cal-main{flex:1;min-width:0;overflow-y:auto;}
-.cal-toolbar{padding-top:8px!important;padding-bottom:8px!important;}
+.cal-toolbar{padding-top:8px!important;padding-bottom:8px!important;flex-wrap:wrap;gap:10px;}
+.cal-toolbar-left{flex:1;min-width:0;}
+.cal-toolbar-nav{flex-shrink:0;}
+.cal-toolbar-add{display:inline-flex;}
+.cal-fab{display:none;position:fixed;right:16px;bottom:calc(76px + env(safe-area-inset-bottom));z-index:45;
+  padding:14px 18px;font-size:14px;font-weight:800;border-radius:999px;box-shadow:0 8px 28px rgba(221,94,57,.35);border:none;}
 .cal-month{margin-top:0;}
-.cal-mgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;}
-.cal-mgrid.head{background:#fff;border:none;margin-bottom:6px;gap:0;}
-.cal-dow{text-align:center;font-size:12px;font-weight:700;color:var(--muted);padding:6px 0;}
-.cal-dow.sun{color:var(--accent-deep);}
-.cal-mgrid.body{background:var(--line);}
-.cal-cell{min-height:88px;background:#fff;padding:4px 5px;cursor:pointer;display:flex;flex-direction:column;gap:2px;}
-@media(min-width:900px){.cal-cell{min-height:100px;}}
-.cal-cell.muted{background:#FBFAF7;cursor:default;}
-.cal-cell.today .cal-daynum{color:var(--accent-deep);font-weight:800;}
-.cal-cell.sel{box-shadow:inset 0 0 0 2px var(--accent);}
-.cal-daynum{font-size:12px;font-weight:700;padding:2px 4px;}
-.cal-evlist{display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden;}
-.cal-evpill{border:none;border-radius:4px;color:#fff;font-family:inherit;font-size:10px;font-weight:700;padding:2px 5px;text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35;}
-.cal-evmore{font-size:10px;color:var(--muted);padding-left:4px;}
+.cal-mgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:0;background:#fff;border:1px solid #DADCE0;border-radius:8px;overflow:hidden;}
+.cal-mgrid.head{background:#fff;border:none;margin-bottom:4px;border:1px solid transparent;}
+.cal-dow{text-align:center;font-size:11px;font-weight:500;color:#70757a;padding:8px 0;letter-spacing:-.01em;}
+.cal-dow.sun{color:#D93025;}
+.cal-dow.sat{color:#1A73E8;}
+.cal-mgrid.body{background:#DADCE0;gap:1px;border:1px solid #DADCE0;}
+.cal-cell{min-height:108px;background:#fff;padding:4px 6px 6px;cursor:pointer;display:flex;flex-direction:column;gap:0;position:relative;}
+@media(min-width:900px){.cal-cell{min-height:118px;padding:6px 8px 8px;}}
+.cal-cell.adjacent{background:#fff;}
+.cal-cell.sel{background:#E8F0FE;}
+.cal-cell.today{background:#fff;}
+.cal-daynum{display:flex;justify-content:flex-end;align-items:flex-start;padding:0 0 4px;min-height:26px;}
+.cal-daybadge{font-size:12px;font-weight:500;color:#3c4043;line-height:26px;letter-spacing:-.02em;white-space:nowrap;}
+.cal-daybadge.adjacent{color:#70757a;}
+.cal-daybadge.sun{color:#D93025;}
+.cal-daybadge.sat{color:#1A73E8;}
+.cal-daybadge.is-today{width:26px;height:26px;border-radius:50%;background:#D93025;color:#fff!important;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;line-height:1;padding:0 2px;}
+.cal-daybadge.is-today-wide{background:#D93025;color:#fff!important;border-radius:13px;padding:0 8px;font-size:11px;font-weight:700;line-height:26px;}
+.cal-daybadge.is-today.adjacent,.cal-daybadge.is-today-wide.adjacent{color:#fff!important;}
+.cal-evlist{display:flex;flex-direction:column;gap:1px;flex:1;overflow:hidden;min-width:0;}
+.cal-evitem{display:flex;align-items:center;gap:6px;border:none;background:transparent;padding:2px 4px 2px 2px;cursor:pointer;min-width:0;width:100%;text-align:left;font-family:inherit;border-radius:4px;}
+.cal-evitem:hover,.cal-evitem:focus-visible{background:rgba(60,64,67,.08);outline:none;}
+.cal-evbar{width:4px;height:14px;border-radius:2px;flex-shrink:0;}
+.cal-evtext{font-size:11px;font-weight:500;color:#3c4043;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35;letter-spacing:-.01em;}
+.cal-cell.adjacent .cal-evtext{color:#5f6368;}
+.cal-evmore{font-size:10px;color:#70757a;padding:2px 4px 0;font-weight:500;}
 .cal-daylist{margin-bottom:20px;}
 .cal-dayrow{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);cursor:pointer;}
 .cal-daybar{width:4px;align-self:stretch;border-radius:3px;flex-shrink:0;}
-.cal-pop-bg{position:fixed;inset:0;background:rgba(20,16,12,.35);z-index:300;display:flex;align-items:flex-start;justify-content:center;padding:max(60px,8vh) 16px 24px;}
-.cal-pop{width:100%;max-width:420px;background:#F2F2F7;border-radius:14px;padding:14px 16px 16px;box-shadow:0 24px 60px rgba(0,0,0,.22);animation:fadeUp .22s ease both;}
+.cal-pop-bg{position:fixed;inset:0;background:rgba(20,16,12,.35);z-index:300;display:flex;align-items:flex-start;justify-content:center;padding:max(60px,8vh) 16px 24px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.cal-pop{width:100%;max-width:420px;background:#F2F2F7;border-radius:14px;padding:14px 16px 16px;box-shadow:0 24px 60px rgba(0,0,0,.22);animation:fadeUp .22s ease both;max-height:calc(100vh - 48px);overflow-y:auto;-webkit-overflow-scrolling:touch;}
 .cal-pop-tabs{display:flex;gap:6px;margin-bottom:12px;}
 .cal-pop-tabs .on{background:#3A3A3C;color:#fff;font-size:12px;font-weight:700;padding:5px 12px;border-radius:8px;}
 .cal-pop-row.title-row{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;}
@@ -404,6 +425,7 @@ const CSS = `
 .cal-color-pick button{width:18px;height:18px;border-radius:4px;border:2px solid transparent;cursor:pointer;padding:0;}
 .cal-color-pick button.on{border-color:var(--ink);box-shadow:0 0 0 1px #fff inset;}
 .cal-pop-field{margin-bottom:8px;}
+.cal-pop-label{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;}
 .cal-pop-field input,.cal-pop-field textarea{width:100%;border:none;background:#fff;border-radius:10px;padding:11px 13px;font-family:inherit;font-size:14px;outline:none;resize:vertical;}
 .cal-pop-field.time-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
 .cal-pop-field.time-row input{flex:1;min-width:0;}
@@ -418,7 +440,35 @@ const CSS = `
 .kakao-place-hit:last-child{border-bottom:none;}
 .kakao-place-hit:active{background:var(--accent-soft);}
 .cal-pop-actions{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap;}
-.cal-pop-sub{margin-top:8px;text-align:center;color:var(--muted);}
+.cal-pop-foot{margin-top:16px;padding-top:14px;border-top:1px solid rgba(0,0,0,.06);display:flex;flex-direction:column;gap:12px;}
+.cal-pop-rec{width:100%;padding:12px 14px;font-size:14px;color:var(--accent-deep);border-color:#F3D8CB;background:#FFFBF8;}
+.cal-pop-primary-row{display:grid;grid-template-columns:1fr 1.65fr;gap:10px;}
+.cal-pop-cancel{padding:14px 12px;font-size:15px;border-radius:14px;}
+.cal-pop-save{padding:14px 16px;font-size:15px;border-radius:14px;box-shadow:0 4px 14px rgba(221,94,57,.22);}
+.cal-pop-save:disabled{opacity:.65;box-shadow:none;}
+.cal-pop-links{display:flex;justify-content:center;align-items:center;gap:20px;padding:2px 0 4px;}
+.cal-pop-link-btn{border:none;background:none;font-family:inherit;font-size:14px;font-weight:600;color:var(--accent-deep);cursor:pointer;padding:6px 4px;}
+.cal-pop-link-btn:disabled{opacity:.45;cursor:default;}
+.cal-pop-link-btn.danger{color:#B85C4A;}
+.cal-pop-sub{margin-top:4px;text-align:center;color:var(--muted);}
+@media(max-width:767px){
+  .cal-toolbar .h-title{font-size:18px;}
+  .cal-toolbar-add{display:none!important;}
+  .cal-fab{display:inline-flex;align-items:center;justify-content:center;}
+  .cal-cell{min-height:78px;padding:3px 4px 5px;}
+  .cal-daybadge{font-size:11px;}
+  .cal-daybadge.is-today{width:24px;height:24px;font-size:10px;}
+  .cal-evtext{font-size:10px;}
+  .cal-evbar{height:12px;}
+  .cal-pop-bg{align-items:flex-end;padding:0;overflow:hidden;}
+  .cal-pop{border-radius:16px 16px 0 0;max-height:min(92vh,720px);padding-bottom:max(16px,env(safe-area-inset-bottom));}
+  .cal-pop-row.title-row{flex-direction:column;}
+  .cal-color-pick{padding-top:0;}
+  .cal-pop-field.time-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .cal-pop-field.time-row input[type=date]{grid-column:1/-1;}
+  .cal-time-sep{display:none;}
+  .cal-daylist{padding-bottom:88px;}
+}
 
 /* pricing */
 .plancard{border:1px solid var(--line);border-radius:18px;padding:16px;background:#fff;position:relative;}
@@ -445,6 +495,9 @@ const CSS = `
 .sheetbg{position:fixed;inset:0;background:rgba(20,16,12,.45);z-index:200;display:flex;align-items:center;justify-content:center;
   padding:max(20px,env(safe-area-inset-top)) 20px max(20px,env(safe-area-inset-bottom));
   animation:fadeUp .25s ease both;}
+.sheet-bg{position:fixed;inset:0;background:rgba(20,16,12,.45);z-index:350;display:flex;align-items:flex-end;justify-content:center;}
+.sheet-bottom{width:100%;max-width:480px;background:var(--paper);border-radius:20px 20px 0 0;padding:16px 20px max(20px,env(safe-area-inset-bottom));max-height:88vh;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.sheet-handle{width:36px;height:4px;background:#D8D0C4;border-radius:2px;margin:0 auto 12px;}
 .sheet{width:100%;max-width:400px;background:var(--paper);border-radius:20px;padding:20px 22px 24px;
   box-shadow:0 20px 60px rgba(0,0,0,.22);animation:fadeUp .28s ease both;}
 .sheetbar{display:none;}
@@ -490,6 +543,18 @@ const CSS = `
 .place-photo-add{aspect-ratio:1;border-radius:12px;border:2px dashed var(--line);background:#FAF8F4;color:var(--muted);
   font-size:28px;font-weight:300;cursor:pointer;font-family:inherit;}
 .place-photo-add:disabled{opacity:.5;cursor:default;}
+.place-photo-view{width:100%;height:100%;padding:0;border:none;background:transparent;cursor:pointer;display:block;}
+.photo-gallery{position:fixed;inset:0;z-index:10050;background:rgba(0,0,0,.94);display:flex;flex-direction:column;}
+.photo-gallery-top{display:flex;align-items:center;justify-content:space-between;padding:max(12px,env(safe-area-inset-top)) 16px 8px;color:#fff;}
+.photo-gallery-close{border:none;background:rgba(255,255,255,.12);color:#fff;width:36px;height:36px;border-radius:10px;font-size:18px;cursor:pointer;}
+.photo-gallery-count{font-size:13px;font-weight:700;opacity:.85;}
+.photo-gallery-stage{flex:1;display:flex;align-items:center;justify-content:center;gap:4px;padding:0 4px;min-height:0;touch-action:pan-y;}
+.photo-gallery-img{max-width:100%;max-height:100%;object-fit:contain;user-select:none;-webkit-user-drag:none;}
+.photo-gallery-nav{width:40px;height:40px;border:none;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;font-size:28px;line-height:1;cursor:pointer;flex:0 0 auto;}
+.photo-gallery-nav:disabled{opacity:.25;cursor:default;}
+.photo-gallery-dots{display:flex;justify-content:center;gap:6px;padding:12px 0 max(16px,env(safe-area-inset-bottom));}
+.photo-gallery-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.35);}
+.photo-gallery-dot.on{background:#fff;width:8px;height:8px;}
 .webview-overlay{position:fixed;inset:0;z-index:450;background:var(--paper);display:flex;flex-direction:column;
   padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);}
 .webview-bar{display:flex;align-items:center;gap:8px;padding:8px 12px 8px 8px;border-bottom:1px solid var(--line);background:var(--paper);flex-shrink:0;}
@@ -714,9 +779,7 @@ function App(){
   },[]);
 
   const restoreSession = useCallback(async ()=>{
-    const t = loadToken();
-    if(!t){ setBootError(""); setBoot("auth"); return; }
-    setToken(t);
+    purgeLegacyTokenStorage();
     setBoot("loading");
     setBootError("");
     try{
@@ -745,7 +808,6 @@ function App(){
   },[phase]);
 
   const handleAuth = async (result)=>{
-    setToken(result.token);
     setUser(result.user);
     await loadAppData();
     setBoot(result.user.onboardingDone ? "app" : "welcome");
@@ -857,6 +919,26 @@ function App(){
     setPhase(ok?"sum":"setup");
   };
   const mmss=(n)=>`${String(Math.floor(n/60)).padStart(2,"0")}:${String(n%60).padStart(2,"0")}`;
+
+  const handleSwipeBack=useCallback(()=>{
+    if(detail){ setDetail(null); return; }
+    if(client){ setClient(null); return; }
+    if(kbView){ setKbView(null); return; }
+    if(overlay){ setOverlay(null); return; }
+    if(pricing){ setPricing(false); return; }
+    if(cardScan){ setCardScan(false); return; }
+    if(tab==="record" && phase!=="rec"){
+      setRecordLink(null);
+      setTab("today");
+      setPhase("idle");
+    }
+  },[detail,client,kbView,overlay,pricing,cardScan,tab,phase]);
+
+  const swipeBackEnabled=boot==="app" && (
+    !!detail || !!client || !!kbView || !!overlay || pricing || cardScan || (tab==="record" && phase!=="rec")
+  );
+  useSwipeBack(swipeBackEnabled, handleSwipeBack);
+
   const toggleTodo=async (i)=>{
     const t = todos[i];
     if(!t?.id) return setTodos(p=>p.map((x,k)=>k===i?{...x,done:!x.done,status:!x.done?"done":"todo"}:x));
@@ -968,7 +1050,7 @@ function App(){
           : overlay==="mypage" ? <MyPage user={user} back={()=>setOverlay("settings")} onUserUpdated={setUser}/>
           : overlay==="settings" ? <Settings user={user} back={()=>setOverlay(null)} go={(o)=>setOverlay(o)}
               openPricing={()=>{setOverlay(null);setPricing(true);}}
-              onLogout={()=>{ clearToken(); setUser(null); setBoot("auth"); setOverlay(null); }}/>
+              onLogout={async ()=>{ try{ await api.logout(); }catch{/* ignore */} clearToken(); setUser(null); setBoot("auth"); setOverlay(null); }}/>
           : overlay==="trash" ? <Trash back={()=>setOverlay("settings")}/>
           : overlay==="export" ? <ExportData back={()=>setOverlay("settings")}/>
           : overlay==="categorytags" ? <CategoryTagSettings user={user} back={()=>setOverlay("settings")} onUserUpdated={setUser}/>
@@ -999,7 +1081,7 @@ function App(){
           : tab==="clients" ? (cardScan ? <CardScan back={()=>setCardScan(false)} onSaved={refreshContacts} contactPresets={prefs.contacts}/> : <Clients group={group} setGroup={setGroup} open={(c)=>setClient(c)} onAdd={()=>setCardScan(true)} onRefresh={loadAppData} seg={segment} contactPresets={prefs.contacts} onOpenOrganize={()=>setOverlay("categorytags")}/>)
           : tab==="places" ? <PlacesView placePresets={prefs.places} onRefresh={loadAppData}/>
           : tab==="meetings" ? <MeetingsTab meetings={meetings} openDetail={(m)=>setDetail({type:"meeting",data:m})} startRec={startRec} onRefresh={loadAppData} meetingPresets={prefs.meeting}/>
-          : tab==="calendar" ? <CalendarView openDetail={(t,data)=>setDetail({type:t,data})} organizePrefs={prefs} onStartRecFromEvent={startRecFromEvent}/>
+          : tab==="calendar" ? <CalendarView openDetail={(t,data)=>setDetail({type:t,data})} organizePrefs={prefs} onStartRecFromEvent={startRecFromEvent} onRefresh={loadAppData}/>
           : kbView ? (
             kbView.mode==="edit"
               ? <KbEditor article={kbView.article} back={()=>setKbView(null)} onSaved={loadAppData} onDeleted={loadAppData}
@@ -1528,7 +1610,7 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,conta
   const [loading,setLoading]=useState(true);
   const [tags,setTags]=useState(c.tags||[]);
   const [grp,setGrp]=useState(c.group||"미분류");
-  const [pickReferrer,setPickReferrer]=useState(false);
+  const [introSheet,setIntroSheet]=useState(false);
   const [addingDeal,setAddingDeal]=useState(false);
   const [dealSaving,setDealSaving]=useState(false);
   const [dealForm,setDealForm]=useState({title:"",stage:"리드",supplyAmount:"",quoteFile:null});
@@ -1549,14 +1631,6 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,conta
       await api.updateContact(c.id,{ group: next==="미분류"?null:next });
       onRefresh?.();
     }catch(e){ notifyError(e, e.message); setGrp(c.group||"미분류"); }
-  };
-  const setReferrer=async (refId)=>{
-    try{
-      await api.updateContact(c.id,{ referredById: refId });
-      setPickReferrer(false);
-      onRefresh?.();
-      reload();
-    }catch(e){ notifyError(e, e.message); }
   };
   const pickQuoteFile=async ()=>{
     try{
@@ -1699,21 +1773,18 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,conta
               ))}
             </div>
           )}
-          {pickReferrer ? (
-            <div style={{marginTop:10,maxHeight:200,overflowY:"auto"}}>
-              {CLIENTS.filter(x=>x.id!==c.id).map(x=>(
-                <div key={x.id} className="list-item row between" style={{cursor:"pointer",padding:"10px 0"}} onClick={()=>setReferrer(x.id)}>
-                  <span style={{fontWeight:600,fontSize:13.5}}>{x.person} · {x.co}</span>
-                </div>
-              ))}
-              <button className="btn btn-ghost" style={{width:"100%",padding:10,marginTop:6,fontSize:13}} onClick={()=>setPickReferrer(false)}>취소</button>
-            </div>
-          ) : (
+          {introSheet && (
+            <ContactIntroSheet
+              contact={c}
+              contacts={CLIENTS}
+              onClose={()=>setIntroSheet(false)}
+              onSaved={()=>{ onRefresh?.(); reload(); }}
+            />
+          )}
           <button className="btn btn-ghost" style={{width:"100%",padding:11,marginTop:10,fontSize:13,color:"var(--accent-deep)",display:"flex",justifyContent:"center",gap:7}}
-            onClick={()=>setPickReferrer(true)}>
+            onClick={()=>setIntroSheet(true)}>
             {I.plus({width:15,height:15})} 소개 관계 추가
           </button>
-          )}
         </div>
       </div>
       </>
@@ -2182,10 +2253,7 @@ function RecordProcessing({proc,onContinueInBackground}){
 
 function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goClients,summary,mediaKey,user,proc,onProcessingStart,onProcFailed,onContinueInBackground,onStartLive,onCancelLive,onBack,recordLink}){
   const CLIENTS=getClients();
-  const [att,setAtt]=useState(()=>{
-    if(recordLink?.contactIds?.length) return recordLink.contactIds;
-    return CLIENTS.slice(0,2).map(c=>c.id);
-  });
+  const [att,setAtt]=useState(()=> (recordLink?.contactIds?.length ? [...recordLink.contactIds] : []));
   const [pick,setPick]=useState(false);
   const [q,setQ]=useState("");
   /** null=선택 전 | rec | upload | photo */
@@ -2199,7 +2267,7 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
   const recorderRef=useRef(null);
   const toggleAtt=(id)=>setAtt(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
   const found=CLIENTS.filter(c=>(c.person+c.co).toLowerCase().includes(q.trim().toLowerCase()));
-  const primary=CLIENTS.find(c=>att.includes(c.id))||CLIENTS[0];
+  const primary=CLIENTS.find(c=>att.includes(c.id))||null;
   const finishLabel=finishing?"업로드 중…":"녹음 종료 · 요약하기";
 
   const resetChoose=()=>{
@@ -2327,6 +2395,9 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
       {/* 참석자 태그 */}
       <div style={{marginTop:16}}>
         <div className="small" style={{fontWeight:700,marginBottom:8}}>참석자</div>
+        {att.length===0 && !pick && (
+          <div className="small" style={{marginBottom:8,color:"var(--muted)",lineHeight:1.5}}>+ 참석자로 미팅에 참여한 인맥만 선택하세요.</div>
+        )}
         <div className="row" style={{gap:7,flexWrap:"wrap"}}>
           {att.map(id=>{const c=CLIENTS.find(x=>x.id===id);if(!c)return null;return(
             <span key={id} className="tag" style={{padding:"7px 10px",fontSize:12.5,gap:6}}>
@@ -2495,7 +2566,7 @@ function Summary({todos,toggleTodo,goClients,att=[],summary,mediaKey}){
   const CLIENTS=getClients();
   const s=summary?.summary;
   const oneLine=s?.one_line||"요약이 생성되었습니다";
-  const primary=CLIENTS.find(c=>att.includes(c.id))||CLIENTS[0];
+  const primary=CLIENTS.find(c=>att.includes(c.id))||null;
   return (
     <div className="fade">
       <div className="pad" style={{marginTop:8}}>
@@ -2525,7 +2596,8 @@ function Summary({todos,toggleTodo,goClients,att=[],summary,mediaKey}){
       )}
 
       <div className="pad row between"><div className="section-h">참석자</div>
-        <span className="tag green" style={{marginTop:20}}>→ 각 연락처에 기록</span></div>
+        {att.length>0 && <span className="tag green" style={{marginTop:20}}>→ 각 연락처에 기록</span>}</div>
+      {att.length>0 ? (
       <div className="pad row" style={{gap:8,flexWrap:"wrap"}}>
         {att.map(id=>{const c=CLIENTS.find(x=>x.id===id);if(!c)return null;return(
           <div key={id} className="card row" style={{gap:9,padding:"8px 12px",cursor:"pointer"}} onClick={goClients}>
@@ -2534,6 +2606,9 @@ function Summary({todos,toggleTodo,goClients,att=[],summary,mediaKey}){
           </div>
         );})}
       </div>
+      ) : (
+      <div className="pad small" style={{color:"var(--muted)"}}>선택한 참석자가 없어요.</div>
+      )}
 
       <div className="pad" style={{marginTop:8}}>
         <MeetingInsights summary={s} oneLine={oneLine}/>
@@ -3665,8 +3740,7 @@ function MyPage({user,back,onUserUpdated}){
     if(newPw.length<6){ setPwMsg("비밀번호는 6자 이상"); return; }
     setSavingPw(true); setPwMsg("");
     try{
-      const { token }=await api.changePassword(curPw,newPw);
-      if(token){ saveToken(token,{ remember:true }); setToken(token); }
+      await api.changePassword(curPw,newPw);
       setCurPw(""); setNewPw(""); setNewPw2("");
       setPwMsg("비밀번호가 변경됐어요");
     }catch(e){ setPwMsg(e.message||"변경 실패"); }
@@ -4161,7 +4235,6 @@ function FollowupDetailView({back,todos,onTodoToggle}){
 
 function EventDetailView({data,back,onDeleted,linkedMeetings=[],onStartRec,openMeeting}){
   const e=data||{};
-  const label=e.month?`${e.month}월 ${e.day}일`:"";
   const contacts=getClients().filter(c=>(e.contactIds||[]).includes(c.id)||c.id===e.contactId);
   const linkedPlace=e.savedPlaceId?getPlaces().find(p=>p.id===e.savedPlaceId):null;
   const navLat=e.placeLat??linkedPlace?.lat;
@@ -4174,7 +4247,7 @@ function EventDetailView({data,back,onDeleted,linkedMeetings=[],onStartRec,openM
     if(!e.id) return;
     try{
       const {shareUrl}=await api.shareEvent(e.id);
-      const text=`${e.title}\n${label} ${e.time}${e.place?`\n${e.place}`:""}`;
+      const text=`${e.title}\n${formatEventWhen(e)}${e.place?`\n${e.place}`:""}`;
       if(navigator.share){ await navigator.share({title:e.title,text,url:shareUrl}); return; }
       if(shareUrl&&navigator.clipboard){ await navigator.clipboard.writeText(shareUrl); toastSuccess("공유 링크를 복사했어요"); }
     }catch(err){ notifyError(err,"공유 실패"); }
@@ -4184,7 +4257,10 @@ function EventDetailView({data,back,onDeleted,linkedMeetings=[],onStartRec,openM
       <DetailHead back={back} eyebrow="일정" title={e.title||"일정"}/>
       <div className="pad" style={{marginTop:14,marginBottom:12}}>
         <div className="card" style={{padding:16}}>
-          <div className="brk"><span className="small">시간</span><span style={{fontWeight:700}}>{label} · {e.time}{e.endTime?`–${e.endTime}`:""}</span></div>
+          <div className="brk"><span className="small">시간</span><span style={{fontWeight:700}}>{formatEventWhen(e)}</span></div>
+          {e.repeatYearly && (
+            <div className="brk"><span className="small">반복</span><span style={{fontWeight:600}}>매년</span></div>
+          )}
           <div className="brk"><span className="small">분류</span><span style={{fontWeight:600}}>{e.category||"캘린더"}</span></div>
           <div className="brk"><span className="small">장소</span><span style={{fontWeight:600}}>{e.place||"-"}</span></div>
           {contacts.length>0 && (

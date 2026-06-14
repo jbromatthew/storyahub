@@ -1,17 +1,26 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../env.js";
+import { readSessionToken } from "../services/sessionCookie.js";
 
 export interface AuthedRequest extends Request {
   userId?: string;
 }
 
-// 무상태 인증: 세션을 서버 메모리에 두지 않고 JWT로. (수평 확장 핵심)
-export function auth(req: AuthedRequest, res: Response, next: NextFunction) {
+function extractToken(req: Request): string | undefined {
+  const cookie = readSessionToken(req);
+  if (cookie) return cookie;
   const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) return res.status(401).json({ error: "no token" });
+  if (header?.startsWith("Bearer ")) return header.slice(7);
+  return undefined;
+}
+
+/** httpOnly 쿠키 우선, Bearer 헤더는 API 클라이언트·마이그레이션용 */
+export function auth(req: AuthedRequest, res: Response, next: NextFunction) {
+  const raw = extractToken(req);
+  if (!raw) return res.status(401).json({ error: "no token" });
   try {
-    const payload = jwt.verify(header.slice(7), env.jwtSecret) as { sub: string };
+    const payload = jwt.verify(raw, env.jwtSecret, { algorithms: ["HS256"] }) as { sub: string };
     req.userId = payload.sub;
     next();
   } catch {
@@ -20,5 +29,5 @@ export function auth(req: AuthedRequest, res: Response, next: NextFunction) {
 }
 
 export function signToken(userId: string, remember = true): string {
-  return jwt.sign({ sub: userId }, env.jwtSecret, { expiresIn: remember ? "90d" : "12h" });
+  return jwt.sign({ sub: userId }, env.jwtSecret, { expiresIn: remember ? "90d" : "12h", algorithm: "HS256" });
 }

@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 import { geocodeAddress } from "../services/geocode.js";
+import { optionalUserMediaKey } from "../services/mediaValidation.js";
 
 export const contactsRouter = Router();
 contactsRouter.use(auth, requireAccess);
@@ -46,11 +47,18 @@ contactsRouter.post("/geocode-pending", async (req: AuthedRequest, res) => {
 });
 
 contactsRouter.post("/", async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
   const { person, company, phone, email, address, group, tags, cardImageKey } = req.body ?? {};
+  let validatedCardKey: string | null = null;
+  try {
+    validatedCardKey = optionalUserMediaKey(cardImageKey, userId, "cardImageKey");
+  } catch {
+    return res.status(400).json({ error: "명함 이미지 키가 올바르지 않습니다" });
+  }
   const coords = await applyGeocode(address);
   const c = await prisma.contact.create({
     data: {
-      userId: req.userId!,
+      userId,
       person,
       company,
       phone,
@@ -59,7 +67,7 @@ contactsRouter.post("/", async (req: AuthedRequest, res) => {
       ...coords,
       group,
       tags: tags ?? [],
-      cardImageKey: cardImageKey ?? null,
+      cardImageKey: validatedCardKey,
     },
   });
   res.status(201).json(c);
@@ -83,6 +91,19 @@ contactsRouter.patch("/:id", async (req: AuthedRequest, res) => {
     lng = coords.lng;
   }
 
+  let nextReferredById = cur.referredById;
+  if (referredById !== undefined) {
+    if (referredById === null || referredById === "") {
+      nextReferredById = null;
+    } else {
+      const refId = String(referredById);
+      if (refId === cur.id) return res.status(400).json({ error: "자기 자신을 소개자로 지정할 수 없습니다" });
+      const ref = await prisma.contact.findFirst({ where: { id: refId, userId } });
+      if (!ref) return res.status(400).json({ error: "소개자를 찾을 수 없습니다" });
+      nextReferredById = ref.id;
+    }
+  }
+
   const c = await prisma.contact.update({
     where: { id: cur.id },
     data: {
@@ -96,7 +117,7 @@ contactsRouter.patch("/:id", async (req: AuthedRequest, res) => {
       group: group !== undefined ? group : cur.group,
       tags: tags ?? cur.tags,
       favorite: favorite !== undefined ? favorite : cur.favorite,
-      referredById: referredById !== undefined ? referredById : cur.referredById,
+      referredById: nextReferredById,
       meetCount: meetCount ?? cur.meetCount,
       wonAmount: wonAmount ?? cur.wonAmount,
     },

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess } from "../middleware/requireAccess.js";
+import { expandYearlyInRange } from "../services/eventRecurrence.js";
 
 export const bootstrapRouter = Router();
 bootstrapRouter.use(auth, requireAccess);
@@ -16,12 +17,15 @@ bootstrapRouter.get("/", async (req: AuthedRequest, res) => {
   const dayEnd = new Date(dayStart);
   dayEnd.setDate(dayEnd.getDate() + 1);
 
-  const [user, contacts, todos, eventsToday, meetings, deals, places] = await Promise.all([
+  const [user, contacts, todos, eventsTodayRaw, meetings, deals, places] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId } }),
     prisma.contact.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
     prisma.todo.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
     prisma.event.findMany({
-      where: { userId, startsAt: { gte: dayStart, lt: dayEnd } },
+      where: {
+        userId,
+        OR: [{ startsAt: { gte: dayStart, lt: dayEnd } }, { repeatYearly: true }],
+      },
       orderBy: { startsAt: "asc" },
     }),
     prisma.meeting.findMany({
@@ -39,6 +43,8 @@ bootstrapRouter.get("/", async (req: AuthedRequest, res) => {
   ]);
 
   if (!user) return res.status(404).json({ error: "not found" });
+
+  const eventsToday = expandYearlyInRange(eventsTodayRaw, dayStart, dayEnd);
 
   const wonThisMonth = deals.filter(
     (d) => d.stage === "성사" && d.wonAt && d.wonAt >= monthStart && d.wonAt <= monthEnd

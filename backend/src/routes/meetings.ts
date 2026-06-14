@@ -4,11 +4,12 @@ import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess, type AccessRequest } from "../middleware/requireAccess.js";
 import { getAccessStatus, recordingQuotaError } from "../services/access.js";
 import { incrementRecordingSec } from "../services/recordingUsage.js";
-import { enqueue, getJob } from "../services/queue.js";
+import { enqueue, getJob, publicJobView } from "../services/queue.js";
 import { summarize } from "../services/summarize.js";
 import { getObjectBytes, isUserMediaKey } from "../services/r2.js";
 import { transcribeAudio, plainToTranscript, mimeFromKey, type TranscriptResult } from "../services/stt.js";
 import { ocrDocumentText } from "../services/ocr.js";
+import { assertUserMediaKey, assertUserMediaKeys } from "../services/mediaValidation.js";
 
 export const meetingsRouter = Router();
 meetingsRouter.use(auth, requireAccess);
@@ -68,6 +69,13 @@ meetingsRouter.post("/summarize", async (req: AccessRequest, res) => {
   const userId = req.userId!;
   const { mediaKey, meta } = req.body ?? {};
 
+  try {
+    if (mediaKey) assertUserMediaKey(mediaKey, userId);
+    if (meta?.imageKeys) assertUserMediaKeys(meta.imageKeys, userId, 20);
+  } catch {
+    return res.status(400).json({ error: "미디어 키가 올바르지 않습니다" });
+  }
+
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return res.status(404).json({ error: "not found" });
 
@@ -105,7 +113,7 @@ meetingsRouter.post("/summarize", async (req: AccessRequest, res) => {
     },
   });
 
-  const jobId = enqueue(async () => {
+  const jobId = enqueue(userId, async () => {
     try {
       const transcript = await resolveTranscript(userId, mediaKey, meta);
       const summary = await summarize(transcript, meta?.template ?? "영업");
@@ -167,10 +175,10 @@ meetingsRouter.post("/summarize", async (req: AccessRequest, res) => {
   res.status(202).json({ jobId, meetingId: meeting.id });
 });
 
-meetingsRouter.get("/job/:id", (req, res) => {
-  const job = getJob(req.params.id);
+meetingsRouter.get("/job/:id", (req: AuthedRequest, res) => {
+  const job = getJob(req.params.id, req.userId!);
   if (!job) return res.status(404).json({ error: "no job" });
-  res.json(job);
+  res.json(publicJobView(job));
 });
 
 meetingsRouter.get("/:id", async (req: AuthedRequest, res) => {

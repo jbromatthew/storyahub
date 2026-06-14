@@ -163,6 +163,7 @@ model Event {             // 캘린더 일정
   notes     String?                        // 메모
   shareToken String? @unique               // 일정 공유 링크
   reminders String[]                        // ["1시간 전","1일 전"] 등 (기본값 자동 적용)
+  repeatYearly Boolean @default(false)    // 매년 반복 (시작일 기준 월·일·시각)
   googleId  String?                          // Google 캘린더 연동 id
   createdAt DateTime @default(now())
 

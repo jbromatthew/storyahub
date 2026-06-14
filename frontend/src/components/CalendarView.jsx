@@ -9,7 +9,11 @@ import {
   downloadIcs,
   shareEventNative,
   monthStart,
-  monthCells,
+  monthGridRange,
+  formatCellDayLabel,
+  formatEventWhen,
+  eventOnDay,
+  toDateInput,
   eventColor,
 } from "../calendarUtils.js";
 import { calendarList } from "../preferences.js";
@@ -19,13 +23,31 @@ import KakaoPlacePicker from "./KakaoPlacePicker.jsx";
 const REM_OPTS = ["없음", "10분 전", "30분 전", "1시간 전", "1일 전"];
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 
+function parseTimeToMins(t) {
+  if (!t) return 0;
+  const [h, m] = String(t).split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+function minsToTime(mins) {
+  const m = ((mins % (24 * 60)) + 24 * 60) % (24 * 60);
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+function shiftEndWithDuration(newStart, prevStart, prevEnd) {
+  const dur = Math.max(15, parseTimeToMins(prevEnd) - parseTimeToMins(prevStart)) || 60;
+  return minsToTime(parseTimeToMins(newStart) + dur);
+}
+
 function emptyDraft(day, year, month, prefs) {
   const cals = calendarList(prefs);
   const first = cals[0];
+  const startDate = toDateInput(year, month, day);
   return {
     id: null,
     title: "",
-    date: `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+    startDate,
+    endDate: startDate,
     startTime: "09:00",
     endTime: "10:00",
     place: "",
@@ -37,6 +59,7 @@ function emptyDraft(day, year, month, prefs) {
     color: first?.color || "#007AFF",
     contactIds: [],
     reminders: ["1시간 전"],
+    repeatYearly: false,
   };
 }
 
@@ -135,7 +158,12 @@ function EventPopover({ draft, setDraft, contacts, places, calendars, onSave, on
         },
         { contacts: picked }
       );
-      const text = `${draft.title}\n${draft.date} ${draft.startTime}–${draft.endTime}${draft.place ? `\n${draft.place}` : ""}`;
+      const text = `${draft.title}\n${formatEventWhen({
+        startsAt: draft.startsAt,
+        endsAt: draft.endsAt,
+        time: draft.startTime,
+        endTime: draft.endTime,
+      })}${draft.place ? `\n${draft.place}` : ""}`;
       const shared = await shareEventNative({ title: draft.title, text, url: shareUrl });
       if (!shared) {
         if (shareUrl && navigator.clipboard) {
@@ -250,11 +278,51 @@ function EventPopover({ draft, setDraft, contacts, places, calendars, onSave, on
             <span>→</span>
           </button>
         )}
-        <div className="cal-pop-field time-row">
-          <input type="date" value={draft.date} onChange={(e) => setDraft((p) => ({ ...p, date: e.target.value }))} />
-          <input type="time" value={draft.startTime} onChange={(e) => setDraft((p) => ({ ...p, startTime: e.target.value }))} />
-          <span>–</span>
-          <input type="time" value={draft.endTime} onChange={(e) => setDraft((p) => ({ ...p, endTime: e.target.value }))} />
+        <div className="cal-pop-field">
+          <div className="cal-pop-label">시작</div>
+          <div className="cal-pop-field time-row" style={{ marginBottom: 0 }}>
+            <input
+              type="date"
+              value={draft.startDate}
+              onChange={(e) => {
+                const v = e.target.value;
+                setDraft((p) => ({
+                  ...p,
+                  startDate: v,
+                  endDate: p.endDate < v ? v : p.endDate,
+                }));
+              }}
+            />
+            <input
+              type="time"
+              value={draft.startTime}
+              onChange={(e) => {
+                const v = e.target.value;
+                setDraft((p) => ({
+                  ...p,
+                  startTime: v,
+                  endTime:
+                    p.startDate === p.endDate ? shiftEndWithDuration(v, p.startTime, p.endTime) : p.endTime,
+                }));
+              }}
+            />
+          </div>
+        </div>
+        <div className="cal-pop-field">
+          <div className="cal-pop-label">종료</div>
+          <div className="cal-pop-field time-row" style={{ marginBottom: 0 }}>
+            <input
+              type="date"
+              value={draft.endDate}
+              min={draft.startDate}
+              onChange={(e) => setDraft((p) => ({ ...p, endDate: e.target.value }))}
+            />
+            <input
+              type="time"
+              value={draft.endTime}
+              onChange={(e) => setDraft((p) => ({ ...p, endTime: e.target.value }))}
+            />
+          </div>
         </div>
         <button type="button" className="cal-pop-link" onClick={() => setRemOpen((v) => !v)}>
           알림 추가
@@ -278,6 +346,15 @@ function EventPopover({ draft, setDraft, contacts, places, calendars, onSave, on
           초대할 사람 추가 (인맥)
           <span>{selectedContacts.length ? selectedContacts.map((c) => c.person).join(", ") : ""}</span>
         </button>
+        <label className="cal-repeat-row">
+          <input
+            type="checkbox"
+            checked={!!draft.repeatYearly}
+            onChange={(e) => setDraft((p) => ({ ...p, repeatYearly: e.target.checked }))}
+          />
+          <span>매년 반복</span>
+          <span className="cal-repeat-hint">시작일 기준으로 같은 날짜·시간에 반복</span>
+        </label>
         {pickContact && (
           <div className="cal-contact-pick">
             {contacts.length === 0 && <div className="small">등록된 인맥이 없어요</div>}
@@ -302,12 +379,12 @@ function EventPopover({ draft, setDraft, contacts, places, calendars, onSave, on
             rows={2}
           />
         </div>
-        <div className="cal-pop-actions">
+        {anchorDay && <div className="small cal-pop-sub">{anchorDay}</div>}
+        <div className="cal-pop-foot">
           {draft.id && onStartRec && (
             <button
               type="button"
-              className="btn btn-accent"
-              style={{ width: "100%", padding: 13, marginBottom: 10 }}
+              className="btn btn-ghost cal-pop-rec"
               onClick={() => {
                 onStartRec({
                   id: draft.id,
@@ -321,33 +398,39 @@ function EventPopover({ draft, setDraft, contacts, places, calendars, onSave, on
               🎙 이 일정 미팅 녹음
             </button>
           )}
-          {draft.id && (
-            <button type="button" className="btn btn-ghost" style={{ color: "#B85C4A" }} onClick={onDelete}>
-              삭제
-            </button>
-          )}
-          <div className="row" style={{ gap: 8, marginLeft: "auto" }}>
-            <button type="button" className="btn btn-ghost" onClick={share} disabled={shareBusy}>
-              공유
-            </button>
-            <button type="button" className="btn btn-ghost" onClick={onClose}>
+          <div className="cal-pop-primary-row">
+            <button type="button" className="btn btn-ghost cal-pop-cancel" onClick={onClose}>
               취소
             </button>
-            <button type="button" className="btn btn-accent" onClick={onSave} disabled={saving}>
-              {saving ? "저장…" : "저장"}
+            <button type="button" className="btn btn-accent cal-pop-save" onClick={onSave} disabled={saving}>
+              {saving ? "저장 중…" : "저장"}
             </button>
           </div>
+          <div className="cal-pop-links">
+            {draft.id && (
+              <button type="button" className="cal-pop-link-btn" onClick={share} disabled={shareBusy}>
+                공유
+              </button>
+            )}
+            {draft.id && (
+              <button type="button" className="cal-pop-link-btn danger" onClick={onDelete}>
+                삭제
+              </button>
+            )}
+          </div>
         </div>
-        {anchorDay && <div className="small cal-pop-sub">{anchorDay}</div>}
       </div>
     </div>,
     document.body
   );
 }
 
-export default function CalendarView({ openDetail, organizePrefs, onStartRecFromEvent }) {
+export default function CalendarView({ openDetail, organizePrefs, onStartRecFromEvent, onRefresh }) {
   const [viewMonth, setViewMonth] = useState(() => monthStart(new Date()));
-  const [selDay, setSelDay] = useState(() => new Date().getDate());
+  const [selDate, setSelDate] = useState(() => {
+    const n = new Date();
+    return { year: n.getFullYear(), month: n.getMonth(), day: n.getDate() };
+  });
   const [events, setEvents] = useState([]);
   const [hiddenCals, setHiddenCals] = useState(() => new Set());
   const [popover, setPopover] = useState(null);
@@ -358,18 +441,17 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
   const month = viewMonth.getMonth();
   const monthLabel = `${year}년 ${month + 1}월`;
   const today = new Date();
+  const { cells, from: gridFrom, to: gridTo } = useMemo(() => monthGridRange(year, month), [year, month]);
   const contacts = getClients();
   const places = getPlaces();
   const calendars = calendarList(organizePrefs);
 
   const reload = useCallback(() => {
-    const from = monthStart(viewMonth);
-    const to = new Date(year, month + 1, 0, 23, 59, 59);
     return api
-      .listEvents(from.toISOString(), to.toISOString())
+      .listEvents(gridFrom.toISOString(), gridTo.toISOString())
       .then((list) => setEvents((list || []).map(eventToUi)))
       .catch(() => setEvents([]));
-  }, [viewMonth, year, month]);
+  }, [gridFrom, gridTo]);
 
   useEffect(() => {
     reload();
@@ -380,24 +462,43 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
     [events, hiddenCals, calendars]
   );
 
-  const eventsOnDay = (day) => visibleEvents.filter((e) => e.year === year && e.month === month + 1 && e.day === day);
+  const eventsOnCell = useCallback(
+    (cell) => {
+      if (!cell?.n) return [];
+      return visibleEvents.filter((e) => eventOnDay(e, cell));
+    },
+    [visibleEvents]
+  );
 
-  const openNew = (day) => {
-    const d = day || selDay;
-    setSelDay(d);
-    setDraft(emptyDraft(d, year, month, organizePrefs));
-    setPopover({ mode: "new", day: d });
+  const selectedEvents = useMemo(() => {
+    const cell = { year: selDate.year, month: selDate.month, n: selDate.day };
+    return visibleEvents.filter((e) => eventOnDay(e, cell));
+  }, [visibleEvents, selDate]);
+
+  const openNew = (cell) => {
+    const target = cell?.n
+      ? { year: cell.year, month: cell.month, day: cell.n }
+      : selDate;
+    setSelDate(target);
+    setDraft(emptyDraft(target.day, target.year, target.month, organizePrefs));
+    setPopover({ mode: "new", day: target.day });
   };
 
   const openEdit = (ev, e) => {
     e?.stopPropagation();
-    const raw = ev._raw || ev;
-    const start = new Date(raw.startsAt || ev.startsAt);
-    const end = raw.endsAt || ev.endsAt ? new Date(raw.endsAt || ev.endsAt) : null;
+    const master = ev._series || ev._raw?._series || ev._raw || ev;
+    const raw = master._raw || master;
+    const start = new Date(raw.startsAt || master.startsAt || ev.startsAt);
+    const end = raw.endsAt || master.endsAt || ev.endsAt ? new Date(raw.endsAt || master.endsAt || ev.endsAt) : null;
+    const startDate = toDateInput(start.getFullYear(), start.getMonth(), start.getDate());
+    const endDate = end
+      ? toDateInput(end.getFullYear(), end.getMonth(), end.getDate())
+      : startDate;
     setDraft({
       id: ev.id,
       title: ev.title,
-      date: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`,
+      startDate,
+      endDate,
       startTime: `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`,
       endTime: end
         ? `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`
@@ -411,6 +512,7 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
       color: ev.color || eventColor(ev, organizePrefs),
       contactIds: ev.contactIds?.length ? ev.contactIds : ev.contactId ? [ev.contactId] : [],
       reminders: ev.reminders?.length ? ev.reminders : ["1시간 전"],
+      repeatYearly: !!(raw.repeatYearly ?? master.repeatYearly ?? ev.repeatYearly),
       startsAt: raw.startsAt,
       endsAt: raw.endsAt,
     });
@@ -429,15 +531,21 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
     }
     setSaving(true);
     try {
-      const [y, mo, d] = draft.date.split("-").map(Number);
+      const [sy, smo, sd] = draft.startDate.split("-").map(Number);
+      const [ey, emo, ed] = draft.endDate.split("-").map(Number);
       const [sh, sm] = draft.startTime.split(":").map(Number);
       const [eh, em] = draft.endTime.split(":").map(Number);
-      const startsAt = new Date(y, mo - 1, d, sh || 9, sm || 0);
-      const endsAt = new Date(y, mo - 1, d, eh || 10, em || 0);
+      const startsAt = new Date(sy, smo - 1, sd, sh || 9, sm || 0);
+      const endsAt = new Date(ey, emo - 1, ed, eh ?? 10, em || 0);
+      if (endsAt <= startsAt) {
+        toastError("종료 일시는 시작 이후여야 합니다");
+        setSaving(false);
+        return;
+      }
       const body = {
         title: draft.title.trim(),
         startsAt: startsAt.toISOString(),
-        endsAt: endsAt > startsAt ? endsAt.toISOString() : null,
+        endsAt: endsAt.toISOString(),
         place: draft.place.trim() || undefined,
         savedPlaceId: draft.savedPlaceId || undefined,
         placeLat: draft.placeLat ?? undefined,
@@ -447,12 +555,14 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
         color: draft.color,
         contactIds: draft.contactIds,
         reminders: draft.reminders,
+        repeatYearly: !!draft.repeatYearly,
       };
       if (draft.id) await api.updateEvent(draft.id, body);
       else await api.createEvent(body);
       toastSuccess(draft.id ? "일정을 수정했어요" : "일정을 추가했어요");
       closePop();
-      reload();
+      await reload();
+      onRefresh?.();
     } catch (e) {
       notifyError(e, "저장 실패");
     } finally {
@@ -465,7 +575,8 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
     try {
       await api.deleteEvent(draft.id);
       closePop();
-      reload();
+      await reload();
+      onRefresh?.();
     } catch (e) {
       notifyError(e, "삭제 실패");
     }
@@ -474,18 +585,34 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
   const goToday = () => {
     const n = new Date();
     setViewMonth(monthStart(n));
-    setSelDay(n.getDate());
+    setSelDate({ year: n.getFullYear(), month: n.getMonth(), day: n.getDate() });
   };
 
   const shiftMonth = (delta) => {
     setViewMonth((p) => {
       const n = new Date(p);
       n.setMonth(n.getMonth() + delta);
+      const daysInNew = new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate();
+      setSelDate((prev) => ({
+        year: n.getFullYear(),
+        month: n.getMonth(),
+        day: Math.min(prev.day, daysInNew),
+      }));
       return monthStart(n);
     });
   };
 
-  const cells = monthCells(year, month);
+  const cellDow = (cell) => (cell?.n != null ? new Date(cell.year, cell.month, cell.n).getDay() : -1);
+  const isCellToday = (cell) =>
+    cell?.n &&
+    today.getFullYear() === cell.year &&
+    today.getMonth() === cell.month &&
+    today.getDate() === cell.n;
+  const isCellSelected = (cell) =>
+    cell?.n &&
+    selDate.year === cell.year &&
+    selDate.month === cell.month &&
+    selDate.day === cell.n;
 
   return (
     <div className="fade cal-wrap">
@@ -507,15 +634,19 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
               </span>
             ))}
             {cells.map((c, idx) => {
-              const on = !c.muted && c.n === selDay;
-              const isT = !c.muted && today.getFullYear() === year && today.getMonth() === month && today.getDate() === c.n;
+              const on = isCellSelected(c);
+              const isT = isCellToday(c);
               return (
                 <button
                   key={idx}
                   type="button"
-                  className={"cal-mini-cell" + (c.muted ? " muted" : "") + (on ? " sel" : "") + (isT ? " today" : "")}
-                  disabled={c.muted}
-                  onClick={() => c.n && setSelDay(c.n)}
+                  className={
+                    "cal-mini-cell" +
+                    (c.adjacent ? " adjacent" : "") +
+                    (on ? " sel" : "") +
+                    (isT ? " today" : "")
+                  }
+                  onClick={() => c.n && setSelDate({ year: c.year, month: c.month, day: c.n })}
                 >
                   {c.n || ""}
                 </button>
@@ -552,7 +683,7 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
 
         <div className="cal-main">
           <div className="cal-toolbar pad row between">
-            <div className="row" style={{ gap: 10, alignItems: "center" }}>
+            <div className="row cal-toolbar-left" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <div className="h-title" style={{ margin: 0 }}>
                 {monthLabel}
               </div>
@@ -560,14 +691,14 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
                 오늘
               </button>
             </div>
-            <div className="row" style={{ gap: 8 }}>
+            <div className="row cal-toolbar-nav" style={{ gap: 8 }}>
               <button type="button" className="iconbtn" onClick={() => shiftMonth(-1)}>
                 ‹
               </button>
               <button type="button" className="iconbtn" onClick={() => shiftMonth(1)}>
                 ›
               </button>
-              <button type="button" className="btn btn-accent" style={{ padding: "8px 14px", fontSize: 13 }} onClick={() => openNew(selDay)}>
+              <button type="button" className="btn btn-accent cal-toolbar-add" style={{ padding: "8px 14px", fontSize: 13 }} onClick={() => openNew()}>
                 + 이벤트
               </button>
             </div>
@@ -576,41 +707,50 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
           <div className="pad cal-month">
             <div className="cal-mgrid head">
               {DOW.map((d, i) => (
-                <div key={d} className={"cal-dow" + (i === 0 ? " sun" : "")}>
+                <div key={d} className={"cal-dow" + (i === 0 ? " sun" : i === 6 ? " sat" : "")}>
                   {d}
                 </div>
               ))}
             </div>
             <div className="cal-mgrid body">
               {cells.map((c, idx) => {
-                const dayEv = c.n ? eventsOnDay(c.n) : [];
-                const isT = !c.muted && today.getFullYear() === year && today.getMonth() === month && today.getDate() === c.n;
-                const isSel = !c.muted && c.n === selDay;
+                const dayEv = eventsOnCell(c);
+                const isT = isCellToday(c);
+                const isSel = isCellSelected(c);
+                const dow = cellDow(c);
+                const badgeCls =
+                  "cal-daybadge" +
+                  (c.adjacent ? " adjacent" : "") +
+                  (isT ? (c.n === 1 ? " is-today-wide" : " is-today") : "") +
+                  (dow === 0 ? " sun" : dow === 6 ? " sat" : "");
                 return (
                   <div
-                    key={idx}
-                    className={"cal-cell" + (c.muted ? " muted" : "") + (isT ? " today" : "") + (isSel ? " sel" : "")}
+                    key={`${c.year}-${c.month}-${c.n}-${idx}`}
+                    className={"cal-cell" + (c.adjacent ? " adjacent" : "") + (isT ? " today" : "") + (isSel ? " sel" : "")}
                     onClick={() => {
-                      if (c.n) {
-                        setSelDay(c.n);
-                        openNew(c.n);
-                      }
+                      if (c.n) openNew(c);
                     }}
                   >
-                    <div className="cal-daynum">{c.n || ""}</div>
+                    <div className="cal-daynum">
+                      {c.n ? <span className={badgeCls}>{formatCellDayLabel(c)}</span> : null}
+                    </div>
                     <div className="cal-evlist">
-                      {dayEv.slice(0, 3).map((ev) => (
+                      {dayEv.slice(0, 4).map((ev) => (
                         <button
                           key={ev.id}
                           type="button"
-                          className="cal-evpill"
-                          style={{ background: eventColor(ev, organizePrefs) }}
-                          onClick={(e) => openEdit(ev, e)}
+                          className="cal-evitem"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelDate({ year: c.year, month: c.month, day: c.n });
+                            openDetail?.("event", ev);
+                          }}
                         >
-                          {ev.title}
+                          <span className="cal-evbar" style={{ background: eventColor(ev, organizePrefs) }} />
+                          <span className="cal-evtext">{ev.repeatYearly ? "↻ " : ""}{ev.title}</span>
                         </button>
                       ))}
-                      {dayEv.length > 3 && <span className="cal-evmore">+{dayEv.length - 3}</span>}
+                      {dayEv.length > 4 && <span className="cal-evmore">+{dayEv.length - 4}개 더</span>}
                     </div>
                   </div>
                 );
@@ -620,23 +760,19 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
 
           <div className="pad cal-daylist">
             <div className="section-h" style={{ marginTop: 0 }}>
-              {month + 1}월 {selDay}일
+              {selDate.month + 1}월 {selDate.day}일
             </div>
-            {eventsOnDay(selDay).length === 0 && (
+            {selectedEvents.length === 0 && (
               <div className="small" style={{ padding: "20px 0", textAlign: "center" }}>
                 일정이 없어요 · 날짜를 눌러 추가하세요
               </div>
             )}
-            {eventsOnDay(selDay).map((ev) => (
+            {selectedEvents.map((ev) => (
               <div key={ev.id} className="cal-dayrow" onClick={() => openDetail?.("event", ev)}>
                 <span className="cal-daybar" style={{ background: eventColor(ev, organizePrefs) }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{ev.title}</div>
-                  <div className="small">
-                    {ev.time}
-                    {ev.endTime ? `–${ev.endTime}` : ""}
-                    {ev.place ? ` · ${ev.place}` : ""}
-                  </div>
+                  <div className="small">{formatEventWhen(ev)}{ev.place ? ` · ${ev.place}` : ""}</div>
                 </div>
                 <button type="button" className="chip" style={{ fontSize: 12 }} onClick={(e) => openEdit(ev, e)}>
                   편집
@@ -658,9 +794,19 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
           onDelete={deleteDraft}
           onClose={closePop}
           saving={saving}
-          anchorDay={`${month + 1}월 ${popover.day}일`}
+          anchorDay={
+            draft.startDate
+              ? `${draft.startDate.replace(/-/g, ".")}${draft.endDate !== draft.startDate ? ` – ${draft.endDate.replace(/-/g, ".")}` : ""}`
+              : ""
+          }
           onStartRec={onStartRecFromEvent}
         />
+      )}
+
+      {!popover && (
+      <button type="button" className="cal-fab btn btn-accent" onClick={() => openNew()} aria-label="일정 추가">
+        + 이벤트
+      </button>
       )}
     </div>
   );

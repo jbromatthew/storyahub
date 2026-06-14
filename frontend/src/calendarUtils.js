@@ -85,9 +85,76 @@ export function monthStart(d) {
 export function monthCells(year, month) {
   const firstDow = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const prevMonthLast = new Date(year, month, 0).getDate();
   const cells = [];
-  for (let i = 0; i < firstDow; i++) cells.push({ n: null, muted: true });
-  for (let d = 1; d <= daysInMonth; d++) cells.push({ n: d, muted: false });
-  while (cells.length % 7 !== 0) cells.push({ n: null, muted: true });
+
+  for (let i = firstDow - 1; i >= 0; i--) {
+    const n = prevMonthLast - i;
+    const pm = month === 0 ? 11 : month - 1;
+    const py = month === 0 ? year - 1 : year;
+    cells.push({ n, year: py, month: pm, adjacent: true });
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ n: d, year, month, adjacent: false });
+  }
+
+  let nextN = 1;
+  while (cells.length % 7 !== 0) {
+    const nm = month === 11 ? 0 : month + 1;
+    const ny = month === 11 ? year + 1 : year;
+    cells.push({ n: nextN, year: ny, month: nm, adjacent: true });
+    nextN++;
+  }
+
   return cells;
+}
+
+export function monthGridRange(year, month) {
+  const cells = monthCells(year, month);
+  const first = cells[0];
+  const last = cells[cells.length - 1];
+  return {
+    cells,
+    from: new Date(first.year, first.month, first.n, 0, 0, 0, 0),
+    to: new Date(last.year, last.month, last.n, 23, 59, 59, 999),
+  };
+}
+
+/** Google Calendar 스타일 — 1일은 "6월 1일", 나머지는 "15일" */
+export function formatCellDayLabel(cell) {
+  if (!cell?.n) return "";
+  if (cell.n === 1) return `${cell.month + 1}월 ${cell.n}일`;
+  return `${cell.n}일`;
+}
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+export function toDateInput(y, m, d) {
+  return `${y}-${pad2(m + 1)}-${pad2(d)}`;
+}
+
+/** 해당 날짜 셀에 일정이 걸쳐 있는지 (종료일이 시작일과 다를 수 있음) */
+export function eventOnDay(ev, cell) {
+  if (!cell?.n || !ev?.startsAt) return false;
+  const dayStart = new Date(cell.year, cell.month, cell.n, 0, 0, 0, 0);
+  const dayEnd = new Date(cell.year, cell.month, cell.n, 23, 59, 59, 999);
+  const start = new Date(ev.startsAt);
+  const end = ev.endsAt ? new Date(ev.endsAt) : start;
+  return start <= dayEnd && end >= dayStart;
+}
+
+export function formatEventWhen(ev) {
+  const start = new Date(ev.startsAt);
+  const end = ev.endsAt ? new Date(ev.endsAt) : null;
+  const st = ev.time || `${pad2(start.getHours())}:${pad2(start.getMinutes())}`;
+  const sd = `${start.getMonth() + 1}월 ${start.getDate()}일`;
+  if (!end) return `${sd} · ${st}${ev.repeatYearly ? " · 매년" : ""}`;
+  const et = ev.endTime || `${pad2(end.getHours())}:${pad2(end.getMinutes())}`;
+  const ed = `${end.getMonth() + 1}월 ${end.getDate()}일`;
+  const repeat = ev.repeatYearly ? " · 매년" : "";
+  if (start.toDateString() === end.toDateString()) return `${sd} · ${st}–${et}${repeat}`;
+  return `${sd} ${st} – ${ed} ${et}${repeat}`;
 }

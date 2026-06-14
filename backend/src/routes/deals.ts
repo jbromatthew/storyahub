@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess } from "../middleware/requireAccess.js";
+import { optionalUserMediaKey } from "../services/mediaValidation.js";
 
 export const dealsRouter = Router();
 dealsRouter.use(auth, requireAccess);
@@ -32,6 +33,15 @@ dealsRouter.post("/", async (req: AuthedRequest, res) => {
   const userId = req.userId!;
   const { id, contactId, title, stage, supplyAmount, quoteKey } = req.body ?? {};
 
+  let validatedQuoteKey: string | null | undefined;
+  if (quoteKey !== undefined) {
+    try {
+      validatedQuoteKey = optionalUserMediaKey(quoteKey, userId, "quoteKey");
+    } catch {
+      return res.status(400).json({ error: "견적서 키가 올바르지 않습니다" });
+    }
+  }
+
   if (id) {
     const existing = await prisma.deal.findFirst({ where: { id, userId } });
     if (!existing) return res.status(404).json({ error: "not found" });
@@ -44,7 +54,7 @@ dealsRouter.post("/", async (req: AuthedRequest, res) => {
       data.wonAt = stage === "성사" ? existing.wonAt ?? new Date() : null;
     }
     if (supplyAmount !== undefined) data.supplyAmount = supplyAmount;
-    if (quoteKey !== undefined) data.quoteKey = quoteKey;
+    if (quoteKey !== undefined) data.quoteKey = validatedQuoteKey;
 
     const deal = await prisma.deal.update({ where: { id }, data });
     return res.json({ ...deal, ...withVat(deal.supplyAmount) });
@@ -57,7 +67,7 @@ dealsRouter.post("/", async (req: AuthedRequest, res) => {
       title: title ?? "딜",
       stage: stage ?? "리드",
       supplyAmount: supplyAmount ?? 0,
-      quoteKey: quoteKey ?? null,
+      quoteKey: validatedQuoteKey ?? null,
       wonAt: stage === "성사" ? new Date() : null,
     },
   });

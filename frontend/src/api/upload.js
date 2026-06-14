@@ -1,17 +1,14 @@
-import { getToken, getApiBase, api } from "./client.js";
+import { getApiBase, api } from "./client.js";
 import { toastError, TOAST_ERROR_STATUSES } from "../toast.js";
 
 const urlCache = new Map();
 
 /** 서버 경유 R2 업로드 (브라우저→R2 presigned PUT은 CORS 미설정 시 Failed to fetch) */
 export async function uploadBlob(blob, filename, contentType) {
-  const token = getToken();
-  if (!token) throw new Error("로그인이 필요합니다");
-
   const res = await fetch(`${getApiBase()}/uploads/direct`, {
     method: "POST",
+    credentials: "include",
     headers: {
-      Authorization: `Bearer ${token}`,
       "Content-Type": contentType || "application/octet-stream",
       "X-Filename": encodeURIComponent(filename || `upload-${Date.now()}`),
     },
@@ -96,11 +93,9 @@ export function fileToBase64(file) {
 export async function mediaUrl(mediaKey) {
   if (!mediaKey) return null;
   if (urlCache.has(mediaKey)) return urlCache.get(mediaKey);
-  const token = getToken();
-  if (!token) throw new Error("로그인이 필요합니다");
   const res = await fetch(
     `${getApiBase()}/uploads/stream?key=${encodeURIComponent(mediaKey)}`,
-    { headers: { Authorization: `Bearer ${token}` } }
+    { credentials: "include" }
   );
   if (!res.ok) {
     let msg = "미디어 로드 실패";
@@ -142,6 +137,25 @@ export function pickImageFile(capture = false) {
       else reject(new PickCancelled());
     };
     input.addEventListener("change", () => finish(input.files?.[0]));
+    input.addEventListener("cancel", () => finish(null));
+    document.body.appendChild(input);
+    input.click();
+  });
+}
+
+/** 여러 장 선택 (iOS·Android 갤러리 다중 선택) */
+export function pickImageFiles(maxCount = 5) {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.multiple = true;
+    const finish = (files) => {
+      input.remove();
+      if (files?.length) resolve(files.slice(0, maxCount));
+      else reject(new PickCancelled());
+    };
+    input.addEventListener("change", () => finish(Array.from(input.files || [])));
     input.addEventListener("cancel", () => finish(null));
     document.body.appendChild(input);
     input.click();

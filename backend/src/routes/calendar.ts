@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess } from "../middleware/requireAccess.js";
+import { expandYearlyInRange } from "../services/eventRecurrence.js";
 
 export const calendarRouter = Router();
 calendarRouter.use(auth, requireAccess);
@@ -50,14 +51,23 @@ calendarRouter.get("/", async (req: AuthedRequest, res) => {
   const from = req.query.from ? new Date(String(req.query.from)) : new Date(0);
   const to = req.query.to ? new Date(String(req.query.to)) : new Date("2999-12-31");
   const events = await prisma.event.findMany({
-    where: { userId: req.userId, startsAt: { gte: from, lte: to } },
+    where: {
+      userId: req.userId,
+      OR: [
+        {
+          startsAt: { lte: to },
+          OR: [{ endsAt: { gte: from } }, { endsAt: null, startsAt: { gte: from } }],
+        },
+        { repeatYearly: true },
+      ],
+    },
     orderBy: { startsAt: "asc" },
   });
-  res.json(events);
+  res.json(expandYearlyInRange(events, from, to));
 });
 
 calendarRouter.post("/", async (req: AuthedRequest, res) => {
-  const { title, startsAt, endsAt, place, savedPlaceId, placeLat, placeLng, contactId, contactIds, category, color, notes, reminders } =
+  const { title, startsAt, endsAt, place, savedPlaceId, placeLat, placeLng, contactId, contactIds, category, color, notes, reminders, repeatYearly } =
     req.body ?? {};
   const ids = normalizeContactIds(contactIds, contactId);
   const e = await prisma.event.create({
@@ -76,6 +86,7 @@ calendarRouter.post("/", async (req: AuthedRequest, res) => {
       color: color ?? null,
       notes: notes ?? null,
       reminders: reminders ?? ["1시간 전"],
+      repeatYearly: !!repeatYearly,
     },
   });
   res.status(201).json(e);
@@ -85,7 +96,7 @@ calendarRouter.patch("/:id", async (req: AuthedRequest, res) => {
   const userId = req.userId!;
   const cur = await prisma.event.findFirst({ where: { id: req.params.id, userId } });
   if (!cur) return res.status(404).json({ error: "not found" });
-  const { title, startsAt, endsAt, place, savedPlaceId, placeLat, placeLng, contactId, contactIds, category, color, notes, reminders } =
+  const { title, startsAt, endsAt, place, savedPlaceId, placeLat, placeLng, contactId, contactIds, category, color, notes, reminders, repeatYearly } =
     req.body ?? {};
   const ids =
     contactIds !== undefined || contactId !== undefined
@@ -107,6 +118,7 @@ calendarRouter.patch("/:id", async (req: AuthedRequest, res) => {
       color: color !== undefined ? color : cur.color,
       notes: notes !== undefined ? notes : cur.notes,
       reminders: reminders ?? cur.reminders,
+      repeatYearly: repeatYearly !== undefined ? !!repeatYearly : cur.repeatYearly,
     },
   });
   res.json(e);

@@ -3,12 +3,10 @@ import { toastError, TOAST_ERROR_STATUSES } from "../toast.js";
 const BASE =
   import.meta.env.VITE_API_BASE ??
   (import.meta.env.DEV ? "" : "http://localhost:4000");
-const TOKEN_KEY = "storyahub_token";
-const SESSION_TOKEN_KEY = "storyahub_token_session";
+const LEGACY_TOKEN_KEY = "storyahub_token";
+const LEGACY_SESSION_TOKEN_KEY = "storyahub_token_session";
 export const REMEMBER_KEY = "storyahub_remember";
 export const EMAIL_KEY = "storyahub_email";
-
-let token = null;
 
 export class ApiError extends Error {
   constructor(message, status = 0) {
@@ -26,33 +24,18 @@ export function isAccessError(err) {
   return err instanceof ApiError && err.status === 402;
 }
 
-export function setToken(t) {
-  token = t;
+/** 예전 localStorage JWT 제거 (httpOnly 쿠키로 전환) */
+export function purgeLegacyTokenStorage() {
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
+  sessionStorage.removeItem(LEGACY_SESSION_TOKEN_KEY);
 }
 
-export function loadToken() {
-  token = localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(SESSION_TOKEN_KEY);
-  return token;
-}
-
-export function saveToken(t, { remember = true } = {}) {
-  token = t;
+export function saveRememberPreference(remember = true) {
   localStorage.setItem(REMEMBER_KEY, remember ? "1" : "0");
-  if (remember) {
-    localStorage.setItem(TOKEN_KEY, t);
-    sessionStorage.removeItem(SESSION_TOKEN_KEY);
-  } else {
-    sessionStorage.setItem(SESSION_TOKEN_KEY, t);
-    localStorage.removeItem(TOKEN_KEY);
-  }
 }
 
 export function getRememberLogin() {
   return localStorage.getItem(REMEMBER_KEY) !== "0";
-}
-
-export function getToken() {
-  return token;
 }
 
 export function getApiBase() {
@@ -60,9 +43,26 @@ export function getApiBase() {
 }
 
 export function clearToken() {
-  token = null;
-  localStorage.removeItem(TOKEN_KEY);
-  sessionStorage.removeItem(SESSION_TOKEN_KEY);
+  purgeLegacyTokenStorage();
+}
+
+/** @deprecated httpOnly 쿠키 사용 — 호환용 no-op */
+export function loadToken() {
+  purgeLegacyTokenStorage();
+  return null;
+}
+
+/** @deprecated */
+export function saveToken(_t, { remember = true } = {}) {
+  saveRememberPreference(remember);
+}
+
+/** @deprecated */
+export function setToken() {}
+
+/** @deprecated */
+export function getToken() {
+  return null;
 }
 
 async function req(path, { method = "GET", body, headers = {} } = {}) {
@@ -70,12 +70,12 @@ async function req(path, { method = "GET", body, headers = {} } = {}) {
   try {
     res = await fetch(BASE + path, {
       method,
+      credentials: "include",
       headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
         ...headers,
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
     throw new ApiError("서버에 연결할 수 없습니다", 0);
@@ -99,6 +99,7 @@ export const api = {
     req("/auth/register", { method: "POST", body: { email, password, name, remember } }),
   login: (email, password, remember = true) =>
     req("/auth/login", { method: "POST", body: { email, password, remember } }),
+  logout: () => req("/auth/logout", { method: "POST" }),
   me: () => req("/auth/me"),
   getUsage: () => req("/auth/me/usage"),
   updateMe: (data) => req("/auth/me", { method: "PATCH", body: data }),

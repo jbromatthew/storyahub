@@ -6,8 +6,10 @@ import { placeToUi, placeGroups, haversineKm, formatDistanceKm, kakaoDirectionsU
 import { tagColor } from "../preferences.js";
 import { toastSuccess, notifyError } from "../toast.js";
 import { confirmDelete, confirmAction } from "../confirm.js";
-import { uploadFile, pickImageFile, mediaUrl, isPickCancelled } from "../api/upload.js";
+import { uploadFile, pickImageFiles, mediaUrl, isPickCancelled } from "../api/upload.js";
 import WebViewOverlay from "./WebViewOverlay.jsx";
+import PhotoGallery from "./PhotoGallery.jsx";
+import { useSwipeBack } from "../useSwipeBack.js";
 
 const MAX_PLACE_PHOTOS = 5;
 
@@ -48,6 +50,7 @@ function PlaceThumb({ photoKey, size = 44 }) {
 function PlacePhotoGrid({ keys, onChange, disabled }) {
   const [urls, setUrls] = useState({});
   const [uploading, setUploading] = useState(false);
+  const [galleryIdx, setGalleryIdx] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -67,14 +70,18 @@ function PlacePhotoGrid({ keys, onChange, disabled }) {
     };
   }, [keys.join("|")]);
 
-  const addPhoto = async () => {
+  const urlList = keys.map((k) => urls[k]).filter(Boolean);
+
+  const addPhotos = async () => {
     if (keys.length >= MAX_PLACE_PHOTOS || uploading) return;
+    const slots = MAX_PLACE_PHOTOS - keys.length;
     setUploading(true);
     try {
-      const file = await pickImageFile(false);
-      const key = await uploadFile(file);
-      onChange([...keys, key]);
-      toastSuccess("사진을 추가했어요");
+      const files = await pickImageFiles(slots);
+      const batch = files.slice(0, slots);
+      const uploaded = await Promise.all(batch.map((file) => uploadFile(file)));
+      onChange([...keys, ...uploaded]);
+      toastSuccess(batch.length > 1 ? `사진 ${batch.length}장을 추가했어요` : "사진을 추가했어요");
     } catch (e) {
       if (!isPickCancelled(e)) notifyError(e, "사진 업로드 실패");
     } finally {
@@ -90,22 +97,33 @@ function PlacePhotoGrid({ keys, onChange, disabled }) {
 
   return (
     <div>
+      {galleryIdx != null && urlList.length > 0 && (
+        <PhotoGallery urls={urlList} initialIndex={galleryIdx} onClose={() => setGalleryIdx(null)} />
+      )}
       <div className="row between" style={{ marginBottom: 8 }}>
         <div className="small" style={{ fontWeight: 700 }}>
           사진
         </div>
         <span className="small" style={{ color: "var(--muted)" }}>
-          {keys.length}/{MAX_PLACE_PHOTOS}
+          {keys.length}/{MAX_PLACE_PHOTOS} · 탭하면 크게 보기
         </span>
       </div>
       <div className="place-photo-grid">
         {keys.map((k, i) => (
           <div key={k} className="place-photo-cell">
-            {urls[k] ? (
-              <img src={urls[k]} alt="" className="place-photo-img" />
-            ) : (
-              <div className="place-photo-img place-photo-empty" />
-            )}
+            <button
+              type="button"
+              className="place-photo-view"
+              disabled={!urls[k]}
+              onClick={() => urls[k] && setGalleryIdx(i)}
+              aria-label="사진 크게 보기"
+            >
+              {urls[k] ? (
+                <img src={urls[k]} alt="" className="place-photo-img" />
+              ) : (
+                <div className="place-photo-img place-photo-empty" />
+              )}
+            </button>
             {!disabled && (
               <button type="button" className="place-photo-remove" aria-label="사진 삭제" onClick={() => removePhoto(i)}>
                 ×
@@ -114,7 +132,7 @@ function PlacePhotoGrid({ keys, onChange, disabled }) {
           </div>
         ))}
         {keys.length < MAX_PLACE_PHOTOS && !disabled && (
-          <button type="button" className="place-photo-add" onClick={addPhoto} disabled={uploading}>
+          <button type="button" className="place-photo-add" onClick={addPhotos} disabled={uploading}>
             {uploading ? "…" : "+"}
           </button>
         )}
@@ -453,6 +471,7 @@ function PlaceMap({ open, places }) {
 
 function PlaceDetail({ p, back, placeTags = [], onUpdated, onDeleted }) {
   const [tags, setTags] = useState(p.tags || []);
+  const [tagInput, setTagInput] = useState("");
   const [notes, setNotes] = useState(p.notes || "");
   const [fav, setFav] = useState(!!p.fav);
   const [photoKeys, setPhotoKeys] = useState(p.photoKeys || []);
@@ -479,6 +498,26 @@ function PlaceDetail({ p, back, placeTags = [], onUpdated, onDeleted }) {
     setTags(next);
     save({ tags: next });
   };
+
+  const addCustomTag = () => {
+    const v = tagInput.trim();
+    if (!v || tags.includes(v)) {
+      setTagInput("");
+      return;
+    }
+    const next = [...tags, v];
+    setTags(next);
+    setTagInput("");
+    save({ tags: next });
+  };
+
+  const removeTag = (t) => {
+    const next = tags.filter((x) => x !== t);
+    setTags(next);
+    save({ tags: next });
+  };
+
+  useSwipeBack(true, back);
 
   const toggleFav = () => {
     const next = !fav;
@@ -567,12 +606,45 @@ function PlaceDetail({ p, back, placeTags = [], onUpdated, onDeleted }) {
           <div className="small" style={{ fontWeight: 700, marginBottom: 8 }}>
             태그
           </div>
-          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-            {placeTags.map((t) => (
-              <button key={t} type="button" className={"chip" + (tags.includes(t) ? " on" : "")} onClick={() => toggleTag(t)}>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+            {tags.map((t) => (
+              <span key={t} className="tag gray" style={{ padding: "6px 10px", fontSize: 12 }}>
                 #{t}
+                <span style={{ cursor: "pointer", marginLeft: 5 }} onClick={() => removeTag(t)}>
+                  ✕
+                </span>
+              </span>
+            ))}
+          </div>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+            {placeTags.filter((t) => !tags.includes(t)).map((t) => (
+              <button key={t} type="button" className="chip" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => toggleTag(t)}>
+                + {t}
               </button>
             ))}
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <input
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+                addCustomTag();
+              }}
+              placeholder="태그 직접 입력"
+              style={{
+                flex: 1,
+                padding: "10px 12px",
+                borderRadius: 11,
+                border: "1px solid var(--line)",
+                fontFamily: "inherit",
+                fontSize: 14,
+              }}
+            />
+            <button type="button" className="chip" style={{ padding: "10px 14px" }} onClick={addCustomTag}>
+              추가
+            </button>
           </div>
         </div>
         <div style={{ marginTop: 18 }}>

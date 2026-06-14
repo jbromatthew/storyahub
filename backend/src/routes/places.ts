@@ -3,16 +3,21 @@ import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 import { searchKakaoPlacesKeyword, searchKakaoPlacesNearby } from "../services/kakaoLocal.js";
+import { assertUserMediaKeys } from "../services/mediaValidation.js";
 
 export const placesRouter = Router();
 placesRouter.use(auth, requireAccess);
 
 const MAX_PLACE_PHOTOS = 5;
 
-function normalizePhotoKeys(raw: unknown): string[] | undefined {
+function normalizePhotoKeys(raw: unknown, userId: string): string[] | undefined {
   if (raw === undefined) return undefined;
   if (!Array.isArray(raw)) return [];
-  return raw.map(String).filter(Boolean).slice(0, MAX_PLACE_PHOTOS);
+  try {
+    return assertUserMediaKeys(raw, userId, MAX_PLACE_PHOTOS);
+  } catch {
+    throw Object.assign(new Error("invalid photoKeys"), { status: 400 });
+  }
 }
 
 placesRouter.get("/search", async (req: AuthedRequest, res) => {
@@ -89,6 +94,13 @@ placesRouter.post("/", async (req: AuthedRequest, res) => {
     if (dup) return res.json(dup);
   }
 
+  let normalizedPhotos: string[] = [];
+  try {
+    normalizedPhotos = normalizePhotoKeys(photoKeys, userId) ?? [];
+  } catch {
+    return res.status(400).json({ error: "사진 키가 올바르지 않습니다" });
+  }
+
   const place = await prisma.savedPlace.create({
     data: {
       userId,
@@ -104,7 +116,7 @@ placesRouter.post("/", async (req: AuthedRequest, res) => {
       placeUrl: placeUrl ?? null,
       notes: notes ?? null,
       favorite: !!favorite,
-      photoKeys: normalizePhotoKeys(photoKeys) ?? [],
+      photoKeys: normalizedPhotos,
     },
   });
   res.status(201).json(place);
@@ -121,7 +133,13 @@ placesRouter.patch("/:id", async (req: AuthedRequest, res) => {
   if (tags !== undefined) data.tags = Array.isArray(tags) ? tags.map(String) : [];
   if (notes !== undefined) data.notes = notes || null;
   if (favorite !== undefined) data.favorite = !!favorite;
-  if (photoKeys !== undefined) data.photoKeys = normalizePhotoKeys(photoKeys) ?? [];
+  if (photoKeys !== undefined) {
+    try {
+      data.photoKeys = normalizePhotoKeys(photoKeys, userId) ?? [];
+    } catch {
+      return res.status(400).json({ error: "사진 키가 올바르지 않습니다" });
+    }
+  }
 
   const place = await prisma.savedPlace.update({ where: { id: existing.id }, data });
   res.json(place);

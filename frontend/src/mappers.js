@@ -155,6 +155,8 @@ export function eventToUi(e) {
     contactId: e.contactId || null,
     contactIds: e.contactIds || [],
     shareToken: e.shareToken || null,
+    repeatYearly: !!e.repeatYearly,
+    occurrenceYear: e._occurrenceYear ?? d.getFullYear(),
     dateKey: `${d.getFullYear()}-${month}-${day}`,
     day,
     month,
@@ -162,6 +164,7 @@ export function eventToUi(e) {
     startsAt: e.startsAt,
     endsAt: e.endsAt,
     reminders: e.reminders || [],
+    _series: e._series || null,
     _raw: e,
   };
 }

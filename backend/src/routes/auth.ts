@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import type { User } from "@prisma/client";
@@ -7,11 +7,22 @@ import { auth, signToken, type AuthedRequest } from "../middleware/auth.js";
 import { getAccessStatus, extendPlanUntil } from "../services/access.js";
 import { getUserUsage } from "../services/usage.js";
 import { mergePreferences, normalizePreferencesPatch } from "../services/preferences.js";
+import { clearSessionCookie, setSessionCookie } from "../services/sessionCookie.js";
+import { env } from "../env.js";
 
 export const authRouter = Router();
 
+const BCRYPT_ROUNDS = env.bcryptRounds;
+
 const emailSchema = z.string().email("올바른 이메일을 입력하세요");
-const passwordSchema = z.string().min(6, "비밀번호는 6자 이상");
+const passwordSchema = env.isProduction
+  ? z
+      .string()
+      .min(8, "비밀번호는 8자 이상")
+      .regex(/[A-Za-z]/, "영문을 포함해야 합니다")
+      .regex(/[0-9]/, "숫자를 포함해야 합니다")
+  : z.string().min(6, "비밀번호는 6자 이상");
+const loginPasswordSchema = z.string().min(1, "비밀번호를 입력하세요");
 
 export function publicUser(u: User) {
   const access = getAccessStatus(u);
@@ -39,6 +50,11 @@ export function publicUser(u: User) {
   };
 }
 
+function issueAuth(res: Response, user: User, remember: boolean) {
+  setSessionCookie(res, signToken(user.id, remember), remember);
+  return { user: publicUser(user) };
+}
+
 authRouter.post("/register", async (req, res) => {
   const parsed = z
     .object({
@@ -53,7 +69,7 @@ authRouter.post("/register", async (req, res) => {
   const exists = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
   if (exists) return res.status(409).json({ error: "이미 가입된 이메일입니다" });
 
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   const user = await prisma.user.create({
     data: {
       email: email.toLowerCase(),
@@ -66,12 +82,12 @@ authRouter.post("/register", async (req, res) => {
   });
 
   const remember = req.body?.remember !== false;
-  res.status(201).json({ token: signToken(user.id, remember), user: publicUser(user) });
+  res.status(201).json(issueAuth(res, user, remember));
 });
 
 authRouter.post("/login", async (req, res) => {
   const parsed = z
-    .object({ email: emailSchema, password: passwordSchema })
+    .object({ email: emailSchema, password: loginPasswordSchema })
     .safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "이메일과 비밀번호를 확인하세요" });
 
@@ -83,11 +99,14 @@ authRouter.post("/login", async (req, res) => {
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: "이메일 또는 비밀번호가 맞지 않습니다" });
 
-  res.json({ token: signToken(user.id, remember), user: publicUser(user) });
+  res.json(issueAuth(res, user, remember));
 });
 
 /** 결제 완료 후 호출 (PG 연동 전 임시·운영 테스트용) */
 authRouter.post("/subscribe", auth, async (req: AuthedRequest, res) => {
+  if (env.isProduction && !env.allowTestSubscribe) {
+    return res.status(403).json({ error: "결제 연동 후 이용 가능합니다" });
+  }
   const parsed = z
     .object({ plan: z.enum(["lite", "pro", "ultra", "custom"]) })
     .safeParse(req.body);
@@ -143,9 +162,10 @@ authRouter.patch("/me/password", auth, async (req: AuthedRequest, res) => {
   const ok = await bcrypt.compare(currentPassword, user.passwordHash);
   if (!ok) return res.status(401).json({ error: "현재 비밀번호가 맞지 않습니다" });
 
-  const passwordHash = await bcrypt.hash(newPassword, 10);
+  const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
   await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
-  res.json({ ok: true, token: signToken(user.id, true) });
+  setSessionCookie(res, signToken(user.id, true), true);
+  res.json({ ok: true });
 });
 
 authRouter.get("/me", auth, async (req: AuthedRequest, res) => {
@@ -182,6 +202,9 @@ authRouter.patch("/me/preferences", auth, async (req: AuthedRequest, res) => {
 });
 
 authRouter.post("/social", async (req, res) => {
+  if (env.isProduction && !env.allowDemoAuth) {
+    return res.status(403).json({ error: "소셜 로그인은 준비 중입니다" });
+  }
   const { provider, code } = req.body ?? {};
   if (!provider || !code) return res.status(400).json({ error: "provider, code 필요" });
 
@@ -194,5 +217,10 @@ authRouter.post("/social", async (req, res) => {
     create: { email, name, provider, trialStartedAt: new Date() },
   });
 
-  res.json({ token: signToken(user.id), user: publicUser(user) });
+  res.json(issueAuth(res, user, true));
+});
+
+authRouter.post("/logout", (_req, res) => {
+  clearSessionCookie(res);
+  res.status(204).send();
 });

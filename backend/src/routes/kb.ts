@@ -5,6 +5,7 @@ import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 import { searchKakaoBooks } from "../services/kakaoBook.js";
 import { buildUserMediaKey, putObjectBytes, r2Configured } from "../services/r2.js";
+import { fetchPublicHttpsImage } from "../services/safeFetch.js";
 
 export const kbRouter = Router();
 kbRouter.use(auth, requireAccess);
@@ -32,19 +33,13 @@ kbRouter.get("/books/search", async (req: AuthedRequest, res) => {
 kbRouter.post("/books/cover", async (req: AuthedRequest, res) => {
   try {
     const url = String(req.body?.url ?? "").trim();
-    if (!url.startsWith("http")) return res.status(400).json({ error: "표지 URL이 올바르지 않습니다" });
+    if (!url) return res.status(400).json({ error: "표지 URL이 올바르지 않습니다" });
     if (!r2Configured()) return res.status(503).json({ error: "R2가 설정되지 않았습니다" });
 
-    const imgRes = await fetch(url);
-    if (!imgRes.ok) return res.status(502).json({ error: "표지 이미지를 불러오지 못했습니다" });
-
-    const buf = Buffer.from(await imgRes.arrayBuffer());
-    if (!buf.length) return res.status(400).json({ error: "표지 이미지가 비어 있습니다" });
-
-    const ct = imgRes.headers.get("content-type") || "image/jpeg";
+    const { buffer: buf, contentType: ct } = await fetchPublicHttpsImage(url);
     const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
     const key = buildUserMediaKey(req.userId!, `covers/${randomUUID()}.${ext}`);
-    await putObjectBytes(key, buf, ct.startsWith("image/") ? ct : "image/jpeg");
+    await putObjectBytes(key, buf, ct);
     res.json({ key });
   } catch (e) {
     const err = e as Error & { status?: number };
