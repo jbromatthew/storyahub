@@ -729,8 +729,6 @@ function App(){
   const [recordLink,setRecordLink] = useState(null);
   const timer = useRef(null);
 
-  const failRecordProcessing=useCallback(()=>{ setPhase("setup"); },[]);
-
   const loadAppData = useCallback(async ()=>{
     const [data, kb] = await Promise.all([api.bootstrap(), api.listKb()]);
     setClients(data.contacts.map(contactToUi));
@@ -827,34 +825,48 @@ function App(){
     if(/Gemini \d+:/.test(msg)) return "AI 처리 중 오류가 났어요. 잠시 후 다시 시도해주세요.";
     return msg;
   };
-  const handleRecordComplete=async ({ mode, mediaKey, imageKeys, attendees, contactId, companyName, durationSec })=>{
+  const handleRecordComplete=useCallback(async (job)=>{
+    setRecordLink(null);
+    setPhase("setup");
+    setTab("today");
+    setSecs(0);
+    toastSuccess("백그라운드에서 업로드·변환 중이에요. 완료되면 알려드릴게요.");
     try{
+      const { mode, attendees, contactId, companyName, eventId, secs: recSecs, audioDur, audioFile, photos, blob }=job;
       const isPhoto=mode==="photo";
-      const source = isPhoto ? "photo" : mode==="upload" ? "upload" : "live";
-      const { meetingId } = await api.enqueueSummary(mediaKey||null,{
+      let mediaKey;
+      let imageKeys;
+      let durationSec;
+      if(mode==="rec"){
+        const ext=blob.type.includes("webm")?"webm":"m4a";
+        mediaKey=await uploadBlob(blob,`recording-${Date.now()}.${ext}`,blob.type||"audio/webm");
+        durationSec=recSecs;
+      }else if(mode==="upload"){
+        mediaKey=await uploadFile(audioFile,{ audio:true });
+        durationSec=audioDur||Math.max(1,Math.round(audioFile.size/(128*1024/8)));
+      }else{
+        imageKeys=await Promise.all(photos.map((p)=>uploadFile(p.file)));
+      }
+      const source=isPhoto?"photo":mode==="upload"?"upload":"live";
+      const { meetingId }=await api.enqueueSummary(mediaKey||null,{
         template:"영업",
         contactId: contactId??null,
         companyName,
         source,
         attendees,
         imageKeys: imageKeys??[],
-        durationSec: isPhoto ? 0 : (durationSec ?? secs),
-        eventId: recordLink?.eventId??null,
+        durationSec: isPhoto?0:(durationSec??0),
+        eventId: eventId??null,
       });
       addPendingMeeting(meetingId);
-      setRecordLink(null);
-      setPhase("setup");
-      setTab("today");
-      toastSuccess("백그라운드에서 변환 중이에요. 완료되면 알려드릴게요.");
       await loadAppData();
       const { user:u }=await api.me().catch(()=>({}));
       if(u) setUser(u);
     }catch(e){
       if(isAccessError(e)){ setPricing(true); setUser(u=>u?{...u,hasAccess:false}:u); }
-      notifyError(e, friendlyAiError(e.message)||"처리 실패");
-      setPhase("setup");
+      notifyError(e, friendlyAiError(e.message)||"업로드·변환 실패");
     }
-  };
+  },[loadAppData]);
   const mmss=(n)=>`${String(Math.floor(n/60)).padStart(2,"0")}:${String(n%60).padStart(2,"0")}`;
 
   const handleSwipeBack=useCallback(()=>{
@@ -993,9 +1005,8 @@ function App(){
           : overlay==="categorytags" ? <CategoryTagSettings user={user} back={()=>setOverlay("settings")} onUserUpdated={setUser}/>
           : pricing ? <Pricing back={()=>setPricing(false)} segment={segment} user={user} onUserUpdated={setUser}/>
           : tab==="record" ? <RecordScreen phase={phase} secs={secs} mmss={mmss} hl={hl} setHl={setHl}
-                              onComplete={handleRecordComplete} todos={todos} toggleTodo={toggleTodo}
+                              onRunInBackground={handleRecordComplete} todos={todos} toggleTodo={toggleTodo}
                               summary={lastSummary} mediaKey={lastMediaKey} user={user}
-                              onProcFailed={failRecordProcessing}
                               onStartLive={startLiveRec} onCancelLive={cancelLiveRec}
                               recordLink={recordLink}
                               onBack={()=>{ setRecordLink(null); setTab("today"); setPhase("idle"); }}
@@ -2160,7 +2171,7 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
 }
 
 /* ---------------- RECORD + SUMMARY ---------------- */
-function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goClients,summary,mediaKey,user,onProcFailed,onStartLive,onCancelLive,onBack,recordLink}){
+function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTodo,goClients,summary,mediaKey,user,onStartLive,onCancelLive,onBack,recordLink}){
   const CLIENTS=getClients();
   const [att,setAtt]=useState(()=> (recordLink?.contactIds?.length ? [...recordLink.contactIds] : []));
   const [pick,setPick]=useState(false);
@@ -2248,18 +2259,10 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
     setFinishing(true);
     const mode=inputMode;
     try{
-      const payload={
-        mode,
-        attendees: att,
-        contactId: primary?.id,
-        companyName: primary?.co,
-      };
+      let blob;
       if(mode==="rec"){
         if(!recorderRef.current) throw new Error("녹음이 준비되지 않았습니다");
-        const blob=await recorderRef.current.stop();
-        const ext=blob.type.includes("webm")?"webm":"m4a";
-        payload.mediaKey=await uploadBlob(blob,`recording-${Date.now()}.${ext}`,blob.type||"audio/webm");
-        payload.durationSec=secs;
+        blob=await recorderRef.current.stop();
       }else if(mode==="upload"){
         if(!audioFile) throw new Error("녹음 파일을 선택해주세요");
         const maxAudio=150*1024*1024;
@@ -2267,17 +2270,24 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
           const mb=(audioFile.size/(1024*1024)).toFixed(1);
           throw new Error(`파일이 너무 큽니다 (${mb}MB · 최대 150MB)`);
         }
-        payload.mediaKey=await uploadFile(audioFile,{ audio:true });
-        payload.durationSec=audioDur || Math.max(1, Math.round(audioFile.size/(128*1024/8)));
       }else{
         if(!photos.length) throw new Error("사진을 추가해주세요");
-        payload.imageKeys=await Promise.all(photos.map((p)=>uploadFile(p.file)));
       }
-      await onComplete(payload);
+      await onRunInBackground({
+        mode,
+        attendees: att,
+        contactId: primary?.id,
+        companyName: primary?.co,
+        eventId: recordLink?.eventId??null,
+        secs,
+        audioDur,
+        audioFile,
+        photos,
+        blob,
+      });
     }catch(e){
       notifyError(e, e.message||"업로드 실패");
       setFinishing(false);
-      onProcFailed?.();
     }
   };
 
