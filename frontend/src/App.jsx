@@ -8,13 +8,13 @@ import MeetingInsights from "./components/MeetingInsights.jsx";
 import CategoryTagSettings from "./components/CategoryTagSettings.jsx";
 import PlacesView from "./components/PlacesView.jsx";
 import CalendarView from "./components/CalendarView.jsx";
-import { api, purgeLegacyTokenStorage, clearToken, isAuthError, isAccessError } from "./api/client.js";
+import { api, loadToken, saveToken, clearToken, setToken, isAuthError, isAccessError } from "./api/client.js";
 import { uploadBlob, uploadFile, pickImageFile, pickAudioFile, audioDurationSec, pickAnyFile, fileToBase64, mediaUrl, AudioRecorder, isPickCancelled } from "./api/upload.js";
 import { setClients, getClients, setPlaces, getPlaces } from "./store.js";
 import { contactToUi, todoToUi, todoSearchText, formatWhen, eventToUi, kbToUi, meetingToUi, isAudioMediaKey, isImageMediaKey, kbCategories, KB_SECTIONS, kbSectionLabel, kbCoverKey, haversineKm, formatDistanceKm, kakaoDirectionsUrl, kbExcerpt, kbReadMinutes, kbFileCount, kbThumbMeta, placeToUi } from "./mappers.js";
 import { useSwipeBack } from "./useSwipeBack.js";
 import ContactIntroSheet from "./components/ContactIntroSheet.jsx";
-import { confirmDelete } from "./confirmDelete.js";
+import { confirmDelete, confirmAction } from "./confirmDelete.js";
 import { formatEventWhen } from "./calendarUtils.js";
 import ToastHost from "./components/ToastHost.jsx";
 import ConfirmHost from "./components/ConfirmHost.jsx";
@@ -270,6 +270,10 @@ const CSS = `
 .nt-split{border:none;background:var(--accent-soft);color:var(--accent-deep);font-family:inherit;font-size:11px;font-weight:700;
   padding:5px 9px;border-radius:8px;cursor:pointer;flex:0 0 auto;white-space:nowrap;}
 .nt-split:hover{background:#F3D8CB;}
+.nt-card.nested{border:none;box-shadow:none;border-radius:0;border-top:1px solid var(--line);}
+.nt-card.nested .nt-phead{padding:11px 16px;}
+.nt-ptitle.nested{font-size:14px;font-weight:600;}
+.nt-group > .nt-phead{cursor:pointer;}
 
 /* kb home */
 .kbh-search{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);
@@ -722,47 +726,10 @@ function App(){
   const [revenue,setRevenue] = useState({ supplyAmount:0, total:0, pipeline:0, wonCount:0, pipelineCount:0 });
   const [lastSummary,setLastSummary] = useState(null);
   const [lastMediaKey,setLastMediaKey] = useState(null);
-  const [recordProc,setRecordProc] = useState({ mode:"rec", progress:0, label:"", step:"upload" });
   const [recordLink,setRecordLink] = useState(null);
-  const pollAbortRef = useRef(null);
   const timer = useRef(null);
 
-  const startRecordProcessing=useCallback(({ mode, step, label, progress })=>{
-    setRecordProc({
-      mode: mode || "rec",
-      step: step || "upload",
-      label: label || "처리 중…",
-      progress: progress ?? 8,
-    });
-    setPhase("proc");
-  },[]);
-
-  const bumpRecordProc=useCallback((patch)=>{
-    setRecordProc((p)=>({ ...p, ...(typeof patch==="function" ? patch(p) : patch) }));
-  },[]);
   const failRecordProcessing=useCallback(()=>{ setPhase("setup"); },[]);
-
-  const pollMeetingUntilDone=useCallback(async (meetingId,{ onProgress, signal }={})=>{
-    for(let i=0;i<600;i++){
-      if(signal?.aborted) return { aborted:true };
-      await new Promise(r=>setTimeout(r,2000));
-      try{
-        const m=await api.getMeeting(meetingId);
-        const status=m.processStatus||"done";
-        onProgress?.(i,m);
-        if(status==="done") return { ok:true, meeting:m };
-        if(status==="error") return { ok:false, error:m.processError };
-      }catch{ /* 재시도 */ }
-    }
-    return { ok:null, timeout:true };
-  },[]);
-
-  const continueRecordInBackground=useCallback(()=>{
-    pollAbortRef.current?.abort();
-    setPhase("setup");
-    setTab("meetings");
-    toastSuccess("백그라운드에서 변환 중이에요. 완료되면 알려드릴게요.");
-  },[]);
 
   const loadAppData = useCallback(async ()=>{
     const [data, kb] = await Promise.all([api.bootstrap(), api.listKb()]);
@@ -779,7 +746,8 @@ function App(){
   },[]);
 
   const restoreSession = useCallback(async ()=>{
-    purgeLegacyTokenStorage();
+    const t = loadToken();
+    if (t) setToken(t);
     setBoot("loading");
     setBootError("");
     try{
@@ -808,6 +776,7 @@ function App(){
   },[phase]);
 
   const handleAuth = async (result)=>{
+    if (result.token) setToken(result.token);
     setUser(result.user);
     await loadAppData();
     setBoot(result.user.onboardingDone ? "app" : "welcome");
@@ -859,16 +828,8 @@ function App(){
     return msg;
   };
   const handleRecordComplete=async ({ mode, mediaKey, imageKeys, attendees, contactId, companyName, durationSec })=>{
-    setLastMediaKey(mediaKey||imageKeys?.[0]||null);
-    const isPhoto=mode==="photo";
-    bumpRecordProc((p)=>({
-      mode: mode || "rec",
-      step: isPhoto ? "ocr" : "transcribe",
-      label: isPhoto ? "사진에서 글자 읽는 중…" : "음성을 전사하는 중…",
-      progress: Math.max(p.progress, 38),
-    }));
-    let ok=false;
     try{
+      const isPhoto=mode==="photo";
       const source = isPhoto ? "photo" : mode==="upload" ? "upload" : "live";
       const { meetingId } = await api.enqueueSummary(mediaKey||null,{
         template:"영업",
@@ -881,42 +842,18 @@ function App(){
         eventId: recordLink?.eventId??null,
       });
       addPendingMeeting(meetingId);
-      await loadAppData();
-      bumpRecordProc((p)=>({ step: "summarize", label: "요약 · 할 일 추출 중…", progress: Math.max(p.progress, 55) }));
-      setPhase("proc");
-      pollAbortRef.current=new AbortController();
-      const estSec=Math.min(120, Math.max(25, Math.round((durationSec ?? secs) / 6) || 40));
-      const result=await pollMeetingUntilDone(meetingId,{
-        signal: pollAbortRef.current.signal,
-        onProgress:(i)=>{
-          const tick=38 + Math.min(56, Math.round(((i+1)/estSec)*56));
-          bumpRecordProc({ progress: tick });
-        },
-      });
-      if(result.aborted) return;
-      removePendingMeeting(meetingId);
-      if(result.ok){
-        bumpRecordProc({ step: "done", label: "완료", progress: 100 });
-        const ui=meetingToUi(result.meeting);
-        setLastSummary(ui.summary);
-        if(ui.mediaKey) setLastMediaKey(ui.mediaKey);
-        ok=true;
-        setRecordLink(null);
-      }else if(result.ok===false){
-        toastError(friendlyAiError(result.error));
-      }else{
-        toastSuccess("백그라운드에서 변환 중이에요. 미팅 목록에서 확인할 수 있어요.");
-        setTab("meetings");
-      }
+      setRecordLink(null);
+      setPhase("setup");
+      setTab("today");
+      toastSuccess("백그라운드에서 변환 중이에요. 완료되면 알려드릴게요.");
       await loadAppData();
       const { user:u }=await api.me().catch(()=>({}));
       if(u) setUser(u);
     }catch(e){
       if(isAccessError(e)){ setPricing(true); setUser(u=>u?{...u,hasAccess:false}:u); }
       notifyError(e, friendlyAiError(e.message)||"처리 실패");
-      console.warn("record",e);
+      setPhase("setup");
     }
-    setPhase(ok?"sum":"setup");
   };
   const mmss=(n)=>`${String(Math.floor(n/60)).padStart(2,"0")}:${String(n%60).padStart(2,"0")}`;
 
@@ -1046,7 +983,7 @@ function App(){
               openTask={(t)=>{setOverlay(null);setDetail({type:"task",data:t});}}
               openMeeting={(m)=>{setOverlay(null);setDetail({type:"meeting",data:m});}}
               meetings={meetings} kbArticles={kbArticles} todos={todos}/>
-          : overlay==="todos" ? <TodoArchive back={()=>setOverlay(null)} openDetail={(t)=>setDetail({type:"task",data:t})}/>
+          : overlay==="todos" ? <TodoArchive back={()=>setOverlay(null)} meetings={meetings} openDetail={(t)=>setDetail({type:"task",data:t})}/>
           : overlay==="mypage" ? <MyPage user={user} back={()=>setOverlay("settings")} onUserUpdated={setUser}/>
           : overlay==="settings" ? <Settings user={user} back={()=>setOverlay(null)} go={(o)=>setOverlay(o)}
               openPricing={()=>{setOverlay(null);setPricing(true);}}
@@ -1058,8 +995,7 @@ function App(){
           : tab==="record" ? <RecordScreen phase={phase} secs={secs} mmss={mmss} hl={hl} setHl={setHl}
                               onComplete={handleRecordComplete} todos={todos} toggleTodo={toggleTodo}
                               summary={lastSummary} mediaKey={lastMediaKey} user={user}
-                              proc={recordProc} onProcessingStart={startRecordProcessing} onProcFailed={failRecordProcessing}
-                              onContinueInBackground={continueRecordInBackground}
+                              onProcFailed={failRecordProcessing}
                               onStartLive={startLiveRec} onCancelLive={cancelLiveRec}
                               recordLink={recordLink}
                               onBack={()=>{ setRecordLink(null); setTab("today"); setPhase("idle"); }}
@@ -1241,14 +1177,14 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
       <div className="pad row between" style={{alignItems:"flex-end"}}>
         <div>
           <div className="section-h" style={{marginBottom:2}}>오늘 할 일 <span className="small" style={{fontWeight:700}}>{doneCount}/{todos.length}</span></div>
-          <div className="small">대분류 · 소분류로 나눠 관리해요</div>
+          <div className="small">녹음·미팅별로 묶여 관리해요</div>
         </div>
         <div className="row" style={{gap:8,alignItems:"center"}}>
           <button type="button" className="chip" style={{color:"var(--muted)"}} onClick={openTodoArchive}>전체</button>
           <button type="button" className="chip" style={{color:"var(--accent-deep)"}} onClick={()=>{
             setFocusTodoAdd(true);
             window.setTimeout(()=>setFocusTodoAdd(false), 500);
-          }}>+ 대분류</button>
+          }}>+ 할 일</button>
           <div className="seg" style={{width:128}}>
             <button type="button" className={todoView==="check"?"on":""} onClick={()=>setTodoView("check")} style={{padding:"6px 0",fontSize:12.5}}>체크</button>
             <button type="button" className={todoView==="board"?"on":""} onClick={()=>setTodoView("board")} style={{padding:"6px 0",fontSize:12.5}}>보드</button>
@@ -1257,7 +1193,7 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
       </div>
       <div className="pad" style={{marginTop:10}}>
         {todoView==="check" ? (
-          <NestedTodoList todos={todos} onRefresh={onRefresh} openDetail={(t)=>openDetail("task",t)} showAdd focusAdd={focusTodoAdd}/>
+          <NestedTodoList todos={todos} meetings={meetings} onRefresh={onRefresh} openDetail={(t)=>openDetail("task",t)} showAdd focusAdd={focusTodoAdd}/>
         ) : (
           <TodoBoard todos={todos} setTodoStatus={setTodoStatus} openDetail={openDetail}/>
         )}
@@ -1301,8 +1237,8 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
             <div key={c.id} className="list-item row between" onClick={()=>openClient(c)}>
               <div className="row" style={{gap:11}}>
                 <div className="avatar">{c.init}</div>
-                <div><div style={{fontWeight:600,fontSize:14}}>{c.co}</div>
-                  <div className="small">{c.person}</div></div>
+                <div><div style={{fontWeight:600,fontSize:14}}>{c.person || c.co}</div>
+                  <div className="small">{c.person && c.co ? c.co : ""}</div></div>
               </div>
               <div className="row" style={{gap:10}}>
                 <span className="tag green" style={{fontWeight:700}}>{c.dist}</span>
@@ -1435,9 +1371,13 @@ function Clients({group,setGroup,open,onAdd,onRefresh,seg,contactPresets={},onOp
                 </div>
                 <div style={{minWidth:0}}>
                   <div className="row" style={{gap:5}}>
-                    <div style={{fontWeight:700,fontSize:14.5}}>{c.co}</div>
+                    <div style={{fontWeight:700,fontSize:14.5}}>{c.person || c.co}</div>
                   </div>
-                  <div className="small">{c.person} · 성사 {wonShort(c.won)}{intro>0?` · 소개 ${intro}명`:""}</div>
+                  <div className="small">
+                    {[c.person && c.co ? c.co : null, intro > 0 ? `소개 ${intro}명` : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </div>
                   <div className="row" style={{gap:5,marginTop:6,flexWrap:"wrap"}}>
                     <span className="tag gray" style={{fontSize:10.5}}>{c.group}</span>
                     {(c.tags||[]).map(t=><TagChip key={t} t={t}/>)}
@@ -1682,6 +1622,18 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,conta
     reload();
     onRefresh?.();
   };
+  const unlinkIntro=async (target,label)=>{
+    if(!(await confirmAction(
+      `${label}과(와)의 소개 관계를 끊을까요?`,
+      "연결만 해제되며 인맥 정보는 삭제되지 않아요."
+    ))) return;
+    try{
+      await api.updateContact(target.id,{ referredById: null });
+      toastSuccess("소개 관계를 해제했어요");
+      reload();
+      onRefresh?.();
+    }catch(e){ notifyError(e, e.message); }
+  };
   const ind=indirectWon(c);
   const total=totalInfluence(c);
   const g=grade(c);
@@ -1729,7 +1681,7 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,conta
         <div className="row" style={{gap:10,marginTop:16}}>
           <button className="btn btn-accent" style={{flex:1,padding:13,display:"flex",justifyContent:"center",gap:7}}
             onClick={()=>c.phone&&window.open(`tel:${c.phone.replace(/\s/g,"")}`)} disabled={!c.phone}>{I.phone({})} 전화</button>
-          <button className="btn btn-ghost" style={{flex:1,padding:13}} onClick={startRec}>{mt} 기록</button>
+          <button className="btn btn-ghost" style={{flex:1,padding:13}} onClick={startRec}>{mt}</button>
         </div>
       </div>
 
@@ -1755,20 +1707,30 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,conta
       <div className="pad">
         <div className="card" style={{padding:16}}>
           {by && (
-            <div className="row" style={{gap:10,paddingBottom:12,borderBottom:kids.length?"1px solid var(--line)":"none"}}>
-              <div className="small" style={{width:64,flex:"0 0 auto"}}>소개해준</div>
-              <div className="row" style={{gap:9}}><div className="avatar" style={{width:32,height:32,borderRadius:10,fontSize:12}}>{by.init}</div>
-                <div><div style={{fontWeight:600,fontSize:13.5}}>{by.person}</div><div className="small" style={{fontSize:11}}>{by.co}</div></div></div>
+            <div className="row between" style={{gap:10,paddingBottom:12,borderBottom:kids.length?"1px solid var(--line)":"none"}}>
+              <div className="row" style={{gap:10,minWidth:0}}>
+                <div className="small" style={{width:64,flex:"0 0 auto"}}>소개해준</div>
+                <div className="row" style={{gap:9,minWidth:0}}><div className="avatar" style={{width:32,height:32,borderRadius:10,fontSize:12}}>{by.init}</div>
+                  <div style={{minWidth:0}}><div style={{fontWeight:600,fontSize:13.5}}>{by.person}</div><div className="small" style={{fontSize:11}}>{by.co}</div></div></div>
+              </div>
+              <button type="button" className="chip" style={{fontSize:11,padding:"4px 10px",color:"var(--muted)",flexShrink:0}} onClick={()=>unlinkIntro(c, by.person)}>
+                해제
+              </button>
             </div>
           )}
           {kids.length>0 && (
             <div style={{paddingTop:by?12:0}}>
               <div className="small" style={{marginBottom:8}}>이 사람이 소개한 인맥 · {kids.length}명</div>
               {kids.map(k=>(
-                <div key={k.id} className="row between" style={{padding:"8px 0"}}>
-                  <div className="row" style={{gap:9}}><div className="avatar" style={{width:32,height:32,borderRadius:10,fontSize:12}}>{k.init}</div>
-                    <div><div style={{fontWeight:600,fontSize:13.5}}>{k.person}</div><div className="small" style={{fontSize:11}}>{k.co}</div></div></div>
-                  <span className="small" style={{fontWeight:700,color:k.won?"var(--accent-deep)":"var(--muted)"}}>{wonShort(k.won||0)}</span>
+                <div key={k.id} className="row between" style={{padding:"8px 0",gap:8}}>
+                  <div className="row" style={{gap:9,minWidth:0}}><div className="avatar" style={{width:32,height:32,borderRadius:10,fontSize:12}}>{k.init}</div>
+                    <div style={{minWidth:0}}><div style={{fontWeight:600,fontSize:13.5}}>{k.person}</div><div className="small" style={{fontSize:11}}>{k.co}</div></div></div>
+                  <div className="row" style={{gap:6,flexShrink:0,alignItems:"center"}}>
+                    <span className="small" style={{fontWeight:700,color:k.won?"var(--accent-deep)":"var(--muted)"}}>{wonShort(k.won||0)}</span>
+                    <button type="button" className="chip" style={{fontSize:11,padding:"4px 10px",color:"var(--muted)"}} onClick={()=>unlinkIntro(k, k.person)}>
+                      해제
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1974,7 +1936,7 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,conta
       <div className="pad"><div className="section-h">함께한 {mt} 이력</div></div>
       <div className="pad" style={{marginBottom:10}}>
         <div className="card" style={{padding:"4px 16px"}}>
-          {meetHistory.length===0 && <div className="small" style={{textAlign:"center",padding:"20px 0"}}>{mt} 기록이 없어요</div>}
+          {meetHistory.length===0 && <div className="small" style={{textAlign:"center",padding:"20px 0"}}>{mt}이 없어요</div>}
           {meetHistory.map((m,i,a)=>{
             const d=m.createdAt?new Date(m.createdAt):null;
             const label=d?`${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}`:"";
@@ -2198,60 +2160,7 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
 }
 
 /* ---------------- RECORD + SUMMARY ---------------- */
-function RecordProcessing({proc,onContinueInBackground}){
-  const isPhoto=proc?.mode==="photo";
-  const steps=isPhoto
-    ? [
-        { id:"upload", label:"사진 업로드" },
-        { id:"ocr", label:"글자 읽기 (OCR)" },
-        { id:"summarize", label:"요약 · 할 일 추출" },
-        { id:"done", label:"저장" },
-      ]
-    : [
-        { id:"upload", label: proc?.mode==="upload" ? "녹음 파일 업로드" : "녹음 저장" },
-        { id:"transcribe", label:"음성 전사" },
-        { id:"summarize", label:"요약 · 할 일 추출" },
-        { id:"done", label:"저장" },
-      ];
-  const order=steps.map(s=>s.id);
-  const cur=order.indexOf(proc?.step);
-  const pct=Math.min(100, Math.max(0, proc?.progress ?? 0));
-  return (
-    <div className="fade" style={{padding:"100px 28px 40px",textAlign:"center"}}>
-      <div className="spinner" style={{margin:"0 auto"}}/>
-      <div style={{marginTop:22,fontWeight:700,fontSize:17}}>정리하는 중…</div>
-      <div className="proc-pct">{pct}%</div>
-      <div className="proc-bar"><i style={{width:`${pct}%`}}/></div>
-      <div className="small" style={{marginTop:14,lineHeight:1.6}}>{proc?.label || "잠시만 기다려주세요"}</div>
-      <div className="proc-steps">
-        {steps.map((s,i)=>{
-          const done=cur>i || proc?.step==="done";
-          const on=proc?.step===s.id;
-          return (
-            <div key={s.id} className={"proc-step"+(done?" done":on?" on":"")}>
-              <span>{done?"✓":on?"●":"○"}</span>
-              <span>{s.label}</span>
-            </div>
-          );
-        })}
-      </div>
-      <div className="small" style={{marginTop:18,color:"var(--muted)",lineHeight:1.5}}>
-        {isPhoto ? "사진이 많으면 조금 더 걸릴 수 있어요" : "녹음이 길수록 전사·요약에 시간이 더 걸려요"}
-      </div>
-      {onContinueInBackground && (
-        <button type="button" className="btn btn-ghost" style={{width:"100%",maxWidth:320,margin:"22px auto 0",padding:14,fontSize:14}}
-          onClick={onContinueInBackground}>
-          백그라운드에서 계속
-        </button>
-      )}
-      <div className="small" style={{marginTop:12,color:"var(--muted)",lineHeight:1.45,maxWidth:300,marginLeft:"auto",marginRight:"auto"}}>
-        앱을 나가도 서버에서 변환이 이어져요. 미팅 목록에서 진행·결과를 확인할 수 있어요.
-      </div>
-    </div>
-  );
-}
-
-function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goClients,summary,mediaKey,user,proc,onProcessingStart,onProcFailed,onContinueInBackground,onStartLive,onCancelLive,onBack,recordLink}){
+function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goClients,summary,mediaKey,user,onProcFailed,onStartLive,onCancelLive,onBack,recordLink}){
   const CLIENTS=getClients();
   const [att,setAtt]=useState(()=> (recordLink?.contactIds?.length ? [...recordLink.contactIds] : []));
   const [pick,setPick]=useState(false);
@@ -2268,7 +2177,7 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
   const toggleAtt=(id)=>setAtt(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
   const found=CLIENTS.filter(c=>(c.person+c.co).toLowerCase().includes(q.trim().toLowerCase()));
   const primary=CLIENTS.find(c=>att.includes(c.id))||null;
-  const finishLabel=finishing?"업로드 중…":"녹음 종료 · 요약하기";
+  const finishLabel=finishing?"업로드 중…":"녹음 종료 · 올리기";
 
   const resetChoose=()=>{
     setInputMode(null);
@@ -2338,8 +2247,6 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
     if(finishing) return;
     setFinishing(true);
     const mode=inputMode;
-    const uploadLabel=mode==="upload" ? "녹음 파일 업로드 중…" : mode==="photo" ? "사진 업로드 중…" : "녹음 저장 중…";
-    onProcessingStart?.({ mode, step:"upload", label:uploadLabel, progress:12 });
     try{
       const payload={
         mode,
@@ -2366,7 +2273,6 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
         if(!photos.length) throw new Error("사진을 추가해주세요");
         payload.imageKeys=await Promise.all(photos.map((p)=>uploadFile(p.file)));
       }
-      onProcessingStart?.({ mode, step: mode==="photo" ? "ocr" : "transcribe", label:"업로드 완료 · AI 처리 시작…", progress:32 });
       await onComplete(payload);
     }catch(e){
       notifyError(e, e.message||"업로드 실패");
@@ -2376,7 +2282,6 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
   };
 
   if(phase==="sum") return <Summary todos={todos} toggleTodo={toggleTodo} goClients={goClients} att={att} summary={summary} mediaKey={mediaKey}/>;
-  if(phase==="proc") return <RecordProcessing proc={proc} onContinueInBackground={onContinueInBackground}/>;
   // 입력 화면
   return (
     <div className="fade" style={{padding:"24px 24px 30px"}}>
@@ -2500,7 +2405,7 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
       </div>
       <button className="btn" style={{width:"100%",marginTop:12,padding:16,background:"var(--ink)",color:"#fff",fontSize:15}}
         onClick={finish} disabled={finishing}>{finishLabel}</button>
-      <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center"}}>참석자를 태그하면 요약이 각 연락처 이력에 쌓여요.</div>
+      <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center"}}>올리면 백그라운드에서 전사·요약이 진행돼요. 완료되면 알려드릴게요.</div>
       </>
       ) : inputMode==="upload" && audioFile ? (
       <>
@@ -2523,7 +2428,7 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
       </button>
       <button className="btn" style={{width:"100%",marginTop:18,padding:16,background:"var(--ink)",color:"#fff",fontSize:15}}
         onClick={finish} disabled={finishing}>{finishLabel}</button>
-      <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center"}}>참석자를 태그하면 요약이 각 연락처 이력에 쌓여요.</div>
+      <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center"}}>올리면 백그라운드에서 전사·요약이 진행돼요. 완료되면 알려드릴게요.</div>
       </>
       ) : inputMode==="photo" ? (
       <>
@@ -2554,8 +2459,8 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onComplete,todos,toggleTodo,goCl
       </div>
       <button className="btn" disabled={photos.length===0||finishing} style={{width:"100%",marginTop:14,padding:16,fontSize:15,
         background:photos.length===0?"#EDE9E0":"var(--ink)",color:photos.length===0?"#B7B0A3":"#fff",cursor:photos.length===0?"not-allowed":"pointer"}}
-        onClick={finish}>{finishing?"업로드 중…":"사진으로 정리하기"}</button>
-      <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center"}}>녹음 없이 사진만으로도 미팅을 기록할 수 있어요.</div>
+        onClick={finish}>{finishing?"업로드 중…":"사진 올리기"}</button>
+      <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center"}}>올리면 백그라운드에서 자동 정리돼요.</div>
       </>
       ) : null}
     </div>
@@ -3570,7 +3475,7 @@ function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh,mee
 }
 
 /* ---------------- TODO ARCHIVE (전체 검색 · 히스토리 · 첨부) ---------------- */
-function TodoArchive({back,openDetail}){
+function TodoArchive({back,openDetail,meetings=[]}){
   const [q,setQ]=useState("");
   const [query,setQuery]=useState("");
   const [status,setStatus]=useState("");
@@ -3618,7 +3523,7 @@ function TodoArchive({back,openDetail}){
             {q.trim()||status ? "검색 결과가 없어요" : "등록된 할 일이 없어요"}
           </div>
         )}
-        <NestedTodoList todos={items} onRefresh={reload} openDetail={openDetail} showAdd/>
+        <NestedTodoList todos={items} meetings={meetings} onRefresh={reload} openDetail={openDetail} showAdd/>
       </div>
     </div>
   );
@@ -3740,7 +3645,8 @@ function MyPage({user,back,onUserUpdated}){
     if(newPw.length<6){ setPwMsg("비밀번호는 6자 이상"); return; }
     setSavingPw(true); setPwMsg("");
     try{
-      await api.changePassword(curPw,newPw);
+      const { token } = await api.changePassword(curPw,newPw);
+      if (token) { saveToken(token,{ remember:true }); setToken(token); }
       setCurPw(""); setNewPw(""); setNewPw2("");
       setPwMsg("비밀번호가 변경됐어요");
     }catch(e){ setPwMsg(e.message||"변경 실패"); }
@@ -4128,7 +4034,7 @@ function TaskDetailView({data,back,onUpdated,onDeleted}){
           </div>
         </div>
 
-        <div className="section-h">소분류</div>
+        <div className="section-h">세부 항목</div>
         <NestedTodoList todos={[task]} onRefresh={refreshSubs} showAdd={false} compact/>
 
         <div className="section-h">상세</div>

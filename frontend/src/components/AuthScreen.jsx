@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { api, saveRememberPreference, EMAIL_KEY, getRememberLogin } from "../api/client.js";
+import { api, saveToken, setToken, EMAIL_KEY, getRememberLogin } from "../api/client.js";
 
 export default function AuthScreen({ onSuccess }) {
   const [mode, setMode] = useState("login"); // login | register
@@ -19,7 +19,8 @@ export default function AuthScreen({ onSuccess }) {
         mode === "register"
           ? await api.register(email.trim(), password, name.trim() || undefined, remember)
           : await api.login(email.trim(), password, remember);
-      saveRememberPreference(remember);
+      saveToken(result.token, { remember });
+      setToken(result.token);
       if (remember) localStorage.setItem(EMAIL_KEY, email.trim());
       else localStorage.removeItem(EMAIL_KEY);
       onSuccess(result);

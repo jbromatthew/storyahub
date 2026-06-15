@@ -51,8 +51,9 @@ export function publicUser(u: User) {
 }
 
 function issueAuth(res: Response, user: User, remember: boolean) {
-  setSessionCookie(res, signToken(user.id, remember), remember);
-  return { user: publicUser(user) };
+  const token = signToken(user.id, remember);
+  setSessionCookie(res, token, remember);
+  return { token, user: publicUser(user) };
 }
 
 authRouter.post("/register", async (req, res) => {
@@ -164,8 +165,9 @@ authRouter.patch("/me/password", auth, async (req: AuthedRequest, res) => {
 
   const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
   await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
-  setSessionCookie(res, signToken(user.id, true), true);
-  res.json({ ok: true });
+  const token = signToken(user.id, true);
+  setSessionCookie(res, token, true);
+  res.json({ ok: true, token });
 });
 
 authRouter.get("/me", auth, async (req: AuthedRequest, res) => {

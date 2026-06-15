@@ -1,4 +1,4 @@
-import { getApiBase, api } from "./client.js";
+import { getToken, getApiBase, api } from "./client.js";
 import { toastError, TOAST_ERROR_STATUSES } from "../toast.js";
 
 const urlCache = new Map();
@@ -9,6 +9,7 @@ export async function uploadBlob(blob, filename, contentType) {
     method: "POST",
     credentials: "include",
     headers: {
+      ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
       "Content-Type": contentType || "application/octet-stream",
       "X-Filename": encodeURIComponent(filename || `upload-${Date.now()}`),
     },
@@ -95,7 +96,10 @@ export async function mediaUrl(mediaKey) {
   if (urlCache.has(mediaKey)) return urlCache.get(mediaKey);
   const res = await fetch(
     `${getApiBase()}/uploads/stream?key=${encodeURIComponent(mediaKey)}`,
-    { credentials: "include" }
+    {
+      credentials: "include",
+      headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
+    }
   );
   if (!res.ok) {
     let msg = "미디어 로드 실패";

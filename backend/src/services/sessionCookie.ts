@@ -10,7 +10,8 @@ function cookieBase() {
   return {
     httpOnly: true,
     secure: env.isProduction,
-    sameSite: "lax" as const,
+    // 프론트(record.*) ↔ API(api.*) 서브도메인 간 쿠키 전달
+    sameSite: (env.isProduction ? "none" : "lax") as "none" | "lax",
     path: "/",
     ...(env.cookieDomain ? { domain: env.cookieDomain } : {}),
   };

@@ -3,10 +3,13 @@ import { toastError, TOAST_ERROR_STATUSES } from "../toast.js";
 const BASE =
   import.meta.env.VITE_API_BASE ??
   (import.meta.env.DEV ? "" : "http://localhost:4000");
-const LEGACY_TOKEN_KEY = "storyahub_token";
-const LEGACY_SESSION_TOKEN_KEY = "storyahub_token_session";
+const TOKEN_KEY = "storyahub_token";
+const SESSION_TOKEN_KEY = "storyahub_token_session";
 export const REMEMBER_KEY = "storyahub_remember";
 export const EMAIL_KEY = "storyahub_email";
+
+/** 메모리 토큰 — api.* 서브도메인 크로스 오리진 시 Bearer 폴백 */
+let token = null;
 
 export class ApiError extends Error {
   constructor(message, status = 0) {
@@ -24,18 +27,33 @@ export function isAccessError(err) {
   return err instanceof ApiError && err.status === 402;
 }
 
-/** 예전 localStorage JWT 제거 (httpOnly 쿠키로 전환) */
-export function purgeLegacyTokenStorage() {
-  localStorage.removeItem(LEGACY_TOKEN_KEY);
-  sessionStorage.removeItem(LEGACY_SESSION_TOKEN_KEY);
+export function setToken(t) {
+  token = t;
 }
 
-export function saveRememberPreference(remember = true) {
+export function loadToken() {
+  token = localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(SESSION_TOKEN_KEY);
+  return token;
+}
+
+export function saveToken(t, { remember = true } = {}) {
+  token = t;
   localStorage.setItem(REMEMBER_KEY, remember ? "1" : "0");
+  if (remember) {
+    localStorage.setItem(TOKEN_KEY, t);
+    sessionStorage.removeItem(SESSION_TOKEN_KEY);
+  } else {
+    sessionStorage.setItem(SESSION_TOKEN_KEY, t);
+    localStorage.removeItem(TOKEN_KEY);
+  }
 }
 
 export function getRememberLogin() {
   return localStorage.getItem(REMEMBER_KEY) !== "0";
+}
+
+export function getToken() {
+  return token;
 }
 
 export function getApiBase() {
@@ -43,26 +61,9 @@ export function getApiBase() {
 }
 
 export function clearToken() {
-  purgeLegacyTokenStorage();
-}
-
-/** @deprecated httpOnly 쿠키 사용 — 호환용 no-op */
-export function loadToken() {
-  purgeLegacyTokenStorage();
-  return null;
-}
-
-/** @deprecated */
-export function saveToken(_t, { remember = true } = {}) {
-  saveRememberPreference(remember);
-}
-
-/** @deprecated */
-export function setToken() {}
-
-/** @deprecated */
-export function getToken() {
-  return null;
+  token = null;
+  localStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(SESSION_TOKEN_KEY);
 }
 
 async function req(path, { method = "GET", body, headers = {} } = {}) {
@@ -73,6 +74,7 @@ async function req(path, { method = "GET", body, headers = {} } = {}) {
       credentials: "include",
       headers: {
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...headers,
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
