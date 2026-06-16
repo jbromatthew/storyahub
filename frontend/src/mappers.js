@@ -127,6 +127,8 @@ export function todoToUi(t) {
     history,
     attachmentCount: attachments.length,
     historyCount: history.length,
+    meetingId: t.meetingId || null,
+    contactId: t.contactId || null,
     _raw: t,
   };
 }

@@ -129,10 +129,17 @@ contactsRouter.get("/:id", async (req: AuthedRequest, res) => {
   const userId = req.userId!;
   const c = await prisma.contact.findFirst({
     where: { id: req.params.id, userId },
-    include: { meetings: { orderBy: { createdAt: "desc" } }, deals: { orderBy: { createdAt: "desc" } } },
+    include: { deals: { orderBy: { createdAt: "desc" } } },
   });
   if (!c) return res.status(404).json({ error: "not found" });
-  const [upcomingEvents, openTodos] = await Promise.all([
+  const [meetings, upcomingEvents, openTodos] = await Promise.all([
+    prisma.meeting.findMany({
+      where: {
+        userId,
+        OR: [{ contactId: c.id }, { attendees: { has: c.id } }],
+      },
+      orderBy: { createdAt: "desc" },
+    }),
     prisma.event.findMany({
       where: { userId, contactId: c.id, startsAt: { gte: new Date() } },
       orderBy: { startsAt: "asc" },
@@ -143,7 +150,7 @@ contactsRouter.get("/:id", async (req: AuthedRequest, res) => {
       orderBy: { createdAt: "desc" },
     }),
   ]);
-  res.json({ ...c, upcomingEvents, openTodos });
+  res.json({ ...c, meetings, upcomingEvents, openTodos });
 });
 
 contactsRouter.delete("/:id", async (req: AuthedRequest, res) => {

@@ -3,7 +3,7 @@ import { api } from "../api/client.js";
 import { confirmDelete } from "../confirmDelete.js";
 import { notifyError, toastError } from "../toast.js";
 import { getClients } from "../store.js";
-import { groupTodosBySource } from "../todoGroups.js";
+import { groupTodosBySource, groupDisplayRows, groupProgress } from "../todoGroups.js";
 
 const PRI = { high: "#DD5E39", mid: "#C9A23A", low: "#C0B9AC" };
 
@@ -31,6 +31,22 @@ function Plus() {
 
 let _uid = 1;
 const newSubId = () => `s${Date.now()}${_uid++}`;
+
+export function todoProgressCounts(todos) {
+  let done = 0;
+  let total = 0;
+  for (const t of todos) {
+    const subs = t.subs || [];
+    if (subs.length) {
+      total += subs.length;
+      done += subs.filter((s) => s.done).length;
+    } else {
+      total += 1;
+      if (isTodoDone(t)) done += 1;
+    }
+  }
+  return { done, total };
+}
 
 export function isTodoDone(t) {
   const subs = t.subs || [];
@@ -64,13 +80,7 @@ export default function NestedTodoList({
     () => groupTodosBySource(todos, { meetings, contacts }),
     [todos, meetings, contacts]
   );
-  const useGroups =
-    groupBySource &&
-    !compact &&
-    todos.some((t) => {
-      const raw = t._raw || t;
-      return raw.meetingId || raw.contactId;
-    });
+  const useGroups = groupBySource && !compact;
 
   const [open, setOpen] = useState(() => new Set(todos.filter((t) => (t.subs || []).length).map((t) => t.id)));
   const [openGroups, setOpenGroups] = useState(() => new Set());
@@ -193,7 +203,7 @@ export default function NestedTodoList({
     setOpen((p) => new Set(p).add(id));
   };
 
-  const totalDone = todos.filter(isTodoDone).length;
+  const { done: totalDone, total: progressTotal } = todoProgressCounts(todos);
 
   const renderTodo = (t, { nested = false } = {}) => {
     const done = isTodoDone(t);
@@ -333,7 +343,7 @@ export default function NestedTodoList({
       {!compact && todos.length > 0 && (
         <div className="nt-hint">
           {useGroups
-            ? `${totalDone}/${todos.length} 완료 · 녹음·미팅별로 묶여 있어요`
+            ? `${totalDone}/${progressTotal} 완료 · 미팅별 대분류 · 안쪽이 할 일(소분류)이에요`
             : `${totalDone}/${todos.length} 완료 · 세부 항목을 다 끝내면 자동 완료돼요`}
         </div>
       )}
@@ -344,10 +354,10 @@ export default function NestedTodoList({
 
       {useGroups
         ? groups.map((g) => {
-            const gDone = g.items.filter(isTodoDone).length;
-            const gr = groupRatio(g.items);
+            const disp = groupDisplayRows(g);
+            const { done: gDone, total: gTotal, ratio: gr } = groupProgress(g);
             const gOpen = openGroups.has(g.id);
-            const allDone = gDone === g.items.length;
+            const allDone = gDone === gTotal && gTotal > 0;
 
             return (
               <div key={g.id} className={"nt-card nt-group" + (allDone ? " done" : "")}>
@@ -357,16 +367,32 @@ export default function NestedTodoList({
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="nt-ptitle" style={{ fontSize: 14.5 }}>{g.label}</div>
-                    {g.sublabel && <div className="small" style={{ fontSize: 11, marginTop: 2 }}>{g.sublabel}</div>}
+                    {g.sublabel && <div className="small" style={{ fontSize: 11, marginTop: 2, lineHeight: 1.45 }}>{g.sublabel}</div>}
                   </div>
-                  <span className={"nt-count" + (allDone ? " full" : "")}>{gDone}/{g.items.length}</span>
+                  <span className={"nt-count" + (allDone ? " full" : "")}>{gDone}/{gTotal}</span>
                 </div>
                 <div className="nt-bar">
                   <i className={gr === 1 ? "full" : ""} style={{ width: `${gr * 100}%` }} />
                 </div>
                 {gOpen && (
                   <div className="nt-subs" style={{ paddingTop: 0 }}>
-                    {g.items.map((t) => renderTodo(t, { nested: !(t.subs || []).length }))}
+                    {disp.mode === "subs"
+                      ? disp.rows.map((s) => (
+                          <div key={s.id} className="nt-sitem">
+                            <span className={"nt-cb" + (s.done ? " on g" : "")} onClick={() => toggleSub(disp.parent, s.id)}>
+                              {s.done && <Check />}
+                            </span>
+                            <span className="nt-pridot" style={{ background: PRI[disp.parent.pri] || PRI.mid, width: 6, height: 6 }} />
+                            <span
+                              className={"nt-stext" + (s.done ? " s" : "")}
+                              style={{ cursor: "pointer" }}
+                              onClick={() => openDetail?.(disp.parent)}
+                            >
+                              {s.text}
+                            </span>
+                          </div>
+                        ))
+                      : disp.rows.map((t) => renderTodo(t, { nested: !(t.subs || []).length }))}
                   </div>
                 )}
               </div>

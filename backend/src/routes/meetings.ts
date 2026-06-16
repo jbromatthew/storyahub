@@ -100,16 +100,19 @@ meetingsRouter.post("/summarize", async (req: AccessRequest, res) => {
     if (!ev) eventId = null;
   }
 
+  const attendees = Array.isArray(meta?.attendees) ? meta.attendees.map(String) : [];
+  const contactId = meta?.contactId ? String(meta.contactId) : attendees[0] ?? null;
+
   const meeting = await prisma.meeting.create({
     data: {
       userId,
-      contactId: meta?.contactId ?? null,
+      contactId,
       eventId,
       source: meta?.source ?? "live",
       mediaKey: mediaKey ?? meta?.imageKeys?.[0] ?? null,
       oneLine: `${sourceLabel} 변환 중…`,
       processStatus: "processing",
-      attendees: Array.isArray(meta?.attendees) ? meta.attendees.map(String) : [],
+      attendees,
     },
   });
 
@@ -129,15 +132,28 @@ meetingsRouter.post("/summarize", async (req: AccessRequest, res) => {
       });
 
       if (summary.actions?.length) {
-        await prisma.todo.createMany({
-          data: summary.actions.map((a) => ({
+        const subs = summary.actions.map((a, i) => ({
+          id: `s${meeting.id}-${i}`,
+          text: a.task,
+          done: false,
+        }));
+        const allDone = subs.every((s) => s.done);
+        const anyDone = subs.some((s) => s.done);
+        const status = allDone ? "done" : anyDone ? "doing" : "todo";
+        const title =
+          summary.one_line?.trim() ||
+          (meta?.companyName ? `${meta.companyName} · 미팅 후속` : "미팅 후속 할 일");
+        await prisma.todo.create({
+          data: {
             userId,
-            title: a.task,
-            priority: a.priority ?? "mid",
-            due: a.due ? new Date(a.due) : null,
-            contactId: meta?.contactId ?? null,
+            title,
+            priority: "mid",
+            contactId: contactId ?? null,
             meetingId: meeting.id,
-          })),
+            subs,
+            status,
+            history: [{ when: new Date().toISOString(), who: "AI", what: "미팅에서 할 일 추출" }],
+          },
         });
       }
 
@@ -149,7 +165,7 @@ meetingsRouter.post("/summarize", async (req: AccessRequest, res) => {
             title: `${meta?.companyName ?? "후속"} 미팅`,
             startsAt,
             place: summary.next_meeting.place ?? null,
-            contactId: meta?.contactId ?? null,
+            contactId: contactId ?? null,
             reminders: ["1시간 전"],
           },
         });

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import AuthScreen from "./components/AuthScreen.jsx";
 import WelcomeScreen from "./components/WelcomeScreen.jsx";
 import KbEditor, { KbReadView, kbSearchText } from "./components/KbEditor.jsx";
-import NestedTodoList, { isTodoDone } from "./components/NestedTodoList.jsx";
+import NestedTodoList, { isTodoDone, todoProgressCounts } from "./components/NestedTodoList.jsx";
 import MeetingInsights from "./components/MeetingInsights.jsx";
 import CategoryTagSettings from "./components/CategoryTagSettings.jsx";
 import PlacesView from "./components/PlacesView.jsx";
@@ -1072,7 +1072,7 @@ function NavBtn({on,icon,label,onClick,layout="bottom"}){
 function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSummary,openPricing,segment,openSearch,openSettings,openTodoArchive,openMeetings,openDetail,eventsToday,meetings,revenue,onRefresh,kbArticles=[],openKb}){
   const clients=getClients();
   const near=clients.filter(c=>c.group&&c.group!=="미분류").slice(0,3);
-  const doneCount=todos.filter(isTodoDone).length;
+  const { done: doneCount, total: todoTotal }=todoProgressCounts(todos);
   const isBiz=segment==="business";
   const reviewItems=!isBiz ? [
     ...meetings.slice(0,2).map((m)=>({key:`m-${m.id}`,title:m.oneLine||m.t,sub:m.createdLabel||m.d,onClick:()=>seeSummary(m)})),
@@ -1187,8 +1187,8 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
       {/* 할 일 — 대분류·소분류 / 보드 전환 */}
       <div className="pad row between" style={{alignItems:"flex-end"}}>
         <div>
-          <div className="section-h" style={{marginBottom:2}}>오늘 할 일 <span className="small" style={{fontWeight:700}}>{doneCount}/{todos.length}</span></div>
-          <div className="small">녹음·미팅별로 묶여 관리해요</div>
+          <div className="section-h" style={{marginBottom:2}}>오늘 할 일 <span className="small" style={{fontWeight:700}}>{doneCount}/{todoTotal}</span></div>
+          <div className="small">미팅별 대분류 · 할 일은 안쪽 소분류로 보여요</div>
         </div>
         <div className="row" style={{gap:8,alignItems:"center"}}>
           <button type="button" className="chip" style={{color:"var(--muted)"}} onClick={openTodoArchive}>전체</button>
@@ -1692,7 +1692,8 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,conta
         <div className="row" style={{gap:10,marginTop:16}}>
           <button className="btn btn-accent" style={{flex:1,padding:13,display:"flex",justifyContent:"center",gap:7}}
             onClick={()=>c.phone&&window.open(`tel:${c.phone.replace(/\s/g,"")}`)} disabled={!c.phone}>{I.phone({})} 전화</button>
-          <button className="btn btn-ghost" style={{flex:1,padding:13}} onClick={startRec}>{mt}</button>
+          <button className="btn btn-ghost" style={{flex:1,padding:13}}
+            onClick={()=>startRec({ contactIds: [c.id], contactId: c.id, companyName: c.co || c.person })}>{mt}</button>
         </div>
       </div>
 
@@ -1707,7 +1708,7 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,conta
           </div>
           <div className="brk" style={{marginTop:10}}><span className="small">직접 성사</span><span style={{fontWeight:700}}>{wonShort(c.won||0)}</span></div>
           <div className="brk"><span className="small">소개로 발생(간접)</span><span style={{fontWeight:700,color:"var(--accent-deep)"}}>{wonShort(ind)}</span></div>
-          <div className="row between" style={{padding:"8px 0 0"}}><span className="small">미팅</span><span style={{fontWeight:600}}>{c.meets||0}회</span></div>
+          <div className="row between" style={{padding:"8px 0 0"}}><span className="small">미팅</span><span style={{fontWeight:600}}>{meetHistory.length||c.meets||0}회</span></div>
           {ind>0 && <div className="small" style={{marginTop:8,lineHeight:1.5}}>소개한 인맥의 성과가 1단계 50%·2단계 25%로 반영돼요.</div>}
         </div>
       </div>
@@ -2173,7 +2174,11 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
 /* ---------------- RECORD + SUMMARY ---------------- */
 function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTodo,goClients,summary,mediaKey,user,onStartLive,onCancelLive,onBack,recordLink}){
   const CLIENTS=getClients();
-  const [att,setAtt]=useState(()=> (recordLink?.contactIds?.length ? [...recordLink.contactIds] : []));
+  const [att,setAtt]=useState(()=>{
+    if(recordLink?.contactIds?.length) return [...recordLink.contactIds];
+    if(recordLink?.contactId) return [recordLink.contactId];
+    return [];
+  });
   const [pick,setPick]=useState(false);
   const [q,setQ]=useState("");
   /** null=선택 전 | rec | upload | photo */
@@ -2205,8 +2210,12 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
   useEffect(()=>{ if(phase==="setup"||phase==="sum") setFinishing(false); },[phase]);
 
   useEffect(()=>{
-    if(!recordLink?.contactIds?.length) return;
-    setAtt(recordLink.contactIds);
+    const ids=recordLink?.contactIds?.length
+      ? [...recordLink.contactIds]
+      : recordLink?.contactId
+        ? [recordLink.contactId]
+        : [];
+    if(ids.length) setAtt(ids);
   },[recordLink]);
 
   useEffect(()=>{
@@ -2275,9 +2284,9 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
       }
       await onRunInBackground({
         mode,
-        attendees: att,
-        contactId: primary?.id,
-        companyName: primary?.co,
+        attendees: att.length ? att : (recordLink?.contactId ? [recordLink.contactId] : recordLink?.contactIds?.length ? [...recordLink.contactIds] : []),
+        contactId: primary?.id || recordLink?.contactId || recordLink?.contactIds?.[0] || att[0] || null,
+        companyName: primary?.co || recordLink?.companyName || null,
         eventId: recordLink?.eventId??null,
         secs,
         audioDur,
