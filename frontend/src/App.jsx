@@ -6,6 +6,7 @@ import KbEditor, { KbReadView, kbSearchText } from "./components/KbEditor.jsx";
 import NestedTodoList, { isTodoDone, todoProgressCounts } from "./components/NestedTodoList.jsx";
 import MeetingInsights from "./components/MeetingInsights.jsx";
 import CategoryTagSettings from "./components/CategoryTagSettings.jsx";
+import ContactGroupTagPanel from "./components/ContactGroupTagPanel.jsx";
 import PlacesView from "./components/PlacesView.jsx";
 import CalendarView from "./components/CalendarView.jsx";
 import { api, loadToken, saveToken, clearToken, setToken, isAuthError, isAccessError } from "./api/client.js";
@@ -20,7 +21,7 @@ import ToastHost from "./components/ToastHost.jsx";
 import ConfirmHost from "./components/ConfirmHost.jsx";
 import { toastError, toastSuccess, notifyError } from "./toast.js";
 import { addPendingMeeting, removePendingMeeting, getPendingMeetingIds } from "./pendingMeetings.js";
-import { userPreferences, tagColor, mergedContactGroups, contactGroupOptions } from "./preferences.js";
+import { userPreferences, tagColor, mergedContactGroups } from "./preferences.js";
 
 /* ------------------------------------------------------------------
    Storyahub — 비서앱 UI
@@ -1028,6 +1029,7 @@ function App(){
                               goClients={()=>{setTab("clients");setPhase("idle");}} />
           : client ? <ClientDetail c={client} back={()=>setClient(null)} startRec={startRec} seg={segment} onRefresh={loadAppData}
               onDeleted={()=>{ setClient(null); loadAppData(); }}
+              user={user} onUserUpdated={setUser}
               contactPresets={prefs.contacts}
               openMeeting={(m)=>setDetail({type:"meeting",data:m.mediaKey!==undefined?m:meetingToUi(m)})}/>
           : tab==="today" ? <Today user={user} startRec={startRec} todos={todos} toggleTodo={toggleTodo} setTodoStatus={setTodoStatus}
@@ -1040,7 +1042,7 @@ function App(){
                               kbArticles={kbArticles}
                               openKb={(a)=>setKbView({article:a,mode:"read"})}
                               openDetail={(t,data)=>setDetail({type:t,data})} onRefresh={loadAppData}/>
-          : tab==="clients" ? (cardScan ? <CardScan back={()=>setCardScan(false)} onSaved={refreshContacts} contactPresets={prefs.contacts}/> : <Clients group={group} setGroup={setGroup} open={(c)=>setClient(c)} onAdd={()=>setCardScan(true)} onRefresh={loadAppData} seg={segment} contactPresets={prefs.contacts} onOpenOrganize={()=>setOverlay("categorytags")}/>)
+          : tab==="clients" ? (cardScan ? <CardScan back={()=>setCardScan(false)} onSaved={refreshContacts} user={user} onUserUpdated={setUser} contactPresets={prefs.contacts}/> : <Clients group={group} setGroup={setGroup} open={(c)=>setClient(c)} onAdd={()=>setCardScan(true)} onRefresh={loadAppData} seg={segment} user={user} onUserUpdated={setUser} contactPresets={prefs.contacts}/>)
           : tab==="places" ? <PlacesView placePresets={prefs.places} onRefresh={loadAppData}/>
           : tab==="meetings" ? <MeetingsTab meetings={meetings} openDetail={(m)=>setDetail({type:"meeting",data:m})} startRec={startRec} onRefresh={loadAppData} meetingPresets={prefs.meeting}/>
           : tab==="calendar" ? <CalendarView openDetail={(t,data)=>setDetail({type:t,data})} organizePrefs={prefs} onStartRecFromEvent={startRecFromEvent} onRefresh={loadAppData}/>
@@ -1322,10 +1324,11 @@ function TagChip({t}){
   return <span className={"tag"+(c&&c!=="accent"?" "+c:"")}>{t}</span>;
 }
 
-function Clients({group,setGroup,open,onAdd,onRefresh,seg,contactPresets={},onOpenOrganize}){
+function Clients({group,setGroup,open,onAdd,onRefresh,seg,contactPresets={},user,onUserUpdated}){
   const CLIENTS=getClients();
   const GROUPS=mergedContactGroups({ contacts: contactPresets }, CLIENTS);
   const [view,setView]=useState("list");
+  const [presetEdit,setPresetEdit]=useState(false);
   const [tag,setTag]=useState("전체");
   const [favs,setFavs]=useState(()=>new Set(CLIENTS.filter(c=>c.fav).map(c=>c.id)));
   const [onlyFav,setOnlyFav]=useState(false);
@@ -1364,10 +1367,26 @@ function Clients({group,setGroup,open,onAdd,onRefresh,seg,contactPresets={},onOp
       {view==="map" ? <ClientMap open={open} onRefresh={onRefresh}/> : (
       <>
       {/* 그룹(소속) 필터 */}
-      <div className="pad row" style={{gap:8,marginTop:14,overflowX:"auto"}}>
-        {GROUPS.map(g=><button key={g} className={"chip"+(group===g?" on":"")} onClick={()=>setGroup(g)}>{g}</button>)}
-        <button className="chip" style={{color:"var(--muted)"}} onClick={onOpenOrganize}>+ 그룹 설정</button>
+      <div className="pad row between" style={{gap:8,marginTop:14,alignItems:"center"}}>
+        <div className="row" style={{gap:8,overflowX:"auto",flex:1}}>
+          {GROUPS.map(g=><button key={g} className={"chip"+(group===g?" on":"")} onClick={()=>setGroup(g)}>{g}</button>)}
+        </div>
+        <button type="button" className="chip" style={{flex:"0 0 auto",color:presetEdit?"var(--accent-deep)":"var(--muted)"}} onClick={()=>setPresetEdit(v=>!v)}>
+          {presetEdit?"완료":"편집"}
+        </button>
       </div>
+      {presetEdit && (
+        <ContactGroupTagPanel
+          user={user}
+          onUserUpdated={onUserUpdated}
+          contactPresets={contactPresets}
+          contacts={CLIENTS}
+          showAssignment={false}
+          presetOnly
+          compact
+          onContactsRefresh={onRefresh}
+        />
+      )}
       {/* 태그(상태) 필터 */}
       <div className="pad row" style={{gap:7,marginTop:9,overflowX:"auto",alignItems:"center"}}>
         <span className="small" style={{flex:"0 0 auto",fontWeight:700}}>태그</span>
@@ -1566,11 +1585,9 @@ function ClientMap({open,onRefresh}){
   );
 }
 
-function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,contactPresets={groups:[],tags:[]}}){
+function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,onUserUpdated,contactPresets={groups:[],tags:[]}}){
   const mt=T(seg,"meeting");
   const CLIENTS=getClients();
-  const contactTags=contactPresets.tags||[];
-  const groupOptions=contactGroupOptions({ contacts: contactPresets }, CLIENTS);
   const [fav,setFav]=useState(!!c.fav);
   const [detail,setDetail]=useState(null);
   const [loading,setLoading]=useState(true);
@@ -1904,28 +1921,17 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,conta
         )}
       </div>
 
-      {/* 그룹 · 태그 */}
-      <div className="pad row between"><div className="section-h">그룹 · 태그</div></div>
-      <div className="pad" style={{paddingTop:0,marginBottom:4}}>
-        <div className="small" style={{fontWeight:700,marginBottom:8}}>그룹</div>
-        <div className="row" style={{gap:7,flexWrap:"wrap",marginBottom:14}}>
-          {groupOptions.map(g=>(
-            <button key={g} type="button" className={"chip"+(grp===g?" on":"")} onClick={()=>patchGroup(g)}>{g}</button>
-          ))}
-        </div>
-        <div className="small" style={{fontWeight:700,marginBottom:8}}>태그</div>
-        <div className="row" style={{gap:7,flexWrap:"wrap",marginBottom:8}}>
-        {tags.map(t=>{const col=tagColor(t);return(
-          <span key={t} className={"tag"+(col&&col!=="accent"?" "+col:"")} style={{padding:"7px 11px",gap:6,cursor:"pointer"}}
-            onClick={()=>patchTags(tags.filter(x=>x!==t))}>
-            {t} ✕
-          </span>
-        );})}
-        {contactTags.filter(t=>!tags.includes(t)).map(t=>(
-          <button key={t} type="button" className="chip" style={{padding:"7px 12px",fontSize:12}} onClick={()=>patchTags([...tags,t])}>+ {t}</button>
-        ))}
-        </div>
-      </div>
+      <ContactGroupTagPanel
+        user={user}
+        onUserUpdated={onUserUpdated}
+        contactPresets={contactPresets}
+        contacts={CLIENTS}
+        group={grp}
+        tags={tags}
+        onGroupChange={patchGroup}
+        onTagsChange={patchTags}
+        onContactsRefresh={onRefresh}
+      />
 
       {/* 이 사람과의 예정 일정 */}
       <div className="pad"><div className="section-h">예정 일정</div></div>
@@ -3142,8 +3148,7 @@ function InstallSheet({close,onConfirm}){
 /* ---------------- CARD SCAN (명함 스캔 → 항목 추출) ---------------- */
 const isMobileDevice=()=>/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-function CardScan({back,onSaved,contactPresets={groups:[],tags:[]}}){
-  const contactTags=contactPresets.tags||[];
+function CardScan({back,onSaved,user,onUserUpdated,contactPresets={groups:[],tags:[]}}){
   const [step,setStep]=useState("capture");
   const [fields,setFields]=useState({
     name:"", title:"", co:"",
@@ -3156,7 +3161,6 @@ function CardScan({back,onSaved,contactPresets={groups:[],tags:[]}}){
   const [ocrError,setOcrError]=useState("");
   const fileRef=useRef(null);
   const previewRef=useRef(null);
-  const GROUPS=contactGroupOptions({ contacts: contactPresets }, getClients());
   const [saving,setSaving]=useState(false);
   const set=(k,v)=>setFields(p=>({...p,[k]:v}));
 
@@ -3338,21 +3342,17 @@ function CardScan({back,onSaved,contactPresets={groups:[],tags:[]}}){
             {I.pin({})} 주소를 위치로 변환해 ‘내 주변 거래처’에 자동 연결돼요
           </div>
 
-          <div className="small" style={{fontWeight:700,marginBottom:8}}>그룹</div>
-          <div className="row" style={{gap:8,marginBottom:14,overflowX:"auto"}}>
-            {GROUPS.filter(g=>g!=="전체").map(g=><button key={g} className={"chip"+(group===g?" on":"")} onClick={()=>setGroup(g)}>{g}</button>)}
-          </div>
-          <div className="small" style={{fontWeight:700,marginBottom:8}}>태그</div>
-          <div className="row" style={{gap:7,marginBottom:18,flexWrap:"wrap"}}>
-            {tags.map(t=>{const col=tagColor(t);return (
-              <span key={t} className={"tag"+(col&&col!=="accent"?" "+col:"")} style={{padding:"7px 11px",cursor:"pointer"}}
-                onClick={()=>setTags(p=>p.filter(x=>x!==t))}>{t} ✕</span>
-            );})}
-            {contactTags.filter(t=>!tags.includes(t)).map(t=>(
-              <button key={t} type="button" className="chip" style={{padding:"7px 12px",fontSize:12}}
-                onClick={()=>setTags(p=>[...p,t])}>+ {t}</button>
-            ))}
-          </div>
+          <ContactGroupTagPanel
+            user={user}
+            onUserUpdated={onUserUpdated}
+            contactPresets={contactPresets}
+            contacts={getClients()}
+            group={group}
+            tags={tags}
+            onGroupChange={setGroup}
+            onTagsChange={setTags}
+          />
+          <div style={{marginBottom:18}}/>
 
           <button className="btn btn-accent" style={{width:"100%",padding:16,fontSize:15}} onClick={save} disabled={saving}>{saving?"저장 중…":"연락처로 저장"}</button>
           <button className="btn" style={{width:"100%",padding:12,marginTop:8,background:"transparent",color:"var(--muted)"}} onClick={()=>setStep("capture")}>다시 촬영</button>
