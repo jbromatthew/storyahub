@@ -24,25 +24,25 @@ function groupLabel(group, contactMap, meetingMap) {
   if (group.key === "manual") return "직접 추가";
   if (group.key.startsWith("m:")) {
     const m = meetingMap.get(group.key.slice(2));
+    const line = meetingLine(m);
+    if (line) return line.slice(0, 56);
     const contact = resolveContact(group.items[0], contactMap, meetingMap);
     const fromContact = contactLabel(contact);
     if (fromContact) return fromContact;
-    const line = meetingLine(m);
-    if (line) return line.slice(0, 56);
-    return "미팅";
+    return "미팅 기록";
   }
   const first = group.items[0];
   const contact = resolveContact(first, contactMap, meetingMap);
   return contactLabel(contact) || "기타";
 }
 
-function groupSublabel(group, meetingMap) {
+function groupSublabel(group, contactMap, meetingMap) {
   if (!group.key.startsWith("m:")) return "";
   const m = meetingMap.get(group.key.slice(2));
   const parts = [];
-  const line = meetingLine(m);
-  const contact = group.label;
-  if (line && !contact.includes(line.slice(0, 20))) parts.push(line.slice(0, 48));
+  const contact = resolveContact(group.items[0], contactMap, meetingMap);
+  const fromContact = contactLabel(contact);
+  if (fromContact) parts.push(fromContact);
   const at = m?._raw?.createdAt || m?.createdAt;
   if (at) parts.push(typeof at === "string" && at.includes(".") ? at : formatWhen(at));
   return parts.join(" · ");
@@ -88,33 +88,51 @@ export function groupTodosBySource(todos, { meetings = [], contacts = [] } = {})
       ...g,
       id: g.key,
       label: groupLabel(g, contactMap, meetingMap),
-      sublabel: groupSublabel(g, meetingMap),
+      sublabel: groupSublabel(g, contactMap, meetingMap),
     }));
 }
 
-/** 미팅 그룹 안에 표시할 행 — subs가 있으면 소분류로 펼침 */
+function isTodoRowDone(t) {
+  const subs = t.subs || [];
+  return subs.length ? subs.every((s) => s.done) : t.done || t.status === "done";
+}
+
+/** 미팅 그룹 안에 표시할 행 — 대분류 아래 소분류(할 일)만 펼침 */
 export function groupDisplayRows(group) {
-  if (group.items.length === 1) {
-    const only = group.items[0];
-    const subs = only.subs || [];
-    if (subs.length > 0) {
-      return { mode: "subs", parent: only, rows: subs };
+  if (!group.key.startsWith("m:")) {
+    return { mode: "todos", parent: null, rows: group.items };
+  }
+
+  const rows = [];
+  for (const t of group.items) {
+    const subs = t.subs || [];
+    if (subs.length) {
+      for (const s of subs) rows.push({ kind: "sub", id: s.id, text: s.text, done: s.done, parent: t });
+    } else {
+      rows.push({
+        kind: "todo",
+        id: t.id,
+        text: t.t || t.title || "할 일",
+        done: isTodoRowDone(t),
+        parent: t,
+      });
     }
+  }
+
+  if (rows.length) {
+    return { mode: "lines", parent: group.items[0] || null, rows };
   }
   return { mode: "todos", parent: null, rows: group.items };
 }
 
 export function groupProgress(group) {
   const disp = groupDisplayRows(group);
-  if (disp.mode === "subs") {
+  if (disp.mode === "lines") {
     const total = disp.rows.length;
-    const done = disp.rows.filter((s) => s.done).length;
+    const done = disp.rows.filter((r) => r.done).length;
     return { done, total, ratio: total ? done / total : 0 };
   }
   const total = disp.rows.length;
-  const done = disp.rows.filter((t) => {
-    const subs = t.subs || [];
-    return subs.length ? subs.every((s) => s.done) : t.done || t.status === "done";
-  }).length;
+  const done = disp.rows.filter((t) => isTodoRowDone(t)).length;
   return { done, total, ratio: total ? done / total : 0 };
 }

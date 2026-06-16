@@ -376,19 +376,29 @@ export default function NestedTodoList({
                 </div>
                 {gOpen && (
                   <div className="nt-subs" style={{ paddingTop: 0 }}>
-                    {disp.mode === "subs"
-                      ? disp.rows.map((s) => (
-                          <div key={s.id} className="nt-sitem">
-                            <span className={"nt-cb" + (s.done ? " on g" : "")} onClick={() => toggleSub(disp.parent, s.id)}>
-                              {s.done && <Check />}
-                            </span>
-                            <span className="nt-pridot" style={{ background: PRI[disp.parent.pri] || PRI.mid, width: 6, height: 6 }} />
+                    {disp.mode === "lines"
+                      ? disp.rows.map((row) => (
+                          <div key={`${row.kind}-${row.id}`} className="nt-sitem">
                             <span
-                              className={"nt-stext" + (s.done ? " s" : "")}
-                              style={{ cursor: "pointer" }}
-                              onClick={() => openDetail?.(disp.parent)}
+                              className={"nt-cb" + (row.done ? " on g" : "")}
+                              onClick={() =>
+                                row.kind === "sub"
+                                  ? toggleSub(row.parent, row.id)
+                                  : toggleParent(row.parent)
+                              }
                             >
-                              {s.text}
+                              {row.done && <Check />}
+                            </span>
+                            <span
+                              className="nt-pridot"
+                              style={{ background: PRI[row.parent.pri] || PRI.mid, width: 6, height: 6 }}
+                            />
+                            <span
+                              className={"nt-stext" + (row.done ? " s" : "")}
+                              style={{ cursor: "pointer" }}
+                              onClick={() => openDetail?.(row.parent)}
+                            >
+                              {row.text}
                             </span>
                           </div>
                         ))
