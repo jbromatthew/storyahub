@@ -969,9 +969,9 @@ function App(){
             <nav className="app-sidenav">
               <NavBtn layout="side" on={tab==="today"&&!client} icon={I.home} label="투데이" onClick={()=>goTab("today")}/>
               <NavBtn layout="side" on={tab==="clients"||!!client} icon={I.users} label={T(segment,"contacts")} onClick={()=>goTab("clients")}/>
-              <NavBtn layout="side" on={tab==="places"} icon={I.place} label="맛집" onClick={()=>goTab("places")}/>
               <NavBtn layout="side" on={tab==="meetings"} icon={I.meet} label="미팅" onClick={()=>goTab("meetings")}/>
               <NavBtn layout="side" on={tab==="calendar"} icon={I.cal} label="캘린더" onClick={()=>goTab("calendar")}/>
+              <NavBtn layout="side" on={tab==="places"} icon={I.place} label="맛집" onClick={()=>goTab("places")}/>
               <NavBtn layout="side" on={tab==="kb"} icon={I.book} label="지식백과" onClick={()=>goTab("kb")}/>
               <button type="button" className="side-rec" onClick={startRec}>{I.mic({width:18,height:18})} 미팅 기록</button>
             </nav>
@@ -1048,9 +1048,9 @@ function App(){
           <div className="nav-grid">
             <NavBtn on={tab==="today"&&!client} icon={I.home} label="투데이" onClick={()=>goTab("today")}/>
             <NavBtn on={tab==="clients"||client} icon={I.users} label={T(segment,"contacts")} onClick={()=>goTab("clients")}/>
-            <NavBtn on={tab==="places"} icon={I.place} label="맛집" onClick={()=>goTab("places")}/>
             <NavBtn on={tab==="meetings"} icon={I.meet} label="미팅" onClick={()=>goTab("meetings")}/>
             <NavBtn on={tab==="calendar"} icon={I.cal} label="캘린더" onClick={()=>goTab("calendar")}/>
+            <NavBtn on={tab==="places"} icon={I.place} label="맛집" onClick={()=>goTab("places")}/>
             <NavBtn on={tab==="kb"} icon={I.book} label="지식" onClick={()=>goTab("kb")}/>
           </div>
         </div>
