@@ -3272,6 +3272,17 @@ function CardScan({back,onSaved,contactPresets={groups:[],tags:[]}}){
             <button className="btn" style={{width:"100%",padding:14,marginTop:10,fontSize:14}}
               onClick={()=>pickFromDialog(true)}>카메라로 촬영</button>
           )}
+          <button
+            className="btn"
+            style={{width:"100%",padding:14,marginTop:10,fontSize:14}}
+            onClick={()=>{
+              setOcrError("");
+              setCardImageKey(null);
+              setStep("review");
+            }}
+          >
+            명함 없이 직접 입력
+          </button>
           {ocrError && <div className="small" style={{color:"var(--accent-deep)",textAlign:"center",marginTop:10}}>{ocrError}</div>}
           <div className="small" style={{textAlign:"center",marginTop:12,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
             <span className="tag green" style={{fontSize:11}}>무제한 무료</span> 명함 스캔은 모든 플랜에서 무료예요</div>
