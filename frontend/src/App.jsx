@@ -702,6 +702,26 @@ const LANG = {
       foot:"登録後7日間無料体験 · 1日¥33〜" } },
 };
 
+const MAX_RECORDING_SEC = 7200;
+
+function recordingTooLong(sec) {
+  if (!sec || sec <= MAX_RECORDING_SEC) return null;
+  const mins = Math.ceil(sec / 60);
+  return `녹음 길이가 2시간을 초과합니다 (${mins}분 · 최대 2시간)`;
+}
+
+function friendlyAiError(msg) {
+  if (!msg) return "요약에 실패했습니다.";
+  if (/Unterminated string in JSON|Unexpected end of JSON|JSON\.parse|잘렸습니다|AI 응답이 비어/i.test(msg))
+    return "긴 녹음 변환 중 문제가 생겼어요. 잠시 후 다시 시도해주세요.";
+  if (/일시적으로 바쁩니다|high demand|503|UNAVAILABLE/i.test(msg))
+    return "AI 서버가 일시적으로 바빠요. 녹음 파일은 저장됐으니 1~2분 후 다시 시도해주세요.";
+  if (/429|quota|한도/i.test(msg))
+    return "AI 사용 한도에 도달했어요. 잠시 후 다시 시도해주세요.";
+  if (/Gemini \d+:/.test(msg)) return "AI 처리 중 오류가 났어요. 잠시 후 다시 시도해주세요.";
+  return msg;
+}
+
 function App(){
   const [boot,setBoot] = useState("loading"); // loading | auth | reconnect | welcome | app
   const [bootError,setBootError] = useState("");
@@ -816,15 +836,6 @@ function App(){
   };
   const startLiveRec=useCallback(()=>{ setSecs(0); setHl(0); setPhase("rec"); },[]);
   const cancelLiveRec=useCallback(()=>{ setSecs(0); setHl(0); setPhase("setup"); },[]);
-  const friendlyAiError=(msg)=>{
-    if(!msg) return "요약에 실패했습니다.";
-    if(/일시적으로 바쁩니다|high demand|503|UNAVAILABLE/i.test(msg))
-      return "AI 서버가 일시적으로 바빠요. 녹음 파일은 저장됐으니 1~2분 후 다시 시도해주세요.";
-    if(/429|quota|한도/i.test(msg))
-      return "AI 사용 한도에 도달했어요. 잠시 후 다시 시도해주세요.";
-    if(/Gemini \d+:/.test(msg)) return "AI 처리 중 오류가 났어요. 잠시 후 다시 시도해주세요.";
-    return msg;
-  };
   const handleRecordComplete=useCallback(async (job)=>{
     setRecordLink(null);
     setPhase("setup");
@@ -846,6 +857,10 @@ function App(){
         durationSec=audioDur||Math.max(1,Math.round(audioFile.size/(128*1024/8)));
       }else{
         imageKeys=await Promise.all(photos.map((p)=>uploadFile(p.file)));
+      }
+      if(!isPhoto){
+        const tooLong=recordingTooLong(durationSec);
+        if(tooLong) throw new Error(tooLong);
       }
       const source=isPhoto?"photo":mode==="upload"?"upload":"live";
       const { meetingId }=await api.enqueueSummary(mediaKey||null,{
@@ -2272,6 +2287,8 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
       if(mode==="rec"){
         if(!recorderRef.current) throw new Error("녹음이 준비되지 않았습니다");
         blob=await recorderRef.current.stop();
+        const tooLong=recordingTooLong(secs);
+        if(tooLong) throw new Error(tooLong);
       }else if(mode==="upload"){
         if(!audioFile) throw new Error("녹음 파일을 선택해주세요");
         const maxAudio=150*1024*1024;
@@ -2279,6 +2296,8 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
           const mb=(audioFile.size/(1024*1024)).toFixed(1);
           throw new Error(`파일이 너무 큽니다 (${mb}MB · 최대 150MB)`);
         }
+        const tooLong=recordingTooLong(audioDur);
+        if(tooLong) throw new Error(tooLong);
       }else{
         if(!photos.length) throw new Error("사진을 추가해주세요");
       }
@@ -2424,7 +2443,10 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
       </div>
       <button className="btn" style={{width:"100%",marginTop:12,padding:16,background:"var(--ink)",color:"#fff",fontSize:15}}
         onClick={finish} disabled={finishing}>{finishLabel}</button>
-      <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center"}}>올리면 백그라운드에서 전사·요약이 진행돼요. 완료되면 알려드릴게요.</div>
+      <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center"}}>
+        올리면 백그라운드에서 전사·요약이 진행돼요. 완료되면 알려드릴게요.<br/>
+        최대 2시간 · 150MB
+      </div>
       </>
       ) : inputMode==="upload" && audioFile ? (
       <>
@@ -2447,7 +2469,10 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
       </button>
       <button className="btn" style={{width:"100%",marginTop:18,padding:16,background:"var(--ink)",color:"#fff",fontSize:15}}
         onClick={finish} disabled={finishing}>{finishLabel}</button>
-      <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center"}}>올리면 백그라운드에서 전사·요약이 진행돼요. 완료되면 알려드릴게요.</div>
+      <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center"}}>
+        올리면 백그라운드에서 전사·요약이 진행돼요. 완료되면 알려드릴게요.<br/>
+        최대 2시간 · 150MB
+      </div>
       </>
       ) : inputMode==="photo" ? (
       <>

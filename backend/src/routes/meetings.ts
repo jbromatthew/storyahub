@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess, type AccessRequest } from "../middleware/requireAccess.js";
 import { getAccessStatus, recordingQuotaError } from "../services/access.js";
+import { clampDurationSec } from "../services/meetingLimits.js";
 import { incrementRecordingSec } from "../services/recordingUsage.js";
 import { enqueue, getJob, publicJobView } from "../services/queue.js";
 import { summarize } from "../services/summarize.js";
@@ -14,11 +15,21 @@ import { assertUserMediaKey, assertUserMediaKeys } from "../services/mediaValida
 export const meetingsRouter = Router();
 meetingsRouter.use(auth, requireAccess);
 
+function friendlyProcessingError(e: unknown): string {
+  const msg = (e as Error).message || "변환 실패";
+  if (/Unterminated string in JSON|Unexpected end of JSON|JSON\.parse|잘렸습니다|AI 응답이 비어/i.test(msg)) {
+    return "긴 녹음 변환 중 AI 응답이 잘렸습니다. 잠시 후 다시 시도해주세요.";
+  }
+  return msg;
+}
+
 async function resolveTranscript(
   userId: string,
   mediaKey: string | null | undefined,
   meta: any
 ): Promise<TranscriptResult> {
+  const durationSec = clampDurationSec(meta?.durationSec);
+
   if (meta?.transcript?.trim()) return plainToTranscript(meta.transcript.trim());
 
   if (mediaKey) {
@@ -26,7 +37,10 @@ async function resolveTranscript(
     const buf = await getObjectBytes(mediaKey);
     const mime = mimeFromKey(mediaKey, "audio/webm");
     if (mime.startsWith("audio/")) {
-      return transcribeAudio(buf.toString("base64"), mime);
+      return transcribeAudio(buf.toString("base64"), mime, {
+        durationSec,
+        fileBytes: buf.length,
+      });
     }
     if (mime.startsWith("image/")) {
       const text = await ocrDocumentText(buf.toString("base64"), mime);
@@ -84,7 +98,7 @@ meetingsRouter.post("/summarize", async (req: AccessRequest, res) => {
   if (quotaErr) return res.status(402).json({ error: quotaErr });
 
   const isAudio = meta?.source !== "photo" && (!meta?.imageKeys?.length || mediaKey);
-  const durationSec = isAudio ? Math.max(0, Math.min(7200, Number(meta?.durationSec) || 0)) : 0;
+  const durationSec = isAudio ? clampDurationSec(meta?.durationSec) : 0;
   if (isAudio && durationSec > 0 && status.recordingUsedSec + durationSec > status.recordingLimitSec) {
     return res.status(402).json({
       error: status.isTrial ? "체험 녹음 한도(1시간)를 초과합니다." : "이번 달 녹음·변환 한도를 초과합니다.",
@@ -119,7 +133,7 @@ meetingsRouter.post("/summarize", async (req: AccessRequest, res) => {
   const jobId = enqueue(userId, async () => {
     try {
       const transcript = await resolveTranscript(userId, mediaKey, meta);
-      const summary = await summarize(transcript, meta?.template ?? "영업");
+      const summary = await summarize(transcript, meta?.template ?? "영업", { durationSec });
 
       await prisma.meeting.update({
         where: { id: meeting.id },
@@ -139,7 +153,7 @@ meetingsRouter.post("/summarize", async (req: AccessRequest, res) => {
         }));
         const allDone = subs.every((s) => s.done);
         const anyDone = subs.some((s) => s.done);
-        const status = allDone ? "done" : anyDone ? "doing" : "todo";
+        const todoStatus = allDone ? "done" : anyDone ? "doing" : "todo";
         const title =
           summary.one_line?.trim() ||
           (meta?.companyName ? `${meta.companyName} · 미팅 후속` : "미팅 후속 할 일");
@@ -151,7 +165,7 @@ meetingsRouter.post("/summarize", async (req: AccessRequest, res) => {
             contactId: contactId ?? null,
             meetingId: meeting.id,
             subs,
-            status,
+            status: todoStatus,
             history: [{ when: new Date().toISOString(), who: "AI", what: "미팅에서 할 일 추출" }],
           },
         });
@@ -175,7 +189,7 @@ meetingsRouter.post("/summarize", async (req: AccessRequest, res) => {
 
       return { meetingId: meeting.id, mediaKey: meeting.mediaKey, summary };
     } catch (e) {
-      const msg = (e as Error).message || "변환 실패";
+      const msg = friendlyProcessingError(e);
       await prisma.meeting.update({
         where: { id: meeting.id },
         data: {
