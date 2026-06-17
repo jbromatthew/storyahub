@@ -22,6 +22,7 @@ import ConfirmHost from "./components/ConfirmHost.jsx";
 import { toastError, toastSuccess, notifyError } from "./toast.js";
 import { addPendingMeeting, removePendingMeeting, getPendingMeetingIds } from "./pendingMeetings.js";
 import { userPreferences, tagColor, mergedContactGroups } from "./preferences.js";
+import { hasOpenTodoGroups, countOpenTodoItems, openTodoPreviewTexts } from "./todoGroups.js";
 
 /* ------------------------------------------------------------------
    Storyahub — 비서앱 UI
@@ -1089,7 +1090,6 @@ function NavBtn({on,icon,label,onClick,layout="bottom"}){
 function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSummary,openPricing,segment,openSearch,openSettings,openTodoArchive,openMeetings,openDetail,eventsToday,meetings,revenue,onRefresh,kbArticles=[],openKb}){
   const clients=getClients();
   const near=clients.filter(c=>c.group&&c.group!=="미분류").slice(0,3);
-  const { done: doneCount, total: todoTotal }=todoProgressCounts(todos);
   const isBiz=segment==="business";
   const reviewItems=!isBiz ? [
     ...meetings.slice(0,2).map((m)=>({key:`m-${m.id}`,title:m.oneLine||m.t,sub:m.createdLabel||m.d,onClick:()=>seeSummary(m)})),
@@ -1097,6 +1097,12 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
   ].slice(0,3) : [];
   const [todoView,setTodoView]=useState("check");
   const [focusTodoAdd,setFocusTodoAdd]=useState(false);
+  const [todoPanelOpen,setTodoPanelOpen]=useState(true);
+  const openTodoWork=hasOpenTodoGroups(todos,{meetings,contacts:clients});
+  useEffect(()=>{ if(openTodoWork) setTodoPanelOpen(true); },[openTodoWork]);
+  const openTodoCount=countOpenTodoItems(todos,{meetings,contacts:clients});
+  const openTodoPreview=openTodoPreviewTexts(todos,{meetings,contacts:clients},2);
+  const { done: doneCount, total: todoTotal }=todoProgressCounts(todos.filter(t=>!t.isCategory));
   const now=new Date();
   const dateLabel=now.toLocaleDateString("ko-KR",{month:"long",day:"numeric",weekday:"long"});
   const greetName=(user?.name||"회원").split(" ")[0];
@@ -1140,15 +1146,15 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
       )}
 
       {/* 후속 챙기기(미완료 액션) */}
-      {todos.filter(t=>!isTodoDone(t)).length>0 && (
+      {openTodoCount>0 && (
       <div className="pad" style={{marginTop:18}}>
         <div className="card" style={{padding:"13px 15px",borderLeft:"4px solid var(--accent)",cursor:"pointer"}} onClick={()=>openDetail("followup")}>
           <div className="row" style={{gap:9,alignItems:"flex-start"}}>
             <span style={{color:"var(--accent-deep)",marginTop:1}}>{I.bolt({})}</span>
             <div style={{flex:1}}>
-              <div style={{fontWeight:700,fontSize:13.5}}>후속 챙기기 · {todos.filter(t=>!isTodoDone(t)).length}건</div>
+              <div style={{fontWeight:700,fontSize:13.5}}>후속 챙기기 · {openTodoCount}건</div>
               <div className="small" style={{marginTop:4,lineHeight:1.5}}>
-                {todos.filter(t=>!isTodoDone(t)).slice(0,2).map(t=>t.t).join(" · ")}
+                {openTodoPreview.join(" · ")}
               </div>
             </div>
             <span style={{color:"var(--muted)"}}>{I.chevR({})}</span>
@@ -1202,10 +1208,16 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
       </div>
 
       {/* 할 일 — 대분류·소분류 / 보드 전환 */}
-      <div className="pad row between" style={{alignItems:"flex-end"}}>
+      {!openTodoWork && !todoPanelOpen ? (
+      <div className="pad" style={{marginTop:18}}>
+        <button type="button" className="chip" style={{color:"var(--accent-deep)"}} onClick={()=>setTodoPanelOpen(true)}>+ 할 일 추가</button>
+      </div>
+      ) : (
+      <>
+      <div className="pad row between" style={{alignItems:"flex-end",marginTop:18}}>
         <div>
-          <div className="section-h" style={{marginBottom:2}}>오늘 할 일 <span className="small" style={{fontWeight:700}}>{doneCount}/{todoTotal}</span></div>
-          <div className="small">미팅별 대분류 · 할 일은 안쪽 소분류로 보여요</div>
+          <div className="section-h" style={{marginBottom:2}}>오늘 할 일 {openTodoWork && <span className="small" style={{fontWeight:700}}>{doneCount}/{todoTotal}</span>}</div>
+          <div className="small">대분류를 만들고 그 안에 소분류 할 일을 넣을 수 있어요</div>
         </div>
         <div className="row" style={{gap:8,alignItems:"center"}}>
           <button type="button" className="chip" style={{color:"var(--muted)"}} onClick={openTodoArchive}>전체</button>
@@ -1221,11 +1233,13 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
       </div>
       <div className="pad" style={{marginTop:10}}>
         {todoView==="check" ? (
-          <NestedTodoList todos={todos} meetings={meetings} onRefresh={onRefresh} openDetail={(t)=>openDetail("task",t)} showAdd focusAdd={focusTodoAdd}/>
+          <NestedTodoList todos={todos} meetings={meetings} onRefresh={onRefresh} openDetail={(t)=>openDetail("task",t)} showAdd focusAdd={focusTodoAdd} hideCompletedGroups/>
         ) : (
-          <TodoBoard todos={todos} setTodoStatus={setTodoStatus} openDetail={openDetail}/>
+          <TodoBoard todos={todos.filter(t=>!t.isCategory&&!isTodoDone(t))} setTodoStatus={setTodoStatus} openDetail={openDetail}/>
         )}
       </div>
+      </>
+      )}
 
       {/* 최근 요약 */}
       <div className="pad row between" style={{alignItems:"flex-end"}}>

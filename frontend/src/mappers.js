@@ -129,6 +129,8 @@ export function todoToUi(t) {
     historyCount: history.length,
     meetingId: t.meetingId || null,
     contactId: t.contactId || null,
+    detail: t.detail || "",
+    isCategory: t.detail === "__category__",
     _raw: t,
   };
 }

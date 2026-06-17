@@ -3,7 +3,7 @@ import { api } from "../api/client.js";
 import { confirmDelete } from "../confirmDelete.js";
 import { notifyError, toastError } from "../toast.js";
 import { getClients } from "../store.js";
-import { groupTodosBySource, groupDisplayRows, groupProgress } from "../todoGroups.js";
+import { groupTodosBySource, groupDisplayRows, groupProgress, isGroupComplete, listTodoCategories, TODO_CATEGORY_DETAIL } from "../todoGroups.js";
 
 const PRI = { high: "#DD5E39", mid: "#C9A23A", low: "#C0B9AC" };
 
@@ -74,18 +74,27 @@ export default function NestedTodoList({
   compact = false,
   focusAdd = false,
   groupBySource = true,
+  hideCompletedGroups = false,
 }) {
   const contacts = contactsProp || getClients();
   const groups = useMemo(
     () => groupTodosBySource(todos, { meetings, contacts }),
     [todos, meetings, contacts]
   );
+  const visibleGroups = useMemo(
+    () => (hideCompletedGroups ? groups.filter((g) => !isGroupComplete(g)) : groups),
+    [groups, hideCompletedGroups]
+  );
+  const categories = useMemo(() => listTodoCategories(todos), [todos]);
   const useGroups = groupBySource && !compact;
 
   const [open, setOpen] = useState(() => new Set(todos.filter((t) => (t.subs || []).length).map((t) => t.id)));
   const [openGroups, setOpenGroups] = useState(() => new Set());
   const [adding, setAdding] = useState({});
   const [newTitle, setNewTitle] = useState("");
+  const [newCategory, setNewCategory] = useState("");
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [selectedCatId, setSelectedCatId] = useState(null);
   const [saving, setSaving] = useState(false);
   const addInputRef = useRef(null);
 
@@ -103,10 +112,16 @@ export default function NestedTodoList({
     if (!useGroups) return;
     setOpenGroups((p) => {
       const n = new Set(p);
-      for (const g of groups) n.add(g.id);
+      for (const g of visibleGroups) n.add(g.id);
       return n;
     });
-  }, [useGroups, groups]);
+  }, [useGroups, visibleGroups]);
+
+  useEffect(() => {
+    if (selectedCatId && categories.some((c) => c.id === selectedCatId)) return;
+    if (categories.length) setSelectedCatId(categories[0].id);
+    else setSelectedCatId(null);
+  }, [categories, selectedCatId]);
 
   useEffect(() => {
     if (focusAdd && addInputRef.current) {
@@ -177,11 +192,39 @@ export default function NestedTodoList({
     if (saving) return;
     setSaving(true);
     try {
-      await api.createTodo({ title, priority: "mid" });
+      if (selectedCatId) {
+        const cat = todos.find((t) => t.id === selectedCatId);
+        const subs = [...(cat?.subs || []), { id: newSubId(), text: title, done: false }];
+        await patch(selectedCatId, { subs });
+        setOpenGroups((p) => new Set(p).add(`cat:${selectedCatId}`));
+      } else {
+        await api.createTodo({ title, priority: "mid" });
+      }
       setNewTitle("");
       await onRefresh?.();
     } catch (e) {
       notifyError(e, e.message || "추가 실패");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addCategory = async () => {
+    const title = newCategory.trim();
+    if (!title) {
+      toastError("대분류 이름을 입력해 주세요");
+      return;
+    }
+    if (saving) return;
+    setSaving(true);
+    try {
+      const created = await api.createTodo({ title, priority: "mid", detail: TODO_CATEGORY_DETAIL });
+      setNewCategory("");
+      setAddingCategory(false);
+      setSelectedCatId(created.id);
+      await onRefresh?.();
+    } catch (e) {
+      notifyError(e, e.message || "대분류 추가 실패");
     } finally {
       setSaving(false);
     }
@@ -203,7 +246,17 @@ export default function NestedTodoList({
     setOpen((p) => new Set(p).add(id));
   };
 
-  const { done: totalDone, total: progressTotal } = todoProgressCounts(todos);
+  const { done: totalDone, total: progressTotal } = todoProgressCounts(
+    hideCompletedGroups
+      ? todos.filter((t) => {
+          if (t.isCategory) {
+            const subs = t.subs || [];
+            return subs.length ? subs.some((s) => !s.done) : t.status !== "done";
+          }
+          return !isTodoDone(t);
+        })
+      : todos.filter((t) => !t.isCategory)
+  );
 
   const renderTodo = (t, { nested = false } = {}) => {
     const done = isTodoDone(t);
@@ -340,10 +393,10 @@ export default function NestedTodoList({
 
   return (
     <div className="nt-list">
-      {!compact && todos.length > 0 && (
+      {!compact && (visibleGroups.length > 0 || (!hideCompletedGroups && todos.length > 0)) && (
         <div className="nt-hint">
           {useGroups
-            ? `${totalDone}/${progressTotal} 완료 · 미팅별 대분류 · 안쪽이 할 일(소분류)이에요`
+            ? `${totalDone}/${progressTotal} 완료 · 대분류를 펼치면 할 일(소분류)이 보여요`
             : `${totalDone}/${todos.length} 완료 · 세부 항목을 다 끝내면 자동 완료돼요`}
         </div>
       )}
@@ -352,8 +405,14 @@ export default function NestedTodoList({
         <div className="small" style={{ textAlign: "center", padding: "24px 0" }}>할 일이 없어요</div>
       )}
 
+      {useGroups && visibleGroups.length === 0 && hideCompletedGroups && showAdd && (
+        <div className="small" style={{ textAlign: "center", padding: "12px 0 4px", color: "var(--muted)", lineHeight: 1.55 }}>
+          오늘 할 일을 모두 마쳤어요
+        </div>
+      )}
+
       {useGroups
-        ? groups.map((g) => {
+        ? visibleGroups.map((g) => {
             const disp = groupDisplayRows(g);
             const { done: gDone, total: gTotal, ratio: gr } = groupProgress(g);
             const gOpen = openGroups.has(g.id);
@@ -411,13 +470,68 @@ export default function NestedTodoList({
         : todos.map((t) => renderTodo(t))}
 
       {showAdd && (
-        <div className="nt-newtask">
+        <>
+          {useGroups && (
+            <div style={{ marginBottom: 10 }}>
+              <div className="small" style={{ fontWeight: 700, marginBottom: 8, color: "var(--muted)" }}>
+                대분류
+              </div>
+              <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: addingCategory ? 8 : 0 }}>
+                {categories.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={"chip" + (selectedCatId === c.id ? " on" : "")}
+                    disabled={saving}
+                    onClick={() => setSelectedCatId(c.id)}
+                  >
+                    {c.t}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ color: "var(--accent-deep)" }}
+                  disabled={saving}
+                  onClick={() => setAddingCategory((v) => !v)}
+                >
+                  + 대분류
+                </button>
+              </div>
+              {addingCategory && (
+                <div className="row" style={{ gap: 8, marginTop: 8 }}>
+                  <input
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addCategory())}
+                    placeholder="대분류 이름 (예: 업무, 개인)"
+                    disabled={saving}
+                    style={{
+                      flex: 1,
+                      padding: "10px 12px",
+                      borderRadius: 11,
+                      border: "1px solid var(--line)",
+                      fontFamily: "inherit",
+                      fontSize: 14,
+                    }}
+                  />
+                  <button type="button" className="chip" disabled={saving} onClick={addCategory}>
+                    추가
+                  </button>
+                </div>
+              )}
+              <div className="small" style={{ marginTop: 8, color: "var(--muted)", lineHeight: 1.45 }}>
+                {selectedCatId ? "선택한 대분류 안에 소분류로 추가돼요" : "대분류를 고르거나 새로 만든 뒤 할 일을 추가하세요"}
+              </div>
+            </div>
+          )}
+          <div className="nt-newtask">
           <input
             ref={addInputRef}
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTask())}
-            placeholder="새 할 일 추가"
+            placeholder={selectedCatId ? "소분류 할 일 추가" : "새 할 일 추가"}
           />
           <button
             type="button"
@@ -429,6 +543,7 @@ export default function NestedTodoList({
             +
           </button>
         </div>
+        </>
       )}
     </div>
   );

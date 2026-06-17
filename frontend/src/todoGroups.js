@@ -1,5 +1,17 @@
 import { formatWhen } from "./mappers.js";
 
+export const TODO_CATEGORY_DETAIL = "__category__";
+
+export function isTodoCategory(t) {
+  const raw = t._raw || t;
+  return !raw.meetingId && !raw.contactId && raw.detail === TODO_CATEGORY_DETAIL;
+}
+
+export function isManualStandalone(t) {
+  const raw = t._raw || t;
+  return !raw.meetingId && !raw.contactId && raw.detail !== TODO_CATEGORY_DETAIL;
+}
+
 function contactLabel(c) {
   if (!c) return null;
   const co = c.company || c.co || "";
@@ -21,6 +33,10 @@ function meetingLine(m) {
 }
 
 function groupLabel(group, contactMap, meetingMap) {
+  if (group.key.startsWith("cat:")) {
+    const parent = group.items[0];
+    return parent?.t || parent?.title || "분류";
+  }
   if (group.key === "manual") return "직접 추가";
   if (group.key.startsWith("m:")) {
     const m = meetingMap.get(group.key.slice(2));
@@ -37,6 +53,10 @@ function groupLabel(group, contactMap, meetingMap) {
 }
 
 function groupSublabel(group, contactMap, meetingMap) {
+  if (group.key.startsWith("cat:")) {
+    const subs = group.items[0]?.subs || [];
+    return subs.length ? `${subs.length}개 항목` : "항목을 추가해 보세요";
+  }
   if (!group.key.startsWith("m:")) return "";
   const m = meetingMap.get(group.key.slice(2));
   const parts = [];
@@ -48,7 +68,7 @@ function groupSublabel(group, contactMap, meetingMap) {
   return parts.join(" · ");
 }
 
-/** 미팅(또는 인맥) 기준으로 할 일 묶음 — 대분류=미팅, 소분류=할 일 항목 */
+/** 미팅·대분류·인맥 기준으로 할 일 묶음 */
 export function groupTodosBySource(todos, { meetings = [], contacts = [] } = {}) {
   const contactMap = new Map(contacts.map((c) => [c.id, c]));
   const meetingMap = new Map(meetings.map((m) => [m.id, m]));
@@ -56,6 +76,13 @@ export function groupTodosBySource(todos, { meetings = [], contacts = [] } = {})
 
   for (const t of todos) {
     const raw = t._raw || t;
+    if (isTodoCategory(t)) {
+      const key = `cat:${t.id}`;
+      if (!buckets.has(key)) buckets.set(key, { key, items: [], sortTs: raw.createdAt || "" });
+      buckets.get(key).items.push(t);
+      continue;
+    }
+
     const meetingId = raw.meetingId || t.meetingId;
     const contactId = raw.contactId || t.contactId;
     let key;
@@ -82,6 +109,11 @@ export function groupTodosBySource(todos, { meetings = [], contacts = [] } = {})
     .sort((a, b) => {
       if (a.key === "manual") return 1;
       if (b.key === "manual") return -1;
+      if (a.key.startsWith("cat:") && b.key.startsWith("cat:")) {
+        return String(b.sortTs).localeCompare(String(a.sortTs));
+      }
+      if (a.key.startsWith("cat:")) return 1;
+      if (b.key.startsWith("cat:")) return -1;
       return String(b.sortTs).localeCompare(String(a.sortTs));
     })
     .map((g) => ({
@@ -97,31 +129,33 @@ function isTodoRowDone(t) {
   return subs.length ? subs.every((s) => s.done) : t.done || t.status === "done";
 }
 
-/** 미팅 그룹 안에 표시할 행 — 대분류 아래 소분류(할 일)만 펼침 */
+function lineRowsFromParent(parent) {
+  const rows = [];
+  const subs = parent.subs || [];
+  if (subs.length) {
+    for (const s of subs) rows.push({ kind: "sub", id: s.id, text: s.text, done: s.done, parent });
+  } else {
+    rows.push({
+      kind: "todo",
+      id: parent.id,
+      text: parent.t || parent.title || "할 일",
+      done: isTodoRowDone(parent),
+      parent,
+    });
+  }
+  return rows;
+}
+
+/** 그룹 안에 표시할 행 — 대분류 아래 소분류(할 일)만 펼침 */
 export function groupDisplayRows(group) {
-  if (!group.key.startsWith("m:")) {
+  if (group.key.startsWith("m:") || group.key.startsWith("cat:")) {
+    const parent = group.items[0];
+    if (!parent) return { mode: "todos", parent: null, rows: group.items };
+    const rows = lineRowsFromParent(parent);
+    if (rows.length) return { mode: "lines", parent, rows };
     return { mode: "todos", parent: null, rows: group.items };
   }
 
-  const rows = [];
-  for (const t of group.items) {
-    const subs = t.subs || [];
-    if (subs.length) {
-      for (const s of subs) rows.push({ kind: "sub", id: s.id, text: s.text, done: s.done, parent: t });
-    } else {
-      rows.push({
-        kind: "todo",
-        id: t.id,
-        text: t.t || t.title || "할 일",
-        done: isTodoRowDone(t),
-        parent: t,
-      });
-    }
-  }
-
-  if (rows.length) {
-    return { mode: "lines", parent: group.items[0] || null, rows };
-  }
   return { mode: "todos", parent: null, rows: group.items };
 }
 
@@ -135,4 +169,48 @@ export function groupProgress(group) {
   const total = disp.rows.length;
   const done = disp.rows.filter((t) => isTodoRowDone(t)).length;
   return { done, total, ratio: total ? done / total : 0 };
+}
+
+export function isGroupComplete(group) {
+  const { done, total } = groupProgress(group);
+  return total > 0 && done === total;
+}
+
+export function hasOpenTodoGroups(todos, ctx = {}) {
+  const groups = groupTodosBySource(todos, ctx);
+  return groups.some((g) => !isGroupComplete(g));
+}
+
+export function listTodoCategories(todos) {
+  return todos.filter(isTodoCategory);
+}
+
+export function countOpenTodoItems(todos, ctx = {}) {
+  const groups = groupTodosBySource(todos, ctx);
+  let open = 0;
+  for (const g of groups) {
+    const { done, total } = groupProgress(g);
+    open += Math.max(0, total - done);
+  }
+  return open;
+}
+
+export function openTodoPreviewTexts(todos, ctx = {}, limit = 2) {
+  const groups = groupTodosBySource(todos, ctx).filter((g) => !isGroupComplete(g));
+  const out = [];
+  for (const g of groups) {
+    const disp = groupDisplayRows(g);
+    if (disp.mode === "lines") {
+      for (const r of disp.rows) {
+        if (!r.done) out.push(r.text);
+        if (out.length >= limit) return out;
+      }
+    } else {
+      for (const t of disp.rows) {
+        if (!isTodoRowDone(t)) out.push(t.t || t.title || "할 일");
+        if (out.length >= limit) return out;
+      }
+    }
+  }
+  return out;
 }
