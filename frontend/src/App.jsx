@@ -3352,7 +3352,6 @@ function CardScan({back,onSaved,user,onUserUpdated,contactPresets={groups:[],tag
             onGroupChange={setGroup}
             onTagsChange={setTags}
           />
-          <div style={{marginBottom:18}}/>
 
           <button className="btn btn-accent" style={{width:"100%",padding:16,fontSize:15}} onClick={save} disabled={saving}>{saving?"저장 중…":"연락처로 저장"}</button>
           <button className="btn" style={{width:"100%",padding:12,marginTop:8,background:"transparent",color:"var(--muted)"}} onClick={()=>setStep("capture")}>다시 촬영</button>

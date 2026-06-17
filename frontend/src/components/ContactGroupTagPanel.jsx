@@ -6,13 +6,23 @@ import {
   renameContactTag,
   saveContactPresets,
 } from "../contactPresets.js";
-import { contactGroupOptions, tagColor } from "../preferences.js";
+import { contactGroupOptions } from "../preferences.js";
 import { confirmAction } from "../confirm.js";
 import { notifyError, toastSuccess } from "../toast.js";
 
-function RenameInput({ value, onChange, onConfirm, onCancel, placeholder }) {
+const inputStyle = {
+  flex: 1,
+  padding: "11px 13px",
+  borderRadius: 12,
+  border: "1px solid var(--line)",
+  fontFamily: "inherit",
+  fontSize: 14,
+  background: "#fff",
+};
+
+function RenameField({ value, onChange, onConfirm, onCancel, placeholder }) {
   return (
-    <span className="row" style={{ gap: 4, alignItems: "center" }}>
+    <div className="row" style={{ gap: 8, padding: "8px 0" }}>
       <input
         autoFocus
         value={value}
@@ -25,19 +35,40 @@ function RenameInput({ value, onChange, onConfirm, onCancel, placeholder }) {
           if (e.key === "Escape") onCancel();
         }}
         placeholder={placeholder}
-        style={{
-          width: 88,
-          padding: "6px 8px",
-          borderRadius: 9,
-          border: "1px solid var(--line)",
-          fontFamily: "inherit",
-          fontSize: 12,
-        }}
+        style={inputStyle}
       />
-      <button type="button" className="chip" style={{ padding: "5px 8px", fontSize: 11 }} onClick={onConfirm}>
-        ✓
+      <button type="button" className="btn btn-ghost" style={{ padding: "10px 14px", fontSize: 13 }} onClick={onConfirm}>
+        저장
       </button>
-    </span>
+    </div>
+  );
+}
+
+function EditRow({ label, onRename, onDelete, disabled }) {
+  return (
+    <div className="row between" style={{ padding: "11px 0", borderBottom: "1px solid var(--line)" }}>
+      <span style={{ fontSize: 14, fontWeight: 600 }}>{label}</span>
+      <div className="row" style={{ gap: 6 }}>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          style={{ padding: "6px 10px", fontSize: 12, minWidth: 0 }}
+          disabled={disabled}
+          onClick={onRename}
+        >
+          이름
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          style={{ padding: "6px 10px", fontSize: 12, color: "#B85C4A", minWidth: 0 }}
+          disabled={disabled}
+          onClick={onDelete}
+        >
+          삭제
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -67,6 +98,19 @@ export default function ContactGroupTagPanel({
   const groupOptions = useMemo(
     () => contactGroupOptions({ contacts: contactPresets }, contacts),
     [contactPresets, contacts]
+  );
+
+  const tagOptions = useMemo(() => {
+    const ordered = [...presetTags];
+    for (const t of tags || []) {
+      if (!ordered.includes(t)) ordered.push(t);
+    }
+    return ordered;
+  }, [presetTags, tags]);
+
+  const editableGroups = useMemo(
+    () => groupOptions.filter((g) => g !== "미분류"),
+    [groupOptions]
   );
 
   const persistPresets = async (groups, tagList) => {
@@ -172,7 +216,6 @@ export default function ContactGroupTagPanel({
   };
 
   const deleteGroup = async (name) => {
-    if (name === "미분류") return;
     const count = contacts.filter((c) => c.group === name).length;
     const ok = await confirmAction(
       `「${name}」 그룹을 삭제할까요?`,
@@ -227,218 +270,211 @@ export default function ContactGroupTagPanel({
     onTagsChange?.(has ? (tags || []).filter((x) => x !== t) : [...(tags || []), t]);
   };
 
-  const sectionStyle = compact ? { paddingTop: 0, marginBottom: 4 } : { paddingTop: 0, marginBottom: 4 };
+  const closeEdit = () => {
+    cancelRename();
+    setEditing(false);
+  };
+
+  const wrapStyle = compact
+    ? { padding: "0 16px 12px" }
+    : { padding: "0 16px 16px" };
 
   return (
-    <div className="pad" style={sectionStyle}>
-      <div className="row between" style={{ marginBottom: 8 }}>
-        {showAssignment && !compact && <div className="section-h" style={{ margin: 0 }}>그룹 · 태그</div>}
-        {!presetOnly && (
-          <button
-            type="button"
-            className="chip"
-            style={{ marginLeft: "auto", fontSize: 12, color: editing ? "var(--accent-deep)" : "var(--muted)" }}
-            disabled={busy}
-            onClick={() => {
-              cancelRename();
-              setEditing((v) => !v);
-            }}
-          >
-            {editing ? "완료" : "목록 편집"}
-          </button>
-        )}
-      </div>
-
-      {(showAssignment || editing) && (
-        <>
-      <div className="small" style={{ fontWeight: 700, marginBottom: 8 }}>그룹</div>
-      <div className="row" style={{ gap: 7, flexWrap: "wrap", marginBottom: 14 }}>
-        {groupOptions.map((g) => {
-          if (editing && renaming?.kind === "group" && renaming.value === g) {
-            return (
-              <RenameInput
-                key={g}
-                value={renameVal}
-                onChange={setRenameVal}
-                onConfirm={confirmRename}
-                onCancel={cancelRename}
-                placeholder="그룹 이름"
-              />
-            );
-          }
-          const canManage = editing && g !== "미분류";
-          return (
-            <span key={g} className="row" style={{ gap: 2, alignItems: "center" }}>
-              <button
-                type="button"
-                className={"chip" + (showAssignment && group === g ? " on" : "")}
-                disabled={busy || (editing && !showAssignment)}
-                onClick={() => {
-                  if (editing) return;
-                  onGroupChange?.(g);
-                }}
-              >
-                {g}
-              </button>
-              {canManage && (
-                <>
-                  <button
-                    type="button"
-                    className="iconbtn"
-                    style={{ width: 26, height: 26, fontSize: 11 }}
-                    disabled={busy}
-                    onClick={() => startRename("group", g)}
-                    aria-label={`${g} 이름 변경`}
-                  >
-                    ✎
-                  </button>
-                  <button
-                    type="button"
-                    className="iconbtn"
-                    style={{ width: 26, height: 26, fontSize: 11, color: "#B85C4A" }}
-                    disabled={busy}
-                    onClick={() => deleteGroup(g)}
-                    aria-label={`${g} 삭제`}
-                  >
-                    ✕
-                  </button>
-                </>
-              )}
-            </span>
-          );
-        })}
-      </div>
-
-      {editing && (
-        <div className="row" style={{ gap: 8, marginBottom: 14 }}>
-          <input
-            value={groupInput}
-            onChange={(e) => setGroupInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addGroup())}
-            placeholder="새 그룹 (예: 강남, VIP)"
-            disabled={busy}
-            style={{
-              flex: 1,
-              padding: "10px 12px",
-              borderRadius: 11,
-              border: "1px solid var(--line)",
-              fontFamily: "inherit",
-              fontSize: 14,
-            }}
-          />
-          <button type="button" className="chip" style={{ padding: "10px 14px" }} disabled={busy} onClick={addGroup}>
-            추가
-          </button>
-        </div>
-      )}
-
-      <div className="small" style={{ fontWeight: 700, marginBottom: 8 }}>태그</div>
-      <div className="row" style={{ gap: 7, flexWrap: "wrap", marginBottom: editing ? 10 : 8 }}>
-        {(tags || []).map((t) => {
-          const col = tagColor(t);
-          return (
-            <span
-              key={`on-${t}`}
-              className={"tag" + (col && col !== "accent" ? " " + col : "")}
-              style={{ padding: "7px 11px", gap: 6, cursor: editing ? "default" : "pointer" }}
-              onClick={() => !editing && toggleTag(t)}
+    <div style={wrapStyle}>
+      <div className="card" style={{ padding: "16px 18px" }}>
+        <div className="row between" style={{ marginBottom: editing ? 16 : 14 }}>
+          {showAssignment && !compact && (
+            <div className="section-h" style={{ margin: 0 }}>
+              그룹 · 태그
+            </div>
+          )}
+          {compact && !showAssignment && (
+            <div className="small" style={{ fontWeight: 700, color: "var(--muted)" }}>
+              그룹 · 태그 목록
+            </div>
+          )}
+          {!presetOnly && (
+            <button
+              type="button"
+              style={{
+                marginLeft: "auto",
+                background: "none",
+                border: "none",
+                padding: 0,
+                fontSize: 13,
+                fontWeight: 700,
+                color: editing ? "var(--ink)" : "var(--accent-deep)",
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+              disabled={busy}
+              onClick={() => (editing ? closeEdit() : setEditing(true))}
             >
-              {t}
-              {!editing && " ✕"}
-            </span>
-          );
-        })}
-        {presetTags
-          .filter((t) => !(tags || []).includes(t))
-          .map((t) => {
-            if (editing && renaming?.kind === "tag" && renaming.value === t) {
-              return (
-                <RenameInput
-                  key={t}
+              {editing ? "완료" : "편집"}
+            </button>
+          )}
+        </div>
+
+        {!editing && showAssignment && (
+          <>
+            <div style={{ marginBottom: 14 }}>
+              <div className="small" style={{ fontWeight: 600, marginBottom: 8, color: "var(--muted)" }}>
+                그룹
+              </div>
+              <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                {groupOptions.map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    className={"chip" + (group === g ? " on" : "")}
+                    disabled={busy}
+                    onClick={() => onGroupChange?.(g)}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="small" style={{ fontWeight: 600, marginBottom: 8, color: "var(--muted)" }}>
+                태그
+              </div>
+              {tagOptions.length === 0 ? (
+                <div className="small" style={{ color: "var(--muted)", lineHeight: 1.5 }}>
+                  태그가 없어요.{" "}
+                  <button
+                    type="button"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      color: "var(--accent-deep)",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      fontSize: "inherit",
+                    }}
+                    onClick={() => setEditing(true)}
+                  >
+                    편집
+                  </button>
+                  에서 추가할 수 있어요.
+                </div>
+              ) : (
+                <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                  {tagOptions.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      className={"chip" + ((tags || []).includes(t) ? " on" : "")}
+                      disabled={busy}
+                      onClick={() => toggleTag(t)}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {editing && (
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <div className="small" style={{ fontWeight: 700, marginBottom: 4 }}>
+                그룹 목록
+              </div>
+              <div className="small" style={{ color: "var(--muted)", marginBottom: 8, lineHeight: 1.45 }}>
+                미분류는 기본값이라 삭제할 수 없어요.
+              </div>
+              {renaming?.kind === "group" ? (
+                <RenameField
+                  value={renameVal}
+                  onChange={setRenameVal}
+                  onConfirm={confirmRename}
+                  onCancel={cancelRename}
+                  placeholder="그룹 이름"
+                />
+              ) : (
+                editableGroups.map((g) => (
+                  <EditRow
+                    key={g}
+                    label={g}
+                    disabled={busy}
+                    onRename={() => startRename("group", g)}
+                    onDelete={() => deleteGroup(g)}
+                  />
+                ))
+              )}
+              <div className="row" style={{ gap: 8, marginTop: 10 }}>
+                <input
+                  value={groupInput}
+                  onChange={(e) => setGroupInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addGroup())}
+                  placeholder="새 그룹"
+                  disabled={busy}
+                  style={inputStyle}
+                />
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ padding: "11px 14px", fontSize: 13, whiteSpace: "nowrap" }}
+                  disabled={busy}
+                  onClick={addGroup}
+                >
+                  추가
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div className="small" style={{ fontWeight: 700, marginBottom: 8 }}>
+                태그 목록
+              </div>
+              {renaming?.kind === "tag" ? (
+                <RenameField
                   value={renameVal}
                   onChange={setRenameVal}
                   onConfirm={confirmRename}
                   onCancel={cancelRename}
                   placeholder="태그 이름"
                 />
-              );
-            }
-            return (
-              <span key={t} className="row" style={{ gap: 2, alignItems: "center" }}>
-                {!editing ? (
-                  <button
-                    type="button"
-                    className="chip"
-                    style={{ padding: "7px 12px", fontSize: 12 }}
+              ) : (
+                presetTags.map((t) => (
+                  <EditRow
+                    key={t}
+                    label={t}
                     disabled={busy}
-                    onClick={() => toggleTag(t)}
-                  >
-                    + {t}
-                  </button>
-                ) : (
-                  <span className="tag gray" style={{ padding: "6px 10px", fontSize: 12 }}>
-                    #{t}
-                  </span>
-                )}
-                {editing && (
-                  <>
-                    <button
-                      type="button"
-                      className="iconbtn"
-                      style={{ width: 26, height: 26, fontSize: 11 }}
-                      disabled={busy}
-                      onClick={() => startRename("tag", t)}
-                      aria-label={`${t} 이름 변경`}
-                    >
-                      ✎
-                    </button>
-                    <button
-                      type="button"
-                      className="iconbtn"
-                      style={{ width: 26, height: 26, fontSize: 11, color: "#B85C4A" }}
-                      disabled={busy}
-                      onClick={() => deleteTag(t)}
-                      aria-label={`${t} 삭제`}
-                    >
-                      ✕
-                    </button>
-                  </>
-                )}
-              </span>
-            );
-          })}
+                    onRename={() => startRename("tag", t)}
+                    onDelete={() => deleteTag(t)}
+                  />
+                ))
+              )}
+              <div className="row" style={{ gap: 8, marginTop: 10 }}>
+                <input
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTag())}
+                  placeholder="새 태그"
+                  disabled={busy}
+                  style={inputStyle}
+                />
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ padding: "11px 14px", fontSize: 13, whiteSpace: "nowrap" }}
+                  disabled={busy}
+                  onClick={addTag}
+                >
+                  추가
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
-
-      {editing && (
-        <div className="row" style={{ gap: 8 }}>
-          <input
-            value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTag())}
-            placeholder="새 태그"
-            disabled={busy}
-            style={{
-              flex: 1,
-              padding: "10px 12px",
-              borderRadius: 11,
-              border: "1px solid var(--line)",
-              fontFamily: "inherit",
-              fontSize: 14,
-            }}
-          />
-          <button type="button" className="chip" style={{ padding: "10px 14px" }} disabled={busy} onClick={addTag}>
-            추가
-          </button>
-        </div>
-      )}
-
-      {editing && (
-        <div className="small" style={{ marginTop: 10, lineHeight: 1.5, color: "var(--muted)" }}>
-          ✎ 이름 변경 · ✕ 삭제 · 추가한 항목은 모든 인맥 화면에 바로 반영돼요.
-        </div>
-      )}
-        </>
-      )}
     </div>
   );
 }
