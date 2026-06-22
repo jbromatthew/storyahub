@@ -176,9 +176,34 @@ export function isGroupComplete(group) {
   return total > 0 && done === total;
 }
 
+/** 투데이: 완료된 항목·그룹 제외 */
+export function filterGroupForToday(group) {
+  const disp = groupDisplayRows(group);
+  if (disp.mode === "lines") {
+    const rows = disp.rows.filter((r) => !r.done);
+    if (!rows.length) return null;
+    return { ...disp, rows };
+  }
+  const rows = disp.rows.filter((t) => {
+    const subs = t.subs || [];
+    return subs.length ? subs.some((s) => !s.done) : !(t.done || t.status === "done");
+  });
+  if (!rows.length) return null;
+  return { ...disp, rows };
+}
+
+export function filterGroupsForToday(groups) {
+  const out = [];
+  for (const g of groups) {
+    const disp = filterGroupForToday(g);
+    if (!disp) continue;
+    out.push({ group: g, disp });
+  }
+  return out;
+}
+
 export function hasOpenTodoGroups(todos, ctx = {}) {
-  const groups = groupTodosBySource(todos, ctx);
-  return groups.some((g) => !isGroupComplete(g));
+  return filterGroupsForToday(groupTodosBySource(todos, ctx)).length > 0;
 }
 
 export function listTodoCategories(todos) {

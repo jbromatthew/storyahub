@@ -11,6 +11,7 @@ import { getObjectBytes, isUserMediaKey } from "../services/r2.js";
 import { transcribeAudio, plainToTranscript, mimeFromKey, type TranscriptResult } from "../services/stt.js";
 import { ocrDocumentText } from "../services/ocr.js";
 import { assertUserMediaKey, assertUserMediaKeys } from "../services/mediaValidation.js";
+import { answerMeetingQuestion } from "../services/meetingAsk.js";
 
 export const meetingsRouter = Router();
 meetingsRouter.use(auth, requireAccess);
@@ -209,6 +210,27 @@ meetingsRouter.get("/job/:id", (req: AuthedRequest, res) => {
   const job = getJob(req.params.id, req.userId!);
   if (!job) return res.status(404).json({ error: "no job" });
   res.json(publicJobView(job));
+});
+
+meetingsRouter.post("/:id/ask", async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const m = await prisma.meeting.findFirst({ where: { id: req.params.id, userId } });
+  if (!m) return res.status(404).json({ error: "not found" });
+  if (m.processStatus === "processing") {
+    return res.status(409).json({ error: "미팅 변환이 끝난 뒤 질문할 수 있어요" });
+  }
+
+  const question = String(req.body?.question ?? "").trim();
+  if (!question) return res.status(400).json({ error: "question required" });
+  if (question.length > 500) return res.status(400).json({ error: "질문은 500자까지 가능합니다" });
+
+  try {
+    const summary = (m.summary && typeof m.summary === "object" ? m.summary : null) as Record<string, unknown> | null;
+    const answer = await answerMeetingQuestion(question, m.oneLine, summary);
+    res.json({ answer });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message || "질문 처리 실패" });
+  }
 });
 
 meetingsRouter.get("/:id", async (req: AuthedRequest, res) => {

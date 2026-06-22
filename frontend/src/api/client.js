@@ -156,6 +156,7 @@ export const api = {
   enqueueSummary: (mediaKey, meta) =>
     req("/meetings/summarize", { method: "POST", body: { mediaKey, meta } }),
   getJob: (jobId) => req(`/meetings/job/${jobId}`),
+  askMeeting: (id, question) => req(`/meetings/${id}/ask`, { method: "POST", body: { question } }),
 
   listDeals: () => req("/deals"),
   saveDeal: (data) => req("/deals", { method: "POST", body: data }),

@@ -3,7 +3,7 @@ import { api } from "../api/client.js";
 import { confirmDelete } from "../confirmDelete.js";
 import { notifyError, toastError } from "../toast.js";
 import { getClients } from "../store.js";
-import { groupTodosBySource, groupDisplayRows, groupProgress, isGroupComplete, listTodoCategories, TODO_CATEGORY_DETAIL } from "../todoGroups.js";
+import { groupTodosBySource, groupDisplayRows, groupProgress, filterGroupsForToday, listTodoCategories, TODO_CATEGORY_DETAIL } from "../todoGroups.js";
 
 const PRI = { high: "#DD5E39", mid: "#C9A23A", low: "#C0B9AC" };
 
@@ -81,10 +81,10 @@ export default function NestedTodoList({
     () => groupTodosBySource(todos, { meetings, contacts }),
     [todos, meetings, contacts]
   );
-  const visibleGroups = useMemo(
-    () => (hideCompletedGroups ? groups.filter((g) => !isGroupComplete(g)) : groups),
-    [groups, hideCompletedGroups]
-  );
+  const visibleGroups = useMemo(() => {
+    if (!hideCompletedGroups) return groups.map((g) => ({ group: g, disp: groupDisplayRows(g) }));
+    return filterGroupsForToday(groups);
+  }, [groups, hideCompletedGroups]);
   const categories = useMemo(() => listTodoCategories(todos), [todos]);
   const useGroups = groupBySource && !compact;
 
@@ -112,7 +112,7 @@ export default function NestedTodoList({
     if (!useGroups) return;
     setOpenGroups((p) => {
       const n = new Set(p);
-      for (const g of visibleGroups) n.add(g.id);
+      for (const { group: g } of visibleGroups) n.add(g.id);
       return n;
     });
   }, [useGroups, visibleGroups]);
@@ -412,11 +412,15 @@ export default function NestedTodoList({
       )}
 
       {useGroups
-        ? visibleGroups.map((g) => {
-            const disp = groupDisplayRows(g);
-            const { done: gDone, total: gTotal, ratio: gr } = groupProgress(g);
+        ? visibleGroups.map(({ group: g, disp }) => {
+            const total = disp.mode === "lines" ? disp.rows.length : disp.rows.length;
+            const done =
+              disp.mode === "lines"
+                ? disp.rows.filter((r) => r.done).length
+                : disp.rows.filter(isTodoDone).length;
+            const gr = total ? done / total : 0;
             const gOpen = openGroups.has(g.id);
-            const allDone = gDone === gTotal && gTotal > 0;
+            const allDone = total > 0 && done === total;
 
             return (
               <div key={g.id} className={"nt-card nt-group" + (allDone ? " done" : "")}>
@@ -428,7 +432,7 @@ export default function NestedTodoList({
                     <div className="nt-ptitle" style={{ fontSize: 14.5 }}>{g.label}</div>
                     {g.sublabel && <div className="small" style={{ fontSize: 11, marginTop: 2, lineHeight: 1.45 }}>{g.sublabel}</div>}
                   </div>
-                  <span className={"nt-count" + (allDone ? " full" : "")}>{gDone}/{gTotal}</span>
+                  <span className={"nt-count" + (allDone ? " full" : "")}>{done}/{total}</span>
                 </div>
                 <div className="nt-bar">
                   <i className={gr === 1 ? "full" : ""} style={{ width: `${gr * 100}%` }} />

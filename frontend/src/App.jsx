@@ -7,6 +7,7 @@ import NestedTodoList, { isTodoDone, todoProgressCounts } from "./components/Nes
 import MeetingInsights from "./components/MeetingInsights.jsx";
 import CategoryTagSettings from "./components/CategoryTagSettings.jsx";
 import ContactGroupTagPanel from "./components/ContactGroupTagPanel.jsx";
+import MeetingAskPanel from "./components/MeetingAskPanel.jsx";
 import PlacesView from "./components/PlacesView.jsx";
 import CalendarView from "./components/CalendarView.jsx";
 import { api, loadToken, saveToken, clearToken, setToken, isAuthError, isAccessError } from "./api/client.js";
@@ -103,7 +104,7 @@ const CSS = `
   padding-bottom:env(safe-area-inset-bottom,0px);
   background:rgba(247,244,238,.92);backdrop-filter:blur(14px);border-top:1px solid var(--line);
   z-index:40;}
-.nav-grid{display:grid;grid-template-columns:repeat(6,1fr);width:100%;align-items:end;padding:8px 2px 0;}
+.nav-grid{display:grid;grid-template-columns:repeat(7,1fr);width:100%;align-items:end;padding:8px 2px 0;}
 .navitem{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px;font-weight:600;
   color:var(--muted);background:none;border:none;cursor:pointer;width:100%;padding:0 2px;transition:.15s;}
 .navitem.on{color:var(--accent-deep);}
@@ -592,7 +593,8 @@ const I = {
   plus:(p)=> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" {...p}><path d="M12 5v14M5 12h14"/></svg>,
   text:(p)=> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M5 6h14M5 12h14M5 18h9"/></svg>,
   heading:(p)=> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M6 4v16M18 4v16M6 12h12"/></svg>,
-  list:(p)=> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.2" fill="currentColor" stroke="none"/></svg>,
+  list:(p)=> <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.2" fill="currentColor" stroke="none"/></svg>,
+  todo:(p)=> <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="4" y="4" width="16" height="16" rx="4"/><path d="m8 12 2.5 2.5L16 9"/></svg>,
   meet:(p)=> <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M8 6h13M8 12h13M8 18h8"/><path d="M4 7v10"/><circle cx="4" cy="7" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="17" r="1.5" fill="currentColor" stroke="none"/></svg>,
   place:(p)=> <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M12 3c-4 0-7 2.5-7 6.5C5 14 12 21 12 21s7-7 7-11.5C19 5.5 16 3 12 3z"/><circle cx="12" cy="9.5" r="1.8"/><path d="M8 21h8"/></svg>,
   quote:(p)=> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M7 7c-2 0-3 1.5-3 3.5S5 14 7 14c0 2-1 3-3 3M18 7c-2 0-3 1.5-3 3.5S16 14 18 14c0 2-1 3-3 3"/></svg>,
@@ -985,6 +987,7 @@ function App(){
             <div className="app-brand">Story<span>ahub</span></div>
             <nav className="app-sidenav">
               <NavBtn layout="side" on={tab==="today"&&!client} icon={I.home} label="투데이" onClick={()=>goTab("today")}/>
+              <NavBtn layout="side" on={tab==="todos"} icon={I.todo} label="할 일" onClick={()=>goTab("todos")}/>
               <NavBtn layout="side" on={tab==="clients"||!!client} icon={I.users} label={T(segment,"contacts")} onClick={()=>goTab("clients")}/>
               <NavBtn layout="side" on={tab==="meetings"} icon={I.meet} label="미팅" onClick={()=>goTab("meetings")}/>
               <NavBtn layout="side" on={tab==="calendar"} icon={I.cal} label="캘린더" onClick={()=>goTab("calendar")}/>
@@ -1012,7 +1015,6 @@ function App(){
               openTask={(t)=>{setOverlay(null);setDetail({type:"task",data:t});}}
               openMeeting={(m)=>{setOverlay(null);setDetail({type:"meeting",data:m});}}
               meetings={meetings} kbArticles={kbArticles} todos={todos}/>
-          : overlay==="todos" ? <TodoArchive back={()=>setOverlay(null)} meetings={meetings} openDetail={(t)=>setDetail({type:"task",data:t})}/>
           : overlay==="mypage" ? <MyPage user={user} back={()=>setOverlay("settings")} onUserUpdated={setUser}/>
           : overlay==="settings" ? <Settings user={user} back={()=>setOverlay(null)} go={(o)=>setOverlay(o)}
               openPricing={()=>{setOverlay(null);setPricing(true);}}
@@ -1038,11 +1040,12 @@ function App(){
                               openClient={(c)=>setClient(c)} seeSummary={(m)=>openDetail("meeting",m)}
                               openPricing={()=>setPricing(true)} segment={segment}
                               openSearch={()=>setOverlay("search")} openSettings={()=>setOverlay("settings")}
-                              openTodoArchive={()=>setOverlay("todos")}
                               openMeetings={()=>goTab("meetings")}
+                              openTodoArchive={()=>goTab("todos")}
                               kbArticles={kbArticles}
                               openKb={(a)=>setKbView({article:a,mode:"read"})}
                               openDetail={(t,data)=>setDetail({type:t,data})} onRefresh={loadAppData}/>
+          : tab==="todos" ? <TodoArchive embedded meetings={meetings} todos={todos} onRefresh={loadAppData} openDetail={(t)=>setDetail({type:"task",data:t})}/>
           : tab==="clients" ? (cardScan ? <CardScan back={()=>setCardScan(false)} onSaved={refreshContacts} user={user} onUserUpdated={setUser} contactPresets={prefs.contacts}/> : <Clients group={group} setGroup={setGroup} open={(c)=>setClient(c)} onAdd={()=>setCardScan(true)} onRefresh={loadAppData} seg={segment} user={user} onUserUpdated={setUser} contactPresets={prefs.contacts}/>)
           : tab==="places" ? <PlacesView placePresets={prefs.places} onRefresh={loadAppData}/>
           : tab==="meetings" ? <MeetingsTab meetings={meetings} openDetail={(m)=>setDetail({type:"meeting",data:m})} startRec={startRec} onRefresh={loadAppData} meetingPresets={prefs.meeting}/>
@@ -1065,6 +1068,7 @@ function App(){
         <div className="nav">
           <div className="nav-grid">
             <NavBtn on={tab==="today"&&!client} icon={I.home} label="투데이" onClick={()=>goTab("today")}/>
+            <NavBtn on={tab==="todos"} icon={I.todo} label="할 일" onClick={()=>goTab("todos")}/>
             <NavBtn on={tab==="clients"||client} icon={I.users} label={T(segment,"contacts")} onClick={()=>goTab("clients")}/>
             <NavBtn on={tab==="meetings"} icon={I.meet} label="미팅" onClick={()=>goTab("meetings")}/>
             <NavBtn on={tab==="calendar"} icon={I.cal} label="캘린더" onClick={()=>goTab("calendar")}/>
@@ -1220,7 +1224,7 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
           <div className="small">대분류를 만들고 그 안에 소분류 할 일을 넣을 수 있어요</div>
         </div>
         <div className="row" style={{gap:8,alignItems:"center"}}>
-          <button type="button" className="chip" style={{color:"var(--muted)"}} onClick={openTodoArchive}>전체</button>
+          <button type="button" className="chip" style={{color:"var(--muted)"}} onClick={openTodoArchive}>목록</button>
           <button type="button" className="chip" style={{color:"var(--accent-deep)"}} onClick={()=>{
             setFocusTodoAdd(true);
             window.setTimeout(()=>setFocusTodoAdd(false), 500);
@@ -2159,6 +2163,13 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
         )}
         {!meeting.isFailed && !meeting.isProcessing && (
           <MeetingInsights summary={s} oneLine={meeting.oneLine||s?.one_line}/>
+        )}
+        {!meeting.isFailed && !meeting.isProcessing && meeting.id && (
+          <MeetingAskPanel
+            meetingId={meeting.id}
+            disabled={loading}
+            hasContext={!!(s?.utterances?.length || s?.key_points?.length || s?.one_line || meeting.oneLine)}
+          />
         )}
         {!meeting.isFailed && !meeting.isProcessing && displayTodos.length>0 && (
           <>
@@ -3543,12 +3554,12 @@ function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh,mee
 }
 
 /* ---------------- TODO ARCHIVE (전체 검색 · 히스토리 · 첨부) ---------------- */
-function TodoArchive({back,openDetail,meetings=[]}){
+function TodoArchive({back,embedded=false,openDetail,meetings=[],todos:bootTodos=[],onRefresh}){
   const [q,setQ]=useState("");
   const [query,setQuery]=useState("");
   const [status,setStatus]=useState("");
-  const [items,setItems]=useState([]);
-  const [loading,setLoading]=useState(true);
+  const [items,setItems]=useState(()=>bootTodos);
+  const [loading,setLoading]=useState(!embedded);
   useEffect(()=>{
     const t=setTimeout(()=>setQuery(q),300);
     return ()=>clearTimeout(t);
@@ -3562,14 +3573,29 @@ function TodoArchive({back,openDetail,meetings=[]}){
     finally{ setLoading(false); }
   },[query,status]);
   useEffect(()=>{ reload(); },[reload]);
+  useEffect(()=>{
+    if(embedded && bootTodos.length && !query.trim() && !status) setItems(bootTodos);
+  },[embedded,bootTodos,query,status]);
   const filters=[["","전체"],["todo","할 일"],["doing","진행 중"],["done","완료"]];
   return (
     <div className="fade">
       <div className="pad row between" style={{marginTop:8}}>
-        <button className="iconbtn" onClick={back}>{I.back({})}</button>
-        <div className="h-eyebrow" style={{marginTop:0}}>할 일 전체</div>
+        {!embedded ? (
+          <button className="iconbtn" onClick={back}>{I.back({})}</button>
+        ) : (
+          <div style={{width:42}}/>
+        )}
+        <div className="h-eyebrow" style={{marginTop:0}}>할 일 목록</div>
         <div style={{width:42}}/>
       </div>
+      {embedded && (
+        <div className="pad" style={{paddingTop:0}}>
+          <div className="h-title" style={{fontSize:22}}>할 일 · 검색</div>
+          <div className="small" style={{marginTop:6,lineHeight:1.55}}>
+            완료된 할 일도 여기서 찾을 수 있어요. 투데이에서는 미완료만 보여요.
+          </div>
+        </div>
+      )}
       <div className="pad" style={{marginTop:6}}>
         <div className="row" style={{gap:9,background:"#F4F1EA",borderRadius:12,padding:"11px 13px",color:"var(--muted)"}}>
           {I.search({width:17,height:17})}
@@ -3591,7 +3617,7 @@ function TodoArchive({back,openDetail,meetings=[]}){
             {q.trim()||status ? "검색 결과가 없어요" : "등록된 할 일이 없어요"}
           </div>
         )}
-        <NestedTodoList todos={items} meetings={meetings} onRefresh={reload} openDetail={openDetail} showAdd/>
+        <NestedTodoList todos={items} meetings={meetings} onRefresh={()=>{ reload(); onRefresh?.(); }} openDetail={openDetail} showAdd groupBySource hideCompletedGroups={false}/>
       </div>
     </div>
   );
