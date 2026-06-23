@@ -2190,19 +2190,57 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
   const [meeting,setMeeting]=useState(seed);
   const [meetingTodos,setMeetingTodos]=useState([]);
   const [loading,setLoading]=useState(!!seed.id);
+  const [retrying,setRetrying]=useState(false);
   const [metaTags,setMetaTags]=useState(seed.tags||[]);
   const [category,setCategory]=useState(seed.category||"");
-  useEffect(()=>{
-    if(!seed.id){ setLoading(false); return; }
-    setLoading(true);
-    api.getMeeting(seed.id).then((m)=>{
+  const reloadMeeting=useCallback(()=>{
+    if(!seed.id) return Promise.resolve();
+    return api.getMeeting(seed.id).then((m)=>{
       const ui=meetingToUi(m);
       setMeeting(ui);
       setMetaTags(ui.tags||[]);
       setCategory(ui.category||"");
       setMeetingTodos((m.todos||[]).map(todoToUi));
-    }).catch(()=>{}).finally(()=>setLoading(false));
+      return ui;
+    }).catch(()=>{});
   },[seed.id]);
+  useEffect(()=>{
+    if(!seed.id){ setLoading(false); return; }
+    setLoading(true);
+    reloadMeeting().finally(()=>setLoading(false));
+  },[seed.id, reloadMeeting]);
+  useEffect(()=>{
+    if(!meeting.isProcessing || !meeting.id) return;
+    let cancelled=false;
+    const tick=async ()=>{
+      const ui=await reloadMeeting();
+      if(cancelled || !ui) return;
+      if(ui.processStatus==="done"){
+        removePendingMeeting(meeting.id);
+        toastSuccess("녹음 변환이 완료됐어요");
+        refreshTodos?.();
+      }else if(ui.processStatus==="error"){
+        removePendingMeeting(meeting.id);
+        toastError(friendlyAiError(ui.processError));
+      }
+    };
+    tick();
+    const iv=setInterval(tick,4000);
+    return ()=>{ cancelled=true; clearInterval(iv); };
+  },[meeting.id, meeting.isProcessing, reloadMeeting, refreshTodos]);
+  const retryConversion=async ()=>{
+    if(!meeting.id || retrying) return;
+    setRetrying(true);
+    try{
+      await api.retryMeeting(meeting.id);
+      addPendingMeeting(meeting.id);
+      setMeeting((p)=>({ ...p, isProcessing:true, isFailed:false, processError:"", oneLine:"녹음 변환 중…", t:"녹음 변환 중…" }));
+      toastSuccess("다시 변환을 시작했어요");
+      refreshTodos?.();
+    }catch(e){
+      notifyError(e, friendlyAiError(e.message)||"다시 시도 실패");
+    }finally{ setRetrying(false); }
+  };
   const patchMeeting=async (body)=>{
     if(!meeting.id) return;
     const m=await api.updateMeeting(meeting.id,body);
@@ -2246,8 +2284,19 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
         {meeting.isFailed && (
           <div className="card small" style={{padding:14,marginBottom:14,lineHeight:1.55,background:"#FCEAE6",border:"1px solid #F0D4C8",color:"#B85C4A"}}>
             <div style={{fontWeight:700,marginBottom:6}}>변환에 실패했어요</div>
-            {meeting.processError || "알 수 없는 오류"}
+            <div>{friendlyAiError(meeting.processError) || "알 수 없는 오류"}</div>
             {meeting.hasAudio && <div style={{marginTop:8,color:"var(--muted)"}}>녹음 파일은 저장되어 있어요.</div>}
+            {(meeting.hasAudio || meeting.mediaKey) && (
+              <button
+                type="button"
+                className="btn btn-accent"
+                style={{width:"100%",marginTop:14,padding:12,fontSize:14}}
+                disabled={retrying}
+                onClick={retryConversion}
+              >
+                {retrying ? "다시 시도 중…" : "다시 변환하기"}
+              </button>
+            )}
           </div>
         )}
         {loading && <div className="small" style={{textAlign:"center",padding:12}}>불러오는 중…</div>}

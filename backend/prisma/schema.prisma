@@ -104,6 +104,7 @@ model Meeting {           // 기록 (녹음/통화/사진)
   tags        String[]  @default([])      // 사용자 정의 태그
   processStatus String  @default("done")  // processing | done | error
   processError  String?                   // 변환 실패 메시지
+  processMeta   Json?                     // 변환 요청 메타 (재시도용)
   eventId     String?
   event       Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
