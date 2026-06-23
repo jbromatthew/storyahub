@@ -52,7 +52,7 @@ const CSS = `
 .screen{flex:1;overflow-y:auto;overflow-x:hidden;padding:8px 0 calc(76px + env(safe-area-inset-bottom,0px));scroll-behavior:smooth;}
 .screen::-webkit-scrollbar{width:6px;}
 .screen::-webkit-scrollbar-thumb{background:#D8D0C4;border-radius:3px;}
-.screen-kb{overflow:hidden;padding:0;display:flex;flex-direction:column;flex:1;min-height:0;background:#fff;}
+.screen-kb{overflow:hidden;padding:0;display:flex;flex-direction:column;flex:1;min-height:0;background:#F4F5F7;}
 .screen-kb>.kbe-wrap,.screen-kb>.kbe-read{flex:1;min-height:0;}
 .pad{padding:0 20px;}
 .content-max{max-width:840px;margin:0 auto;width:100%;}
@@ -128,15 +128,12 @@ const CSS = `
   .kbh-fab{left:auto;right:32px;bottom:32px;transform:none;}
   .screen .pad{max-width:840px;margin-left:auto;margin-right:auto;}
   .kbe-inner{max-width:720px;margin:0 auto;width:100%;}
-  .kbe-bar{padding:14px 32px;}
-  .kbe-bar-inner{display:flex;align-items:center;justify-content:space-between;gap:12px;}
-  .kbe-scroll{padding:0 32px 28px;}
-  .kbe-cover{height:220px;margin-top:20px;border-radius:18px;}
+  .kbe-bar{padding:12px 24px;}
+  .kbe-scroll{padding:20px 24px 28px;}
+  .kbe-sheet{padding:36px 40px 48px;}
   .kbe-title{font-size:32px;}
-  .kbe-toolbar{padding:12px 32px;}
-  .kbe-toolbar-inner{display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap;}
-  .kbe-tool{flex-direction:row;gap:6px;font-size:13px;padding:10px 14px;}
-  .kbe-menu{grid-template-columns:repeat(6,minmax(0,1fr));}
+  .kbe-toolbar{padding:8px 24px;}
+  .kbe-toolbar-inner{justify-content:center;}
   .kbe-read-top{padding:14px 32px;}
   .kbe-read .kbe-cover-read{height:280px;margin:0;}
   .kbe-read-body{max-width:720px;margin:0 auto;padding:24px 32px 48px;}
@@ -146,11 +143,10 @@ const CSS = `
   .kbh-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
   .kbh-feat .cover{height:180px;}
   .kbe-inner{max-width:760px;}
-  .kbe-scroll{padding:0 48px 36px;}
-  .kbe-bar{padding:16px 48px;}
-  .kbe-toolbar{padding:14px 48px;}
-  .kbe-cover{height:280px;}
-  .kbe-title{font-size:36px;}
+  .kbe-scroll{padding:24px 32px 32px;}
+  .kbe-bar{padding:14px 32px;}
+  .kbe-toolbar{padding:8px 32px;}
+  .kbe-title{font-size:34px;}
   .kbe-read-top{padding:16px 48px;}
   .kbe-read-body{padding:28px 48px 56px;max-width:760px;}
 }
@@ -311,48 +307,76 @@ const CSS = `
   background:var(--accent);color:#fff;border:none;font-family:inherit;font-weight:800;font-size:14px;
   padding:14px 20px;border-radius:30px;cursor:pointer;box-shadow:0 12px 28px -6px rgba(221,94,57,.55);z-index:8;}
 
-/* kb blog editor */
-.kbe-wrap,.kbe-read{display:flex;flex-direction:column;height:100%;width:100%;min-height:0;background:#fff;}
+/* kb blog editor — 네이버 블로그형 작성 */
+.kbe-wrap,.kbe-read{display:flex;flex-direction:column;height:100%;width:100%;min-height:0;background:#F4F5F7;}
 .kbe-inner{width:100%;max-width:100%;margin:0 auto;}
-.kbe-bar{flex:0 0 auto;background:#fff;z-index:6;border-bottom:1px solid var(--line);padding:10px 20px;}
+.kbe-bar{flex:0 0 auto;background:#fff;z-index:6;border-bottom:1px solid #E8EAED;padding:10px 16px;}
 .kbe-bar-inner{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;}
-.kbe-actions{display:flex;align-items:center;gap:6px;flex-shrink:0;}
-.kbe-pub{border:none;background:var(--accent);color:#fff;font-weight:800;font-size:13px;font-family:inherit;padding:9px 14px;border-radius:11px;cursor:pointer;white-space:nowrap;}
-.kbe-draft{border:none;background:transparent;color:var(--muted);font-weight:700;font-size:13px;font-family:inherit;cursor:pointer;padding:8px;white-space:nowrap;}
-.kbe-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 20px 20px;}
+.kbe-bar-title{flex:1;min-width:0;font-size:15px;font-weight:700;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kbe-actions{display:flex;align-items:center;gap:4px;flex-shrink:0;}
+.kbe-settings{border:none;background:transparent;color:#666;font-size:18px;line-height:1;cursor:pointer;padding:8px;border-radius:10px;font-family:inherit;}
+.kbe-settings.on,.kbe-settings:hover{background:#F4F5F7;color:#111;}
+.kbe-pub{border:none;background:#03C75A;color:#fff;font-weight:700;font-size:14px;font-family:inherit;padding:9px 16px;border-radius:8px;cursor:pointer;white-space:nowrap;}
+.kbe-pub:disabled{opacity:.55;cursor:wait;}
+.kbe-draft{border:none;background:transparent;color:#888;font-weight:600;font-size:13px;font-family:inherit;cursor:pointer;padding:8px 10px;white-space:nowrap;}
+.kbe-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 16px 24px;}
 .kbe-scroll::-webkit-scrollbar{width:6px;}
 .kbe-scroll::-webkit-scrollbar-thumb{background:#D8D0C4;border-radius:3px;}
-.kbe-cover{margin-top:12px;height:150px;border-radius:16px;border:1.5px dashed var(--line);background:var(--paper);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--muted);cursor:pointer;overflow:hidden;}
+.kbe-sheet{background:#fff;border:1px solid #E8EAED;border-radius:12px;min-height:min(72vh,680px);padding:28px 24px 40px;box-shadow:0 1px 2px rgba(0,0,0,.04);}
+.kbe-meta-panel{border-top:1px solid #E8EAED;background:#FAFAFA;padding:16px 20px calc(16px + env(safe-area-inset-bottom,0px));flex:0 0 auto;max-height:min(46vh,420px);overflow-y:auto;}
+.kbe-meta-panel .kbe-meta{margin-top:0;}
+.kbe-meta-h{font-size:12px;font-weight:700;color:#888;margin:0 0 10px;letter-spacing:.02em;}
+.kbe-cover{height:120px;border-radius:10px;border:1px dashed #DADCE0;background:#FAFAFA;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#888;cursor:pointer;overflow:hidden;}
+.kbe-cover.compact{height:88px;flex-direction:row;gap:12px;padding:12px;text-align:left;}
 .kbe-cover img{width:100%;height:100%;object-fit:cover;}
+.kbe-cover.compact img{width:64px;height:64px;border-radius:8px;flex:0 0 auto;}
 .kbe-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;align-items:center;}
-.kbe-title{display:block;width:100%;min-height:34px;font-size:26px;font-weight:800;letter-spacing:-.03em;line-height:1.3;
-  margin:16px 0 4px;outline:none;word-break:break-word;}
-.kbe-title:empty::before{content:attr(data-ph);color:#C8C1B5;display:block;pointer-events:none;}
-.kbe-titleline{height:1px;background:var(--line);margin-bottom:10px;}
-.kbe-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
-.kbe-addzone{display:flex;align-items:center;gap:8px;color:#CBC4B7;padding:4px 0;cursor:pointer;}
-.kbe-addzone:hover{color:var(--accent-deep);}
-.kbe-addbtn{width:22px;height:22px;border-radius:7px;border:1px dashed var(--line);background:#fff;
-  display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
-.kbe-menu{background:#fff;border:1px solid var(--line);border-radius:14px;padding:6px;margin:6px 0;
-  box-shadow:0 8px 24px rgba(20,16,12,.10);display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;}
-.kbe-mi{display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 6px;border-radius:10px;
-  border:none;background:transparent;cursor:pointer;font-family:inherit;font-size:11.5px;font-weight:700;color:var(--ink);}
-.kbe-mi:hover{background:var(--accent-soft);color:var(--accent-deep);}
-.kbe-blk{position:relative;padding:4px 0;}
-.kbe-blk .del{position:absolute;top:4px;right:0;width:26px;height:26px;border-radius:8px;border:1px solid var(--line);
-  background:#fff;color:var(--muted);cursor:pointer;opacity:0;transition:.12s;display:flex;align-items:center;justify-content:center;font-size:12px;}
-.kbe-blk:hover .del{opacity:1;}
-.kbe-toolbar{flex:0 0 auto;background:#fff;border-top:1px solid var(--line);
-  padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));box-shadow:0 -4px 16px rgba(20,16,12,.06);}
-.kbe-toolbar-inner{display:flex;align-items:center;gap:2px;overflow-x:auto;}
+.kbe-title{display:block;width:100%;min-height:40px;font-size:28px;font-weight:700;letter-spacing:-.025em;line-height:1.35;
+  margin:0 0 20px;outline:none;word-break:break-word;color:#111;}
+.kbe-title:empty::before{content:attr(data-ph);color:#B0B8C1;display:block;pointer-events:none;font-weight:700;}
+.kbe-titleline{display:none;}
+.kbe-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px;}
+.kbe-body{min-height:240px;}
+.kbe-insert{position:relative;display:flex;align-items:center;justify-content:center;height:0;margin:0;opacity:0;transition:opacity .15s;z-index:2;}
+.kbe-insert.open,.kbe-blk-wrap:hover .kbe-insert{opacity:1;height:28px;margin:2px 0;}
+.kbe-insert-line{position:absolute;left:0;right:0;top:50%;height:1px;background:#E8EAED;}
+.kbe-insert-btn{position:relative;width:24px;height:24px;border-radius:50%;border:1px solid #DADCE0;background:#fff;color:#666;
+  display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.08);}
+.kbe-insert-btn:hover{border-color:#03C75A;color:#03C75A;}
+.kbe-menu{background:#fff;border:1px solid #E8EAED;border-radius:12px;padding:8px;margin:4px 0 8px;
+  box-shadow:0 8px 24px rgba(0,0,0,.10);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;}
+.kbe-mi{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 6px;border-radius:8px;
+  border:none;background:transparent;cursor:pointer;font-family:inherit;font-size:11px;font-weight:600;color:#333;}
+.kbe-mi:hover{background:#F4F5F7;color:#03C75A;}
+.kbe-blk-wrap{position:relative;}
+.kbe-blk{position:relative;padding:2px 0;}
+.kbe-blk .del{position:absolute;top:2px;right:-4px;width:24px;height:24px;border-radius:6px;border:none;
+  background:transparent;color:#AAA;cursor:pointer;opacity:0;transition:.12s;display:flex;align-items:center;justify-content:center;font-size:14px;}
+.kbe-blk-wrap:hover .del{opacity:1;}
+.kbe-blk .del:hover{background:#FFF0F0;color:#E03E3E;}
+.kbe-toolbar{flex:0 0 auto;background:#fff;border-top:1px solid #E8EAED;
+  padding:6px 8px calc(8px + env(safe-area-inset-bottom,0px));box-shadow:0 -2px 12px rgba(0,0,0,.05);}
+.kbe-toolbar-inner{display:flex;align-items:flex-end;justify-content:flex-start;gap:0;overflow-x:auto;max-width:760px;margin:0 auto;}
 .kbe-toolbar-inner::-webkit-scrollbar{display:none;}
 .kbe-toolbar::-webkit-scrollbar{display:none;}
-.kbe-tool{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:3px;border:none;background:transparent;
-  font-family:inherit;font-size:10.5px;font-weight:700;color:var(--ink);cursor:pointer;padding:7px 11px;border-radius:10px;}
-.kbe-tool:hover{background:var(--accent-soft);color:var(--accent-deep);}
-.kbe-tdiv{width:1px;height:26px;background:var(--line);margin:0 4px;flex:0 0 auto;}
+.kbe-tool{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:4px;border:none;background:transparent;
+  font-family:inherit;font-size:11px;font-weight:600;color:#444;cursor:pointer;padding:8px 12px;border-radius:8px;min-width:52px;}
+.kbe-tool-ic{font-size:20px;line-height:1;}
+.kbe-tool:hover{background:#F4F5F7;color:#111;}
+.kbe-tool.on{background:#E8F8EF;color:#03A84D;}
+.kbe-tdiv{width:1px;height:32px;background:#E8EAED;margin:0 2px;flex:0 0 auto;align-self:center;}
+@media (hover:none){
+  .kbe-insert{opacity:.4;height:24px;margin:2px 0;}
+  .kbe-blk .del{opacity:.5;}
+}
+@media (max-width:520px){
+  .kbe-bar-title{display:none;}
+  .kbe-draft{font-size:12px;padding:8px 6px;}
+  .kbe-pub{font-size:13px;padding:8px 12px;}
+  .kbe-sheet{padding:20px 16px 32px;border-radius:0;border-left:none;border-right:none;}
+  .kbe-scroll{padding:0 0 16px;}
+}
 .kbe-read{overflow:hidden;}
 .kbe-read-top{padding:10px 20px;border-bottom:1px solid var(--line);flex:0 0 auto;}
 .kbe-read-top-inner{display:flex;align-items:center;justify-content:space-between;gap:8px;}
@@ -1603,6 +1627,19 @@ function ClientMap({open,onRefresh}){
   );
 }
 
+function CardImageThumb({mediaKey}){
+  const [url,setUrl]=useState(null);
+  useEffect(()=>{
+    if(!mediaKey){ setUrl(null); return; }
+    let alive=true;
+    mediaUrl(mediaKey).then(u=>{ if(alive) setUrl(u); }).catch(()=>{ if(alive) setUrl(null); });
+    return ()=>{ alive=false; };
+  },[mediaKey]);
+  useEffect(()=>()=>{ if(url?.startsWith("blob:")) URL.revokeObjectURL(url); },[url]);
+  if(!mediaKey||!url) return null;
+  return <img src={url} alt="명함" style={{width:"100%",borderRadius:12,maxHeight:180,objectFit:"contain",background:"#f5f5f5",marginBottom:12}}/>;
+}
+
 function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,onUserUpdated,contactPresets={groups:[],tags:[]}}){
   const mt=T(seg,"meeting");
   const CLIENTS=getClients();
@@ -1615,12 +1652,23 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
   const [addingDeal,setAddingDeal]=useState(false);
   const [dealSaving,setDealSaving]=useState(false);
   const [dealForm,setDealForm]=useState({title:"",stage:"리드",supplyAmount:"",quoteFile:null});
+  const [editingInfo,setEditingInfo]=useState(false);
+  const [infoSaving,setInfoSaving]=useState(false);
+  const [profile,setProfile]=useState({
+    person:c.person||"", co:c.co||"", phone:c.phone||"", email:c.email||"", area:c.area||"",
+  });
+  const [draft,setDraft]=useState(profile);
   const reload=()=>api.getContact(c.id).then(setDetail).catch(()=>setDetail(null));
   useEffect(()=>{
     setLoading(true);
     reload().finally(()=>setLoading(false));
   },[c.id]);
   useEffect(()=>{ setTags(c.tags||[]); setGrp(c.group||"미분류"); },[c.id,c.tags,c.group]);
+  useEffect(()=>{
+    const next={ person:c.person||"", co:c.co||"", phone:c.phone||"", email:c.email||"", area:c.area||"" };
+    setProfile(next);
+    if(!editingInfo) setDraft(next);
+  },[c.id,c.person,c.co,c.phone,c.email,c.area,editingInfo]);
   const patchTags=async (next)=>{
     setTags(next);
     try{ await api.updateContact(c.id,{ tags: next }); onRefresh?.(); }
@@ -1632,6 +1680,42 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
       await api.updateContact(c.id,{ group: next==="미분류"?null:next });
       onRefresh?.();
     }catch(e){ notifyError(e, e.message); setGrp(c.group||"미분류"); }
+  };
+  const cardKey=c._raw?.cardImageKey||detail?.cardImageKey;
+  const profileInput=(k,label,placeholder="")=>(
+    <div style={{marginBottom:12}}>
+      <div className="small" style={{fontWeight:700,marginBottom:5}}>{label}</div>
+      <input value={draft[k]} onChange={e=>setDraft(p=>({...p,[k]:e.target.value}))} placeholder={placeholder}
+        style={{width:"100%",border:"1px solid var(--line)",borderRadius:12,padding:"12px 13px",
+          fontFamily:"inherit",fontSize:14,color:"var(--ink)",background:"#fff",outline:"none"}}/>
+    </div>
+  );
+  const startEditInfo=()=>{ setDraft(profile); setEditingInfo(true); };
+  const cancelEditInfo=()=>{ setDraft(profile); setEditingInfo(false); };
+  const saveProfile=async ()=>{
+    setInfoSaving(true);
+    try{
+      await api.updateContact(c.id,{
+        person: draft.person.trim()||null,
+        company: draft.co.trim()||null,
+        phone: draft.phone.trim()||null,
+        email: draft.email.trim()||null,
+        address: draft.area.trim()||null,
+      });
+      const saved={
+        person: draft.person.trim(),
+        co: draft.co.trim(),
+        phone: draft.phone.trim(),
+        email: draft.email.trim(),
+        area: draft.area.trim(),
+      };
+      setProfile(saved);
+      setEditingInfo(false);
+      toastSuccess("연락처 정보를 저장했어요");
+      onRefresh?.();
+      reload();
+    }catch(e){ notifyError(e, e.message); }
+    finally{ setInfoSaving(false); }
   };
   const pickQuoteFile=async ()=>{
     try{
@@ -1700,6 +1784,7 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
   const g=grade(c);
   const by=introducedBy(c);
   const kids=introduced(c);
+  const displayInit=(profile.co||profile.person||"?")[0];
   const deals=detail?.deals||[];
   const deal=deals[0];
   const upcoming=(detail?.upcomingEvents||[]).map(eventToUi);
@@ -1729,21 +1814,74 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
       </div>
       <div className="pad" style={{marginTop:14,textAlign:"center"}}>
         <div style={{position:"relative",width:64,margin:"0 auto"}}>
-          <div className="avatar" style={{width:64,height:64,borderRadius:22,margin:"0 auto",fontSize:22}}>{c.init}</div>
+          <div className="avatar" style={{width:64,height:64,borderRadius:22,margin:"0 auto",fontSize:22}}>{displayInit}</div>
           {g!=="-"&&<span style={{position:"absolute",right:-6,bottom:-2,width:24,height:24,borderRadius:"50%",
             background:GRADE_COLOR[g],color:"#fff",fontSize:12,fontWeight:800,
             display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid var(--paper)"}}>{g}</span>}
         </div>
-        <div className="h-title" style={{marginTop:12}}>{c.person}</div>
-        <div className="small" style={{marginTop:2}}>{c.co}</div>
+        {!editingInfo ? (
+          <>
+            <div className="row" style={{justifyContent:"center",gap:8,marginTop:12,alignItems:"center"}}>
+              <div className="h-title">{profile.person||"이름 없음"}</div>
+              <button type="button" className="iconbtn" style={{width:32,height:32}} onClick={startEditInfo} aria-label="연락처 정보 수정">
+                {I.edit({width:16,height:16})}
+              </button>
+            </div>
+            <div className="small" style={{marginTop:2}}>{profile.co||"회사 미입력"}</div>
+          </>
+        ) : (
+          <div style={{marginTop:12,textAlign:"left"}}>
+            {profileInput("person","이름","이름")}
+            {profileInput("co","회사","회사명")}
+          </div>
+        )}
         {by && <div className="small" style={{marginTop:6,display:"inline-flex",alignItems:"center",gap:4,
           background:"#fff",border:"1px solid var(--line)",borderRadius:20,padding:"4px 10px"}}>
           {I.users({width:13,height:13})} {by.person} 님의 소개</div>}
         <div className="row" style={{gap:10,marginTop:16}}>
           <button className="btn btn-accent" style={{flex:1,padding:13,display:"flex",justifyContent:"center",gap:7}}
-            onClick={()=>c.phone&&window.open(`tel:${c.phone.replace(/\s/g,"")}`)} disabled={!c.phone}>{I.phone({})} 전화</button>
+            onClick={()=>profile.phone&&window.open(`tel:${profile.phone.replace(/\s/g,"")}`)} disabled={!profile.phone}>{I.phone({})} 전화</button>
           <button className="btn btn-ghost" style={{flex:1,padding:13}}
-            onClick={()=>startRec({ contactIds: [c.id], contactId: c.id, companyName: c.co || c.person })}>{mt}</button>
+            onClick={()=>startRec({ contactIds: [c.id], contactId: c.id, companyName: profile.co || profile.person })}>{mt}</button>
+        </div>
+      </div>
+
+      <div className="pad">
+        <div className="card" style={{padding:16}}>
+          <div className="row between" style={{marginBottom:editingInfo?12:0}}>
+            <div className="section-h" style={{marginTop:0}}>연락처 정보</div>
+            {!editingInfo && (
+              <button type="button" className="chip" style={{color:"var(--accent-deep)",fontSize:12}} onClick={startEditInfo}>
+                {I.edit({width:13,height:13})} 수정
+              </button>
+            )}
+          </div>
+          {cardKey && !editingInfo && <CardImageThumb mediaKey={cardKey}/>}
+          {editingInfo ? (
+            <>
+              {profileInput("phone","전화","010-0000-0000")}
+              {profileInput("email","이메일","email@example.com")}
+              {profileInput("area","주소","주소")}
+              <div className="small" style={{display:"flex",alignItems:"center",gap:5,marginTop:-2,marginBottom:14,color:"var(--accent-deep)"}}>
+                {I.pin({})} 주소를 바꾸면 위치 정보도 다시 맞춰요
+              </div>
+              <div className="row" style={{gap:10}}>
+                <button type="button" className="btn btn-ghost" style={{flex:1,padding:12}} onClick={cancelEditInfo} disabled={infoSaving}>취소</button>
+                <button type="button" className="btn btn-accent" style={{flex:1,padding:12}} onClick={saveProfile} disabled={infoSaving}>
+                  {infoSaving?"저장 중…":"저장"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              {profile.phone && <div className="brk"><span className="small">전화</span><span style={{fontWeight:600}}>{profile.phone}</span></div>}
+              {profile.email && <div className="brk"><span className="small">이메일</span><span style={{fontWeight:600}}>{profile.email}</span></div>}
+              {profile.area && <div className="brk"><span className="small">주소</span><span style={{fontWeight:600,textAlign:"right",maxWidth:"62%"}}>{profile.area}</span></div>}
+              {!profile.phone && !profile.email && !profile.area && !cardKey && (
+                <div className="small" style={{padding:"8px 0",lineHeight:1.5}}>전화·이메일·주소가 없어요. 수정 버튼으로 추가할 수 있어요.</div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -2004,7 +2142,7 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
           );})}
         </div>
       </div>
-      <DeleteBar label={c.person||c.co||"인맥"} onDelete={()=>api.deleteContact(c.id)} afterDelete={onDeleted}/>
+      <DeleteBar label={profile.person||profile.co||"인맥"} onDelete={()=>api.deleteContact(c.id)} afterDelete={onDeleted}/>
     </div>
   );
 }

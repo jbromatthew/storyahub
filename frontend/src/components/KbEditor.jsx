@@ -201,41 +201,42 @@ function BlockRow({
   const isEditable = editableTypes.includes(b.type);
   const ph =
     b.type === "h"
-      ? "제목"
+      ? "소제목"
       : b.type === "todo"
         ? "할 일"
         : b.type === "bullet"
           ? "목록 항목"
           : b.type === "quote"
-            ? "콜아웃"
+            ? "인용구"
             : b.type === "code"
               ? "// 코드"
-              : "입력하거나 / 로 블록 추가";
+              : "본문에 내용을 입력하세요.";
 
   const styleFor = () => {
-    if (b.type === "h") return { fontWeight: 800, fontSize: 20, lineHeight: 1.35, letterSpacing: "-.01em", padding: "14px 0 4px" };
+    if (b.type === "h") return { fontWeight: 700, fontSize: 22, lineHeight: 1.4, letterSpacing: "-.02em", padding: "18px 0 6px", color: "#111" };
     if (b.type === "quote")
       return {
-        fontSize: 14,
-        fontWeight: 600,
-        lineHeight: 1.5,
-        color: "var(--accent-deep)",
-        borderLeft: "3px solid var(--accent)",
-        background: "var(--accent-soft)",
-        borderRadius: "0 12px 12px 0",
-        padding: "12px 14px",
+        fontSize: 15,
+        fontWeight: 500,
+        lineHeight: 1.65,
+        color: "#555",
+        borderLeft: "3px solid #DADCE0",
+        background: "#FAFAFA",
+        borderRadius: "0 8px 8px 0",
+        padding: "14px 16px",
       };
     if (b.type === "code")
       return {
-        background: "#23201B",
-        color: "#EDE7DA",
-        borderRadius: 12,
+        background: "#F4F5F7",
+        color: "#333",
+        borderRadius: 8,
         padding: 14,
-        fontSize: 12.5,
+        fontSize: 13,
         fontFamily: "ui-monospace,Menlo,monospace",
         whiteSpace: "pre-wrap",
+        border: "1px solid #E8EAED",
       };
-    return { fontSize: 16, lineHeight: 1.75, color: "#2C2A26", padding: "7px 0" };
+    return { fontSize: 16, lineHeight: 1.85, color: "#333", padding: "4px 0" };
   };
 
   const editableRef = useRef(null);
@@ -360,14 +361,18 @@ function BlockRow({
       )}
 
       {b.type === "image" && (
-        <div className="imgblk" style={{ cursor: "pointer", padding: b.mediaKey ? 12 : 26 }} onClick={() => onUpload(i, "image")}>
+        <div className="imgblk" style={{ cursor: "pointer", padding: b.mediaKey ? 0 : 20, border: b.mediaKey ? "none" : "1px dashed #DADCE0", borderRadius: 8, background: b.mediaKey ? "transparent" : "#FAFAFA" }} onClick={() => onUpload(i, "image")}>
           {imageUrls[b.mediaKey] ? (
-            <img src={imageUrls[b.mediaKey]} alt="" style={{ maxWidth: "100%", borderRadius: 12, display: "block", margin: "0 auto" }} />
+            <img src={imageUrls[b.mediaKey]} alt="" style={{ maxWidth: "100%", borderRadius: 8, display: "block", margin: "8px 0" }} />
           ) : (
-            <div style={{ fontSize: 28, color: "var(--accent-deep)" }}>🖼</div>
+            <div style={{ fontSize: 24, color: "#888" }}>🖼</div>
           )}
-          <div style={{ fontSize: 13, fontWeight: 700, marginTop: 8 }}>{b.mediaKey ? "탭하여 변경" : "사진 · 이미지 추가"}</div>
-          {!b.mediaKey && <div className="small" style={{ marginTop: 4 }}>PNG, JPG, WEBP</div>}
+          {!b.mediaKey && (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 600, marginTop: 8, color: "#666" }}>사진 추가</div>
+              <div className="small" style={{ marginTop: 4, color: "#AAA" }}>PNG, JPG, WEBP</div>
+            </>
+          )}
         </div>
       )}
 
@@ -401,10 +406,19 @@ function BlockRow({
 const BLOG_MENU = [
   ["text", "본문"],
   ["h", "소제목"],
-  ["image", "이미지"],
+  ["image", "사진"],
   ["file", "파일"],
   ["quote", "인용"],
   ["divider", "구분선"],
+];
+
+const TOOLBAR_ITEMS = [
+  { type: "image", ic: "🖼", label: "사진" },
+  { type: "file", ic: "📎", label: "파일" },
+  { type: "h", ic: "T", label: "소제목" },
+  { type: "quote", ic: "❝", label: "인용" },
+  { type: "divider", ic: "—", label: "구분선" },
+  { type: "text", ic: "¶", label: "본문" },
 ];
 
 function BookSearchSheet({ onClose, onPick }) {
@@ -827,6 +841,7 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
   const [focusIdx, setFocusIdx] = useState(-1);
   const [slash, setSlash] = useState(null);
   const [menuAt, setMenuAt] = useState(null);
+  const [metaOpen, setMetaOpen] = useState(false);
   const [pendingUpload, setPendingUpload] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -1001,7 +1016,16 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
     }
   };
 
-  const toolbarInsert = (type) => insertAt(blocks.length, type);
+  const toolbarInsert = (type) => {
+    const at = focusIdx >= 0 ? focusIdx + 1 : blocks.length;
+    insertAt(at, type);
+  };
+
+  const toggleInsertMenu = (idx) => setMenuAt((cur) => (cur === idx ? null : idx));
+
+  const metaSummary = [kbSectionLabel(section), cat || null, tags.length ? `태그 ${tags.length}` : null, coverKey ? "대표이미지" : null]
+    .filter(Boolean)
+    .join(" · ");
 
   const doSave = async (silent = false) => {
     if (saving) return;
@@ -1054,10 +1078,20 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
     <div className="fade kbe-wrap">
       <div className="kbe-bar">
         <div className="kbe-inner kbe-bar-inner">
-          <button type="button" className="iconbtn" onClick={back}>←</button>
+          <button type="button" className="iconbtn" onClick={back} aria-label="닫기" style={{ border: "none", background: "transparent", width: 36, height: 36 }}>←</button>
+          <div className="kbe-bar-title">{isNew ? "글쓰기" : (article?.t || "글 수정")}</div>
           <div className="kbe-actions">
+            <button
+              type="button"
+              className={"kbe-settings" + (metaOpen ? " on" : "")}
+              onClick={() => setMetaOpen((v) => !v)}
+              aria-label="글 설정"
+              title="글 설정"
+            >
+              ⚙
+            </button>
             {!isNew && (
-              <button type="button" className="btn btn-ghost" style={{ padding: "8px 10px", fontSize: 12, color: "var(--accent-deep)" }} onClick={handleDelete}>
+              <button type="button" className="kbe-draft" style={{ color: "#E03E3E" }} onClick={handleDelete}>
                 삭제
               </button>
             )}
@@ -1073,166 +1107,200 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
 
       <div className="kbe-scroll">
         <div className="kbe-inner">
-        {isNew && (
-          <div className="seg" style={{ marginTop: 16, marginBottom: 4 }}>
-            {KB_SECTIONS.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                className={section === s.id ? "on" : ""}
-                onClick={() => {
-                  setSection(s.id);
-                  setSaved(false);
-                  if (s.id === "book" && blocks.length === 1 && blocks[0].type === "text" && !blocks[0].val) {
-                    setBlocks([{ type: "h", val: "독후감" }, { type: "text", val: "" }]);
-                  }
-                }}
-              >
-                {s.icon} {s.label}
-              </button>
-            ))}
-          </div>
-        )}
+          <div className="kbe-sheet">
+            <div
+              ref={titleRef}
+              className="editable kbe-title"
+              contentEditable
+              suppressContentEditableWarning
+              data-ph={isBook ? "책 제목을 입력하세요" : "제목"}
+              onFocus={() => setFocusIdx(-1)}
+            />
 
-        <div className="kbe-cover" onClick={uploadCover} style={isBook ? { aspectRatio: "2/3", maxHeight: 320, margin: "16px auto 0", maxWidth: 220 } : undefined}>
-          {coverKey && imageUrls[coverKey] ? (
-            <img src={imageUrls[coverKey]} alt="" style={isBook ? { objectFit: "cover" } : undefined} />
-          ) : (
-            <>
-              <div style={{ fontSize: 28, color: "var(--accent-deep)" }}>{isBook ? "📚" : "🖼"}</div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>{isBook ? "책 표지 추가" : "대표 이미지 추가"}</div>
-              <div className="small">{isBook ? "표지가 썸네일로 보여요" : "글 상단에 표시돼요 (선택)"}</div>
-            </>
-          )}
-        </div>
+            <div className="kbe-body">
+              {blocks.map((b, i) => (
+                <React.Fragment key={i}>
+                  <div className={"kbe-insert" + (menuAt === i ? " open" : "")}>
+                    <div className="kbe-insert-line" />
+                    <button type="button" className="kbe-insert-btn" aria-label="블록 추가" onClick={() => toggleInsertMenu(i)}>+</button>
+                  </div>
+                  {menuAt === i && (
+                    <div className="kbe-menu">
+                      {BLOG_MENU.map(([type, label]) => (
+                        <button key={type} type="button" className="kbe-mi" onClick={() => insertAt(i, type)}>{label}</button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="kbe-blk-wrap">
+                    <div className="kbe-blk">
+                      <button type="button" className="del" aria-label="블록 삭제" onClick={() => deleteBlock(i)}>✕</button>
+                      {slash?.idx === i && <SlashMenu filter={slash.filter} onPick={pickSlash} onClose={() => setSlash(null)} />}
+                      <BlockRow
+                        b={b}
+                        i={i}
+                        focused={focusIdx === i}
+                        imageUrls={{ ...imageUrls, ...(b.preview ? { [b.mediaKey]: b.preview } : {}) }}
+                        onFocus={setFocusIdx}
+                        onChange={handleInput}
+                        onKeyDown={handleKeyDown}
+                        onDelete={deleteBlock}
+                        onMove={moveBlock}
+                        onUpload={uploadBlockMedia}
+                        onToggleTodo={(idx) => updateBlock(idx, { done: !blocks[idx].done })}
+                        onTableChange={(idx, rows) => updateBlock(idx, { rows })}
+                      />
+                    </div>
+                  </div>
+                </React.Fragment>
+              ))}
 
-        {isBook && (
-          <div style={{ marginTop: 14 }}>
-            <button
-              type="button"
-              className="chip"
-              style={{ width: "100%", padding: 12, color: "var(--accent-deep)", borderColor: "#F3D8CB" }}
-              onClick={() => setBookSearchOpen(true)}
-            >
-              🔍 책 검색으로 불러오기
-            </button>
-            {bookSearchOpen && (
-              <BookSearchSheet onClose={() => setBookSearchOpen(false)} onPick={applyBookFromSearch} />
-            )}
-            <div className="sheet-field" style={{ marginTop: 12 }}>
-              <label>저자</label>
-              <input
-                value={bookMeta.author}
-                onChange={(e) => { setBookMeta((p) => ({ ...p, author: e.target.value })); setSaved(false); }}
-                placeholder="저자명"
-                style={{ width: "100%", padding: "11px 12px", borderRadius: 11, border: "1px solid var(--line)", fontFamily: "inherit", fontSize: 14 }}
-              />
-            </div>
-          </div>
-        )}
-
-        <KbCategoryBar
-          section={section}
-          cat={cat}
-          setCat={setCat}
-          prefs={prefs}
-          onUserUpdated={onUserUpdated}
-          onDirty={() => setSaved(false)}
-          extraCategories={categories}
-        />
-
-        <div
-          ref={titleRef}
-          className="editable kbe-title"
-          contentEditable
-          suppressContentEditableWarning
-          data-ph={isBook ? "책 제목" : "제목"}
-          onFocus={() => setFocusIdx(-1)}
-        />
-        <div className="kbe-titleline" />
-
-        <div className="kbe-tags">
-          {tags.map((t) => (
-            <span key={t} className={`tag ${tagColor(t)}`} style={{ padding: "5px 10px", fontSize: 12 }}>
-              #{t}
-              <span style={{ cursor: "pointer", marginLeft: 4 }} onClick={() => { setTags((p) => p.filter((x) => x !== t)); setSaved(false); }}>✕</span>
-            </span>
-          ))}
-          {tagPresets.filter((t) => !tags.includes(t)).slice(0, 6).map((t) => (
-            <button key={t} type="button" className="chip" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => { setTags((p) => [...p, t]); setSaved(false); }}>+ {t}</button>
-          ))}
-          <input
-            value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key !== "Enter") return;
-              e.preventDefault();
-              const v = tagInput.trim();
-              if (!v || tags.includes(v)) return;
-              setTags((p) => [...p, v]);
-              setTagInput("");
-              setSaved(false);
-            }}
-            placeholder="+ 태그 입력"
-            style={{ border: "none", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 12, minWidth: 90, padding: "5px 4px", color: "var(--muted)" }}
-          />
-        </div>
-
-        {blocks.map((b, i) => (
-          <React.Fragment key={i}>
-            <div className="kbe-addzone" onClick={() => setMenuAt(menuAt === i ? null : i)}>
-              <span className="kbe-addbtn">+</span>
-            </div>
-            {menuAt === i && (
-              <div className="kbe-menu">
-                {BLOG_MENU.map(([type, label]) => (
-                  <button key={type} type="button" className="kbe-mi" onClick={() => insertAt(i, type)}>{label}</button>
-                ))}
+              <div className={"kbe-insert" + (menuAt === blocks.length ? " open" : "")}>
+                <div className="kbe-insert-line" />
+                <button type="button" className="kbe-insert-btn" aria-label="블록 추가" onClick={() => toggleInsertMenu(blocks.length)}>+</button>
               </div>
-            )}
-            <div className="kbe-blk">
-              <button type="button" className="del" onClick={() => deleteBlock(i)}>✕</button>
-              {slash?.idx === i && <SlashMenu filter={slash.filter} onPick={pickSlash} onClose={() => setSlash(null)} />}
-              <BlockRow
-                b={b}
-                i={i}
-                focused={focusIdx === i}
-                imageUrls={{ ...imageUrls, ...(b.preview ? { [b.mediaKey]: b.preview } : {}) }}
-                onFocus={setFocusIdx}
-                onChange={handleInput}
-                onKeyDown={handleKeyDown}
-                onDelete={deleteBlock}
-                onMove={moveBlock}
-                onUpload={uploadBlockMedia}
-                onToggleTodo={(idx) => updateBlock(idx, { done: !blocks[idx].done })}
-                onTableChange={(idx, rows) => updateBlock(idx, { rows })}
-              />
+              {menuAt === blocks.length && (
+                <div className="kbe-menu">
+                  {BLOG_MENU.map(([type, label]) => (
+                    <button key={type} type="button" className="kbe-mi" onClick={() => insertAt(blocks.length, type)}>{label}</button>
+                  ))}
+                </div>
+              )}
             </div>
-          </React.Fragment>
-        ))}
-
-        <div className="kbe-addzone" onClick={() => setMenuAt(menuAt === blocks.length ? null : blocks.length)}>
-          <span className="kbe-addbtn">+</span>
-        </div>
-        {menuAt === blocks.length && (
-          <div className="kbe-menu">
-            {BLOG_MENU.map(([type, label]) => (
-              <button key={type} type="button" className="kbe-mi" onClick={() => insertAt(blocks.length, type)}>{label}</button>
-            ))}
           </div>
-        )}
         </div>
       </div>
 
+      {metaOpen && (
+        <div className="kbe-meta-panel">
+          <div className="kbe-inner">
+            <div className="kbe-meta-h">글 설정</div>
+            {metaSummary && <div className="small" style={{ marginBottom: 12, color: "#888" }}>{metaSummary}</div>}
+
+            {isNew && (
+              <div className="seg" style={{ marginBottom: 14 }}>
+                {KB_SECTIONS.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className={section === s.id ? "on" : ""}
+                    onClick={() => {
+                      setSection(s.id);
+                      setSaved(false);
+                      if (s.id === "book" && blocks.length === 1 && blocks[0].type === "text" && !blocks[0].val) {
+                        setBlocks([{ type: "h", val: "독후감" }, { type: "text", val: "" }]);
+                      }
+                    }}
+                  >
+                    {s.icon} {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="kbe-meta-h" style={{ marginTop: 4 }}>대표 이미지 (선택)</div>
+            <div className={"kbe-cover" + (coverKey && imageUrls[coverKey] ? " compact" : "")} onClick={uploadCover} style={isBook ? { maxWidth: 220 } : undefined}>
+              {coverKey && imageUrls[coverKey] ? (
+                <>
+                  <img src={imageUrls[coverKey]} alt="" style={isBook ? { objectFit: "cover" } : undefined} />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: "#333" }}>{isBook ? "책 표지" : "대표 이미지"}</div>
+                    <div className="small" style={{ marginTop: 2 }}>탭하여 변경</div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 22, color: "#AAA" }}>{isBook ? "📚" : "🖼"}</div>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: "#666" }}>{isBook ? "책 표지 추가" : "대표 이미지 추가"}</div>
+                </>
+              )}
+            </div>
+
+            {isBook && (
+              <div style={{ marginTop: 14 }}>
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ width: "100%", padding: 12, color: "#03A84D", borderColor: "#C5E8D4" }}
+                  onClick={() => setBookSearchOpen(true)}
+                >
+                  🔍 책 검색으로 불러오기
+                </button>
+                {bookSearchOpen && (
+                  <BookSearchSheet onClose={() => setBookSearchOpen(false)} onPick={applyBookFromSearch} />
+                )}
+                <div className="sheet-field" style={{ marginTop: 12 }}>
+                  <label>저자</label>
+                  <input
+                    value={bookMeta.author}
+                    onChange={(e) => { setBookMeta((p) => ({ ...p, author: e.target.value })); setSaved(false); }}
+                    placeholder="저자명"
+                    style={{ width: "100%", padding: "11px 12px", borderRadius: 8, border: "1px solid #E8EAED", fontFamily: "inherit", fontSize: 14 }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop: 16 }}>
+              <div className="kbe-meta-h">분류</div>
+              <KbCategoryBar
+                section={section}
+                cat={cat}
+                setCat={setCat}
+                prefs={prefs}
+                onUserUpdated={onUserUpdated}
+                onDirty={() => setSaved(false)}
+                extraCategories={categories}
+              />
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div className="kbe-meta-h">태그</div>
+              <div className="kbe-tags">
+                {tags.map((t) => (
+                  <span key={t} className={`tag ${tagColor(t)}`} style={{ padding: "5px 10px", fontSize: 12 }}>
+                    #{t}
+                    <span style={{ cursor: "pointer", marginLeft: 4 }} onClick={() => { setTags((p) => p.filter((x) => x !== t)); setSaved(false); }}>✕</span>
+                  </span>
+                ))}
+                {tagPresets.filter((t) => !tags.includes(t)).slice(0, 6).map((t) => (
+                  <button key={t} type="button" className="chip" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => { setTags((p) => [...p, t]); setSaved(false); }}>+ {t}</button>
+                ))}
+                <input
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    const v = tagInput.trim();
+                    if (!v || tags.includes(v)) return;
+                    setTags((p) => [...p, v]);
+                    setTagInput("");
+                    setSaved(false);
+                  }}
+                  placeholder="태그 입력 후 Enter"
+                  style={{ border: "none", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 12, minWidth: 120, padding: "5px 4px", color: "#888" }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="kbe-toolbar">
         <div className="kbe-inner kbe-toolbar-inner">
-          <button type="button" className="kbe-tool" onClick={() => toolbarInsert("image")}>🖼<span>사진</span></button>
-          <button type="button" className="kbe-tool" onClick={() => toolbarInsert("file")}>📎<span>파일</span></button>
+          {TOOLBAR_ITEMS.slice(0, 2).map((t) => (
+            <button key={t.type} type="button" className="kbe-tool" onClick={() => toolbarInsert(t.type)}>
+              <span className="kbe-tool-ic">{t.ic}</span>
+              <span>{t.label}</span>
+            </button>
+          ))}
           <span className="kbe-tdiv" />
-          <button type="button" className="kbe-tool" onClick={() => toolbarInsert("h")}>H<span>소제목</span></button>
-          <button type="button" className="kbe-tool" onClick={() => toolbarInsert("quote")}>❝<span>인용</span></button>
-          <button type="button" className="kbe-tool" onClick={() => toolbarInsert("divider")}>—<span>구분선</span></button>
-          <button type="button" className="kbe-tool" onClick={() => toolbarInsert("text")}>¶<span>본문</span></button>
+          {TOOLBAR_ITEMS.slice(2).map((t) => (
+            <button key={t.type} type="button" className="kbe-tool" onClick={() => toolbarInsert(t.type)}>
+              <span className="kbe-tool-ic">{t.ic}</span>
+              <span>{t.label}</span>
+            </button>
+          ))}
         </div>
       </div>
     </div>
