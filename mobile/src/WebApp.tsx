@@ -18,6 +18,10 @@ import {
   pickNativeDocumentForWeb,
   pickNativeImageForWeb,
 } from './nativeImagePicker';
+import {
+  exportNativeDeviceContacts,
+  fetchNativeDeviceContacts,
+} from './nativeContacts';
 
 const INJECT_BEFORE = `
   window.__STORYAHUB_NATIVE__ = true;
@@ -145,6 +149,45 @@ export function WebApp() {
               err instanceof Error ? err.message : '파일 선택 실패';
             sendToWeb({
               type: 'IMAGE_PICK_ERROR',
+              requestId: msg.requestId,
+              message,
+            });
+          }
+          return;
+        }
+        case 'FETCH_DEVICE_CONTACTS': {
+          try {
+            const contacts = await fetchNativeDeviceContacts();
+            sendToWeb({
+              type: 'DEVICE_CONTACTS_FETCHED',
+              requestId: msg.requestId,
+              contacts,
+            });
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : '연락처를 불러오지 못했습니다';
+            sendToWeb({
+              type: 'CONTACTS_ERROR',
+              requestId: msg.requestId,
+              message,
+            });
+          }
+          return;
+        }
+        case 'EXPORT_DEVICE_CONTACTS': {
+          try {
+            const result = await exportNativeDeviceContacts(msg.contacts || []);
+            sendToWeb({
+              type: 'DEVICE_CONTACTS_EXPORTED',
+              requestId: msg.requestId,
+              added: result.added,
+              skipped: result.skipped,
+            });
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : '연락처 저장 실패';
+            sendToWeb({
+              type: 'CONTACTS_ERROR',
               requestId: msg.requestId,
               message,
             });

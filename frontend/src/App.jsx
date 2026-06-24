@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import AuthScreen from "./components/AuthScreen.jsx";
 import WelcomeScreen from "./components/WelcomeScreen.jsx";
@@ -28,6 +28,7 @@ import { toastError, toastSuccess, notifyError } from "./toast.js";
 import { addPendingMeeting, removePendingMeeting, getPendingMeetingIds } from "./pendingMeetings.js";
 import { userPreferences, tagColor, mergedContactGroups, mergedContactCompanies, layoutContactsByIdentity } from "./preferences.js";
 import { hasOpenTodoGroups, countOpenTodoItems, openTodoPreviewTexts, listOpenFollowupItems } from "./todoGroups.js";
+import { syncPhoneContacts, isDeviceContactsAvailable } from "./contactSync.js";
 
 /* ------------------------------------------------------------------
    Storyahub — 비서앱 UI
@@ -382,7 +383,7 @@ const CSS = `
 .kbh-viewbar{display:flex;align-items:center;justify-content:flex-end;margin-top:14px;}
 .kbh-fab{position:fixed;right:20px;bottom:calc(84px + env(safe-area-inset-bottom,0px));width:56px;height:56px;
   border-radius:50%;border:none;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;
-  cursor:pointer;z-index:8;box-shadow:0 12px 28px -6px rgba(221,94,57,.55);font-family:inherit;padding:0;}
+  cursor:pointer;z-index:45;box-shadow:0 12px 28px -6px rgba(221,94,57,.55);font-family:inherit;padding:0;}
 .kbh-fab:active{background:var(--accent-deep);}
 
 .meet-fab{position:fixed;right:20px;bottom:calc(84px + env(safe-area-inset-bottom,0px));width:56px;height:56px;
@@ -955,6 +956,22 @@ function App(){
     setKbSection(sec);
     setKbView({ article, mode, ...opts });
   };
+  const openKbWrite=(a,section,opts={})=>{
+    const sec=a?.section||section||"knowledge";
+    setKbSection(sec);
+    setKbView({
+      article: a || {
+        section: sec,
+        blocks: sec === "book"
+          ? [{ type: "h", val: "독후감" }, { type: "text", val: "" }]
+          : sec === "lecture"
+            ? [{ type: "h", val: "강연 정리" }, { type: "text", val: "" }]
+            : [],
+      },
+      mode: a?.id ? "read" : "edit",
+      openBookSearch: !!opts.openBookSearch,
+    });
+  };
   const goTab=(t)=>{ setMobileMenuOpen(false); setClient(null); setKbView(null); setPricing(false); setCardScan(false); setOverlay(null); setDetail(null); if(t!=="record"){ setTab(t);} };
   const startRec=(link=null)=>{
     if(user && user.hasAccess===false){
@@ -1239,7 +1256,7 @@ function App(){
                               openKb={(a)=>openKbView(a,"read")}
                               openDetail={(t,data)=>setDetail({type:t,data})} onRefresh={loadAppData}/>
           : tab==="todos" ? <TodoArchive embedded meetings={meetings} todos={todos} onRefresh={loadAppData} openDetail={(t)=>setDetail({type:"task",data:t})}/>
-          : tab==="clients" ? (cardScan ? <CardScan back={()=>setCardScan(false)} onSaved={refreshContacts} user={user} onUserUpdated={setUser} contactPresets={prefs.contacts}/> : <Clients group={group} setGroup={setGroup} open={(c)=>setClient(c)} onAdd={()=>setCardScan(true)} onRefresh={loadAppData} seg={segment} user={user} onUserUpdated={setUser} contactPresets={prefs.contacts}/>)
+          : tab==="clients" ? (cardScan ? <CardScan back={()=>setCardScan(false)} onSaved={refreshContacts} user={user} onUserUpdated={setUser} contactPresets={prefs.contacts}/> : <Clients group={group} setGroup={setGroup} open={(c)=>setClient(c)} onAdd={()=>setCardScan(true)} onRefresh={loadAppData} goTab={goTab} seg={segment} user={user} onUserUpdated={setUser} contactPresets={prefs.contacts}/>)
           : tab==="places" ? <PlacesView placePresets={prefs.places} onRefresh={loadAppData}/>
           : tab==="meetings" ? <MeetingsTab meetings={meetings} openDetail={(m)=>setDetail({type:"meeting",data:m})} startRec={startRec} onRefresh={loadAppData} meetingPresets={prefs.meeting}/>
           : tab==="calendar" ? <CalendarView openDetail={(t,data)=>setDetail({type:t,data})} organizePrefs={prefs} onStartRecFromEvent={startRecFromEvent} onRefresh={loadAppData}/>
@@ -1255,22 +1272,19 @@ function App(){
                   onEdit={()=>setKbView({article:kbView.article,mode:"edit"})}
                   onShare={kbView.article?.shareRole==="owner" ? ()=>setShareTarget({type:"kb",id:kbView.article.id,title:kbView.article.t}) : undefined}/>
           )
-          : <Knowledge articles={kbArticles} section={kbSection} onSectionChange={setKbSection} openWrite={(a,section,opts)=>{
-              const sec=a?.section||section||"knowledge";
-              setKbSection(sec);
-              setKbView({
-              article: a || {
-                section: sec,
-                blocks: sec === "book"
-                  ? [{ type: "h", val: "독후감" }, { type: "text", val: "" }]
-                  : sec === "lecture"
-                    ? [{ type: "h", val: "강연 정리" }, { type: "text", val: "" }]
-                    : [],
-              },
-              mode: a?.id ? "read" : "edit",
-              openBookSearch: !!opts?.openBookSearch,
-            });}}/>}
+          : <Knowledge articles={kbArticles} section={kbSection} onSectionChange={setKbSection} openWrite={openKbWrite}/>}
         </div>
+
+        {tab==="kb" && !kbView && (
+          <button
+            type="button"
+            className="kbh-fab"
+            aria-label={kbSection==="book"?"책 추가":kbSection==="lecture"?"강연 정리":"새 글"}
+            onClick={()=>openKbWrite(null, kbSection)}
+          >
+            {I.plus({width:24,height:24})}
+          </button>
+        )}
 
         {showMobileNav && (
         <div className="nav">
@@ -1695,8 +1709,33 @@ function FilterSelectSheet({open,title,options,value,onSelect,onClose,searchPlac
   );
 }
 
-function Clients({group,setGroup,open,onAdd,onRefresh,seg,contactPresets={},user,onUserUpdated}){
-  const CLIENTS=getClients();
+function Clients({group,setGroup,open,onAdd,onRefresh,goTab,seg,contactPresets={},user,onUserUpdated}){
+  const [syncing,setSyncing]=useState(false);
+  const [listVersion,setListVersion]=useState(0);
+  const CLIENTS=useMemo(()=>getClients(),[listVersion]);
+  const handlePhoneSync=async ()=>{
+    if(syncing) return;
+    setSyncing(true);
+    try{
+      const r=await syncPhoneContacts();
+      await onRefresh?.();
+      setListVersion(v=>v+1);
+      goTab?.("clients");
+      const parts=[];
+      if(r.importAdded) parts.push(`Storyahub ${r.importAdded}명 추가`);
+      if(r.exportAdded) parts.push(`휴대폰 ${r.exportAdded}명 추가`);
+      const skipped=(r.importSkipped||0)+(r.exportSkipped||0);
+      if(parts.length){
+        toastSuccess(parts.join(" · ")+(skipped?` · ${skipped}명 건너뜀`:""));
+      }else{
+        toastSuccess(skipped?"새로 추가할 연락처가 없어요 · 이미 모두 있어요":"연락처가 최신 상태예요");
+      }
+    }catch(err){
+      notifyError(err, err.message);
+    }finally{
+      setSyncing(false);
+    }
+  };
   const GROUPS=mergedContactGroups({ contacts: contactPresets }, CLIENTS);
   const COMPANIES=mergedContactCompanies(CLIENTS);
   const [view,setView]=useState("list");
@@ -1800,6 +1839,24 @@ function Clients({group,setGroup,open,onAdd,onRefresh,seg,contactPresets={},user
         <div className="row between"><div className="h-title">{term}</div>
           <button className="iconbtn" style={{color:"var(--accent-deep)"}} onClick={onAdd}>{I.plus({width:20,height:20})}</button></div>
       </div>
+
+      {isDeviceContactsAvailable() && (
+        <div className="pad" style={{marginTop:12}}>
+          <button type="button" className="card" style={{width:"100%",padding:"14px 16px",border:"1px solid var(--line)",
+            background:"#fff",cursor:syncing?"wait":"pointer",textAlign:"left",fontFamily:"inherit"}}
+            disabled={syncing} onClick={handlePhoneSync}>
+            <div className="row between" style={{gap:12}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:14.5}}>📱 휴대폰 연락처 동기화</div>
+                <div className="small" style={{marginTop:4}}>이미 있는 연락처는 건너뛰고 새 연락처만 저장해요</div>
+              </div>
+              <span className="small" style={{color:"var(--accent-deep)",fontWeight:700,flex:"0 0 auto"}}>
+                {syncing?"동기화 중…":"동기화"}
+              </span>
+            </div>
+          </button>
+        </div>
+      )}
 
       {/* 리스트 / 지도 토글 */}
       <div className="pad" style={{marginTop:14}}>
@@ -3762,12 +3819,11 @@ function Knowledge({articles,openWrite,section,onSectionChange}){
   const sectionInfo=KB_SECTIONS.find(s=>s.id===section);
   const emptyMsg=section==="book"?"아직 책 기록이 없어요. 독후감을 남겨보세요."
     :section==="lecture"?"아직 강연 정리가 없어요.":"아직 지식 글이 없어요.";
-  const fabLabel=section==="book"?"책 추가":section==="lecture"?"강연 정리":"새 글";
   const gridItems=viewMode==="board"?rest:list;
 
   return (
     <div className="fade" style={{position:"relative",minHeight:"100%"}}>
-      <div className="pad" style={{marginTop:8,paddingBottom:100}}>
+      <div className="pad" style={{marginTop:8}}>
         <div className="h-eyebrow">Knowledge</div>
         <div className="h-title">지식백과</div>
         <div className="small" style={{marginTop:4}}>책·강연·지식을 나눠 정리하고 검색해요</div>
@@ -3867,10 +3923,6 @@ function Knowledge({articles,openWrite,section,onSectionChange}){
           ))}
         </div>
       </div>
-
-      <button type="button" className="kbh-fab" aria-label={fabLabel} onClick={()=>openWrite(null, section)}>
-        {I.plus({width:24,height:24})}
-      </button>
     </div>
   );
 }

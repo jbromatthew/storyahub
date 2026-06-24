@@ -3,7 +3,7 @@ import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 import { geocodeAddress } from "../services/geocode.js";
-import { computeIdentityKey } from "../services/contactIdentity.js";
+import { computeIdentityKey, normalizePhone } from "../services/contactIdentity.js";
 import { optionalUserMediaKey } from "../services/mediaValidation.js";
 
 export const contactsRouter = Router();
@@ -45,6 +45,59 @@ contactsRouter.post("/geocode-pending", async (req: AuthedRequest, res) => {
 
   const items = await prisma.contact.findMany({ where: { userId }, orderBy: { createdAt: "desc" } });
   res.json({ updated, contacts: items });
+});
+
+contactsRouter.post("/import", async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const rawItems = Array.isArray(req.body?.contacts) ? req.body.contacts : [];
+  const existing = await prisma.contact.findMany({
+    where: { userId },
+    select: { identityKey: true, phone: true },
+  });
+  const identityKeys = new Set(existing.map((c) => c.identityKey).filter(Boolean) as string[]);
+  const phones = new Set(
+    existing.map((c) => normalizePhone(c.phone)).filter((p) => p.length >= 9),
+  );
+
+  let added = 0;
+  let skipped = 0;
+  for (const raw of rawItems.slice(0, 3000)) {
+    const person =
+      String(raw?.person ?? raw?.name ?? "").trim() ||
+      String(raw?.company ?? "").trim() ||
+      "이름 없음";
+    const phone = raw?.phone != null ? String(raw.phone).trim() : null;
+    const email = raw?.email != null ? String(raw.email).trim() : null;
+    const company = raw?.company != null ? String(raw.company).trim() : null;
+    const identityKey = computeIdentityKey(person, phone);
+    const normPhone = normalizePhone(phone);
+
+    if (identityKey && identityKeys.has(identityKey)) {
+      skipped++;
+      continue;
+    }
+    if (normPhone.length >= 9 && phones.has(normPhone)) {
+      skipped++;
+      continue;
+    }
+
+    await prisma.contact.create({
+      data: {
+        userId,
+        person,
+        company: company || null,
+        phone,
+        email: email || null,
+        identityKey,
+      },
+    });
+    if (identityKey) identityKeys.add(identityKey);
+    if (normPhone.length >= 9) phones.add(normPhone);
+    added++;
+  }
+
+  const contacts = await prisma.contact.findMany({ where: { userId }, orderBy: { createdAt: "desc" } });
+  res.json({ added, skipped, contacts });
 });
 
 contactsRouter.post("/", async (req: AuthedRequest, res) => {

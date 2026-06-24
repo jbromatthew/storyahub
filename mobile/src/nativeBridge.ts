@@ -10,7 +10,13 @@ export type WebToNativeMessage =
   | { type: 'RECORD_CANCEL' }
   | { type: 'PICK_IMAGE'; source: 'camera' | 'library'; requestId: string }
   | { type: 'PICK_IMAGES'; maxCount: number; requestId: string }
-  | { type: 'PICK_DOCUMENT'; requestId: string };
+  | { type: 'PICK_DOCUMENT'; requestId: string }
+  | { type: 'FETCH_DEVICE_CONTACTS'; requestId: string }
+  | {
+      type: 'EXPORT_DEVICE_CONTACTS';
+      requestId: string;
+      contacts: Array<{ person?: string; phone?: string; email?: string; company?: string }>;
+    };
 
 export type NativeToWebMessage =
   | { type: 'READY'; platform: 'ios' | 'android'; version: string }
@@ -44,7 +50,19 @@ export type NativeToWebMessage =
       base64: string;
       mime: string;
       filename: string;
-    };
+    }
+  | {
+      type: 'DEVICE_CONTACTS_FETCHED';
+      requestId: string;
+      contacts: Array<{ person?: string; phone?: string; email?: string; company?: string }>;
+    }
+  | {
+      type: 'DEVICE_CONTACTS_EXPORTED';
+      requestId: string;
+      added: number;
+      skipped: number;
+    }
+  | { type: 'CONTACTS_ERROR'; requestId: string; message: string };
 
 export function parseWebMessage(raw: string): WebToNativeMessage | null {
   try {

@@ -118,6 +118,7 @@ export const api = {
   listContacts: () => req("/contacts"),
   geocodePendingContacts: () => req("/contacts/geocode-pending", { method: "POST" }),
   createContact: (data) => req("/contacts", { method: "POST", body: data }),
+  importContacts: (contacts) => req("/contacts/import", { method: "POST", body: { contacts } }),
   updateContact: (id, data) => req(`/contacts/${id}`, { method: "PATCH", body: data }),
   getContact: (id) => req(`/contacts/${id}`),
   deleteContact: (id) => req(`/contacts/${id}`, { method: "DELETE" }),

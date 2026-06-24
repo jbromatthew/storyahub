@@ -408,13 +408,22 @@ export default function CardScanView({ back, onSaved, user, onUserUpdated, conta
                 <div className="small" style={{ marginTop: 6, lineHeight: 1.5 }}>
                   여러 장 촬영 · 앨범 다중 선택 · 한 번에 OCR
                   <br />
-                  클릭 · 드래그 · 붙여넣기(Cmd+V)
+                  사진을 추가하면 <strong style={{ color: "var(--ink)", fontWeight: 700 }}>인식 시작</strong> 버튼이 나타나요
+                  {!isMobileDevice() && !isNativeShell() && (
+                    <>
+                      <br />
+                      클릭 · 드래그 · 붙여넣기(Cmd+V)
+                    </>
+                  )}
                 </div>
               </>
             ) : (
               <>
                 <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>
                   {pendingQueue.length}장 준비됨 · 최대 {MAX_CARDS}장
+                </div>
+                <div className="small" style={{ marginBottom: 10, color: "var(--muted)" }}>
+                  탭해서 사진 추가 · ✕로 삭제
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                   {pendingQueue.map((item, i) => (
@@ -441,9 +450,9 @@ export default function CardScanView({ back, onSaved, user, onUserUpdated, conta
                 className="btn"
                 style={{ flex: 1, padding: 14, fontSize: 14 }}
                 onClick={captureToQueue}
-                disabled={queueCount() >= MAX_CARDS || ocrRunning}
+                disabled={pendingQueue.length >= MAX_CARDS || ocrRunning}
               >
-                📷 촬영 추가
+                📷 {pendingQueue.length ? "촬영 추가" : "명함 촬영"}
               </button>
             )}
             <button
@@ -451,25 +460,28 @@ export default function CardScanView({ back, onSaved, user, onUserUpdated, conta
               className="btn"
               style={{ flex: 1, padding: 14, fontSize: 14 }}
               onClick={() => void pickAlbumToQueue()}
-              disabled={queueCount() >= MAX_CARDS || ocrRunning}
+              disabled={pendingQueue.length >= MAX_CARDS || ocrRunning}
             >
-              앨범 선택
+              {pendingQueue.length ? "앨범에서 더 추가" : "앨범 선택"}
             </button>
           </div>
-          <button
-            type="button"
-            className="btn btn-accent"
-            style={{ width: "100%", padding: 16, marginTop: 12, fontSize: 15 }}
-            onClick={startOcrFromQueue}
-            disabled={!queueCount() || ocrRunning}
-          >
-            {ocrRunning
-              ? "인식 중…"
-              : queueCount()
-                ? `${queueCount()}장 인식 시작`
-                : "사진 추가 후 인식"}
-          </button>
-          <button type="button" className="btn" style={{ width: "100%", padding: 14, marginTop: 10, fontSize: 14 }} onClick={startManual} disabled={ocrRunning}>
+          {pendingQueue.length > 0 && (
+            <div className="fade" style={{ marginTop: 14 }}>
+              <button
+                type="button"
+                className="btn btn-accent"
+                style={{ width: "100%", padding: 16, fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+                onClick={startOcrFromQueue}
+                disabled={ocrRunning}
+              >
+                {ocrRunning ? "인식 중…" : `${pendingQueue.length}장 인식 시작`}
+              </button>
+              <div className="small" style={{ textAlign: "center", marginTop: 8, color: "var(--muted)", lineHeight: 1.5 }}>
+                추가한 사진을 확인한 뒤 한 번에 OCR해요
+              </div>
+            </div>
+          )}
+          <button type="button" className="btn" style={{ width: "100%", padding: 14, marginTop: pendingQueue.length ? 14 : 10, fontSize: 14 }} onClick={startManual} disabled={ocrRunning}>
             명함 없이 직접 입력
           </button>
           {ocrError && (

@@ -15,6 +15,8 @@
 		A1R2C3D22CA45674006654F2 /* RecordingAudioSession.m in Sources */ = {isa = PBXBuildFile; fileRef = A1R2C3D32CA45674006654F3 /* RecordingAudioSession.m */; };
 		B2I3M4G12CA45674006654G1 /* StoryahubImagePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2I3M4G02CA45674006654G0 /* StoryahubImagePicker.swift */; };
 		B2I3M4G22CA45674006654G2 /* StoryahubImagePicker.m in Sources */ = {isa = PBXBuildFile; fileRef = B2I3M4G32CA45674006654G3 /* StoryahubImagePicker.m */; };
+		C3N4T5C12CA45674006654H1 /* StoryahubContacts.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3N4T5C02CA45674006654H0 /* StoryahubContacts.swift */; };
+		C3N4T5C22CA45674006654H2 /* StoryahubContacts.m in Sources */ = {isa = PBXBuildFile; fileRef = C3N4T5C32CA45674006654H3 /* StoryahubContacts.m */; };
 		C6D61D607FB657F5B82E0A95 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
@@ -30,9 +32,11 @@
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = StoryahubMobile/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		A1R2C3D02CA45674006654F1 /* RecordingAudioSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RecordingAudioSession.swift; path = StoryahubMobile/RecordingAudioSession.swift; sourceTree = "<group>"; };
 		A1R2C3D32CA45674006654F3 /* RecordingAudioSession.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = RecordingAudioSession.m; path = StoryahubMobile/RecordingAudioSession.m; sourceTree = "<group>"; };
+		A1R2C3D42CA45674006654F4 /* StoryahubMobile.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = StoryahubMobile.entitlements; path = StoryahubMobile/StoryahubMobile.entitlements; sourceTree = "<group>"; };
 		B2I3M4G02CA45674006654G0 /* StoryahubImagePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StoryahubImagePicker.swift; path = StoryahubMobile/StoryahubImagePicker.swift; sourceTree = "<group>"; };
 		B2I3M4G32CA45674006654G3 /* StoryahubImagePicker.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = StoryahubImagePicker.m; path = StoryahubMobile/StoryahubImagePicker.m; sourceTree = "<group>"; };
-		A1R2C3D42CA45674006654F4 /* StoryahubMobile.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = StoryahubMobile.entitlements; path = StoryahubMobile/StoryahubMobile.entitlements; sourceTree = "<group>"; };
+		C3N4T5C02CA45674006654H0 /* StoryahubContacts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StoryahubContacts.swift; path = StoryahubMobile/StoryahubContacts.swift; sourceTree = "<group>"; };
+		C3N4T5C32CA45674006654H3 /* StoryahubContacts.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = StoryahubContacts.m; path = StoryahubMobile/StoryahubContacts.m; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -57,6 +61,8 @@
 				A1R2C3D32CA45674006654F3 /* RecordingAudioSession.m */,
 				B2I3M4G02CA45674006654G0 /* StoryahubImagePicker.swift */,
 				B2I3M4G32CA45674006654G3 /* StoryahubImagePicker.m */,
+				C3N4T5C02CA45674006654H0 /* StoryahubContacts.swift */,
+				C3N4T5C32CA45674006654H3 /* StoryahubContacts.m */,
 				A1R2C3D42CA45674006654F4 /* StoryahubMobile.entitlements */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
@@ -205,13 +211,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-StoryahubMobile/Pods-StoryahubMobile-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-StoryahubMobile/Pods-StoryahubMobile-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -248,13 +250,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-StoryahubMobile/Pods-StoryahubMobile-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-StoryahubMobile/Pods-StoryahubMobile-resources-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -273,6 +271,8 @@
 				A1R2C3D22CA45674006654F2 /* RecordingAudioSession.m in Sources */,
 				B2I3M4G12CA45674006654G1 /* StoryahubImagePicker.swift in Sources */,
 				B2I3M4G22CA45674006654G2 /* StoryahubImagePicker.m in Sources */,
+				C3N4T5C12CA45674006654H1 /* StoryahubContacts.swift in Sources */,
+				C3N4T5C22CA45674006654H2 /* StoryahubContacts.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -285,8 +285,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 1;
 				CODE_SIGN_ENTITLEMENTS = StoryahubMobile/StoryahubMobile.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = L562M5KCF8;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = StoryahubMobile/Info.plist;
@@ -318,8 +318,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 1;
 				CODE_SIGN_ENTITLEMENTS = StoryahubMobile/StoryahubMobile.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = L562M5KCF8;
 				INFOPLIST_FILE = StoryahubMobile/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;

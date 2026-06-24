@@ -22,6 +22,8 @@ function base64ToFile(base64, filename, mime) {
 let pickImagePending = null;
 let pickImagesPending = null;
 let pickDocumentPending = null;
+let contactsFetchPending = null;
+let contactsExportPending = null;
 let pickImageListenerReady = false;
 
 function ensurePickImageListener() {
@@ -69,7 +71,66 @@ function ensurePickImageListener() {
       } else if (msg.type === "IMAGE_PICK_ERROR") {
         reject(new Error(msg.message || "파일 선택 실패"));
       }
+      return;
     }
+    if (contactsFetchPending && msg?.requestId && msg.requestId === contactsFetchPending.requestId) {
+      const { resolve, reject } = contactsFetchPending;
+      contactsFetchPending = null;
+      if (msg.type === "DEVICE_CONTACTS_FETCHED") {
+        resolve(msg.contacts || []);
+      } else if (msg.type === "CONTACTS_ERROR") {
+        reject(new Error(msg.message || "연락처를 불러오지 못했습니다"));
+      }
+      return;
+    }
+    if (contactsExportPending && msg?.requestId && msg.requestId === contactsExportPending.requestId) {
+      const { resolve, reject } = contactsExportPending;
+      contactsExportPending = null;
+      if (msg.type === "DEVICE_CONTACTS_EXPORTED") {
+        resolve({ added: msg.added || 0, skipped: msg.skipped || 0 });
+      } else if (msg.type === "CONTACTS_ERROR") {
+        reject(new Error(msg.message || "연락처 저장 실패"));
+      }
+    }
+  });
+}
+
+/** iOS 앱 — 휴대폰 연락처 읽기 */
+export function isDeviceContactsAvailable() {
+  return isNativeShell() && getNativePlatform() === "ios";
+}
+
+export function fetchDeviceContacts() {
+  if (!isDeviceContactsAvailable()) {
+    return Promise.reject(new Error("앱(iOS)에서만 연락처 동기화를 사용할 수 있어요"));
+  }
+  ensurePickImageListener();
+  const requestId = `contacts-fetch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return new Promise((resolve, reject) => {
+    contactsFetchPending = { requestId, resolve, reject };
+    postNative({ type: "FETCH_DEVICE_CONTACTS", requestId });
+    setTimeout(() => {
+      if (!contactsFetchPending || contactsFetchPending.requestId !== requestId) return;
+      contactsFetchPending.reject(new Error("연락처 불러오기 시간 초과"));
+      contactsFetchPending = null;
+    }, 120000);
+  });
+}
+
+export function exportDeviceContacts(contacts) {
+  if (!isDeviceContactsAvailable()) {
+    return Promise.resolve({ added: 0, skipped: (contacts || []).length });
+  }
+  ensurePickImageListener();
+  const requestId = `contacts-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return new Promise((resolve, reject) => {
+    contactsExportPending = { requestId, resolve, reject };
+    postNative({ type: "EXPORT_DEVICE_CONTACTS", requestId, contacts: contacts || [] });
+    setTimeout(() => {
+      if (!contactsExportPending || contactsExportPending.requestId !== requestId) return;
+      contactsExportPending.reject(new Error("연락처 저장 시간 초과"));
+      contactsExportPending = null;
+    }, 120000);
   });
 }
 

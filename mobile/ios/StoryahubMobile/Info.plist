@@ -39,6 +39,8 @@
 	<string>미팅 중 현장 사진을 촬영하기 위해 카메라 접근이 필요합니다.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>미팅 사진을 선택하기 위해 사진 보관함 접근이 필요합니다.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>휴대폰 연락처와 인맥을 동기화하기 위해 연락처 접근이 필요합니다.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>내 주변 인맥·맛집 검색을 위해 사용 중일 때만 위치를 사용합니다.</string>
 	<key>RCTNewArchEnabled</key>
