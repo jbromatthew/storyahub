@@ -24,6 +24,8 @@ import { kbRouter } from "./routes/kb.js";
 import { uploadsRouter, directUploadHandler } from "./routes/uploads.js";
 import { placesRouter } from "./routes/places.js";
 import { ocrRouter } from "./routes/ocr.js";
+import { friendsRouter } from "./routes/friends.js";
+import { sharesRouter } from "./routes/shares.js";
 import { startPurgeScheduler } from "./services/purge.js";
 
 const app = express();
@@ -58,6 +60,8 @@ app.use("/kb", kbRouter);
 app.use("/uploads", uploadLimiter, uploadsRouter);
 app.use("/places", placesRouter);
 app.use("/ocr", ocrLimiter, ocrRouter);
+app.use("/friends", friendsRouter);
+app.use("/shares", sharesRouter);
 
 app.use((err: Error, _req: Request, res: Response, next: NextFunction) => {
   if (err.message === "CORS blocked") {

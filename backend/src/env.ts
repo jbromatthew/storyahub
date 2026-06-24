@@ -83,8 +83,8 @@ export const env = {
   },
   gemini: {
     apiKey: process.env.GEMINI_API_KEY ?? "",
-    model: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
-    fallbackModels: (process.env.GEMINI_FALLBACK_MODELS ?? "gemini-2.5-flash-lite,gemini-2.0-flash,gemini-1.5-flash")
+    model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
+    fallbackModels: (process.env.GEMINI_FALLBACK_MODELS ?? "gemini-2.5-flash-lite")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),

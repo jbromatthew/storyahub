@@ -161,6 +161,8 @@ export const api = {
     req(`/meetings/${id}/attachments`, { method: "POST", body: data }),
   updateMeetingAttachmentNote: (id, data) =>
     req(`/meetings/${id}/attachments`, { method: "PATCH", body: data }),
+  updateMeetingTextMemo: (id, text) =>
+    req(`/meetings/${id}/memo`, { method: "PATCH", body: { text } }),
   askMeeting: (id, question) =>
     req(`/meetings/${id}/ask`, { method: "POST", body: { question } }),
 
@@ -188,4 +190,16 @@ export const api = {
   getUploadUrl: (key) => req(`/uploads/get?key=${encodeURIComponent(key)}`),
 
   deleteKb: (id) => req(`/kb/${id}`, { method: "DELETE" }),
+
+  listFriends: () => req("/friends"),
+  listPendingFriends: () => req("/friends/pending"),
+  requestFriend: (email) => req("/friends/request", { method: "POST", body: { email } }),
+  acceptFriend: (id) => req(`/friends/${id}/accept`, { method: "POST" }),
+  declineFriend: (id) => req(`/friends/${id}/decline`, { method: "POST" }),
+  removeFriend: (id) => req(`/friends/${id}`, { method: "DELETE" }),
+
+  listShares: (type, id) => req(`/shares/${type}/${id}`),
+  addShare: (type, id, body) => req(`/shares/${type}/${id}`, { method: "POST", body }),
+  updateShare: (shareId, body) => req(`/shares/${shareId}`, { method: "PATCH", body }),
+  removeShare: (shareId) => req(`/shares/${shareId}`, { method: "DELETE" }),
 };

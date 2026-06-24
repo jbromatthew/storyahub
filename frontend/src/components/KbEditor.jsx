@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../api/client.js";
 import { confirmDelete } from "../confirmDelete.js";
 import { uploadFile, pickImageFile, pickAnyFile, mediaUrl, isPickCancelled } from "../api/upload.js";
@@ -6,6 +7,14 @@ import { KB_SECTIONS, kbSectionLabel, kbCoverKey } from "../mappers.js";
 import { kbPresets, tagColor, mergePreferencesRaw } from "../preferences.js";
 import { notifyError, toastSuccess } from "../toast.js";
 import { confirmAction } from "../confirm.js";
+import {
+  getCaretOffset,
+  insertTextAtCaret,
+  normalizePlainText,
+  parseClipboardToBlocks,
+  setCaretAt,
+  stripLeadingBulletMarker,
+} from "../kbPaste.js";
 
 export const BLOCK_TYPES = [
   { type: "text", label: "텍스트", desc: "일반 문단", slash: "텍스트" },
@@ -196,6 +205,8 @@ function BlockRow({
   onUpload,
   onToggleTodo,
   onTableChange,
+  onPaste,
+  onUnlist,
 }) {
   const editableTypes = ["text", "h", "quote", "bullet", "todo", "code"];
   const isEditable = editableTypes.includes(b.type);
@@ -263,7 +274,20 @@ function BlockRow({
 
       {b.type === "bullet" && (
         <div className="row" style={{ gap: 10, alignItems: "flex-start" }}>
-          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--ink)", marginTop: 10 }} />
+          <span
+            role="button"
+            tabIndex={0}
+            title="목록 해제"
+            aria-label="목록 해제"
+            style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--ink)", marginTop: 10, flexShrink: 0, cursor: "pointer" }}
+            onClick={() => onUnlist?.(i)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onUnlist?.(i);
+              }
+            }}
+          />
           <div
             className="editable"
             contentEditable
@@ -272,6 +296,7 @@ function BlockRow({
             style={{ flex: 1, ...styleFor() }}
             onFocus={() => onFocus(i)}
             onInput={(e) => onChange(i, { val: e.currentTarget.innerText })}
+            onPaste={(e) => onPaste?.(e, i)}
             onKeyDown={(e) => onKeyDown(e, i)}
             ref={bindEditable}
           />
@@ -296,6 +321,7 @@ function BlockRow({
             }}
             onFocus={() => onFocus(i)}
             onInput={(e) => onChange(i, { val: e.currentTarget.innerText })}
+            onPaste={(e) => onPaste?.(e, i)}
             onKeyDown={(e) => onKeyDown(e, i)}
             ref={bindEditable}
           />
@@ -311,6 +337,7 @@ function BlockRow({
           style={styleFor()}
           onFocus={() => onFocus(i)}
           onInput={(e) => onChange(i, { val: e.currentTarget.innerText })}
+          onPaste={(e) => onPaste?.(e, i)}
           onKeyDown={(e) => onKeyDown(e, i)}
           ref={bindEditable}
         />
@@ -336,6 +363,14 @@ function BlockRow({
                     minHeight: 20,
                   }}
                   onInput={(e) => {
+                    const rows = (b.rows || []).map((r) => [...r]);
+                    rows[ri][ci] = e.currentTarget.innerText;
+                    onTableChange(i, rows);
+                  }}
+                  onPaste={(e) => {
+                    e.preventDefault();
+                    const text = normalizePlainText(e.clipboardData?.getData("text/plain") || "").replace(/\n+/g, " ");
+                    insertTextAtCaret(e.currentTarget, text);
                     const rows = (b.rows || []).map((r) => [...r]);
                     rows[ri][ci] = e.currentTarget.innerText;
                     onTableChange(i, rows);
@@ -377,7 +412,7 @@ function BlockRow({
       )}
 
       {b.type === "file" && (
-        <div onClick={() => !b.mediaKey && onUpload(i, "file")}>
+        <div onClick={() => onUpload(i, "file")} style={{ cursor: "pointer" }}>
           {b.mediaKey ? (
             <div className="row" style={{ gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -492,7 +527,7 @@ function BookSearchSheet({ onClose, onPick }) {
     }
   };
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -502,22 +537,23 @@ function BookSearchSheet({ onClose, onPick }) {
         zIndex: 8000,
         background: "rgba(20,16,12,.45)",
         display: "flex",
-        alignItems: "flex-end",
+        alignItems: "center",
         justifyContent: "center",
-        padding: "0 0 max(12px, env(safe-area-inset-bottom))",
+        padding: "max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom))",
       }}
       onClick={onClose}
     >
       <div
         style={{
-          width: "min(520px, 100%)",
-          maxHeight: "min(82vh, 640px)",
+          width: "min(520px, calc(100% - 32px))",
+          maxHeight: "min(78vh, 620px)",
+          minHeight: 320,
           background: "#fff",
-          borderRadius: "20px 20px 14px 14px",
+          borderRadius: 18,
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          boxShadow: "0 -8px 40px rgba(20,16,12,.18)",
+          boxShadow: "0 16px 48px rgba(20,16,12,.22)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -629,7 +665,8 @@ function BookSearchSheet({ onClose, onPick }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -644,7 +681,12 @@ function parseArticleBlocks(article) {
           { type: "h", val: "독후감" },
           { type: "text", val: "" },
         ]
-      : [{ type: "text", val: "" }];
+      : section === "lecture"
+        ? [
+            { type: "h", val: "강연 정리" },
+            { type: "text", val: "" },
+          ]
+        : [{ type: "text", val: "" }];
   return {
     coverKey: cover?.mediaKey || article?.bookMeta?.coverKey || null,
     blocks: blocks.length ? blocks : defaultBlocks,
@@ -817,7 +859,46 @@ function KbCategoryBar({ section, cat, setCat, prefs, onUserUpdated, onDirty, ex
   );
 }
 
-export default function KbEditor({ article, back, onSaved, onDeleted, categories = [], prefs, onUserUpdated }) {
+function KbTagBar({ tags, setTags, tagPresets, tagInput, setTagInput, onDirty, hint }) {
+  const addTag = (v) => {
+    const t = (v || tagInput).trim();
+    if (!t || tags.includes(t)) return;
+    setTags((p) => [...p, t]);
+    setTagInput("");
+    onDirty?.();
+  };
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div className="kbe-meta-h" style={{ marginBottom: 8 }}>태그</div>
+      {hint && <div className="small" style={{ lineHeight: 1.5, marginBottom: 10, color: "var(--muted)" }}>{hint}</div>}
+      <div className="kbe-tags">
+        {tags.map((t) => (
+          <span key={t} className={`tag ${tagColor(t)}`} style={{ padding: "5px 10px", fontSize: 12 }}>
+            #{t}
+            <span style={{ cursor: "pointer", marginLeft: 4 }} onClick={() => { setTags((p) => p.filter((x) => x !== t)); onDirty?.(); }}>✕</span>
+          </span>
+        ))}
+        {tagPresets.filter((t) => !tags.includes(t)).slice(0, 8).map((t) => (
+          <button key={t} type="button" className="chip" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => addTag(t)}>+ {t}</button>
+        ))}
+        <input
+          value={tagInput}
+          onChange={(e) => setTagInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            addTag();
+          }}
+          placeholder="태그 입력 후 Enter"
+          style={{ border: "none", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 12, minWidth: 120, padding: "5px 4px", color: "#888" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+export default function KbEditor({ article, back, onSaved, onDeleted, categories = [], prefs, onUserUpdated, initialBookSearchOpen = false }) {
   const isNew = !article?.id;
   const titleRef = useRef(null);
   const initial = parseArticleBlocks(article);
@@ -832,17 +913,28 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
     coverKey: article?.bookMeta?.coverKey || null,
   }));
   const [coverKey, setCoverKey] = useState(initial.coverKey);
-  const [bookSearchOpen, setBookSearchOpen] = useState(false);
+  const [bookSearchOpen, setBookSearchOpen] = useState(initialBookSearchOpen);
   const [tagInput, setTagInput] = useState("");
+  const isOwner = !article?.shareRole || article?.shareRole === "owner";
   const isBook = section === "book";
+  const isLecture = section === "lecture";
+  const [lectureMeta, setLectureMeta] = useState(() => ({
+    speaker: article?.lectureMeta?.speaker || article?.bookMeta?.speaker || "",
+    event: article?.lectureMeta?.event || article?.bookMeta?.event || "",
+    eventDate: article?.lectureMeta?.eventDate || article?.bookMeta?.eventDate || "",
+    org: article?.lectureMeta?.org || article?.bookMeta?.org || "",
+  }));
   const sectionPresets = kbPresets(prefs, section);
   const tagPresets = sectionPresets.tags;
-  const [blocks, setBlocks] = useState(initial.blocks);
+  const [blocks, setBlocks] = useState(() =>
+    initial.blocks.map((b) =>
+      b.type === "bullet" ? { ...b, val: stripLeadingBulletMarker(b.val || "") } : b,
+    ),
+  );
   const [focusIdx, setFocusIdx] = useState(-1);
   const [slash, setSlash] = useState(null);
   const [menuAt, setMenuAt] = useState(null);
   const [metaOpen, setMetaOpen] = useState(false);
-  const [pendingUpload, setPendingUpload] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [imageUrls, setImageUrls] = useState({});
@@ -879,6 +971,30 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
     setSaved(false);
   }, []);
 
+  const uploadBlockMedia = useCallback(async (i, kind) => {
+    try {
+      const file = kind === "image" ? await pickImageFile(false) : await pickAnyFile();
+      const key = await uploadFile(file);
+      const kindLabel = fileKind(file.type, file.name);
+      if (kind === "image") {
+        const preview = URL.createObjectURL(file);
+        updateBlock(i, { mediaKey: key, preview, mime: file.type });
+        setImageUrls((p) => ({ ...p, [key]: preview }));
+      } else {
+        updateBlock(i, {
+          mediaKey: key,
+          name: file.name || fileNameFromKey(key),
+          meta: `${(file.size / 1024).toFixed(0)}KB · 탭해서 열기`,
+          mime: file.type,
+          kind: kindLabel,
+        });
+      }
+      setSaved(false);
+    } catch (e) {
+      if (!isPickCancelled(e) && e?.message !== "파일이 선택되지 않았습니다") notifyError(e, e.message);
+    }
+  }, [updateBlock]);
+
   const insertAt = useCallback((idx, type) => {
     setBlocks((p) => {
       const nb = [...p];
@@ -888,8 +1004,8 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
     setMenuAt(null);
     setFocusIdx(type === "text" || type === "h" || type === "quote" ? idx : -1);
     setSaved(false);
-    if (type === "image" || type === "file") setPendingUpload({ idx, kind: type });
-  }, []);
+    if (type === "image" || type === "file") void uploadBlockMedia(idx, type);
+  }, [uploadBlockMedia]);
 
   const deleteBlock = useCallback((i) => {
     setBlocks((p) => (p.length <= 1 ? [{ type: "text", val: "" }] : p.filter((_, k) => k !== i)));
@@ -916,6 +1032,15 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
       const nextType = b.type === "bullet" || b.type === "todo" ? b.type : "text";
       insertAt(i + 1, nextType);
     }
+    if (e.key === "Backspace" && b.type === "bullet") {
+      const el = e.currentTarget;
+      const atStart = getCaretOffset(el) === 0;
+      if (atStart && (b.val || "").length) {
+        e.preventDefault();
+        updateBlock(i, { type: "text" });
+        return;
+      }
+    }
     if (e.key === "Backspace" && !(b.val || "").length && blocks.length > 1) {
       e.preventDefault();
       deleteBlock(i);
@@ -926,12 +1051,79 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
   };
 
   const handleInput = (i, patch) => {
-    updateBlock(i, patch);
-    const val = patch.val ?? "";
+    let next = patch;
+    if (blocks[i]?.type === "bullet" && patch.val !== undefined) {
+      next = { ...patch, val: stripLeadingBulletMarker(patch.val) };
+    }
+    updateBlock(i, next);
+    const val = next.val ?? "";
     if (slash?.idx === i) {
       if (val.startsWith("/")) setSlash({ idx: i, filter: val.slice(1) });
       else setSlash(null);
     }
+  };
+
+  const handleBlockPaste = (e, i) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const b = blocks[i];
+    const blockType = b.type;
+    const el = e.currentTarget;
+    let pasted;
+    try {
+      pasted = parseClipboardToBlocks(e.clipboardData, blockType);
+    } catch (err) {
+      notifyError(err, "붙여넣기 처리 실패");
+      return;
+    }
+    if (!pasted.length) {
+      const fallback = normalizePlainText(e.clipboardData?.getData?.("text/plain") || "");
+      if (fallback) pasted = [{ type: "text", val: fallback }];
+    }
+    if (!pasted.length) return;
+
+    const currentText = el.innerText || "";
+    const offset = getCaretOffset(el);
+    const before = currentText.slice(0, offset);
+    const after = currentText.slice(offset);
+    const multiBlock =
+      pasted.length > 1 || pasted.some((p) => p.type === "divider" || p.type === "h" || p.type === "table");
+
+    if (!multiBlock && pasted.length === 1 && !(pasted[0].val || "").includes("\n")) {
+      const merged = before + pasted[0].val + after;
+      el.innerText = merged;
+      updateBlock(i, { val: merged });
+      setSaved(false);
+      window.requestAnimationFrame(() => setCaretAt(el, before.length + pasted[0].val.length));
+      return;
+    }
+
+    const newBlocks = [];
+    if (before.trim()) newBlocks.push({ ...defaultBlock(blockType), val: before });
+    for (const pb of pasted) {
+      newBlocks.push({ ...defaultBlock(pb.type), ...pb });
+    }
+    if (after.trim()) newBlocks.push({ ...defaultBlock(blockType), val: after });
+    if (!newBlocks.length) return;
+
+    setBlocks((prev) => {
+      const nb = [...prev];
+      nb.splice(i, 1, ...newBlocks);
+      return nb;
+    });
+    setFocusIdx(i + newBlocks.length - 1);
+    setSaved(false);
+  };
+
+  const handleTitlePaste = (e) => {
+    e.preventDefault();
+    const plain = normalizePlainText(e.clipboardData?.getData("text/plain") || e.clipboardData?.getData("text/html")?.replace(/<[^>]+>/g, " ") || "");
+    const oneLine = plain.replace(/\s*\n+\s*/g, " ").trim();
+    if (!oneLine) return;
+    const el = e.currentTarget;
+    const merged = insertTextAtCaret(el, oneLine);
+    setSaved(false);
+    window.requestAnimationFrame(() => setCaretAt(el, merged.length));
   };
 
   const pickSlash = (type) => {
@@ -939,39 +1131,10 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
     const i = slash.idx;
     setBlocks((p) => p.map((b, k) => (k === i ? defaultBlock(type) : b)));
     setSlash(null);
-    setFocusIdx(i);
+    setFocusIdx(type === "text" || type === "h" || type === "quote" ? i : -1);
     setSaved(false);
+    if (type === "image" || type === "file") void uploadBlockMedia(i, type);
   };
-
-  const uploadBlockMedia = useCallback(async (i, kind) => {
-    try {
-      const file = kind === "image" ? await pickImageFile(false) : await pickAnyFile();
-      const key = await uploadFile(file);
-      const kindLabel = fileKind(file.type, file.name);
-      if (kind === "image") {
-        const preview = URL.createObjectURL(file);
-        updateBlock(i, { mediaKey: key, preview, mime: file.type });
-        setImageUrls((p) => ({ ...p, [key]: preview }));
-      } else {
-        updateBlock(i, {
-          mediaKey: key,
-          name: file.name || fileNameFromKey(key),
-          meta: `${(file.size / 1024).toFixed(0)}KB · 탭해서 열기`,
-          mime: file.type,
-          kind: kindLabel,
-        });
-      }
-      setSaved(false);
-    } catch (e) {
-      if (!isPickCancelled(e) && e?.message !== "파일이 선택되지 않았습니다") notifyError(e, e.message);
-    }
-  }, [updateBlock]);
-
-  useEffect(() => {
-    if (!pendingUpload) return;
-    uploadBlockMedia(pendingUpload.idx, pendingUpload.kind);
-    setPendingUpload(null);
-  }, [pendingUpload, uploadBlockMedia]);
 
   const applyBookFromSearch = async (book) => {
     if (titleRef.current) titleRef.current.textContent = book.title || "";
@@ -1027,6 +1190,8 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
     .filter(Boolean)
     .join(" · ");
 
+  const exit = () => back?.(section);
+
   const doSave = async (silent = false) => {
     if (saving) return;
     setSaving(true);
@@ -1042,19 +1207,33 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
               publisher: (bookMeta.publisher || "").trim(),
               coverKey: coverKey || bookMeta.coverKey || null,
             }
-          : null;
+          : section === "lecture"
+            ? {
+                speaker: (lectureMeta.speaker || "").trim(),
+                event: (lectureMeta.event || "").trim(),
+                eventDate: (lectureMeta.eventDate || "").trim(),
+                org: (lectureMeta.org || "").trim(),
+              }
+            : null;
+      const saveTags = [...tags];
+      if (section === "lecture") {
+        for (const v of [lectureMeta.event, lectureMeta.speaker, lectureMeta.org]) {
+          const t = (v || "").trim();
+          if (t && !saveTags.includes(t)) saveTags.push(t);
+        }
+      }
       await api.saveKb({
         id: article?.id,
         title,
         section,
         category: cat.trim() || "미분류",
-        tags,
+        tags: saveTags,
         bookMeta: meta,
         blocks: payload,
       });
       onSaved?.();
       setSaved(true);
-      if (!silent) setTimeout(back, 700);
+      if (!silent) setTimeout(exit, 700);
     } catch (e) {
       if (!silent) notifyError(e, e.message || "저장 실패");
     } finally {
@@ -1063,12 +1242,12 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
   };
 
   const handleDelete = async () => {
-    if (!article?.id) return back();
+    if (!article?.id) return exit();
     if (!(await confirmDelete(article.title || "이 글"))) return;
     try {
       await api.deleteKb(article.id);
       onDeleted?.();
-      back();
+      exit();
     } catch (e) {
       notifyError(e, e.message);
     }
@@ -1078,7 +1257,7 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
     <div className="fade kbe-wrap">
       <div className="kbe-bar">
         <div className="kbe-inner kbe-bar-inner">
-          <button type="button" className="iconbtn" onClick={back} aria-label="닫기" style={{ border: "none", background: "transparent", width: 36, height: 36 }}>←</button>
+          <button type="button" className="iconbtn" onClick={exit} aria-label="닫기" style={{ border: "none", background: "transparent", width: 36, height: 36 }}>←</button>
           <div className="kbe-bar-title">{isNew ? "글쓰기" : (article?.t || "글 수정")}</div>
           <div className="kbe-actions">
             <button
@@ -1090,7 +1269,7 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
             >
               ⚙
             </button>
-            {!isNew && (
+            {!isNew && isOwner && (
               <button type="button" className="kbe-draft" style={{ color: "#E03E3E" }} onClick={handleDelete}>
                 삭제
               </button>
@@ -1108,6 +1287,50 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
       <div className="kbe-scroll">
         <div className="kbe-inner">
           <div className="kbe-sheet">
+            {isNew && (
+              <div className="seg" style={{ marginBottom: 14 }}>
+                {KB_SECTIONS.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className={section === s.id ? "on" : ""}
+                    onClick={() => {
+                      setSection(s.id);
+                      setSaved(false);
+                      if (s.id === "book" && blocks.length === 1 && blocks[0].type === "text" && !blocks[0].val) {
+                        setBlocks([{ type: "h", val: "독후감" }, { type: "text", val: "" }]);
+                      }
+                    }}
+                  >
+                    {s.icon} {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="kbe-sheet-meta">
+              <div className="kbe-meta-h">분류</div>
+              <KbCategoryBar
+                section={section}
+                cat={cat}
+                setCat={setCat}
+                prefs={prefs}
+                onUserUpdated={onUserUpdated}
+                onDirty={() => setSaved(false)}
+                extraCategories={categories}
+              />
+            </div>
+
+            <KbTagBar
+              tags={tags}
+              setTags={setTags}
+              tagPresets={tagPresets}
+              tagInput={tagInput}
+              setTagInput={setTagInput}
+              onDirty={() => setSaved(false)}
+              hint={isLecture ? "강연·세미나·행사명으로 나중에 찾기 쉽게 태그를 달아보세요" : undefined}
+            />
+
             <div
               ref={titleRef}
               className="editable kbe-title"
@@ -1115,7 +1338,89 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
               suppressContentEditableWarning
               data-ph={isBook ? "책 제목을 입력하세요" : "제목"}
               onFocus={() => setFocusIdx(-1)}
+              onPaste={handleTitlePaste}
             />
+
+            {isBook && (
+              <div
+                style={{
+                  marginTop: 8,
+                  marginBottom: 18,
+                  padding: "14px 16px",
+                  borderRadius: 14,
+                  border: "1px solid #C5E8D4",
+                  background: "linear-gradient(180deg, #F6FFF9 0%, #fff 100%)",
+                }}
+              >
+                <div className="small" style={{ lineHeight: 1.5, marginBottom: 10, color: "#2E7D52" }}>
+                  카카오 도서 검색으로 제목·저자·표지를 자동으로 채울 수 있어요
+                </div>
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ width: "100%", padding: 12, color: "#03A84D", borderColor: "#C5E8D4", fontWeight: 700 }}
+                  onClick={() => setBookSearchOpen(true)}
+                >
+                  🔍 책 검색으로 불러오기
+                </button>
+                {(bookMeta.author || coverKey) && (
+                  <div className="small" style={{ marginTop: 10, lineHeight: 1.5, color: "var(--muted)" }}>
+                    {bookMeta.author && <>저자: {bookMeta.author}</>}
+                    {bookMeta.author && bookMeta.isbn && " · "}
+                    {bookMeta.isbn && <>ISBN {bookMeta.isbn}</>}
+                  </div>
+                )}
+                {bookSearchOpen && (
+                  <BookSearchSheet onClose={() => setBookSearchOpen(false)} onPick={applyBookFromSearch} />
+                )}
+              </div>
+            )}
+
+            {isLecture && (
+              <div
+                style={{
+                  marginTop: 8,
+                  marginBottom: 18,
+                  padding: "14px 16px",
+                  borderRadius: 14,
+                  border: "1px solid #D8D4F0",
+                  background: "linear-gradient(180deg, #F8F7FF 0%, #fff 100%)",
+                }}
+              >
+                <div className="small" style={{ fontWeight: 700, marginBottom: 10, color: "#5856D6" }}>🎤 강연 정보</div>
+                <div style={{ display: "grid", gap: 10 }}>
+                  <input
+                    value={lectureMeta.event}
+                    onChange={(e) => { setLectureMeta((p) => ({ ...p, event: e.target.value })); setSaved(false); }}
+                    placeholder="행사명 (예: BROJ SUMMIT 2026)"
+                    style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }}
+                  />
+                  <div className="row" style={{ gap: 10 }}>
+                    <input
+                      value={lectureMeta.speaker}
+                      onChange={(e) => { setLectureMeta((p) => ({ ...p, speaker: e.target.value })); setSaved(false); }}
+                      placeholder="연사"
+                      style={{ flex: 1, border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }}
+                    />
+                    <input
+                      value={lectureMeta.org}
+                      onChange={(e) => { setLectureMeta((p) => ({ ...p, org: e.target.value })); setSaved(false); }}
+                      placeholder="주최 · 소속"
+                      style={{ flex: 1, border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }}
+                    />
+                  </div>
+                  <input
+                    value={lectureMeta.eventDate}
+                    onChange={(e) => { setLectureMeta((p) => ({ ...p, eventDate: e.target.value })); setSaved(false); }}
+                    placeholder="일자 (예: 2026.06.16)"
+                    style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }}
+                  />
+                </div>
+                <div className="small" style={{ marginTop: 8, lineHeight: 1.45, color: "var(--muted)" }}>
+                  저장 시 행사명·연사·주최도 태그로 자동 추가돼요
+                </div>
+              </div>
+            )}
 
             <div className="kbe-body">
               {blocks.map((b, i) => (
@@ -1148,6 +1453,8 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
                         onUpload={uploadBlockMedia}
                         onToggleTodo={(idx) => updateBlock(idx, { done: !blocks[idx].done })}
                         onTableChange={(idx, rows) => updateBlock(idx, { rows })}
+                        onPaste={handleBlockPaste}
+                        onUnlist={(idx) => updateBlock(idx, { type: "text" })}
                       />
                     </div>
                   </div>
@@ -1176,27 +1483,6 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
             <div className="kbe-meta-h">글 설정</div>
             {metaSummary && <div className="small" style={{ marginBottom: 12, color: "#888" }}>{metaSummary}</div>}
 
-            {isNew && (
-              <div className="seg" style={{ marginBottom: 14 }}>
-                {KB_SECTIONS.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    className={section === s.id ? "on" : ""}
-                    onClick={() => {
-                      setSection(s.id);
-                      setSaved(false);
-                      if (s.id === "book" && blocks.length === 1 && blocks[0].type === "text" && !blocks[0].val) {
-                        setBlocks([{ type: "h", val: "독후감" }, { type: "text", val: "" }]);
-                      }
-                    }}
-                  >
-                    {s.icon} {s.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
             <div className="kbe-meta-h" style={{ marginTop: 4 }}>대표 이미지 (선택)</div>
             <div className={"kbe-cover" + (coverKey && imageUrls[coverKey] ? " compact" : "")} onClick={uploadCover} style={isBook ? { maxWidth: 220 } : undefined}>
               {coverKey && imageUrls[coverKey] ? (
@@ -1217,18 +1503,7 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
 
             {isBook && (
               <div style={{ marginTop: 14 }}>
-                <button
-                  type="button"
-                  className="chip"
-                  style={{ width: "100%", padding: 12, color: "#03A84D", borderColor: "#C5E8D4" }}
-                  onClick={() => setBookSearchOpen(true)}
-                >
-                  🔍 책 검색으로 불러오기
-                </button>
-                {bookSearchOpen && (
-                  <BookSearchSheet onClose={() => setBookSearchOpen(false)} onPick={applyBookFromSearch} />
-                )}
-                <div className="sheet-field" style={{ marginTop: 12 }}>
+                <div className="sheet-field">
                   <label>저자</label>
                   <input
                     value={bookMeta.author}
@@ -1239,49 +1514,6 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
                 </div>
               </div>
             )}
-
-            <div style={{ marginTop: 16 }}>
-              <div className="kbe-meta-h">분류</div>
-              <KbCategoryBar
-                section={section}
-                cat={cat}
-                setCat={setCat}
-                prefs={prefs}
-                onUserUpdated={onUserUpdated}
-                onDirty={() => setSaved(false)}
-                extraCategories={categories}
-              />
-            </div>
-
-            <div style={{ marginTop: 12 }}>
-              <div className="kbe-meta-h">태그</div>
-              <div className="kbe-tags">
-                {tags.map((t) => (
-                  <span key={t} className={`tag ${tagColor(t)}`} style={{ padding: "5px 10px", fontSize: 12 }}>
-                    #{t}
-                    <span style={{ cursor: "pointer", marginLeft: 4 }} onClick={() => { setTags((p) => p.filter((x) => x !== t)); setSaved(false); }}>✕</span>
-                  </span>
-                ))}
-                {tagPresets.filter((t) => !tags.includes(t)).slice(0, 6).map((t) => (
-                  <button key={t} type="button" className="chip" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => { setTags((p) => [...p, t]); setSaved(false); }}>+ {t}</button>
-                ))}
-                <input
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key !== "Enter") return;
-                    e.preventDefault();
-                    const v = tagInput.trim();
-                    if (!v || tags.includes(v)) return;
-                    setTags((p) => [...p, v]);
-                    setTagInput("");
-                    setSaved(false);
-                  }}
-                  placeholder="태그 입력 후 Enter"
-                  style={{ border: "none", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 12, minWidth: 120, padding: "5px 4px", color: "#888" }}
-                />
-              </div>
-            </div>
           </div>
         </div>
       )}
@@ -1307,7 +1539,7 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
   );
 }
 
-export function KbReadView({ article, back, onEdit }) {
+export function KbReadView({ article, back, onEdit, onShare, canEdit = true }) {
   const [imageUrls, setImageUrls] = useState({});
   const rawBlocks = article?.blocks || [];
   const coverKey = kbCoverKey(article);
@@ -1341,9 +1573,18 @@ export function KbReadView({ article, back, onEdit }) {
       <div className="kbe-read-top">
         <div className="kbe-inner kbe-read-top-inner">
           <button type="button" className="iconbtn" onClick={back}>←</button>
-          <button type="button" className="btn btn-ghost" style={{ padding: "10px 16px", fontSize: 13 }} onClick={onEdit}>
-            편집
-          </button>
+          <div className="row" style={{ gap: 8 }}>
+            {onShare && (
+              <button type="button" className="btn btn-ghost" style={{ padding: "10px 16px", fontSize: 13 }} onClick={onShare}>
+                공유
+              </button>
+            )}
+            {canEdit && (
+              <button type="button" className="btn btn-ghost" style={{ padding: "10px 16px", fontSize: 13 }} onClick={onEdit}>
+                편집
+              </button>
+            )}
+          </div>
         </div>
       </div>
       {coverKey && imageUrls[coverKey] && (
@@ -1352,10 +1593,19 @@ export function KbReadView({ article, back, onEdit }) {
         </div>
       )}
       <div className="kbe-read-body">
-        <div className="h-eyebrow">{kbSectionLabel(article?.section)} · {article?.c}</div>
+        <div className="h-eyebrow">
+          {kbSectionLabel(article?.section)} · {article?.c}
+          {article?.isShared && article?.sharedBy ? ` · ${article.sharedBy.name || article.sharedBy.email}님과 공유` : ""}
+        </div>
         <div className="h-title" style={{ marginTop: 6 }}>{article?.t}</div>
         {article?.section === "book" && article?.bookMeta?.author && (
           <div className="small" style={{ marginTop: 8, fontWeight: 600 }}>{article.bookMeta.author}</div>
+        )}
+        {article?.section === "lecture" && (article?.lectureMeta?.speaker || article?.bookMeta?.speaker) && (
+          <div className="small" style={{ marginTop: 8, fontWeight: 600, lineHeight: 1.5 }}>
+            {(article.lectureMeta?.speaker || article.bookMeta?.speaker) && `연사 ${article.lectureMeta?.speaker || article.bookMeta?.speaker}`}
+            {(article.lectureMeta?.event || article.bookMeta?.event) && ` · ${article.lectureMeta?.event || article.bookMeta?.event}`}
+          </div>
         )}
         {article?.tags?.length > 0 && (
           <div className="row" style={{ gap: 6, marginTop: 12, flexWrap: "wrap" }}>
@@ -1419,6 +1669,11 @@ export function KbReadView({ article, back, onEdit }) {
 export function kbSearchText(article) {
   const parts = [article.t, article.c, kbSectionLabel(article.section), ...(article.tags || [])];
   if (article.bookMeta?.author) parts.push(article.bookMeta.author);
+  const lm = article.lectureMeta || (article.section === "lecture" ? article.bookMeta : null);
+  if (lm?.speaker) parts.push(lm.speaker);
+  if (lm?.event) parts.push(lm.event);
+  if (lm?.org) parts.push(lm.org);
+  if (lm?.eventDate) parts.push(lm.eventDate);
   for (const b of article.blocks || []) parts.push(blockText(b));
   return parts.join(" ").toLowerCase();
 }

@@ -9,13 +9,15 @@ import CategoryTagSettings from "./components/CategoryTagSettings.jsx";
 import ContactGroupTagPanel from "./components/ContactGroupTagPanel.jsx";
 import MeetingAskPanel from "./components/MeetingAskPanel.jsx";
 import CardScanView from "./components/CardScanView.jsx";
+import FriendsView from "./components/FriendsView.jsx";
+import ShareSheet from "./components/ShareSheet.jsx";
 import PlacesView from "./components/PlacesView.jsx";
 import CalendarView from "./components/CalendarView.jsx";
 import PhotoGallery from "./components/PhotoGallery.jsx";
 import { api, loadToken, saveToken, clearToken, setToken, isAuthError, isAccessError } from "./api/client.js";
 import { uploadBlob, uploadFile, pickImageFile, pickAudioFile, audioDurationSec, pickAnyFile, fileToBase64, mediaUrl, AudioRecorder, isPickCancelled, isNativeRecordingResult, isNativeShell } from "./api/upload.js";
 import { setClients, getClients, setPlaces, getPlaces } from "./store.js";
-import { contactToUi, todoToUi, todoSearchText, formatWhen, eventToUi, kbToUi, meetingToUi, meetingPeopleLabel, meetingAttendeeIds, isAudioMediaKey, isImageMediaKey, kbCategories, KB_SECTIONS, kbSectionLabel, kbCoverKey, haversineKm, formatDistanceKm, kakaoDirectionsUrl, kbExcerpt, kbReadMinutes, kbFileCount, kbThumbMeta, placeToUi, contactRoleLine, formatDurationHm } from "./mappers.js";
+import { contactToUi, todoToUi, todoSearchText, formatWhen, eventToUi, kbToUi, meetingToUi, meetingPeopleLabel, meetingAttendeeIds, isAudioMediaKey, isImageMediaKey, kbCategories, kbTags, KB_SECTIONS, kbSectionLabel, kbCoverKey, haversineKm, formatDistanceKm, kakaoDirectionsUrl, kbExcerpt, kbReadMinutes, kbFileCount, kbThumbMeta, placeToUi, contactRoleLine, formatDurationHm } from "./mappers.js";
 import { useSwipeBack } from "./useSwipeBack.js";
 import ContactIntroSheet from "./components/ContactIntroSheet.jsx";
 import { confirmDelete, confirmAction } from "./confirmDelete.js";
@@ -180,9 +182,8 @@ const CSS = `
   .pad{padding:0;}
   .h-title{font-size:30px;}
   .mapwrap{height:420px;margin-left:0;margin-right:0;}
-  .kbh-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
-  .kbh-item{margin-bottom:0;}
-  .kbh-fab{left:auto;right:32px;bottom:32px;transform:none;}
+  .kbh-list.kbh-board{gap:12px;}
+  .kbh-fab{right:32px;bottom:32px;}
   .meet-fab{bottom:32px;right:32px;}
   .screen .pad{max-width:840px;margin-left:auto;margin-right:auto;}
   .kbe-inner{max-width:720px;margin:0 auto;width:100%;}
@@ -198,7 +199,7 @@ const CSS = `
 }
 @media (min-width:1024px){
   .screen{padding:24px 48px 48px;}
-  .kbh-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
+  .kbh-list.kbh-board{gap:16px;}
   .kbh-feat .cover{height:180px;}
   .kbe-inner{max-width:760px;}
   .kbe-scroll{padding:24px 32px 32px;}
@@ -209,7 +210,7 @@ const CSS = `
   .kbe-read-body{padding:28px 48px 56px;max-width:760px;}
 }
 @media (min-width:1280px){
-  .kbh-list{grid-template-columns:repeat(3,minmax(0,1fr));}
+  .kbh-list.kbh-board{grid-template-columns:repeat(3,minmax(0,1fr));}
 }
 
 .list-item{padding:15px 0;border-bottom:1px solid var(--line);cursor:pointer;}
@@ -351,6 +352,8 @@ const CSS = `
 .kbh-feat{position:relative;border-radius:20px;overflow:hidden;border:1px solid var(--line);cursor:pointer;margin-bottom:4px;}
 .kbh-feat .cover{height:130px;background:linear-gradient(135deg,#DD5E39,#C2491F);}
 .kbh-feat .body{padding:15px 16px 17px;background:#fff;}
+.kbh-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;}
+.kbh-feat .kbh-meta{margin-bottom:8px;}
 .kbh-feat .ttl{font-size:17px;font-weight:800;letter-spacing:-.02em;line-height:1.3;}
 .kbh-feat .ex{color:var(--muted);font-size:13px;line-height:1.55;margin-top:7px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .kbh-pin{position:absolute;top:12px;left:12px;background:rgba(0,0,0,.35);color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;}
@@ -367,9 +370,20 @@ const CSS = `
 .kbh-info{display:flex;align-items:center;gap:7px;margin-top:8px;flex-wrap:wrap;}
 .kbh-dot{font-size:11.5px;color:#C0B9AC;}
 .kbh-attach{display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--accent-deep);font-weight:700;}
-.kbh-fab{position:absolute;left:50%;transform:translateX(-50%);bottom:88px;display:flex;align-items:center;gap:8px;
-  background:var(--accent);color:#fff;border:none;font-family:inherit;font-weight:800;font-size:14px;
-  padding:14px 20px;border-radius:30px;cursor:pointer;box-shadow:0 12px 28px -6px rgba(221,94,57,.55);z-index:8;}
+.kbh-list.kbh-board{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+.kbh-list.kbh-board .kbh-item{flex-direction:column;margin-bottom:0;padding:12px;align-items:stretch;}
+.kbh-list.kbh-board .kbh-thumb{width:100%;height:80px;border-radius:10px;}
+.kbh-list.kbh-board .kbh-thumb.book{width:100%;height:104px;}
+.kbh-list.kbh-listview{display:flex;flex-direction:column;gap:8px;}
+.kbh-list.kbh-listview .kbh-item{margin-bottom:0;padding:12px 14px;}
+.kbh-list.kbh-listview .kbh-thumb{width:52px;height:52px;}
+.kbh-list.kbh-listview .kbh-thumb.book{width:44px;height:58px;}
+.kbh-list.kbh-listview .kbh-item .ex{-webkit-line-clamp:1;}
+.kbh-viewbar{display:flex;align-items:center;justify-content:flex-end;margin-top:14px;}
+.kbh-fab{position:fixed;right:20px;bottom:calc(84px + env(safe-area-inset-bottom,0px));width:56px;height:56px;
+  border-radius:50%;border:none;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;z-index:8;box-shadow:0 12px 28px -6px rgba(221,94,57,.55);font-family:inherit;padding:0;}
+.kbh-fab:active{background:var(--accent-deep);}
 
 .meet-fab{position:fixed;right:20px;bottom:calc(84px + env(safe-area-inset-bottom,0px));width:56px;height:56px;
   border-radius:50%;border:none;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;
@@ -400,6 +414,7 @@ const CSS = `
 .kbe-cover.compact{height:88px;flex-direction:row;gap:12px;padding:12px;text-align:left;}
 .kbe-cover img{width:100%;height:100%;object-fit:cover;}
 .kbe-cover.compact img{width:64px;height:64px;border-radius:8px;flex:0 0 auto;}
+.kbe-sheet-meta .kbe-meta{margin-top:0;margin-bottom:4px;}
 .kbe-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;align-items:center;}
 .kbe-title{display:block;width:100%;min-height:40px;font-size:28px;font-weight:700;letter-spacing:-.025em;line-height:1.35;
   margin:0 0 20px;outline:none;word-break:break-word;color:#111;}
@@ -595,8 +610,10 @@ const CSS = `
 .sheetbg{position:fixed;inset:0;background:rgba(20,16,12,.45);z-index:200;display:flex;align-items:center;justify-content:center;
   padding:max(20px,env(safe-area-inset-top)) 20px max(20px,env(safe-area-inset-bottom));
   animation:fadeUp .25s ease both;}
-.sheet-bg{position:fixed;inset:0;background:rgba(20,16,12,.45);z-index:350;display:flex;align-items:flex-end;justify-content:center;}
-.sheet-bottom{width:100%;max-width:480px;background:var(--paper);border-radius:20px 20px 0 0;padding:16px 20px max(20px,env(safe-area-inset-bottom));max-height:88vh;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.sheet-bg{position:fixed;inset:0;background:rgba(20,16,12,.45);z-index:350;display:flex;align-items:center;justify-content:center;
+  padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));}
+.sheet-bottom{width:min(480px,calc(100% - 32px));background:var(--paper);border-radius:18px;padding:20px 20px max(20px,env(safe-area-inset-bottom));
+  max-height:min(78vh,620px);overflow-y:auto;-webkit-overflow-scrolling:touch;box-shadow:0 20px 60px rgba(0,0,0,.22);animation:fadeUp .25s ease both;}
 .sheet-handle{width:36px;height:4px;background:#D8D0C4;border-radius:2px;margin:0 auto 12px;}
 .sheet{width:100%;max-width:400px;background:var(--paper);border-radius:20px;padding:20px 22px 24px;
   box-shadow:0 20px 60px rgba(0,0,0,.22);animation:fadeUp .28s ease both;}
@@ -829,11 +846,13 @@ function App(){
   const [group,setGroup] = useState("전체");
   const [phase,setPhase] = useState("idle");
   const [kbView,setKbView] = useState(null);
+  const [kbSection,setKbSection] = useState("knowledge");
   const [pricing,setPricing] = useState(false);
   const [segment] = useState("business");
   const [cardScan,setCardScan] = useState(false);
   const [showInstall,setShowInstall] = useState(false);
   const [overlay,setOverlay] = useState(null);
+  const [shareTarget,setShareTarget] = useState(null);
   const [detail,setDetail] = useState(null);
   const [secs,setSecs] = useState(0);
   const [hl,setHl] = useState(0);
@@ -927,6 +946,15 @@ function App(){
     if(!isInstallDismissed()) setShowInstall(true);
   },[user]);
 
+  const closeKbView=useCallback((sec)=>{
+    if(sec) setKbSection(sec);
+    setKbView(null);
+  },[]);
+  const openKbView=(article,mode,opts={})=>{
+    const sec=article?.section||"knowledge";
+    setKbSection(sec);
+    setKbView({ article, mode, ...opts });
+  };
   const goTab=(t)=>{ setMobileMenuOpen(false); setClient(null); setKbView(null); setPricing(false); setCardScan(false); setOverlay(null); setDetail(null); if(t!=="record"){ setTab(t);} };
   const startRec=(link=null)=>{
     if(user && user.hasAccess===false){
@@ -1029,7 +1057,7 @@ function App(){
   const handleSwipeBack=useCallback(()=>{
     if(detail){ setDetail(null); return; }
     if(client){ setClient(null); return; }
-    if(kbView){ setKbView(null); return; }
+    if(kbView){ closeKbView(kbView.article?.section); return; }
     if(overlay){ setOverlay(null); return; }
     if(pricing){ setPricing(false); return; }
     if(cardScan){ setCardScan(false); return; }
@@ -1038,7 +1066,7 @@ function App(){
       setTab("today");
       setPhase("idle");
     }
-  },[detail,client,kbView,overlay,pricing,cardScan,tab,phase]);
+  },[detail,client,kbView,overlay,pricing,cardScan,tab,phase,closeKbView]);
 
   const swipeBackEnabled=boot==="app" && (
     !!detail || !!client || !!kbView || !!overlay || pricing || cardScan || (tab==="record" && phase!=="rec")
@@ -1120,6 +1148,13 @@ function App(){
       <style>{CSS}</style>
       <ToastHost/>
       <ConfirmHost/>
+      <ShareSheet
+        open={!!shareTarget}
+        onClose={()=>setShareTarget(null)}
+        resourceType={shareTarget?.type}
+        resourceId={shareTarget?.id}
+        title={shareTarget?.title}
+      />
       <div className="app-shell">
         {boot==="app" && (
           <aside className="app-sidebar">
@@ -1179,6 +1214,7 @@ function App(){
           : overlay==="trash" ? <Trash back={()=>setOverlay("settings")}/>
           : overlay==="export" ? <ExportData back={()=>setOverlay("settings")}/>
           : overlay==="categorytags" ? <CategoryTagSettings user={user} back={()=>setOverlay("settings")} onUserUpdated={setUser}/>
+          : overlay==="friends" ? <FriendsView back={()=>setOverlay("settings")} I={I}/>
           : pricing && !BETA_HIDE_PRICING ? <Pricing back={()=>setPricing(false)} segment={segment} user={user} onUserUpdated={setUser}/>
           : tab==="record" ? <RecordScreen phase={phase} secs={secs} mmss={mmss} hl={hl} setHl={setHl}
                               onRunInBackground={handleRecordComplete} todos={todos} toggleTodo={toggleTodo}
@@ -1200,7 +1236,7 @@ function App(){
                               openMeetings={()=>goTab("meetings")}
                               openTodoArchive={()=>goTab("todos")}
                               kbArticles={kbArticles}
-                              openKb={(a)=>setKbView({article:a,mode:"read"})}
+                              openKb={(a)=>openKbView(a,"read")}
                               openDetail={(t,data)=>setDetail({type:t,data})} onRefresh={loadAppData}/>
           : tab==="todos" ? <TodoArchive embedded meetings={meetings} todos={todos} onRefresh={loadAppData} openDetail={(t)=>setDetail({type:"task",data:t})}/>
           : tab==="clients" ? (cardScan ? <CardScan back={()=>setCardScan(false)} onSaved={refreshContacts} user={user} onUserUpdated={setUser} contactPresets={prefs.contacts}/> : <Clients group={group} setGroup={setGroup} open={(c)=>setClient(c)} onAdd={()=>setCardScan(true)} onRefresh={loadAppData} seg={segment} user={user} onUserUpdated={setUser} contactPresets={prefs.contacts}/>)
@@ -1209,16 +1245,31 @@ function App(){
           : tab==="calendar" ? <CalendarView openDetail={(t,data)=>setDetail({type:t,data})} organizePrefs={prefs} onStartRecFromEvent={startRecFromEvent} onRefresh={loadAppData}/>
           : kbView ? (
             kbView.mode==="edit"
-              ? <KbEditor article={kbView.article} back={()=>setKbView(null)} onSaved={loadAppData} onDeleted={loadAppData}
+              ? <KbEditor article={kbView.article} back={closeKbView} onSaved={loadAppData} onDeleted={loadAppData}
                   prefs={prefs}
                   onUserUpdated={setUser}
+                  initialBookSearchOpen={!!kbView.openBookSearch}
                   categories={kbCategories(kbArticles, kbView.article?.section).filter((c)=>c!=="전체")}/>
-              : <KbReadView article={kbView.article} back={()=>setKbView(null)} onEdit={()=>setKbView({article:kbView.article,mode:"edit"})}/>
+              : <KbReadView article={kbView.article} back={()=>closeKbView(kbView.article?.section || "knowledge")}
+                  canEdit={!kbView.article?.shareRole || kbView.article.shareRole==="owner" || kbView.article.shareRole==="editor"}
+                  onEdit={()=>setKbView({article:kbView.article,mode:"edit"})}
+                  onShare={kbView.article?.shareRole==="owner" ? ()=>setShareTarget({type:"kb",id:kbView.article.id,title:kbView.article.t}) : undefined}/>
           )
-          : <Knowledge articles={kbArticles} openWrite={(a,section)=>setKbView({
-              article: a || { section: section || "knowledge", blocks: section === "book" ? [{ type: "h", val: "독후감" }, { type: "text", val: "" }] : [] },
+          : <Knowledge articles={kbArticles} section={kbSection} onSectionChange={setKbSection} openWrite={(a,section,opts)=>{
+              const sec=a?.section||section||"knowledge";
+              setKbSection(sec);
+              setKbView({
+              article: a || {
+                section: sec,
+                blocks: sec === "book"
+                  ? [{ type: "h", val: "독후감" }, { type: "text", val: "" }]
+                  : sec === "lecture"
+                    ? [{ type: "h", val: "강연 정리" }, { type: "text", val: "" }]
+                    : [],
+              },
               mode: a?.id ? "read" : "edit",
-            })}/>}
+              openBookSearch: !!opts?.openBookSearch,
+            });}}/>}
         </div>
 
         {showMobileNav && (
@@ -1441,8 +1492,14 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
         <div className="row" style={{gap:8,alignItems:"center"}}>
           <button type="button" className="chip" style={{color:"var(--muted)"}} onClick={openTodoArchive}>목록</button>
           <button type="button" className="chip" style={{color:"var(--accent-deep)"}} onClick={()=>{
-            setFocusTodoAdd(true);
-            window.setTimeout(()=>setFocusTodoAdd(false), 500);
+            const openAdd=()=>{
+              setFocusTodoAdd(true);
+              window.setTimeout(()=>setFocusTodoAdd(false), 700);
+            };
+            if(todoView==="board"){
+              setTodoView("check");
+              window.setTimeout(openAdd, 60);
+            } else openAdd();
           }}>+ 할 일</button>
           <div className="seg" style={{width:128}}>
             <button type="button" className={todoView==="check"?"on":""} onClick={()=>setTodoView("check")} style={{padding:"6px 0",fontSize:12.5}}>체크</button>
@@ -1601,7 +1658,6 @@ function FilterSelectSheet({open,title,options,value,onSelect,onClose,searchPlac
         aria-modal="true"
         aria-label={title}
       >
-        <div className="sheet-handle"/>
         <div style={{fontWeight:800,fontSize:17,marginBottom:12,flexShrink:0}}>{title}</div>
         <div className="filter-select-list">
           {filtered.length===0 && (
@@ -2792,14 +2848,79 @@ function MeetingAttachmentsPanel({ meeting, disabled, onUpdated }) {
   );
 }
 
+function MeetingTextMemoPanel({ meeting, disabled, onUpdated }) {
+  const [draft, setDraft] = useState(meeting.textMemo || "");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setDraft(meeting.textMemo || "");
+  }, [meeting.id, meeting.textMemo]);
+
+  const saveMemo = async () => {
+    if (!meeting.id || saving || disabled) return;
+    const text = draft.trim();
+    if (text === (meeting.textMemo || "").trim()) return;
+    setSaving(true);
+    try {
+      const m = await api.updateMeetingTextMemo(meeting.id, text);
+      onUpdated?.(meetingToUi(m));
+    } catch (e) {
+      notifyError(e, e.message || "메모 저장 실패");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div className="section-h">텍스트 메모</div>
+      <div className="card" style={{ padding: 14 }}>
+        <div className="small" style={{ lineHeight: 1.55, color: "var(--muted)", marginBottom: 10 }}>
+          {meeting.isProcessing
+            ? "변환 중에도 짧은 메모를 남길 수 있어요. 요약·전사에 반영됩니다."
+            : "회의 중 적어둔 메모·메모장 내용을 그대로 붙여넣을 수 있어요."}
+        </div>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={saveMemo}
+          placeholder="예: 다음 주 재연락 · 예산 5천만 검토 중 · A사 경쟁사 언급"
+          disabled={disabled || saving}
+          rows={4}
+          style={{
+            width: "100%",
+            border: "1px solid var(--line)",
+            borderRadius: 12,
+            padding: "12px 13px",
+            fontFamily: "inherit",
+            fontSize: 14,
+            lineHeight: 1.55,
+            resize: "vertical",
+            minHeight: 96,
+            color: "var(--ink)",
+            background: "#fff",
+          }}
+        />
+        {saving && (
+          <div className="small" style={{ marginTop: 8, color: "var(--muted)" }}>저장 중…</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={categories:[],tags:[]},openEvent}){
   const seed=data||{};
   const [meeting,setMeeting]=useState(seed);
   const [meetingTodos,setMeetingTodos]=useState([]);
   const [loading,setLoading]=useState(!!seed.id);
   const [retrying,setRetrying]=useState(false);
+  const [shareOpen,setShareOpen]=useState(false);
   const [metaTags,setMetaTags]=useState(seed.tags||[]);
   const [category,setCategory]=useState(seed.category||"");
+  const shareRole=meeting.shareRole||meeting._raw?.shareRole||"owner";
+  const canEdit=shareRole==="owner"||shareRole==="editor";
+  const isOwner=shareRole==="owner";
   const reloadMeeting=useCallback(()=>{
     if(!seed.id) return Promise.resolve();
     return api.getMeeting(seed.id).then((m)=>{
@@ -2849,7 +2970,7 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
     }finally{ setRetrying(false); }
   };
   const patchMeeting=async (body)=>{
-    if(!meeting.id) return;
+    if(!meeting.id || !canEdit) return;
     const m=await api.updateMeeting(meeting.id,body);
     const ui=meetingToUi(m);
     setMeeting(ui);
@@ -2875,6 +2996,17 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
   return (
     <div className="fade">
       <DetailHead back={back} eyebrow="기록" title={peopleLabel||meeting.oneLine||"미팅 기록"}/>
+      <div className="pad row between" style={{marginTop:-2,marginBottom:6}}>
+        <div className="small" style={{lineHeight:1.5,color:"var(--muted)"}}>
+          {meeting.isShared && meeting.sharedBy
+            ? `${meeting.sharedBy.name||meeting.sharedBy.email}님과 공유 · ${shareRole==="editor"?"편집":"뷰어"}`
+            : isOwner ? "나의 기록" : ""}
+        </div>
+        {isOwner && meeting.id && (
+          <button type="button" className="chip" style={{color:"var(--accent-deep)"}} onClick={()=>setShareOpen(true)}>공유</button>
+        )}
+      </div>
+      <ShareSheet open={shareOpen} onClose={()=>setShareOpen(false)} resourceType="meeting" resourceId={meeting.id} title={peopleLabel||meeting.oneLine||"미팅"} />
       <div className="pad" style={{marginTop:12,marginBottom:16}}>
         {meeting.isProcessing && (
           <div className="card small" style={{padding:14,marginBottom:14,lineHeight:1.55,background:"#E8F0FF",border:"1px solid #C5D8F5",color:"#3A6BB5"}}>
@@ -2917,17 +3049,18 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
         )}
         <MeetingAttendeesPanel
           meeting={meeting}
-          disabled={loading || !meeting.id}
+          disabled={loading || !meeting.id || !canEdit}
           onSave={async (attendees, contactId) => {
             await patchMeeting({ attendees, contactId });
           }}
         />
         <div className="section-h" style={{marginTop:0}}>분류 · 태그</div>
-        <div className="card" style={{padding:14,marginBottom:14}}>
+        <div className="card" style={{padding:14,marginBottom:14,opacity:canEdit?1:.75}}>
           <div className="small" style={{fontWeight:700,marginBottom:8}}>카테고리</div>
           <div className="row" style={{gap:7,flexWrap:"wrap",marginBottom:12}}>
             {(meetingPresets.categories||[]).map((c)=>(
               <button key={c} type="button" className={"chip"+(category===c?" on":"")} style={{padding:"6px 12px",fontSize:12}}
+                disabled={!canEdit}
                 onClick={()=>setMeetingCategory(c)}>{c}</button>
             ))}
             {!meetingPresets.categories?.length && <span className="small">설정 → 카테고리 · 태그에서 추가하세요</span>}
@@ -2936,6 +3069,7 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
           <div className="row" style={{gap:7,flexWrap:"wrap"}}>
             {(meetingPresets.tags||[]).map((t)=>(
               <button key={t} type="button" className={"chip"+(metaTags.includes(t)?" on":"")} style={{padding:"6px 12px",fontSize:12}}
+                disabled={!canEdit}
                 onClick={()=>toggleMetaTag(t)}>#{t}</button>
             ))}
           </div>
@@ -2951,7 +3085,18 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
         {meeting.id && meeting.source !== "photo" && (
           <MeetingAttachmentsPanel
             meeting={meeting}
-            disabled={loading || !meeting.id}
+            disabled={loading || !meeting.id || !canEdit}
+            onUpdated={(ui) => {
+              setMeeting(ui);
+              setMetaTags(ui.tags || []);
+              setCategory(ui.category || "");
+            }}
+          />
+        )}
+        {meeting.id && meeting.source !== "photo" && (
+          <MeetingTextMemoPanel
+            meeting={meeting}
+            disabled={loading || !meeting.id || !canEdit}
             onUpdated={(ui) => {
               setMeeting(ui);
               setMetaTags(ui.tags || []);
@@ -3019,7 +3164,7 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
           </>
         )}
       </div>
-      {meeting.id && (
+      {meeting.id && isOwner && (
         <DeleteBar label={meeting.oneLine||"미팅 기록"} onDelete={()=>api.deleteMeeting(meeting.id)} afterDelete={onDeleted}/>
       )}
     </div>
@@ -3573,20 +3718,52 @@ function KbThumb({article}){
   return <div className={cls} style={{background:meta.color}}>{icon}</div>;
 }
 
-function Knowledge({articles,openWrite}){
-  const [section,setSection]=useState("book");
+function KbArticleCard({article,onOpen,pinned}){
+  return (
+    <div className="kbh-item" onClick={()=>onOpen(article)}>
+      <KbThumb article={article}/>
+      <div style={{minWidth:0,flex:1}}>
+        <div className="kbh-meta">
+          {pinned && <span className="tag gray">📌 최신</span>}
+          <span className="tag gray">{article.c}</span>
+          {(article.tags||[]).slice(0,2).map(t=><span key={t} className="tag gray">#{t}</span>)}
+        </div>
+        <div className="ttl">{article.t}</div>
+        {article.section==="book" && article.bookMeta?.author && <div className="small" style={{marginTop:2,fontWeight:600}}>{article.bookMeta.author}</div>}
+        {article.section==="lecture" && (article.lectureMeta?.speaker || article.bookMeta?.speaker || article.lectureMeta?.event || article.bookMeta?.event) && (
+          <div className="small" style={{marginTop:2,fontWeight:600}}>
+            {(article.lectureMeta?.event || article.bookMeta?.event) || (article.lectureMeta?.speaker || article.bookMeta?.speaker)}
+          </div>
+        )}
+        <div className="ex">{kbExcerpt(article)}</div>
+        <div className="kbh-info">
+          <span className="kbh-dot">{article.d} · {kbReadMinutes(article)}분</span>
+          {kbFileCount(article)>0 && <span className="kbh-attach">📎 {kbFileCount(article)}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Knowledge({articles,openWrite,section,onSectionChange}){
+  const [viewMode,setViewMode]=useState("board");
   const [cat,setCat]=useState("전체");
+  const [tagFilter,setTagFilter]=useState("전체");
   const [q,setQ]=useState("");
   const cats=kbCategories(articles, section);
+  const tagList=kbTags(articles, section);
   const ql=q.trim().toLowerCase();
   let list=articles.filter(a=>(a.section||"knowledge")===section);
   if(cat!=="전체") list=list.filter(a=>a.c===cat);
+  if(tagFilter!=="전체") list=list.filter(a=>(a.tags||[]).includes(tagFilter));
   if(ql) list=list.filter(a=>kbSearchText(a).includes(ql));
   const feat=list[0] && cat==="전체" && !ql ? list[0] : null;
   const rest=feat ? list.slice(1) : list;
   const sectionInfo=KB_SECTIONS.find(s=>s.id===section);
   const emptyMsg=section==="book"?"아직 책 기록이 없어요. 독후감을 남겨보세요."
     :section==="lecture"?"아직 강연 정리가 없어요.":"아직 지식 글이 없어요.";
+  const fabLabel=section==="book"?"책 추가":section==="lecture"?"강연 정리":"새 글";
+  const gridItems=viewMode==="board"?rest:list;
 
   return (
     <div className="fade" style={{position:"relative",minHeight:"100%"}}>
@@ -3598,7 +3775,7 @@ function Knowledge({articles,openWrite}){
         <div className="kbh-seg">
           {KB_SECTIONS.map(s=>(
             <button key={s.id} type="button" className={section===s.id?"on":""}
-              onClick={()=>{ setSection(s.id); setCat("전체"); }}>
+              onClick={()=>{ onSectionChange(s.id); setCat("전체"); setTagFilter("전체"); }}>
               <span>{s.icon} {s.label}</span>
               <span className="sub">{s.desc}</span>
             </button>
@@ -3611,11 +3788,40 @@ function Knowledge({articles,openWrite}){
           {q && <span onClick={()=>setQ("")} style={{cursor:"pointer"}}>✕</span>}
         </div>
 
+        {section==="book" && (
+          <button
+            type="button"
+            className="chip"
+            style={{width:"100%",marginTop:12,padding:"13px 14px",color:"#03A84D",borderColor:"#C5E8D4",fontWeight:700}}
+            onClick={()=>openWrite(null, section, { openBookSearch: true })}
+          >
+            🔍 책 검색으로 추가
+          </button>
+        )}
+
         <div className="kbh-cats">
           {cats.map(c=>(
-            <button key={c} type="button" className={"kbh-cat"+(cat===c?" on":"")} onClick={()=>setCat(c)}>{c}</button>
+            <button key={c} type="button" className={"kbh-cat"+(cat===c?" on":"")} onClick={()=>{ setCat(c); setTagFilter("전체"); }}>{c}</button>
           ))}
         </div>
+
+        {tagList.length>0 && (
+          <div className="kbh-cats" style={{marginTop:8}}>
+            <button type="button" className={"kbh-cat"+(tagFilter==="전체"?" on":"")} onClick={()=>setTagFilter("전체")}>#전체</button>
+            {tagList.map(t=>(
+              <button key={t} type="button" className={"kbh-cat"+(tagFilter===t?" on":"")} onClick={()=>setTagFilter(t)}>#{t}</button>
+            ))}
+          </div>
+        )}
+
+        {list.length>0 && (
+          <div className="kbh-viewbar">
+            <div className="seg" style={{width:128}}>
+              <button type="button" className={viewMode==="board"?"on":""} onClick={()=>setViewMode("board")} style={{padding:"6px 0",fontSize:12.5}}>보드</button>
+              <button type="button" className={viewMode==="list"?"on":""} onClick={()=>setViewMode("list")} style={{padding:"6px 0",fontSize:12.5}}>리스트</button>
+            </div>
+          </div>
+        )}
 
         {list.length===0 && (
           <div className="small" style={{textAlign:"center",padding:"50px 0",lineHeight:1.6}}>
@@ -3623,18 +3829,24 @@ function Knowledge({articles,openWrite}){
           </div>
         )}
 
-        {feat && (
+        {feat && viewMode==="board" && (
           <>
             <div className="kbh-sech">추천</div>
             <div className="kbh-feat" onClick={()=>openWrite(feat)}>
               <KbFeatCover article={feat}/>
-              <span className="kbh-pin">📌 최신 · {feat.c}</span>
+              <span className="kbh-pin">📌 최신</span>
               <div className="body">
+                <div className="kbh-meta">
+                  <span className="tag gray">{feat.c}</span>
+                  {(feat.tags||[]).slice(0,3).map(t=><span key={t} className="tag gray">#{t}</span>)}
+                </div>
                 <div className="ttl">{feat.t}</div>
                 {feat.section==="book" && feat.bookMeta?.author && <div className="small" style={{marginTop:4,fontWeight:600}}>{feat.bookMeta.author}</div>}
+                {feat.section==="lecture" && (feat.lectureMeta?.event || feat.bookMeta?.event) && (
+                  <div className="small" style={{marginTop:4,fontWeight:600}}>{feat.lectureMeta?.event || feat.bookMeta?.event}</div>
+                )}
                 <div className="ex">{kbExcerpt(feat)}</div>
                 <div className="kbh-info">
-                  {(feat.tags||[]).slice(0,2).map(t=><span key={t} className="tag gray">{t}</span>)}
                   <span className="kbh-dot">{feat.d} · {kbReadMinutes(feat)}분</span>
                   {kbFileCount(feat)>0 && <span className="kbh-attach">📎 {kbFileCount(feat)}</span>}
                 </div>
@@ -3643,28 +3855,21 @@ function Knowledge({articles,openWrite}){
           </>
         )}
 
-        {rest.length>0 && <div className="kbh-sech">{kbSectionLabel(section)} 목록</div>}
-        <div className="kbh-list">
-        {rest.map(a=>(
-            <div key={a.id} className="kbh-item" onClick={()=>openWrite(a)}>
-              <KbThumb article={a}/>
-              <div style={{minWidth:0,flex:1}}>
-                <div className="ttl">{a.t}</div>
-                {a.section==="book" && a.bookMeta?.author && <div className="small" style={{marginTop:2,fontWeight:600}}>{a.bookMeta.author}</div>}
-                <div className="ex">{kbExcerpt(a)}</div>
-                <div className="kbh-info">
-                  <span className="tag gray">{a.c}</span>
-                  <span className="kbh-dot">{a.d} · {kbReadMinutes(a)}분</span>
-                  {kbFileCount(a)>0 && <span className="kbh-attach">📎 {kbFileCount(a)}</span>}
-                </div>
-              </div>
-            </div>
-        ))}
+        {gridItems.length>0 && <div className="kbh-sech">{kbSectionLabel(section)} 목록</div>}
+        <div className={`kbh-list kbh-${viewMode}`}>
+          {gridItems.map((a,i)=>(
+            <KbArticleCard
+              key={a.id}
+              article={a}
+              onOpen={openWrite}
+              pinned={viewMode==="list" && i===0 && !!feat}
+            />
+          ))}
         </div>
       </div>
 
-      <button type="button" className="kbh-fab" onClick={()=>openWrite(null, section)}>
-        {I.plus({width:18,height:18})} {section==="book"?"책 추가":section==="lecture"?"강연 정리":"새 글"}
+      <button type="button" className="kbh-fab" aria-label={fabLabel} onClick={()=>openWrite(null, section)}>
+        {I.plus({width:24,height:24})}
       </button>
     </div>
   );
@@ -4287,7 +4492,7 @@ function TodoArchive({back,embedded=false,openDetail,meetings=[],todos:bootTodos
       <div className="pad" style={{marginTop:6}}>
         <div className="row" style={{gap:9,background:"#F4F1EA",borderRadius:12,padding:"11px 13px",color:"var(--muted)"}}>
           {I.search({width:17,height:17})}
-          <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="제목 · 상세 · 결과 · 히스토리 · 첨부 검색"
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="제목 · 상세 · 결과 · 히스토리 · 첨부 검색"
             style={{flex:1,border:"none",outline:"none",background:"transparent",fontFamily:"inherit",fontSize:14,color:"var(--ink)"}}/>
         </div>
         <div className="row" style={{gap:7,marginTop:12,flexWrap:"wrap"}}>
@@ -4604,7 +4809,7 @@ function Settings({back,go,user,onLogout,openPricing}){
           {Row(I.gear({width:18,height:18}),"마이페이지","용량 · 프로필",()=>go("mypage"))}
           {!BETA_HIDE_PRICING && Row(I.bolt({width:18,height:18}),"플랜 · 결제",trialLabel,openPricing)}
           {Row(I.bell({width:18,height:18}),"알림","1시간 전",()=>{})}
-          {Row(I.users({width:18,height:18}),"공유 · 초대 관리",null,()=>{})}
+          {Row(I.users({width:18,height:18}),"친구 · 공유",null,()=>go("friends"))}
         </div>
 
         <div className="section-h">데이터</div>

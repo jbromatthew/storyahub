@@ -27,7 +27,7 @@ export const DEFAULT_PREFERENCES = {
   },
   kb: {
     book: { categories: ["문학", "비즈니스", "자기계발", "에세이"], tags: ["읽는 중", "완독", "추천"] },
-    lecture: { categories: ["세미나", "컨퍼런스", "강의", "워크숍"], tags: ["핵심", "복습"] },
+    lecture: { categories: ["세미나", "컨퍼런스", "강의", "워크숍", "사내교육"], tags: ["강연", "세미나", "핵심", "복습", "인사이트"] },
     knowledge: { categories: ["노하우", "레퍼런스", "메모", "아이디어"], tags: [] },
   },
   meeting: { categories: ["미팅", "통화", "방문", "온라인"], tags: ["후속 필요", "중요"] },
@@ -48,6 +48,9 @@ const TAG_COLORS = {
   추천: "accent",
   핵심: "accent",
   복습: "blue",
+  강연: "accent",
+  세미나: "blue",
+  인사이트: "green",
 };
 
 function cleanList(raw, max = 40) {

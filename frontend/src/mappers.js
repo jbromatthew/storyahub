@@ -220,14 +220,14 @@ export function eventToUi(e) {
 }
 
 export const KB_SECTIONS = [
-  { id: "book", label: "책", icon: "📚", desc: "독후감 · 책 표지" },
-  { id: "lecture", label: "강연", icon: "🎤", desc: "세미나 · 강의 정리" },
   { id: "knowledge", label: "지식", icon: "💡", desc: "노하우 · 레퍼런스" },
+  { id: "lecture", label: "강연", icon: "🎤", desc: "세미나 · 강의 정리" },
+  { id: "book", label: "책", icon: "📚", desc: "독후감 · 책 표지" },
 ];
 
 export const KB_SECTION_DEFAULT_CATS = {
   book: ["문학", "비즈니스", "자기계발", "에세이"],
-  lecture: ["세미나", "컨퍼런스", "강의", "워크숍"],
+  lecture: ["세미나", "컨퍼런스", "강의", "워크숍", "사내교육"],
   knowledge: ["노하우", "레퍼런스", "메모", "아이디어"],
 };
 
@@ -250,6 +250,10 @@ export function kbToUi(a) {
     tags: a.tags || [],
     blocks: a.blocks || [],
     bookMeta: a.bookMeta || null,
+    lectureMeta: section === "lecture" && a.bookMeta ? a.bookMeta : null,
+    shareRole: a.shareRole || "owner",
+    isShared: !!a.isShared,
+    sharedBy: a.sharedBy || null,
     _raw: a,
   };
 }
@@ -305,6 +309,10 @@ export function meetingToUi(m) {
     companyName: m.processMeta?.companyName || null,
     imageKeys: Array.isArray(m.processMeta?.imageKeys) ? m.processMeta.imageKeys : [],
     photoNotes: Array.isArray(m.processMeta?.photoNotes) ? m.processMeta.photoNotes : [],
+    textMemo: typeof m.processMeta?.textMemo === "string" ? m.processMeta.textMemo : "",
+    shareRole: m.shareRole || "owner",
+    isShared: !!m.isShared,
+    sharedBy: m.sharedBy || null,
     _raw: m,
   };
 }
@@ -373,6 +381,17 @@ export function kbCategories(articles, section = null) {
   const pool = section ? articles.filter((a) => (a.section || "knowledge") === section) : articles;
   const fromData = pool.map((a) => a.c).filter((c) => c && c !== "미분류");
   return ["전체", ...Array.from(new Set(fromData)).sort()];
+}
+
+export function kbTags(articles, section = null) {
+  const pool = section ? articles.filter((a) => (a.section || "knowledge") === section) : articles;
+  const tags = new Set();
+  for (const a of pool) {
+    for (const t of a.tags || []) {
+      if (t?.trim()) tags.add(t.trim());
+    }
+  }
+  return [...tags].sort((a, b) => a.localeCompare(b, "ko"));
 }
 
 export function kbCoverKey(article) {

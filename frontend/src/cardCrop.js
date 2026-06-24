@@ -4,11 +4,17 @@ function loadImage(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
+    const timer = window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+      reject(new Error("이미지 로드 시간 초과"));
+    }, 12000);
     img.onload = () => {
+      window.clearTimeout(timer);
       URL.revokeObjectURL(url);
       resolve(img);
     };
     img.onerror = () => {
+      window.clearTimeout(timer);
       URL.revokeObjectURL(url);
       reject(new Error("이미지를 불러올 수 없습니다"));
     };
@@ -51,7 +57,9 @@ function isContentPixel(data, w, x, y, bg, threshold) {
  * @returns {Promise<File>}
  */
 export async function autoCropBusinessCard(file) {
-  if (!file?.type?.startsWith("image/")) return file;
+  if (!file) return file;
+  const mime = file.type || "";
+  if (mime && !mime.startsWith("image/")) return file;
 
   try {
     const img = await loadImage(file);

@@ -8,7 +8,9 @@ export type WebToNativeMessage =
       filename?: string;
     }
   | { type: 'RECORD_CANCEL' }
-  | { type: 'PICK_IMAGE'; source: 'camera' | 'library'; requestId: string };
+  | { type: 'PICK_IMAGE'; source: 'camera' | 'library'; requestId: string }
+  | { type: 'PICK_IMAGES'; maxCount: number; requestId: string }
+  | { type: 'PICK_DOCUMENT'; requestId: string };
 
 export type NativeToWebMessage =
   | { type: 'READY'; platform: 'ios' | 'android'; version: string }
@@ -30,7 +32,19 @@ export type NativeToWebMessage =
       filename: string;
     }
   | { type: 'IMAGE_PICK_CANCELLED'; requestId: string }
-  | { type: 'IMAGE_PICK_ERROR'; requestId: string; message: string };
+  | { type: 'IMAGE_PICK_ERROR'; requestId: string; message: string }
+  | {
+      type: 'IMAGES_PICKED';
+      requestId: string;
+      images: Array<{ base64: string; mime: string; filename: string }>;
+    }
+  | {
+      type: 'DOCUMENT_PICKED';
+      requestId: string;
+      base64: string;
+      mime: string;
+      filename: string;
+    };
 
 export function parseWebMessage(raw: string): WebToNativeMessage | null {
   try {

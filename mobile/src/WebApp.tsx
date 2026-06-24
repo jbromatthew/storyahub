@@ -14,6 +14,8 @@ import { uploadRecordingFile } from './uploadRecording';
 import { bindRecordingSessionLifecycle } from './recordingSession';
 import {
   isImagePickCancelled,
+  pickMultipleNativeImagesForWeb,
+  pickNativeDocumentForWeb,
   pickNativeImageForWeb,
 } from './nativeImagePicker';
 
@@ -93,6 +95,54 @@ export function WebApp() {
             }
             const message =
               err instanceof Error ? err.message : '사진 선택 실패';
+            sendToWeb({
+              type: 'IMAGE_PICK_ERROR',
+              requestId: msg.requestId,
+              message,
+            });
+          }
+          return;
+        }
+        case 'PICK_IMAGES': {
+          try {
+            const images = await pickMultipleNativeImagesForWeb(msg.maxCount);
+            sendToWeb({
+              type: 'IMAGES_PICKED',
+              requestId: msg.requestId,
+              images,
+            });
+          } catch (err) {
+            if (isImagePickCancelled(err)) {
+              sendToWeb({ type: 'IMAGE_PICK_CANCELLED', requestId: msg.requestId });
+              return;
+            }
+            const message =
+              err instanceof Error ? err.message : '사진 선택 실패';
+            sendToWeb({
+              type: 'IMAGE_PICK_ERROR',
+              requestId: msg.requestId,
+              message,
+            });
+          }
+          return;
+        }
+        case 'PICK_DOCUMENT': {
+          try {
+            const picked = await pickNativeDocumentForWeb();
+            sendToWeb({
+              type: 'DOCUMENT_PICKED',
+              requestId: msg.requestId,
+              base64: picked.base64,
+              mime: picked.mime,
+              filename: picked.filename,
+            });
+          } catch (err) {
+            if (isImagePickCancelled(err)) {
+              sendToWeb({ type: 'IMAGE_PICK_CANCELLED', requestId: msg.requestId });
+              return;
+            }
+            const message =
+              err instanceof Error ? err.message : '파일 선택 실패';
             sendToWeb({
               type: 'IMAGE_PICK_ERROR',
               requestId: msg.requestId,

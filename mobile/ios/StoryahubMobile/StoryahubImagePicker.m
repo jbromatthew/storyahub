@@ -8,4 +8,11 @@ RCT_EXTERN_METHOD(pickFromCamera:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(pickFromLibrary:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(pickMultipleFromLibrary:(nonnull NSNumber *)maxCount
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(pickDocument:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+
 @end

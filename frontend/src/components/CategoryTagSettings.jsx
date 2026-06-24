@@ -11,9 +11,9 @@ import { toastSuccess, notifyError } from "../toast.js";
 import { confirmAction } from "../confirm.js";
 
 const KB_SECTIONS = [
-  { id: "book", label: "책" },
-  { id: "lecture", label: "강연" },
   { id: "knowledge", label: "지식" },
+  { id: "lecture", label: "강연" },
+  { id: "book", label: "책" },
 ];
 
 const TABS = [

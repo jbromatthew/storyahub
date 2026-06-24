@@ -20,6 +20,8 @@ function base64ToFile(base64, filename, mime) {
 }
 
 let pickImagePending = null;
+let pickImagesPending = null;
+let pickDocumentPending = null;
 let pickImageListenerReady = false;
 
 function ensurePickImageListener() {
@@ -27,17 +29,46 @@ function ensurePickImageListener() {
   pickImageListenerReady = true;
   window.addEventListener("storyahub-native", (event) => {
     const msg = event.detail;
-    if (!pickImagePending || !msg?.requestId || msg.requestId !== pickImagePending.requestId) return;
-    const { resolve, reject } = pickImagePending;
-    pickImagePending = null;
-    if (msg.type === "IMAGE_PICKED") {
-      resolve(base64ToFile(msg.base64, msg.filename, msg.mime));
-    } else if (msg.type === "IMAGE_PICK_CANCELLED") {
-      const err = new Error("cancelled");
-      err.name = "PickCancelled";
-      reject(err);
-    } else if (msg.type === "IMAGE_PICK_ERROR") {
-      reject(new Error(msg.message || "사진 선택 실패"));
+    if (pickImagePending && msg?.requestId && msg.requestId === pickImagePending.requestId) {
+      const { resolve, reject } = pickImagePending;
+      pickImagePending = null;
+      if (msg.type === "IMAGE_PICKED") {
+        resolve(base64ToFile(msg.base64, msg.filename, msg.mime));
+      } else if (msg.type === "IMAGE_PICK_CANCELLED") {
+        const err = new Error("cancelled");
+        err.name = "PickCancelled";
+        reject(err);
+      } else if (msg.type === "IMAGE_PICK_ERROR") {
+        reject(new Error(msg.message || "사진 선택 실패"));
+      }
+      return;
+    }
+    if (pickImagesPending && msg?.requestId && msg.requestId === pickImagesPending.requestId) {
+      const { resolve, reject } = pickImagesPending;
+      pickImagesPending = null;
+      if (msg.type === "IMAGES_PICKED") {
+        resolve((msg.images || []).map((img) => base64ToFile(img.base64, img.filename, img.mime)));
+      } else if (msg.type === "IMAGE_PICK_CANCELLED") {
+        const err = new Error("cancelled");
+        err.name = "PickCancelled";
+        reject(err);
+      } else if (msg.type === "IMAGE_PICK_ERROR") {
+        reject(new Error(msg.message || "사진 선택 실패"));
+      }
+      return;
+    }
+    if (pickDocumentPending && msg?.requestId && msg.requestId === pickDocumentPending.requestId) {
+      const { resolve, reject } = pickDocumentPending;
+      pickDocumentPending = null;
+      if (msg.type === "DOCUMENT_PICKED") {
+        resolve(base64ToFile(msg.base64, msg.filename, msg.mime));
+      } else if (msg.type === "IMAGE_PICK_CANCELLED") {
+        const err = new Error("cancelled");
+        err.name = "PickCancelled";
+        reject(err);
+      } else if (msg.type === "IMAGE_PICK_ERROR") {
+        reject(new Error(msg.message || "파일 선택 실패"));
+      }
     }
   });
 }
@@ -56,6 +87,42 @@ export function pickNativeImageFile(source = "camera") {
       if (!pickImagePending || pickImagePending.requestId !== requestId) return;
       pickImagePending.reject(new Error("사진 선택 시간 초과"));
       pickImagePending = null;
+    }, 120000);
+  });
+}
+
+/** iOS 앱 — 앨범 다중 선택 */
+export function pickNativeImageFiles(maxCount = 10) {
+  if (!isNativeShell()) {
+    return Promise.reject(new Error("Native shell only"));
+  }
+  ensurePickImageListener();
+  const requestId = `pickm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return new Promise((resolve, reject) => {
+    pickImagesPending = { requestId, resolve, reject };
+    postNative({ type: "PICK_IMAGES", maxCount, requestId });
+    setTimeout(() => {
+      if (!pickImagesPending || pickImagesPending.requestId !== requestId) return;
+      pickImagesPending.reject(new Error("사진 선택 시간 초과"));
+      pickImagesPending = null;
+    }, 120000);
+  });
+}
+
+/** iOS 앱 — 문서·PDF·영상 등 파일 선택 */
+export function pickNativeDocumentFile() {
+  if (!isNativeShell()) {
+    return Promise.reject(new Error("Native shell only"));
+  }
+  ensurePickImageListener();
+  const requestId = `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return new Promise((resolve, reject) => {
+    pickDocumentPending = { requestId, resolve, reject };
+    postNative({ type: "PICK_DOCUMENT", requestId });
+    setTimeout(() => {
+      if (!pickDocumentPending || pickDocumentPending.requestId !== requestId) return;
+      pickDocumentPending.reject(new Error("파일 선택 시간 초과"));
+      pickDocumentPending = null;
     }, 120000);
   });
 }

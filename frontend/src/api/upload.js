@@ -153,7 +153,7 @@ export function pickImageFile(capture = false) {
 /** 여러 장 선택 (iOS·Android 갤러리 다중 선택) */
 export function pickImageFiles(maxCount = 5) {
   if (isNativeShell() && getNativePlatform() === "ios") {
-    return pickNativeImageFile("library").then((file) => [file]);
+    return pickNativeImageFiles(maxCount);
   }
   return new Promise((resolve, reject) => {
     const input = document.createElement("input");
@@ -173,14 +173,21 @@ export function pickImageFiles(maxCount = 5) {
 }
 
 export function pickAnyFile() {
+  if (isNativeShell() && getNativePlatform() === "ios") {
+    return pickNativeDocumentFile();
+  }
   return new Promise((resolve, reject) => {
     const input = document.createElement("input");
     input.type = "file";
-    input.onchange = () => {
-      const file = input.files?.[0];
+    input.accept = "*/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,video/*,audio/*,image/*";
+    const finish = (file) => {
+      input.remove();
       if (file) resolve(file);
-      else reject(new Error("파일이 선택되지 않았습니다"));
+      else reject(new PickCancelled());
     };
+    input.addEventListener("change", () => finish(input.files?.[0]));
+    input.addEventListener("cancel", () => finish(null));
+    document.body.appendChild(input);
     input.click();
   });
 }
@@ -230,7 +237,7 @@ function estimateAudioSec(file) {
   return Math.max(1, Math.round(bytes / (128 * 1024 / 8)));
 }
 
-import { createAudioRecorder, isNativeRecordingResult, isNativeShell, getNativePlatform, pickNativeImageFile } from "./nativeBridge.js";
+import { createAudioRecorder, isNativeRecordingResult, isNativeShell, getNativePlatform, pickNativeImageFile, pickNativeImageFiles, pickNativeDocumentFile } from "./nativeBridge.js";
 
 export { isNativeRecordingResult, isNativeShell } from "./nativeBridge.js";
 

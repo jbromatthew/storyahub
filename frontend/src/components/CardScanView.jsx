@@ -6,13 +6,16 @@ import {
   pickImageFiles,
   fileToBase64,
   isPickCancelled,
+  isNativeShell,
 } from "../api/upload.js";
 import { autoCropBusinessCard } from "../cardCrop.js";
+import { normalizeImageFile, prepareImageForOcr } from "../imageFileUtils.js";
 import { getClients } from "../store.js";
 import ContactGroupTagPanel from "./ContactGroupTagPanel.jsx";
-import { toastError, notifyError } from "../toast.js";
+import { toastError, toastSuccess, notifyError } from "../toast.js";
 
 const isMobileDevice = () => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+const MAX_CARDS = 10;
 
 const emptyFields = () => ({
   name: "",
@@ -75,12 +78,15 @@ function CardReviewFields({ fields, setField }) {
 
 export default function CardScanView({ back, onSaved, user, onUserUpdated, contactPresets = { groups: [], tags: [] }, I }) {
   const [step, setStep] = useState("capture");
+  const [pendingQueue, setPendingQueue] = useState([]);
   const [cards, setCards] = useState([]);
   const [reviewIdx, setReviewIdx] = useState(0);
   const [scanProgress, setScanProgress] = useState({ done: 0, total: 0 });
   const [ocrError, setOcrError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [ocrRunning, setOcrRunning] = useState(false);
   const fileRef = useRef(null);
+  const pendingQueueRef = useRef([]);
 
   const current = cards[reviewIdx];
   const setCurrentField = (k, v) => {
@@ -96,15 +102,105 @@ export default function CardScanView({ back, onSaved, user, onUserUpdated, conta
   };
 
   useEffect(() => {
+    pendingQueueRef.current = pendingQueue;
+  }, [pendingQueue]);
+
+  useEffect(() => {
     return () => {
+      pendingQueueRef.current.forEach((item) => {
+        if (item.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(item.previewUrl);
+      });
       cards.forEach((c) => {
         if (c.preview?.startsWith("blob:")) URL.revokeObjectURL(c.preview);
       });
     };
   }, []);
 
+  const clearPendingQueue = () => {
+    pendingQueueRef.current.forEach((item) => {
+      if (item.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(item.previewUrl);
+    });
+    pendingQueueRef.current = [];
+    setPendingQueue([]);
+  };
+
+  const addPendingFiles = (fileList) => {
+    const raw = Array.from(fileList || []);
+    const files = raw.map(normalizeImageFile).filter(Boolean);
+    if (!raw.length) return;
+    if (!files.length) {
+      setOcrError("이미지 파일만 선택할 수 있습니다.");
+      toastError("이미지 파일만 선택할 수 있습니다.");
+      return;
+    }
+    setOcrError("");
+    setPendingQueue((prev) => {
+      const room = MAX_CARDS - prev.length;
+      if (room <= 0) {
+        toastError(`최대 ${MAX_CARDS}장까지 추가할 수 있어요`);
+        return prev;
+      }
+      const slice = files.slice(0, room);
+      if (files.length > room) toastError(`최대 ${MAX_CARDS}장 · ${room}장만 추가됐어요`);
+      const next = [
+        ...prev,
+        ...slice.map((file) => ({ file, previewUrl: URL.createObjectURL(file) })),
+      ];
+      pendingQueueRef.current = next;
+      return next;
+    });
+  };
+
+  const removePendingAt = (idx) => {
+    setPendingQueue((prev) => {
+      const item = prev[idx];
+      if (item?.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(item.previewUrl);
+      const next = prev.filter((_, i) => i !== idx);
+      pendingQueueRef.current = next;
+      return next;
+    });
+  };
+
+  const queueCount = () => Math.max(pendingQueue.length, pendingQueueRef.current.length);
+
+  const captureToQueue = async () => {
+    if (queueCount() >= MAX_CARDS) {
+      toastError(`최대 ${MAX_CARDS}장까지 촬영할 수 있어요`);
+      return;
+    }
+    setOcrError("");
+    try {
+      const file = await pickImageFile(true);
+      addPendingFiles([file]);
+    } catch (e) {
+      if (isPickCancelled(e)) return;
+      const msg = e.message || "촬영 실패";
+      setOcrError(msg);
+      toastError(msg);
+    }
+  };
+
+  const pickAlbumToQueue = async () => {
+    if (ocrRunning || queueCount() >= MAX_CARDS) {
+      if (queueCount() >= MAX_CARDS) toastError(`최대 ${MAX_CARDS}장까지 추가할 수 있어요`);
+      return;
+    }
+    setOcrError("");
+    try {
+      const room = MAX_CARDS - queueCount();
+      const files = await pickImageFiles(room);
+      addPendingFiles(files);
+    } catch (e) {
+      if (isPickCancelled(e)) return;
+      const msg = e.message || "사진 선택 실패";
+      setOcrError(msg);
+      toastError(msg);
+    }
+  };
+
   const ocrOneFile = async (file) => {
-    const cropped = await autoCropBusinessCard(file);
+    const prepared = await prepareImageForOcr(file);
+    const cropped = await autoCropBusinessCard(prepared);
     const mime = cropped.type || "image/jpeg";
     let result;
     let cardImageKey = null;
@@ -134,14 +230,18 @@ export default function CardScanView({ back, onSaved, user, onUserUpdated, conta
     };
   };
 
-  const processFiles = async (fileList) => {
-    const files = Array.from(fileList || []).filter((f) => f?.type?.startsWith("image/")).slice(0, 10);
+  const processFiles = async (queueItems) => {
+    const files = (queueItems || [])
+      .map((item) => (item?.file ? normalizeImageFile(item.file) : normalizeImageFile(item)))
+      .filter(Boolean)
+      .slice(0, MAX_CARDS);
     if (!files.length) {
-      setOcrError("이미지 파일만 선택할 수 있습니다.");
+      setStep("capture");
+      setOcrError("인식할 사진을 추가해주세요.");
+      toastError("인식할 사진을 추가해주세요.");
       return;
     }
     setOcrError("");
-    setStep("scanning");
     setScanProgress({ done: 0, total: files.length });
     const scanned = [];
     for (let i = 0; i < files.length; i++) {
@@ -160,38 +260,41 @@ export default function CardScanView({ back, onSaved, user, onUserUpdated, conta
       }
       setScanProgress({ done: i + 1, total: files.length });
     }
+    clearPendingQueue();
     setCards(scanned);
     setReviewIdx(0);
     setStep("review");
   };
 
-  const pickFromDialog = async (capture = false, multiple = false) => {
-    setOcrError("");
-    try {
-      if (multiple) {
-        const files = await pickImageFiles(10);
-        await processFiles(files);
-      } else {
-        const file = await pickImageFile(capture);
-        await processFiles([file]);
-      }
-    } catch (e) {
-      if (isPickCancelled(e)) return;
-      const msg = e.message || "파일 선택 실패";
-      setOcrError(msg);
-      toastError(msg);
+  const startOcrFromQueue = () => {
+    if (ocrRunning) return;
+    const queue = pendingQueueRef.current;
+    if (!queue.length) {
+      setOcrError("명함 사진을 먼저 추가해주세요.");
+      toastError("명함 사진을 먼저 추가해주세요.");
+      return;
     }
+    setOcrError("");
+    setOcrRunning(true);
+    setStep("scanning");
+    setScanProgress({ done: 0, total: queue.length });
+    processFiles(queue)
+      .catch((e) => {
+        setStep("capture");
+        notifyError(e, e.message || "명함 인식 실패");
+      })
+      .finally(() => setOcrRunning(false));
   };
 
   const onFileInput = (e) => {
     const files = e.target.files;
     e.target.value = "";
-    if (files?.length) processFiles(files);
+    if (files?.length) addPendingFiles(files);
   };
 
   const onDrop = (e) => {
     e.preventDefault();
-    if (e.dataTransfer.files?.length) processFiles(e.dataTransfer.files);
+    if (e.dataTransfer.files?.length) addPendingFiles(e.dataTransfer.files);
   };
 
   useEffect(() => {
@@ -199,11 +302,11 @@ export default function CardScanView({ back, onSaved, user, onUserUpdated, conta
       if (step !== "capture") return;
       const imgs = [...e.clipboardData.items].filter((i) => i.type.startsWith("image/"));
       const files = imgs.map((i) => i.getAsFile()).filter(Boolean);
-      if (files.length) processFiles(files);
+      if (files.length) addPendingFiles(files);
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [step]);
+  }, [step, pendingQueue.length]);
 
   const startManual = () => {
     setOcrError("");
@@ -268,7 +371,7 @@ export default function CardScanView({ back, onSaved, user, onUserUpdated, conta
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/heic,image/heif,image/*"
             multiple
             style={{ display: "none" }}
             onChange={onFileInput}
@@ -276,9 +379,14 @@ export default function CardScanView({ back, onSaved, user, onUserUpdated, conta
           <div
             role="button"
             tabIndex={0}
-            onClick={() => fileRef.current?.click()}
+            onClick={() => {
+              if (isNativeShell() || isMobileDevice()) void pickAlbumToQueue();
+              else fileRef.current?.click();
+            }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") fileRef.current?.click();
+              if (e.key !== "Enter" && e.key !== " ") return;
+              if (isNativeShell() || isMobileDevice()) void pickAlbumToQueue();
+              else fileRef.current?.click();
             }}
             onDragOver={(e) => e.preventDefault()}
             onDrop={onDrop}
@@ -286,50 +394,92 @@ export default function CardScanView({ back, onSaved, user, onUserUpdated, conta
               borderRadius: 18,
               border: "2px dashed var(--line)",
               background: "#FBFAF6",
-              padding: "50px 20px",
+              padding: pendingQueue.length ? "20px 16px" : "50px 20px",
               textAlign: "center",
               cursor: "pointer",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "center", color: "var(--accent-deep)" }}>
-              {I.image({ width: 34, height: 34 })}
-            </div>
-            <div style={{ fontWeight: 800, fontSize: 16, marginTop: 14 }}>명함 사진을 올려주세요</div>
-            <div className="small" style={{ marginTop: 6, lineHeight: 1.5 }}>
-              여러 장 한 번에 · 자동 크롭 · OCR
-              <br />
-              클릭 · 드래그 · 붙여넣기(Cmd+V)
-            </div>
+            {pendingQueue.length === 0 ? (
+              <>
+                <div style={{ display: "flex", justifyContent: "center", color: "var(--accent-deep)" }}>
+                  {I.image({ width: 34, height: 34 })}
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 16, marginTop: 14 }}>명함 사진을 모아두세요</div>
+                <div className="small" style={{ marginTop: 6, lineHeight: 1.5 }}>
+                  여러 장 촬영 · 앨범 다중 선택 · 한 번에 OCR
+                  <br />
+                  클릭 · 드래그 · 붙여넣기(Cmd+V)
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>
+                  {pendingQueue.length}장 준비됨 · 최대 {MAX_CARDS}장
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                  {pendingQueue.map((item, i) => (
+                    <div key={item.previewUrl} style={{ position: "relative", aspectRatio: "3/2", borderRadius: 10, overflow: "hidden", background: "#ECE8E0" }}>
+                      <img src={item.previewUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <span
+                        onClick={(e) => { e.stopPropagation(); removePendingAt(i); }}
+                        style={{
+                          position: "absolute", top: 4, right: 4, width: 20, height: 20, borderRadius: "50%",
+                          background: "rgba(0,0,0,.55)", color: "#fff", fontSize: 12, display: "flex",
+                          alignItems: "center", justifyContent: "center", cursor: "pointer",
+                        }}
+                      >✕</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          <div className="row" style={{ gap: 10, marginTop: 14 }}>
+            {isMobileDevice() && (
+              <button
+                type="button"
+                className="btn"
+                style={{ flex: 1, padding: 14, fontSize: 14 }}
+                onClick={captureToQueue}
+                disabled={queueCount() >= MAX_CARDS || ocrRunning}
+              >
+                📷 촬영 추가
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn"
+              style={{ flex: 1, padding: 14, fontSize: 14 }}
+              onClick={() => void pickAlbumToQueue()}
+              disabled={queueCount() >= MAX_CARDS || ocrRunning}
+            >
+              앨범 선택
+            </button>
           </div>
           <button
+            type="button"
             className="btn btn-accent"
-            style={{ width: "100%", padding: 16, marginTop: 16, fontSize: 15 }}
-            onClick={() => pickFromDialog(false, true)}
+            style={{ width: "100%", padding: 16, marginTop: 12, fontSize: 15 }}
+            onClick={startOcrFromQueue}
+            disabled={!queueCount() || ocrRunning}
           >
-            여러 장 선택 (최대 10)
+            {ocrRunning
+              ? "인식 중…"
+              : queueCount()
+                ? `${queueCount()}장 인식 시작`
+                : "사진 추가 후 인식"}
           </button>
-          <button
-            className="btn"
-            style={{ width: "100%", padding: 14, marginTop: 10, fontSize: 14 }}
-            onClick={() => pickFromDialog(false, false)}
-          >
-            한 장 선택
-          </button>
-          {isMobileDevice() && (
-            <button
-              className="btn"
-              style={{ width: "100%", padding: 14, marginTop: 10, fontSize: 14 }}
-              onClick={() => pickFromDialog(true, false)}
-            >
-              카메라로 촬영
-            </button>
-          )}
-          <button className="btn" style={{ width: "100%", padding: 14, marginTop: 10, fontSize: 14 }} onClick={startManual}>
+          <button type="button" className="btn" style={{ width: "100%", padding: 14, marginTop: 10, fontSize: 14 }} onClick={startManual} disabled={ocrRunning}>
             명함 없이 직접 입력
           </button>
           {ocrError && (
             <div className="small" style={{ color: "var(--accent-deep)", textAlign: "center", marginTop: 10 }}>
               {ocrError}
+            </div>
+          )}
+          {isNativeShell() && (
+            <div className="small" style={{ textAlign: "center", marginTop: 8, color: "var(--muted)", lineHeight: 1.5 }}>
+              앨범에서 여러 장을 한 번에 고를 수 있어요.
             </div>
           )}
           <div className="small" style={{ textAlign: "center", marginTop: 12 }}>
@@ -421,7 +571,11 @@ export default function CardScanView({ back, onSaved, user, onUserUpdated, conta
             className="btn"
             style={{ width: "100%", padding: 12, marginTop: 8, background: "transparent", color: "var(--muted)" }}
             onClick={() => {
+              cards.forEach((c) => {
+                if (c.preview?.startsWith("blob:")) URL.revokeObjectURL(c.preview);
+              });
               setCards([]);
+              clearPendingQueue();
               setStep("capture");
             }}
           >

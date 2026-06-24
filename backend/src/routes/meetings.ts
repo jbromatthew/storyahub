@@ -13,6 +13,7 @@ import { transcribeAudio, plainToTranscript, mimeFromKey, type TranscriptResult 
 import { ocrDocumentText } from "../services/ocr.js";
 import { assertUserMediaKey, assertUserMediaKeys } from "../services/mediaValidation.js";
 import { answerMeetingQuestion } from "../services/meetingAsk.js";
+import { getMeetingAccess, roleAtLeast } from "../services/shareAccess.js";
 
 export const meetingsRouter = Router();
 meetingsRouter.use(auth, requireAccess);
@@ -62,6 +63,10 @@ async function resolveTranscript(
 
   if (meta?.transcript?.trim()) return plainToTranscript(meta.transcript.trim());
 
+  const textMemo = typeof meta?.textMemo === "string" ? meta.textMemo.trim() : "";
+  const appendTextMemo = (plain: string) =>
+    textMemo ? `${plain}\n\n--- 메모 ---\n${textMemo}` : plain;
+
   if (mediaKey) {
     if (!isUserMediaKey(mediaKey, userId)) throw new Error("invalid mediaKey");
     const buf = await getObjectBytes(mediaKey);
@@ -75,22 +80,24 @@ async function resolveTranscript(
         const photoParts = await ocrImageKeysWithNotes(userId, imageKeys, photoNotes);
         if (photoParts.length) {
           const appendix = photoParts.filter(Boolean).join("\n\n");
-          return plainToTranscript(`${audio.plain}\n\n--- 현장 사진 ---\n${appendix}`);
+          return plainToTranscript(appendTextMemo(`${audio.plain}\n\n--- 현장 사진 ---\n${appendix}`));
         }
       }
-      return audio;
+      return plainToTranscript(appendTextMemo(audio.plain));
     }
     if (mime.startsWith("image/")) {
       const text = await ocrDocumentText(buf.toString("base64"), mime);
-      return plainToTranscript(text);
+      return plainToTranscript(appendTextMemo(text));
     }
   }
 
   if (imageKeys.length) {
     const parts = await ocrImageKeysWithNotes(userId, imageKeys, photoNotes);
     const joined = parts.filter(Boolean).join("\n\n");
-    if (joined) return plainToTranscript(joined);
+    if (joined) return plainToTranscript(appendTextMemo(joined));
   }
+
+  if (textMemo) return plainToTranscript(textMemo);
 
   throw new Error("전사할 음성/이미지가 없습니다");
 }
@@ -108,6 +115,7 @@ type ProcessMeta = {
   companyName?: string | null;
   imageKeys?: string[];
   photoNotes?: { key: string; note?: string; atSec?: number }[];
+  textMemo?: string;
   source?: string;
   contactId?: string | null;
   attendees?: string[];
@@ -136,6 +144,7 @@ function buildProcessMeta(raw: unknown, meeting: {
     companyName: pm.companyName ?? meeting.contact?.company ?? meeting.contact?.person ?? null,
     imageKeys,
     photoNotes: Array.isArray(pm.photoNotes) ? pm.photoNotes : [],
+    textMemo: typeof pm.textMemo === "string" ? pm.textMemo : "",
     source,
     contactId: pm.contactId ?? meeting.contactId,
     attendees: Array.isArray(pm.attendees) ? pm.attendees.map(String) : meeting.attendees,
@@ -249,6 +258,7 @@ function serializeProcessMeta(meta: Record<string, unknown>, durationSec: number
     companyName: (meta.companyName as string) ?? null,
     imageKeys: Array.isArray(meta.imageKeys) ? meta.imageKeys.map(String) : [],
     photoNotes: Array.isArray(meta.photoNotes) ? (meta.photoNotes as ProcessMeta["photoNotes"]) : [],
+    textMemo: typeof meta.textMemo === "string" ? meta.textMemo : "",
     source: (meta.source as string) ?? "live",
     contactId: meta.contactId ? String(meta.contactId) : null,
     attendees: Array.isArray(meta.attendees) ? meta.attendees.map(String) : [],
@@ -257,17 +267,46 @@ function serializeProcessMeta(meta: Record<string, unknown>, durationSec: number
 }
 
 meetingsRouter.get("/", async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
   const eventId = req.query.eventId ? String(req.query.eventId) : undefined;
-  const items = await prisma.meeting.findMany({
-    where: { userId: req.userId, ...(eventId ? { eventId } : {}) },
+  const include = {
+    contact: { select: { id: true, person: true, company: true } },
+    event: { select: { id: true, title: true, startsAt: true } },
+    todos: { select: { id: true, status: true } },
+  };
+  const owned = await prisma.meeting.findMany({
+    where: { userId, ...(eventId ? { eventId } : {}) },
     orderBy: { createdAt: "desc" },
     take: eventId ? 50 : 100,
-    include: {
-      contact: { select: { id: true, person: true, company: true } },
-      event: { select: { id: true, title: true, startsAt: true } },
-      todos: { select: { id: true, status: true } },
-    },
+    include,
   });
+  const shareRows = await prisma.resourceShare.findMany({
+    where: { granteeId: userId, resourceType: "meeting" },
+    include: { owner: { select: { id: true, email: true, name: true } } },
+  });
+  const ownedIds = new Set(owned.map((m) => m.id));
+  const sharedIds = shareRows.map((s) => s.resourceId).filter((id) => !ownedIds.has(id));
+  const shared = sharedIds.length
+    ? await prisma.meeting.findMany({
+        where: { id: { in: sharedIds }, ...(eventId ? { eventId } : {}) },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        include,
+      })
+    : [];
+  const shareByResource = new Map(shareRows.map((s) => [s.resourceId, s]));
+  const items = [
+    ...owned.map((m) => ({ ...m, shareRole: "owner", isShared: false, sharedBy: null })),
+    ...shared.map((m) => {
+      const sh = shareByResource.get(m.id);
+      return {
+        ...m,
+        shareRole: sh?.role ?? "viewer",
+        isShared: true,
+        sharedBy: sh?.owner ?? null,
+      };
+    }),
+  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   res.json(items);
 });
 
@@ -342,8 +381,11 @@ meetingsRouter.post("/:id/attachments", async (req: AuthedRequest, res) => {
   const imageKey = String(req.body?.imageKey ?? "").trim();
   if (!imageKey) return res.status(400).json({ error: "imageKey required" });
 
-  const m = await prisma.meeting.findFirst({ where: { id: req.params.id, userId } });
-  if (!m) return res.status(404).json({ error: "not found" });
+  const access = await getMeetingAccess(userId, req.params.id);
+  if (!access || !roleAtLeast(access.role, "editor")) {
+    return res.status(404).json({ error: "not found" });
+  }
+  const m = access.meeting;
 
   try {
     assertUserMediaKey(imageKey, userId);
@@ -397,8 +439,11 @@ meetingsRouter.patch("/:id/attachments", async (req: AuthedRequest, res) => {
   const imageKey = String(req.body?.key ?? req.body?.imageKey ?? "").trim();
   if (!imageKey) return res.status(400).json({ error: "key required" });
 
-  const m = await prisma.meeting.findFirst({ where: { id: req.params.id, userId } });
-  if (!m) return res.status(404).json({ error: "not found" });
+  const access = await getMeetingAccess(userId, req.params.id);
+  if (!access || !roleAtLeast(access.role, "editor")) {
+    return res.status(404).json({ error: "not found" });
+  }
+  const m = access.meeting;
 
   const pm = buildProcessMeta(m.processMeta, {
     source: m.source,
@@ -426,6 +471,37 @@ meetingsRouter.patch("/:id/attachments", async (req: AuthedRequest, res) => {
   const updated = await prisma.meeting.update({
     where: { id: m.id },
     data: { processMeta: { ...pm, photoNotes } as any },
+    include: {
+      contact: { select: { id: true, person: true, company: true } },
+      event: { select: { id: true, title: true, startsAt: true, place: true } },
+      todos: { orderBy: { createdAt: "asc" } },
+    },
+  });
+  res.json(updated);
+});
+
+meetingsRouter.patch("/:id/memo", async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const access = await getMeetingAccess(userId, req.params.id);
+  if (!access || !roleAtLeast(access.role, "editor")) {
+    return res.status(404).json({ error: "not found" });
+  }
+  const m = access.meeting;
+
+  const pm = buildProcessMeta(m.processMeta, {
+    source: m.source,
+    contactId: m.contactId,
+    attendees: m.attendees,
+    eventId: m.eventId,
+    mediaKey: m.mediaKey,
+    contact: null,
+  });
+
+  const textMemo = String(req.body?.text ?? req.body?.textMemo ?? "").trim();
+
+  const updated = await prisma.meeting.update({
+    where: { id: m.id },
+    data: { processMeta: { ...pm, textMemo } as any },
     include: {
       contact: { select: { id: true, person: true, company: true } },
       event: { select: { id: true, title: true, startsAt: true, place: true } },
@@ -533,23 +609,17 @@ meetingsRouter.post("/:id/ask", async (req: AuthedRequest, res) => {
 
 meetingsRouter.get("/:id", async (req: AuthedRequest, res) => {
   const userId = req.userId!;
-  const m = await prisma.meeting.findFirst({
-    where: { id: req.params.id, userId },
-    include: {
-      contact: { select: { id: true, person: true, company: true } },
-      event: { select: { id: true, title: true, startsAt: true, place: true } },
-      todos: { orderBy: { createdAt: "asc" } },
-    },
-  });
-  if (!m) return res.status(404).json({ error: "not found" });
+  const access = await getMeetingAccess(userId, req.params.id);
+  if (!access) return res.status(404).json({ error: "not found" });
+  const m = access.meeting;
 
   let todos = m.todos;
-  if (!todos.length && m.contactId) {
+  if (!todos.length && m.contactId && access.role === "owner") {
     const windowStart = new Date(m.createdAt.getTime() - 60_000);
     const windowEnd = new Date(m.createdAt.getTime() + 120_000);
     todos = await prisma.todo.findMany({
       where: {
-        userId,
+        userId: m.userId,
         contactId: m.contactId,
         meetingId: null,
         createdAt: { gte: windowStart, lte: windowEnd },
@@ -558,7 +628,13 @@ meetingsRouter.get("/:id", async (req: AuthedRequest, res) => {
     });
   }
 
-  res.json({ ...m, todos });
+  res.json({
+    ...m,
+    todos,
+    shareRole: access.role,
+    isShared: access.role !== "owner",
+    sharedBy: access.sharedBy ?? null,
+  });
 });
 
 meetingsRouter.patch("/:id", async (req: AuthedRequest, res) => {

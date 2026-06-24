@@ -84,7 +84,6 @@ export default function ContactIntroSheet({ contact, contacts, onClose, onSaved 
   return createPortal(
     <div className="sheet-bg" onClick={onClose}>
       <div className="sheet-bottom" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="sheet-handle" />
         <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>소개 관계 추가</div>
         <div className="small" style={{ lineHeight: 1.5, marginBottom: 14, color: "var(--muted)" }}>
           {mode === "referrer"

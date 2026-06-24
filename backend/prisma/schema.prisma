@@ -34,6 +34,10 @@ model User {
   savedPlaces SavedPlace[]
   couponRedemptions CouponRedemption[]
   recordingUsageEvents RecordingUsageEvent[]
+  friendsRequested     UserFriend[] @relation("FriendRequester")
+  friendsReceived      UserFriend[] @relation("FriendAddressee")
+  sharesOwned          ResourceShare[] @relation("ShareOwner")
+  sharesReceived       ResourceShare[] @relation("ShareGrantee")
 }
 
 model Coupon {
@@ -79,6 +83,7 @@ model Contact {           // 인맥 (사람/거래처)
   tags      String[]                      // 자유·복수 태그 (결제완료/대기/신규/핫리드 …)
   cardImageKey String?                    // 명함 원본 R2 키
   identityKey  String?                    // 이름+연락처 정규화 키 (동일인 묶기)
+  linkedUserId String?                    // Storyahub 친구 계정 연결
   favorite  Boolean  @default(false)      // 즐겨찾기(별표) — 주관적 중요 표시
   wonAmount Int      @default(0)          // 직접 성사 딜 합계(원)
   meetCount Int      @default(0)          // 미팅 횟수(보조 지표)
@@ -93,6 +98,38 @@ model Contact {           // 인맥 (사람/거래처)
   deals     Deal[]
 
   @@index([userId, identityKey])
+  @@index([userId, linkedUserId])
+}
+
+model UserFriend {
+  id          String   @id @default(cuid())
+  requesterId String
+  requester   User     @relation("FriendRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addresseeId String
+  addressee   User     @relation("FriendAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+  status      String   @default("pending") // pending | accepted | declined
+  contactId   String?                      // 수락 시 요청자 인맥에 생성된 Contact id
+  createdAt   DateTime @default(now())
+  acceptedAt  DateTime?
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId, status])
+}
+
+model ResourceShare {
+  id           String   @id @default(cuid())
+  ownerId      String
+  owner        User     @relation("ShareOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  granteeId    String
+  grantee      User     @relation("ShareGrantee", fields: [granteeId], references: [id], onDelete: Cascade)
+  resourceType String   // meeting | kb
+  resourceId   String
+  role         String   @default("viewer") // viewer | editor
+  createdAt    DateTime @default(now())
+
+  @@unique([resourceType, resourceId, granteeId])
+  @@index([granteeId, resourceType])
+  @@index([ownerId, resourceType, resourceId])
 }
 
 model RecordingUsageEvent {
