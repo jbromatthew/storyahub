@@ -101,7 +101,7 @@ todosRouter.patch("/:id", async (req: AuthedRequest, res) => {
   const cur = await prisma.todo.findFirst({ where: { id: req.params.id, userId: req.userId } });
   if (!cur) return res.status(404).json({ error: "not found" });
 
-  const { status, priority, detail, result, attachment, subs } = req.body ?? {};
+  const { status, priority, detail, result, attachment, subs, title } = req.body ?? {};
   const history = Array.isArray(cur.history) ? ([...(cur.history as HistoryEntry[])] as HistoryEntry[]) : [];
 
   let nextStatus = status ?? cur.status;
@@ -126,6 +126,9 @@ todosRouter.patch("/:id", async (req: AuthedRequest, res) => {
   if (result !== undefined && result !== cur.result) {
     pushHistory(history, result?.trim() ? "처리 결과 기록" : "처리 결과 삭제");
   }
+  if (title !== undefined && typeof title === "string" && title.trim() !== cur.title) {
+    pushHistory(history, "제목 수정");
+  }
 
   const attachments = Array.isArray(cur.attachments) ? [...(cur.attachments as object[])] : [];
   if (attachment && typeof attachment === "object") {
@@ -138,6 +141,7 @@ todosRouter.patch("/:id", async (req: AuthedRequest, res) => {
     where: { id: cur.id },
     data: {
       status: nextStatus,
+      title: title !== undefined && typeof title === "string" ? title.trim() || cur.title : cur.title,
       priority: priority ?? cur.priority,
       detail: detail !== undefined ? detail : cur.detail,
       result: result !== undefined ? result : cur.result,

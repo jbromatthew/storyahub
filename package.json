@@ -17,7 +17,12 @@
     "db:studio": "npm run prisma:studio --prefix backend",
     "db:setup": "bash scripts/setup-rds.sh",
     "rds:public": "bash scripts/rds-public-access.sh",
-    "rds:private": "bash scripts/rds-private-only.sh"
+    "rds:private": "bash scripts/rds-private-only.sh",
+    "mobile:install": "npm install --prefix mobile",
+    "mobile:ios": "npm run ios --prefix mobile",
+    "mobile:android": "npm run android --prefix mobile",
+    "mobile:start": "npm run start --prefix mobile",
+    "mobile:pods": "cd mobile/ios && pod install"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

@@ -48,9 +48,44 @@ export function kakaoDirectionsUrl({ address, lat, lng, label = "목적지" }) {
   return `https://map.kakao.com/link/search/${encodeURIComponent(q)}`;
 }
 
+export function splitMergedContactFields(raw) {
+  let person = (raw.person || "").trim();
+  let title = (raw.title || "").trim();
+  let department = (raw.department || "").trim();
+
+  if (!department && person.includes("|")) {
+    const pipeIdx = person.indexOf("|");
+    const left = person.slice(0, pipeIdx).trim();
+    const right = person.slice(pipeIdx + 1).trim();
+    if (right) {
+      department = right;
+      person = left;
+    }
+  }
+
+  if (!title && person) {
+    const re =
+      /^(.+?)\s+(매니저|팀장|부장|차장|과장|대리|주임|사원|선임|책임|수석|이사|상무|전무|부사장|사장|대표|원장|교수|연구원|컨설턴트|Manager|Director|CEO|CTO|CFO|CPO|COO|VP|Principal|Senior|Lead)$/iu;
+    const m = person.match(re);
+    if (m) {
+      person = m[1].trim();
+      title = m[2].trim();
+    }
+  }
+
+  return { person, title, department };
+}
+
+export function contactRoleLine(c) {
+  return [c.title, c.department].filter(Boolean).join(" · ");
+}
+
 export function contactToUi(c) {
   const co = c.company || "";
-  const person = c.person || "";
+  const split = splitMergedContactFields(c);
+  const person = split.person;
+  const title = split.title;
+  const department = split.department;
   const init = (co || person || "?")[0];
   const created = c.createdAt ? new Date(c.createdAt) : null;
   const last = created
@@ -59,6 +94,8 @@ export function contactToUi(c) {
   return {
     id: c.id,
     person,
+    title,
+    department,
     co,
     phone: c.phone || "",
     email: c.email || "",
@@ -74,8 +111,17 @@ export function contactToUi(c) {
     won: c.wonAmount || 0,
     meets: c.meetCount || 0,
     refBy: c.referredById || null,
+    identityKey: c.identityKey || null,
     _raw: c,
   };
+}
+
+export function formatDurationHm(sec) {
+  const s = Math.max(0, Math.round(sec || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}시간 ${m}분`;
+  return `${m}분`;
 }
 
 export function formatWhen(iso) {
@@ -255,8 +301,64 @@ export function meetingToUi(m) {
     eventId: m.eventId || m.event?.id || null,
     eventTitle: m.event?.title || "",
     eventStartsAt: m.event?.startsAt || null,
+    attendeeIds: Array.isArray(m.attendees) ? m.attendees : [],
+    companyName: m.processMeta?.companyName || null,
+    imageKeys: Array.isArray(m.processMeta?.imageKeys) ? m.processMeta.imageKeys : [],
+    photoNotes: Array.isArray(m.processMeta?.photoNotes) ? m.processMeta.photoNotes : [],
     _raw: m,
   };
+}
+
+/** 미팅 목록·카드용 — 연결된 인맥·참석자·회사명 표시 */
+export function meetingAttendeeIds(m) {
+  if (Array.isArray(m?.attendeeIds) && m.attendeeIds.length) return [...m.attendeeIds];
+  if (Array.isArray(m?.attendees) && m.attendees.length) return [...m.attendees];
+  if (Array.isArray(m?._raw?.attendees) && m._raw.attendees.length) return [...m._raw.attendees];
+  if (m?.contactId) return [m.contactId];
+  if (m?.contact?.id) return [m.contact.id];
+  return [];
+}
+
+export function meetingPeopleLabel(m, contacts = []) {
+  const pm = m.processMeta || m._raw?.processMeta;
+  const ids = meetingAttendeeIds(m).length
+    ? meetingAttendeeIds(m)
+    : pm?.attendees || [];
+  if (Array.isArray(ids) && ids.length && contacts.length) {
+    const labels = ids
+      .map((id) => {
+        const c = contacts.find((x) => x.id === id);
+        if (!c) return null;
+        const co = c.co || c.company || "";
+        const person = c.person || "";
+        const title = c.title || "";
+        const department = c.department || "";
+        const who = [person, title, department].filter(Boolean).join(" ");
+        if (co && who) return `${co} · ${who}`;
+        return co || who;
+      })
+      .filter(Boolean);
+    if (labels.length) return labels.join(", ");
+  }
+
+  const contact = m.contact;
+  if (contact?.company || contact?.person) {
+    const co = contact.company || "";
+    const person = contact.person || "";
+    const title = contact.title || "";
+    const department = contact.department || "";
+    const who = [person, title, department].filter(Boolean).join(" ");
+    if (co && who) return `${co} · ${who}`;
+    return co || who;
+  }
+
+  const companyName = m.companyName || pm?.companyName;
+  if (companyName) return companyName;
+
+  const aiAtt = m.summary?.attendees;
+  if (Array.isArray(aiAtt) && aiAtt.length) return aiAtt.slice(0, 3).join(", ");
+
+  return "";
 }
 
 export function contactGroups(contacts) {

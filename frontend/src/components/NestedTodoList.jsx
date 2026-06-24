@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { api } from "../api/client.js";
-import { confirmDelete } from "../confirmDelete.js";
+import { confirmDelete, confirmAction } from "../confirmDelete.js";
 import { notifyError, toastError } from "../toast.js";
 import { getClients } from "../store.js";
 import { groupTodosBySource, groupDisplayRows, groupProgress, filterGroupsForToday, listTodoCategories, TODO_CATEGORY_DETAIL } from "../todoGroups.js";
@@ -71,6 +71,8 @@ export default function NestedTodoList({
   onRefresh,
   openDetail,
   showAdd = true,
+  editable = false,
+  onTaskDeleted,
   compact = false,
   focusAdd = false,
   groupBySource = true,
@@ -96,7 +98,12 @@ export default function NestedTodoList({
   const [addingCategory, setAddingCategory] = useState(false);
   const [selectedCatId, setSelectedCatId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [editTitleId, setEditTitleId] = useState(null);
+  const [editSub, setEditSub] = useState(null);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftSub, setDraftSub] = useState("");
   const addInputRef = useRef(null);
+  const editInputRef = useRef(null);
 
   useEffect(() => {
     setOpen((p) => {
@@ -130,9 +137,113 @@ export default function NestedTodoList({
     }
   }, [focusAdd]);
 
+  useEffect(() => {
+    if (editInputRef.current) editInputRef.current.focus();
+  }, [editTitleId, editSub]);
+
   const patch = async (id, body) => {
     await api.updateTodo(id, body);
     await onRefresh?.();
+  };
+
+  const saveTitle = async (t) => {
+    const next = draftTitle.trim();
+    setEditTitleId(null);
+    if (!next || next === t.t) return;
+    try {
+      await patch(t.id, { title: next });
+    } catch (e) {
+      notifyError(e, "제목 수정 실패");
+    }
+  };
+
+  const saveSubText = async (t, sid) => {
+    const next = draftSub.trim();
+    setEditSub(null);
+    const cur = (t.subs || []).find((s) => s.id === sid);
+    if (!next || next === cur?.text) return;
+    const subs = (t.subs || []).map((s) => (s.id === sid ? { ...s, text: next } : s));
+    try {
+      await patch(t.id, { subs });
+    } catch (e) {
+      notifyError(e, "세부 항목 수정 실패");
+    }
+  };
+
+  const startEditTitle = (t, e) => {
+    e?.stopPropagation();
+    setEditSub(null);
+    setEditTitleId(t.id);
+    setDraftTitle(t.t || "");
+  };
+
+  const startEditSub = (t, s, e) => {
+    e?.stopPropagation();
+    setEditTitleId(null);
+    setEditSub({ todoId: t.id, subId: s.id });
+    setDraftSub(s.text || "");
+  };
+
+  const renderEditableTitle = (t, { done, nested = false, className = "nt-ptitle" } = {}) => {
+    const cls = className + (done ? " s" : "") + (nested ? " nested" : "") + (editable ? " editable" : "");
+    if (editable && editTitleId === t.id) {
+      return (
+        <input
+          ref={editInputRef}
+          className="nt-edit-input"
+          value={draftTitle}
+          onChange={(e) => setDraftTitle(e.target.value)}
+          onBlur={() => saveTitle(t)}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); saveTitle(t); }
+            if (e.key === "Escape") setEditTitleId(null);
+          }}
+        />
+      );
+    }
+    return (
+      <span
+        className={cls}
+        onClick={(e) => {
+          if (editable) startEditTitle(t, e);
+          else {
+            e.stopPropagation();
+            openDetail?.(t);
+          }
+        }}
+      >
+        {t.t}
+      </span>
+    );
+  };
+
+  const renderEditableSubText = (t, s) => {
+    const editing = editable && editSub?.todoId === t.id && editSub?.subId === s.id;
+    if (editing) {
+      return (
+        <input
+          ref={editInputRef}
+          className="nt-edit-input"
+          value={draftSub}
+          onChange={(e) => setDraftSub(e.target.value)}
+          onBlur={() => saveSubText(t, s.id)}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); saveSubText(t, s.id); }
+            if (e.key === "Escape") setEditSub(null);
+          }}
+        />
+      );
+    }
+    return (
+      <span
+        className={"nt-stext" + (s.done ? " s" : "") + (editable ? " editable" : "")}
+        onClick={(e) => editable ? startEditSub(t, s, e) : e.stopPropagation()}
+      >
+        {s.text}
+      </span>
+    );
   };
 
   const toggleOpen = (id, e) => {
@@ -236,10 +347,24 @@ export default function NestedTodoList({
     try {
       await api.deleteTodo(t.id);
       await onRefresh?.();
+      onTaskDeleted?.(t);
     } catch (err) {
       notifyError(err, err.message || "삭제 실패");
     }
   };
+
+  const deleteSub = async (t, s, e) => {
+    e?.stopPropagation();
+    if (!(await confirmAction(`「${s.text || "세부 항목"}」을(를) 삭제할까요?`, "되돌릴 수 없어요."))) return;
+    const subs = (t.subs || []).filter((x) => x.id !== s.id);
+    try {
+      await patch(t.id, { subs });
+    } catch (err) {
+      notifyError(err, err.message || "세부 항목 삭제 실패");
+    }
+  };
+
+  const showDelete = !compact || editable;
 
   const openSubs = (id, e) => {
     e.stopPropagation();
@@ -279,24 +404,12 @@ export default function NestedTodoList({
             {done && <Check />}
           </span>
           <span className="nt-pridot" style={{ background: PRI[t.pri] || PRI.mid, width: 6, height: 6 }} />
-          <span
-            className={"nt-stext" + (done ? " s" : "")}
-            style={{ cursor: "pointer" }}
-            onClick={(e) => {
-              e.stopPropagation();
-              openDetail?.(t);
-            }}
-          >
-            {t.t}
-          </span>
+          {renderEditableTitle(t, { done, className: "nt-stext" })}
           {t.due && t.due !== "-" && (
             <span className="small" style={{ flex: "0 0 auto", fontSize: 11 }}>{t.due}</span>
           )}
-          {!compact && (
-            <button type="button" className="nt-split" style={{ color: "var(--muted)", padding: "2px 6px" }}
-              onClick={(e) => deleteTask(t, e)} aria-label="삭제">
-              ✕
-            </button>
+          {showDelete && (
+            <button type="button" className="nt-del" onClick={(e) => deleteTask(t, e)} aria-label="삭제">✕</button>
           )}
         </div>
       );
@@ -327,15 +440,7 @@ export default function NestedTodoList({
             </span>
           )}
           <span className="nt-pridot" style={{ background: PRI[t.pri] || PRI.mid }} />
-          <span
-            className={"nt-ptitle" + (done ? " s" : "") + (nested ? " nested" : "")}
-            onClick={(e) => {
-              e.stopPropagation();
-              openDetail?.(t);
-            }}
-          >
-            {t.t}
-          </span>
+          {renderEditableTitle(t, { done, nested })}
           {hasSubs && <span className={"nt-count" + (done ? " full" : "")}>{doneCount}/{subs.length}</span>}
           {!hasSubs && !isOpen && !nested && (
             <button type="button" className="nt-split" onClick={(e) => openSubs(t.id, e)}>
@@ -350,11 +455,8 @@ export default function NestedTodoList({
           {!hasSubs && t.due && t.due !== "-" && !isOpen && (
             <span className="small" style={{ flex: "0 0 auto", fontSize: 11 }}>{t.due}</span>
           )}
-          {!compact && (
-            <button type="button" className="nt-split" style={{ color: "var(--muted)", padding: "4px 8px" }}
-              onClick={(e) => deleteTask(t, e)} aria-label="삭제">
-              ✕
-            </button>
+          {showDelete && (
+            <button type="button" className="nt-del" onClick={(e) => deleteTask(t, e)} aria-label="삭제">✕</button>
           )}
         </div>
 
@@ -371,7 +473,10 @@ export default function NestedTodoList({
                 <span className={"nt-cb" + (s.done ? " on" : "")} onClick={() => toggleSub(t, s.id)}>
                   {s.done && <Check />}
                 </span>
-                <span className={"nt-stext" + (s.done ? " s" : "")}>{s.text}</span>
+                {renderEditableSubText(t, s)}
+                {editable && (
+                  <button type="button" className="nt-del" onClick={(e) => deleteSub(t, s, e)} aria-label="세부 항목 삭제">✕</button>
+                )}
               </div>
             ))}
             <div className="nt-addrow">
@@ -395,10 +500,15 @@ export default function NestedTodoList({
     <div className="nt-list">
       {!compact && (visibleGroups.length > 0 || (!hideCompletedGroups && todos.length > 0)) && (
         <div className="nt-hint">
+          {editable && "탭해서 수정 · ✕ 로 삭제 · "}
           {useGroups
             ? `${totalDone}/${progressTotal} 완료 · 대분류를 펼치면 할 일(소분류)이 보여요`
             : `${totalDone}/${todos.length} 완료 · 세부 항목을 다 끝내면 자동 완료돼요`}
         </div>
+      )}
+
+      {editable && compact && todos.some((t) => (t.subs || []).length) && (
+        <div className="nt-hint" style={{ marginBottom: 8 }}>탭해서 수정 · ✕ 로 세부 항목 삭제</div>
       )}
 
       {todos.length === 0 && !showAdd && (
@@ -456,13 +566,32 @@ export default function NestedTodoList({
                               className="nt-pridot"
                               style={{ background: PRI[row.parent.pri] || PRI.mid, width: 6, height: 6 }}
                             />
-                            <span
-                              className={"nt-stext" + (row.done ? " s" : "")}
-                              style={{ cursor: "pointer" }}
-                              onClick={() => openDetail?.(row.parent)}
-                            >
-                              {row.text}
-                            </span>
+                            {row.kind === "sub" ? (
+                              renderEditableSubText(row.parent, {
+                                id: row.id,
+                                text: row.text,
+                                done: row.done,
+                              })
+                            ) : (
+                              renderEditableTitle(row.parent, {
+                                done: row.done,
+                                nested: true,
+                                className: "nt-stext",
+                              })
+                            )}
+                            {editable && row.kind === "sub" && (
+                              <button
+                                type="button"
+                                className="nt-del"
+                                onClick={(e) => deleteSub(row.parent, { id: row.id, text: row.text, done: row.done }, e)}
+                                aria-label="세부 항목 삭제"
+                              >
+                                ✕
+                              </button>
+                            )}
+                            {editable && row.kind !== "sub" && showDelete && (
+                              <button type="button" className="nt-del" onClick={(e) => deleteTask(row.parent, e)} aria-label="삭제">✕</button>
+                            )}
                           </div>
                         ))
                       : disp.rows.map((t) => renderTodo(t, { nested: !(t.subs || []).length }))}

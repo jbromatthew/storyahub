@@ -157,6 +157,12 @@ export const api = {
     req("/meetings/summarize", { method: "POST", body: { mediaKey, meta } }),
   getJob: (jobId) => req(`/meetings/job/${jobId}`),
   retryMeeting: (id) => req(`/meetings/${id}/retry`, { method: "POST" }),
+  addMeetingAttachment: (id, data) =>
+    req(`/meetings/${id}/attachments`, { method: "POST", body: data }),
+  updateMeetingAttachmentNote: (id, data) =>
+    req(`/meetings/${id}/attachments`, { method: "PATCH", body: data }),
+  askMeeting: (id, question) =>
+    req(`/meetings/${id}/ask`, { method: "POST", body: { question } }),
 
   listDeals: () => req("/deals"),
   saveDeal: (data) => req("/deals", { method: "POST", body: data }),

@@ -1,6 +1,10 @@
 import { env } from "../env.js";
 
-type GeminiPart = { text?: string; inline_data?: { mime_type: string; data: string } };
+type GeminiPart = {
+  text?: string;
+  inline_data?: { mime_type: string; data: string };
+  file_data?: { mime_type: string; file_uri: string };
+};
 
 export type GeminiOptions = {
   maxOutputTokens?: number;
@@ -156,4 +160,59 @@ export async function geminiText(
   options?: GeminiOptions
 ): Promise<string> {
   return (await geminiGenerate(parts, systemText, false, options)).trim();
+}
+
+async function waitForGeminiFileActive(fileName: string, maxWaitMs = 120_000) {
+  const started = Date.now();
+  while (Date.now() - started < maxWaitMs) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${env.gemini.apiKey}`
+    );
+    if (!res.ok) throw new GeminiApiError(res.status, await res.text());
+    const data: any = await res.json();
+    const state = data?.state || data?.file?.state;
+    if (state === "ACTIVE") return;
+    if (state === "FAILED") throw new Error("AI 파일 처리에 실패했습니다. 다시 시도해주세요.");
+    await sleep(1500);
+  }
+  throw new Error("AI 파일 준비 시간이 초과됐습니다. 잠시 후 다시 시도해주세요.");
+}
+
+/** 20MB inline 한도 초과 오디오 — Gemini Files API 업로드 후 file_uri 반환 */
+export async function uploadGeminiFile(data: Buffer, mimeType: string, displayName: string): Promise<string> {
+  const initRes = await fetch(
+    `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${env.gemini.apiKey}`,
+    {
+      method: "POST",
+      headers: {
+        "X-Goog-Upload-Protocol": "resumable",
+        "X-Goog-Upload-Command": "start",
+        "X-Goog-Upload-Header-Content-Length": String(data.length),
+        "X-Goog-Upload-Header-Content-Type": mimeType,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ file: { display_name: displayName.slice(0, 120) } }),
+    }
+  );
+  if (!initRes.ok) throw new GeminiApiError(initRes.status, await initRes.text());
+
+  const uploadUrl = initRes.headers.get("x-goog-upload-url");
+  if (!uploadUrl) throw new Error("AI 파일 업로드 URL을 받지 못했습니다");
+
+  const upRes = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      "Content-Length": String(data.length),
+      "X-Goog-Upload-Offset": "0",
+      "X-Goog-Upload-Command": "upload, finalize",
+    },
+    body: new Uint8Array(data),
+  });
+  if (!upRes.ok) throw new GeminiApiError(upRes.status, await upRes.text());
+
+  const info: any = await upRes.json();
+  const file = info?.file;
+  if (!file?.uri || !file?.name) throw new Error("AI 파일 업로드 응답이 올바르지 않습니다");
+  await waitForGeminiFileActive(file.name);
+  return file.uri as string;
 }

@@ -33,6 +33,7 @@ model User {
   kbArticles KbArticle[]
   savedPlaces SavedPlace[]
   couponRedemptions CouponRedemption[]
+  recordingUsageEvents RecordingUsageEvent[]
 }
 
 model Coupon {
@@ -65,7 +66,9 @@ model Contact {           // 인맥 (사람/거래처)
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
-  person    String                       // 이름/직책
+  person    String                       // 이름
+  title     String?                      // 직책
+  department String?                     // 부서/팀
   company   String?
   phone     String?
   email     String?
@@ -75,6 +78,7 @@ model Contact {           // 인맥 (사람/거래처)
   group     String?                       // 1개 소속 (이천/강남/VIP 등)
   tags      String[]                      // 자유·복수 태그 (결제완료/대기/신규/핫리드 …)
   cardImageKey String?                    // 명함 원본 R2 키
+  identityKey  String?                    // 이름+연락처 정규화 키 (동일인 묶기)
   favorite  Boolean  @default(false)      // 즐겨찾기(별표) — 주관적 중요 표시
   wonAmount Int      @default(0)          // 직접 성사 딜 합계(원)
   meetCount Int      @default(0)          // 미팅 횟수(보조 지표)
@@ -87,6 +91,21 @@ model Contact {           // 인맥 (사람/거래처)
 
   meetings  Meeting[]
   deals     Deal[]
+
+  @@index([userId, identityKey])
+}
+
+model RecordingUsageEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seconds   Int
+  source    String   // live | upload | call
+  meetingId String?
+  plan      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model Meeting {           // 기록 (녹음/통화/사진)

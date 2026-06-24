@@ -239,3 +239,35 @@ export function openTodoPreviewTexts(todos, ctx = {}, limit = 2) {
   }
   return out;
 }
+
+/** 후속 챙기기 상세 — 대시보드 건수와 동일한 미완료 항목 목록 */
+export function listOpenFollowupItems(todos, ctx = {}) {
+  const items = [];
+  for (const { group, disp } of filterGroupsForToday(groupTodosBySource(todos, ctx))) {
+    const groupLabel = group.label;
+    if (disp.mode === "lines") {
+      for (const r of disp.rows) {
+        items.push({
+          key: `${r.kind}:${r.id}`,
+          text: r.text,
+          due: r.parent?.due || "-",
+          groupLabel,
+          parent: r.parent,
+          subId: r.kind === "sub" ? r.id : null,
+        });
+      }
+    } else {
+      for (const t of disp.rows) {
+        items.push({
+          key: `todo:${t.id}`,
+          text: t.t || t.title || "할 일",
+          due: t.due || "-",
+          groupLabel,
+          parent: t,
+          subId: null,
+        });
+      }
+    }
+  }
+  return items;
+}

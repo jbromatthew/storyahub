@@ -148,6 +148,16 @@ export function calendarByName(name, prefs) {
   return list.find((c) => c.name === name) || list[0];
 }
 
+/** 필터용: 전체 + 연락처 데이터의 회사명(가나다순) */
+export function mergedContactCompanies(contacts = []) {
+  const names = new Set();
+  for (const c of contacts) {
+    const co = (c.co || c.company || "").trim();
+    if (co) names.add(co);
+  }
+  return ["전체", ...[...names].sort((a, b) => a.localeCompare(b, "ko"))];
+}
+
 /** 필터용: 전체 + 프리셋 그룹 + 데이터에만 있는 그룹 */
 export function mergedContactGroups(prefs, contacts = []) {
   const preset = prefs?.contacts?.groups || [];
@@ -174,6 +184,51 @@ export function contactGroupOptions(prefs, contacts = []) {
     if (g !== "미분류" && !ordered.includes(g)) ordered.push(g);
   }
   return ordered;
+}
+
+/** 이름+연락처 동일인 묶기 (리스트 렌더용) */
+function normalizePhoneClient(phone) {
+  if (!phone?.trim()) return "";
+  let digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("82") && digits.length >= 10) digits = `0${digits.slice(2)}`;
+  if (digits.startsWith("10") && digits.length === 10) digits = `0${digits}`;
+  return digits;
+}
+
+export function computeContactIdentityKey(c) {
+  if (c.identityKey || c._raw?.identityKey) return c.identityKey || c._raw?.identityKey;
+  const name = (c.person || "").trim().replace(/\s+/g, " ").toLowerCase();
+  const tel = normalizePhoneClient(c.phone);
+  if (!name || !tel || tel.length < 9) return null;
+  return `${name}|${tel}`;
+}
+
+export function layoutContactsByIdentity(contacts = []) {
+  const byKey = new Map();
+  for (const c of contacts) {
+    const key = computeContactIdentityKey(c);
+    if (!key) continue;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(c);
+  }
+  const emitted = new Set();
+  const rows = [];
+  for (const c of contacts) {
+    const key = computeContactIdentityKey(c);
+    if (!key) {
+      rows.push({ kind: "contact", contact: c });
+      continue;
+    }
+    if (emitted.has(key)) continue;
+    emitted.add(key);
+    const members = byKey.get(key) || [c];
+    if (members.length > 1) {
+      rows.push({ kind: "identityGroup", key, members });
+    } else {
+      rows.push({ kind: "contact", contact: c });
+    }
+  }
+  return rows;
 }
 
 export function hashTagColor(tag) {

@@ -25,12 +25,40 @@ function friendlyProcessingError(e: unknown): string {
   return msg;
 }
 
+async function ocrImageKeysWithNotes(
+  userId: string,
+  imageKeys: string[],
+  photoNotes: { key: string; note?: string; atSec?: number }[],
+): Promise<string[]> {
+  const parts: string[] = [];
+  for (const key of imageKeys) {
+    if (!isUserMediaKey(key, userId)) continue;
+    const buf = await getObjectBytes(key);
+    const mime = mimeFromKey(key, "image/jpeg");
+    let text = await ocrDocumentText(buf.toString("base64"), mime);
+    const pn = photoNotes.find((n) => n.key === key);
+    const note = pn?.note?.trim();
+    const atLabel =
+      pn?.atSec != null
+        ? `[${Math.floor(pn.atSec / 60)}:${String(pn.atSec % 60).padStart(2, "0")}] `
+        : "";
+    if (note) text = `${atLabel}현장 메모: ${note}\n${text}`;
+    else if (atLabel) text = `${atLabel}${text}`;
+    parts.push(text);
+  }
+  return parts;
+}
+
 async function resolveTranscript(
   userId: string,
   mediaKey: string | null | undefined,
   meta: any
 ): Promise<TranscriptResult> {
   const durationSec = clampDurationSec(meta?.durationSec);
+  const photoNotes: { key: string; note?: string; atSec?: number }[] = Array.isArray(meta?.photoNotes)
+    ? meta.photoNotes
+    : [];
+  const imageKeys: string[] = Array.isArray(meta?.imageKeys) ? meta.imageKeys : [];
 
   if (meta?.transcript?.trim()) return plainToTranscript(meta.transcript.trim());
 
@@ -39,10 +67,18 @@ async function resolveTranscript(
     const buf = await getObjectBytes(mediaKey);
     const mime = mimeFromKey(mediaKey, "audio/webm");
     if (mime.startsWith("audio/")) {
-      return transcribeAudio(buf.toString("base64"), mime, {
+      const audio = await transcribeAudio(buf, mime, {
         durationSec,
         fileBytes: buf.length,
       });
+      if (imageKeys.length) {
+        const photoParts = await ocrImageKeysWithNotes(userId, imageKeys, photoNotes);
+        if (photoParts.length) {
+          const appendix = photoParts.filter(Boolean).join("\n\n");
+          return plainToTranscript(`${audio.plain}\n\n--- 현장 사진 ---\n${appendix}`);
+        }
+      }
+      return audio;
     }
     if (mime.startsWith("image/")) {
       const text = await ocrDocumentText(buf.toString("base64"), mime);
@@ -50,15 +86,8 @@ async function resolveTranscript(
     }
   }
 
-  const imageKeys: string[] = Array.isArray(meta?.imageKeys) ? meta.imageKeys : [];
   if (imageKeys.length) {
-    const parts: string[] = [];
-    for (const key of imageKeys) {
-      if (!isUserMediaKey(key, userId)) continue;
-      const buf = await getObjectBytes(key);
-      const mime = mimeFromKey(key, "image/jpeg");
-      parts.push(await ocrDocumentText(buf.toString("base64"), mime));
-    }
+    const parts = await ocrImageKeysWithNotes(userId, imageKeys, photoNotes);
     const joined = parts.filter(Boolean).join("\n\n");
     if (joined) return plainToTranscript(joined);
   }
@@ -78,6 +107,7 @@ type ProcessMeta = {
   durationSec?: number;
   companyName?: string | null;
   imageKeys?: string[];
+  photoNotes?: { key: string; note?: string; atSec?: number }[];
   source?: string;
   contactId?: string | null;
   attendees?: string[];
@@ -105,6 +135,7 @@ function buildProcessMeta(raw: unknown, meeting: {
     durationSec: pm.durationSec ?? 0,
     companyName: pm.companyName ?? meeting.contact?.company ?? meeting.contact?.person ?? null,
     imageKeys,
+    photoNotes: Array.isArray(pm.photoNotes) ? pm.photoNotes : [],
     source,
     contactId: pm.contactId ?? meeting.contactId,
     attendees: Array.isArray(pm.attendees) ? pm.attendees.map(String) : meeting.attendees,
@@ -116,8 +147,21 @@ async function runMeetingProcessing(
   userId: string,
   meetingId: string,
   mediaKey: string | null,
-  meta: ProcessMeta
 ): Promise<{ summary: Awaited<ReturnType<typeof summarize>> }> {
+  const meeting = await prisma.meeting.findFirst({
+    where: { id: meetingId, userId },
+    include: { contact: { select: { person: true, company: true } } },
+  });
+  if (!meeting) throw new Error("미팅을 찾을 수 없습니다");
+
+  const meta = buildProcessMeta(meeting.processMeta, {
+    source: meeting.source,
+    contactId: meeting.contactId,
+    attendees: meeting.attendees,
+    eventId: meeting.eventId,
+    mediaKey: meeting.mediaKey,
+    contact: meeting.contact,
+  });
   const isAudio = meta.source !== "photo" && (!meta.imageKeys?.length || mediaKey);
   const durationSec = isAudio ? clampDurationSec(meta.durationSec) : 0;
   const contactId = meta.contactId ?? null;
@@ -175,7 +219,12 @@ async function runMeetingProcessing(
     });
   }
 
-  if (durationSec > 0) await incrementRecordingSec(userId, durationSec);
+  if (durationSec > 0) {
+    await incrementRecordingSec(userId, durationSec, {
+      source: meta.source ?? "live",
+      meetingId,
+    });
+  }
 
   return { summary };
 }
@@ -199,6 +248,7 @@ function serializeProcessMeta(meta: Record<string, unknown>, durationSec: number
     durationSec,
     companyName: (meta.companyName as string) ?? null,
     imageKeys: Array.isArray(meta.imageKeys) ? meta.imageKeys.map(String) : [],
+    photoNotes: Array.isArray(meta.photoNotes) ? (meta.photoNotes as ProcessMeta["photoNotes"]) : [],
     source: (meta.source as string) ?? "live",
     contactId: meta.contactId ? String(meta.contactId) : null,
     attendees: Array.isArray(meta.attendees) ? meta.attendees.map(String) : [],
@@ -276,7 +326,7 @@ meetingsRouter.post("/summarize", async (req: AccessRequest, res) => {
 
   const jobId = enqueue(userId, async () => {
     try {
-      const result = await runMeetingProcessing(userId, meeting.id, mediaKey ?? null, processMeta);
+      const result = await runMeetingProcessing(userId, meeting.id, mediaKey ?? null);
       return { meetingId: meeting.id, mediaKey: meeting.mediaKey, summary: result.summary };
     } catch (e) {
       await markMeetingFailed(meeting.id, sourceLabel, e);
@@ -285,6 +335,104 @@ meetingsRouter.post("/summarize", async (req: AccessRequest, res) => {
   });
 
   res.status(202).json({ jobId, meetingId: meeting.id });
+});
+
+meetingsRouter.post("/:id/attachments", async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const imageKey = String(req.body?.imageKey ?? "").trim();
+  if (!imageKey) return res.status(400).json({ error: "imageKey required" });
+
+  const m = await prisma.meeting.findFirst({ where: { id: req.params.id, userId } });
+  if (!m) return res.status(404).json({ error: "not found" });
+
+  try {
+    assertUserMediaKey(imageKey, userId);
+  } catch {
+    return res.status(400).json({ error: "미디어 키가 올바르지 않습니다" });
+  }
+
+  const pm = buildProcessMeta(m.processMeta, {
+    source: m.source,
+    contactId: m.contactId,
+    attendees: m.attendees,
+    eventId: m.eventId,
+    mediaKey: m.mediaKey,
+    contact: null,
+  });
+  const imageKeys = pm.imageKeys ?? [];
+  const photoNotesList = pm.photoNotes ?? [];
+
+  if (imageKeys.includes(imageKey)) {
+    return res.status(409).json({ error: "이미 추가된 사진이에요" });
+  }
+  if (imageKeys.length >= 20) {
+    return res.status(400).json({ error: "사진은 최대 20장까지 추가할 수 있어요" });
+  }
+
+  const note = String(req.body?.note ?? "").trim();
+  const atSecRaw = req.body?.atSec;
+  const atSec =
+    atSecRaw != null && Number.isFinite(Number(atSecRaw)) ? Math.max(0, Math.round(Number(atSecRaw))) : null;
+
+  const nextMeta: ProcessMeta = {
+    ...pm,
+    imageKeys: [...imageKeys, imageKey],
+    photoNotes: [...photoNotesList, { key: imageKey, note: note || undefined, atSec: atSec ?? undefined }],
+  };
+
+  const updated = await prisma.meeting.update({
+    where: { id: m.id },
+    data: { processMeta: nextMeta as any },
+    include: {
+      contact: { select: { id: true, person: true, company: true } },
+      event: { select: { id: true, title: true, startsAt: true, place: true } },
+      todos: { orderBy: { createdAt: "asc" } },
+    },
+  });
+  res.json(updated);
+});
+
+meetingsRouter.patch("/:id/attachments", async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const imageKey = String(req.body?.key ?? req.body?.imageKey ?? "").trim();
+  if (!imageKey) return res.status(400).json({ error: "key required" });
+
+  const m = await prisma.meeting.findFirst({ where: { id: req.params.id, userId } });
+  if (!m) return res.status(404).json({ error: "not found" });
+
+  const pm = buildProcessMeta(m.processMeta, {
+    source: m.source,
+    contactId: m.contactId,
+    attendees: m.attendees,
+    eventId: m.eventId,
+    mediaKey: m.mediaKey,
+    contact: null,
+  });
+  const imageKeys = pm.imageKeys ?? [];
+  const photoNotesList = pm.photoNotes ?? [];
+
+  if (!imageKeys.includes(imageKey)) {
+    return res.status(404).json({ error: "사진을 찾을 수 없어요" });
+  }
+
+  const note = String(req.body?.note ?? "").trim();
+  const photoNotes = photoNotesList.map((pn) =>
+    pn.key === imageKey ? { ...pn, note: note || undefined } : pn,
+  );
+  if (!photoNotes.some((pn) => pn.key === imageKey)) {
+    photoNotes.push({ key: imageKey, note: note || undefined });
+  }
+
+  const updated = await prisma.meeting.update({
+    where: { id: m.id },
+    data: { processMeta: { ...pm, photoNotes } as any },
+    include: {
+      contact: { select: { id: true, person: true, company: true } },
+      event: { select: { id: true, title: true, startsAt: true, place: true } },
+      todos: { orderBy: { createdAt: "asc" } },
+    },
+  });
+  res.json(updated);
 });
 
 meetingsRouter.get("/job/:id", (req: AuthedRequest, res) => {
@@ -351,7 +499,7 @@ meetingsRouter.post("/:id/retry", async (req: AccessRequest, res) => {
 
   const jobId = enqueue(userId, async () => {
     try {
-      const result = await runMeetingProcessing(userId, m.id, mediaKey, processMeta);
+      const result = await runMeetingProcessing(userId, m.id, mediaKey);
       return { meetingId: m.id, mediaKey: m.mediaKey, summary: result.summary };
     } catch (e) {
       await markMeetingFailed(m.id, sourceLabel, e);
@@ -418,8 +566,14 @@ meetingsRouter.patch("/:id", async (req: AuthedRequest, res) => {
   const m = await prisma.meeting.findFirst({ where: { id: req.params.id, userId } });
   if (!m) return res.status(404).json({ error: "not found" });
 
-  const { category, tags } = req.body ?? {};
-  const data: { category?: string | null; tags?: string[] } = {};
+  const { category, tags, attendees, contactId } = req.body ?? {};
+  const data: {
+    category?: string | null;
+    tags?: string[];
+    attendees?: string[];
+    contactId?: string | null;
+    processMeta?: ProcessMeta;
+  } = {};
 
   if (category !== undefined) {
     const c = String(category).trim();
@@ -430,12 +584,42 @@ meetingsRouter.patch("/:id", async (req: AuthedRequest, res) => {
     data.tags = [...new Set(tags.map((t) => String(t).trim()).filter(Boolean))].slice(0, 20);
   }
 
+  if (attendees !== undefined || contactId !== undefined) {
+    let ids: string[];
+    if (attendees !== undefined) {
+      if (!Array.isArray(attendees)) return res.status(400).json({ error: "attendees must be array" });
+      ids = [...new Set(attendees.map(String).filter(Boolean))].slice(0, 20);
+    } else {
+      ids = [...(m.attendees || [])];
+    }
+    if (contactId !== undefined) {
+      const cid = contactId ? String(contactId) : null;
+      if (cid && !ids.includes(cid)) ids = [cid, ...ids];
+    }
+    if (ids.length) {
+      const found = await prisma.contact.count({ where: { userId, id: { in: ids } } });
+      if (found !== ids.length) return res.status(400).json({ error: "인맥을 찾을 수 없어요" });
+    }
+    data.attendees = ids;
+    data.contactId = ids[0] ?? null;
+    const pm = buildProcessMeta(m.processMeta, {
+      source: m.source,
+      contactId: m.contactId,
+      attendees: m.attendees,
+      eventId: m.eventId,
+      mediaKey: m.mediaKey,
+      contact: null,
+    });
+    data.processMeta = { ...pm, attendees: ids, contactId: ids[0] ?? null };
+  }
+
   const updated = await prisma.meeting.update({
     where: { id: m.id },
     data,
     include: {
       contact: { select: { id: true, person: true, company: true } },
-      todos: { select: { id: true, status: true } },
+      event: { select: { id: true, title: true, startsAt: true, place: true } },
+      todos: { orderBy: { createdAt: "asc" } },
     },
   });
   res.json(updated);

@@ -3,8 +3,12 @@ import { getAccessStatus } from "./access.js";
 
 const MS_MONTH = 30 * 86400000;
 
-/** 유료 플랜은 30일마다 녹음·변환 사용량 리셋 */
-export async function incrementRecordingSec(userId: string, seconds: number): Promise<void> {
+/** 유료 플랜은 30일마다 녹음·변환 사용량 리셋 + 이벤트 로그 */
+export async function incrementRecordingSec(
+  userId: string,
+  seconds: number,
+  opts?: { source?: string; meetingId?: string },
+): Promise<void> {
   if (seconds <= 0) return;
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return;
@@ -21,11 +25,22 @@ export async function incrementRecordingSec(userId: string, seconds: number): Pr
     }
   }
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      usedRecordingSec: used + seconds,
-      recordingPeriodStart: periodStart ?? now,
-    },
-  });
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: {
+        usedRecordingSec: used + seconds,
+        recordingPeriodStart: periodStart ?? now,
+      },
+    }),
+    prisma.recordingUsageEvent.create({
+      data: {
+        userId,
+        seconds,
+        source: opts?.source ?? "live",
+        meetingId: opts?.meetingId ?? null,
+        plan: status.lifetimeAccess ? "lifetime" : status.isTrial ? "trial" : status.plan,
+      },
+    }),
+  ]);
 }

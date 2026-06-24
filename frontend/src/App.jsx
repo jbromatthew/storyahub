@@ -8,12 +8,14 @@ import MeetingInsights from "./components/MeetingInsights.jsx";
 import CategoryTagSettings from "./components/CategoryTagSettings.jsx";
 import ContactGroupTagPanel from "./components/ContactGroupTagPanel.jsx";
 import MeetingAskPanel from "./components/MeetingAskPanel.jsx";
+import CardScanView from "./components/CardScanView.jsx";
 import PlacesView from "./components/PlacesView.jsx";
 import CalendarView from "./components/CalendarView.jsx";
+import PhotoGallery from "./components/PhotoGallery.jsx";
 import { api, loadToken, saveToken, clearToken, setToken, isAuthError, isAccessError } from "./api/client.js";
-import { uploadBlob, uploadFile, pickImageFile, pickAudioFile, audioDurationSec, pickAnyFile, fileToBase64, mediaUrl, AudioRecorder, isPickCancelled } from "./api/upload.js";
+import { uploadBlob, uploadFile, pickImageFile, pickAudioFile, audioDurationSec, pickAnyFile, fileToBase64, mediaUrl, AudioRecorder, isPickCancelled, isNativeRecordingResult, isNativeShell } from "./api/upload.js";
 import { setClients, getClients, setPlaces, getPlaces } from "./store.js";
-import { contactToUi, todoToUi, todoSearchText, formatWhen, eventToUi, kbToUi, meetingToUi, isAudioMediaKey, isImageMediaKey, kbCategories, KB_SECTIONS, kbSectionLabel, kbCoverKey, haversineKm, formatDistanceKm, kakaoDirectionsUrl, kbExcerpt, kbReadMinutes, kbFileCount, kbThumbMeta, placeToUi } from "./mappers.js";
+import { contactToUi, todoToUi, todoSearchText, formatWhen, eventToUi, kbToUi, meetingToUi, meetingPeopleLabel, meetingAttendeeIds, isAudioMediaKey, isImageMediaKey, kbCategories, KB_SECTIONS, kbSectionLabel, kbCoverKey, haversineKm, formatDistanceKm, kakaoDirectionsUrl, kbExcerpt, kbReadMinutes, kbFileCount, kbThumbMeta, placeToUi, contactRoleLine, formatDurationHm } from "./mappers.js";
 import { useSwipeBack } from "./useSwipeBack.js";
 import ContactIntroSheet from "./components/ContactIntroSheet.jsx";
 import { confirmDelete, confirmAction } from "./confirmDelete.js";
@@ -22,14 +24,17 @@ import ToastHost from "./components/ToastHost.jsx";
 import ConfirmHost from "./components/ConfirmHost.jsx";
 import { toastError, toastSuccess, notifyError } from "./toast.js";
 import { addPendingMeeting, removePendingMeeting, getPendingMeetingIds } from "./pendingMeetings.js";
-import { userPreferences, tagColor, mergedContactGroups } from "./preferences.js";
-import { hasOpenTodoGroups, countOpenTodoItems, openTodoPreviewTexts } from "./todoGroups.js";
+import { userPreferences, tagColor, mergedContactGroups, mergedContactCompanies, layoutContactsByIdentity } from "./preferences.js";
+import { hasOpenTodoGroups, countOpenTodoItems, openTodoPreviewTexts, listOpenFollowupItems } from "./todoGroups.js";
 
 /* ------------------------------------------------------------------
    Storyahub — 비서앱 UI
    미니멀 / 페이퍼톤 / 단일 액센트(테라코타)
    핵심 루프: 녹음 → 요약 → 투두·일정 자동 분기
 ------------------------------------------------------------------- */
+
+/** 베타 기간: 요금제·결제 화면 및 진입점 숨김 */
+const BETA_HIDE_PRICING = true;
 
 const CSS = `
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
@@ -82,6 +87,32 @@ const CSS = `
   font-size:13px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);
   cursor:pointer;white-space:nowrap;transition:.15s;}
 .chip.on{background:var(--ink);color:#fff;border-color:var(--ink);}
+.client-filter-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 16px;}
+.client-filter-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;}
+.client-filter-top .small{font-weight:700;color:var(--muted);}
+.class-mode-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
+.class-mode-tabs button{
+  padding:11px 14px;border-radius:12px;border:1px solid var(--line);background:#FBFAF7;
+  font-family:inherit;font-weight:700;font-size:14px;color:var(--muted);cursor:pointer;transition:.15s;
+}
+.class-mode-tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink);box-shadow:0 4px 14px -8px rgba(20,16,12,.45);}
+.filter-pick-btn{width:100%;text-align:left;border:1px solid transparent;border-radius:12px;padding:11px 13px;
+  background:#F7F4EE;cursor:pointer;font-family:inherit;transition:background .15s,border-color .15s;}
+.filter-pick-btn:active{background:#F0EBE2;}
+.filter-pick-label{font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:3px;letter-spacing:.01em;}
+.filter-pick-value{font-weight:700;font-size:14.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:left;color:var(--ink);}
+.filter-select-sheet{padding-top:8px;display:flex;flex-direction:column;overflow:hidden;max-height:min(88dvh,calc(100dvh - env(safe-area-inset-top,0px)));}
+.filter-select-list{flex:1;min-height:120px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.filter-select-search-wrap{flex-shrink:0;margin-top:8px;padding-bottom:max(4px,env(safe-area-inset-bottom,0px));}
+.filter-pick-search{display:flex;align-items:center;gap:9px;background:#F4F1EA;border-radius:11px;padding:10px 12px;margin-bottom:12px;color:var(--muted);}
+.filter-pick-search input{flex:1;border:none;outline:none;background:transparent;font-family:inherit;font-size:14px;color:var(--ink);}
+.filter-pick-count{font-size:12px;font-weight:600;color:var(--muted);}
+.filter-pick-item{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:14px 2px;
+  border:none;border-bottom:1px solid var(--line);background:none;font-family:inherit;font-size:15px;font-weight:600;
+  cursor:pointer;text-align:left;color:var(--ink);}
+.filter-pick-item:last-child{border-bottom:none;}
+.filter-pick-item.on{color:var(--accent-deep);}
+.filter-pick-item span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .tag{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:8px;
   font-size:11px;font-weight:700;background:var(--accent-soft);color:var(--accent-deep);}
 .tag.green{background:var(--green-soft);color:var(--green);}
@@ -99,15 +130,41 @@ const CSS = `
 .avatar{width:42px;height:42px;border-radius:14px;background:var(--accent-soft);color:var(--accent-deep);
   display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex:0 0 auto;}
 
-/* bottom nav (mobile) — 5탭 */
+/* bottom nav (mobile) — 핵심 4탭 + 햄버거 메뉴 */
 .nav{position:fixed;left:0;right:0;bottom:0;height:calc(68px + env(safe-area-inset-bottom,0px));
   padding-bottom:env(safe-area-inset-bottom,0px);
   background:rgba(247,244,238,.92);backdrop-filter:blur(14px);border-top:1px solid var(--line);
   z-index:40;}
-.nav-grid{display:grid;grid-template-columns:repeat(7,1fr);width:100%;align-items:end;padding:8px 2px 0;}
-.navitem{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px;font-weight:600;
-  color:var(--muted);background:none;border:none;cursor:pointer;width:100%;padding:0 2px;transition:.15s;}
+.nav-grid{display:grid;grid-template-columns:repeat(4,1fr);width:100%;align-items:end;padding:8px 4px 0;}
+.navitem{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10.5px;font-weight:600;
+  color:var(--muted);background:none;border:none;cursor:pointer;width:100%;padding:0 4px;transition:.15s;}
 .navitem.on{color:var(--accent-deep);}
+
+@media (max-width:767px){
+  .mob-header{display:flex;align-items:center;justify-content:flex-end;
+    position:fixed;top:0;left:0;right:0;z-index:45;
+    height:calc(52px + env(safe-area-inset-top,0px));
+    padding:env(safe-area-inset-top,0px) 12px 0;
+    pointer-events:none;}
+  .mob-header .mob-menu-btn{pointer-events:auto;}
+  .screen.has-mob-header{padding-top:calc(52px + env(safe-area-inset-top,0px));}
+  .today-top-actions{display:none;}
+  .mob-menu-backdrop{position:fixed;inset:0;background:rgba(20,16,12,.38);z-index:60;animation:fadeIn .2s ease;}
+  .mob-menu-sheet{position:fixed;top:0;right:0;bottom:0;width:min(300px,88vw);background:#fff;z-index:61;
+    padding:calc(12px + env(safe-area-inset-top,0px)) 14px calc(20px + env(safe-area-inset-bottom,0px));
+    box-shadow:-10px 0 40px rgba(20,16,12,.14);animation:slideInRight .24s ease;overflow-y:auto;}
+  @keyframes slideInRight{from{transform:translateX(100%)}to{transform:none}}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  .mob-menu-item{display:flex;align-items:center;gap:12px;width:100%;padding:13px 12px;margin-bottom:2px;
+    border:none;background:none;border-radius:12px;font-family:inherit;font-size:15px;font-weight:600;
+    cursor:pointer;text-align:left;color:var(--ink);}
+  .mob-menu-item.on{background:var(--accent-soft);color:var(--accent-deep);}
+  .mob-menu-item svg{flex:0 0 auto;color:var(--muted);}
+  .mob-menu-item.on svg{color:var(--accent-deep);}
+}
+@media (min-width:768px){
+  .mob-header,.mob-menu-backdrop,.mob-menu-sheet{display:none!important;}
+}
 
 @media (min-width:768px){
   .app-shell{max-width:1440px;margin:0 auto;}
@@ -126,6 +183,7 @@ const CSS = `
   .kbh-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
   .kbh-item{margin-bottom:0;}
   .kbh-fab{left:auto;right:32px;bottom:32px;transform:none;}
+  .meet-fab{bottom:32px;right:32px;}
   .screen .pad{max-width:840px;margin-left:auto;margin-right:auto;}
   .kbe-inner{max-width:720px;margin:0 auto;width:100%;}
   .kbe-bar{padding:12px 24px;}
@@ -249,6 +307,12 @@ const CSS = `
 .nt-sitem{display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--line);}
 .nt-stext{flex:1;font-size:14px;font-weight:500;}
 .nt-stext.s{text-decoration:line-through;color:var(--muted);}
+.nt-stext.editable{cursor:text;}
+.nt-edit-input{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:6px 9px;
+  font-family:inherit;font-size:14px;font-weight:500;color:var(--ink);background:#fff;outline:none;}
+.nt-del{border:none;background:transparent;color:var(--muted);cursor:pointer;padding:2px 6px;
+  font-size:15px;line-height:1;flex:0 0 auto;font-family:inherit;}
+.nt-del:hover{color:#E03E3E;}
 .nt-cb{width:22px;height:22px;border-radius:7px;border:2px solid var(--line);background:#fff;cursor:pointer;
   flex:0 0 auto;display:flex;align-items:center;justify-content:center;transition:.12s;color:#fff;}
 .nt-cb.on{background:var(--accent);border-color:var(--accent);}
@@ -306,6 +370,11 @@ const CSS = `
 .kbh-fab{position:absolute;left:50%;transform:translateX(-50%);bottom:88px;display:flex;align-items:center;gap:8px;
   background:var(--accent);color:#fff;border:none;font-family:inherit;font-weight:800;font-size:14px;
   padding:14px 20px;border-radius:30px;cursor:pointer;box-shadow:0 12px 28px -6px rgba(221,94,57,.55);z-index:8;}
+
+.meet-fab{position:fixed;right:20px;bottom:calc(84px + env(safe-area-inset-bottom,0px));width:56px;height:56px;
+  border-radius:50%;border:none;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;z-index:8;box-shadow:0 12px 28px -6px rgba(221,94,57,.55);font-family:inherit;}
+.meet-fab:active{background:var(--accent-deep);}
 
 /* kb blog editor — 네이버 블로그형 작성 */
 .kbe-wrap,.kbe-read{display:flex;flex-direction:column;height:100%;width:100%;min-height:0;background:#F4F5F7;}
@@ -380,7 +449,7 @@ const CSS = `
 .kbe-read{overflow:hidden;}
 .kbe-read-top{padding:10px 20px;border-bottom:1px solid var(--line);flex:0 0 auto;}
 .kbe-read-top-inner{display:flex;align-items:center;justify-content:space-between;gap:8px;}
-.kbe-read-body{flex:1;overflow-y:auto;padding:16px 20px 32px;}
+.kbe-read-body{flex:1;overflow-y:auto;padding:16px 20px calc(76px + env(safe-area-inset-bottom,0px));}
 .kbe-cover-read{width:100%;height:200px;overflow:hidden;flex:0 0 auto;}
 .kbe-cover-read img{width:100%;height:100%;object-fit:cover;display:block;}
 
@@ -637,6 +706,7 @@ const I = {
   bolt:(p)=> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M13 3 4 14h7l-1 7 9-11h-7z"/></svg>,
   edit:(p)=> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M4 20h4L18 10l-4-4L4 16z"/><path d="M13 5l4 4"/></svg>,
   chevR:(p)=> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="m9 6 6 6-6 6"/></svg>,
+  menu:(p)=> <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" {...p}><path d="M4 7h16M4 12h16M4 17h16"/></svg>,
 };
 
 /* --------- data --------- */
@@ -775,7 +845,9 @@ function App(){
   const [lastSummary,setLastSummary] = useState(null);
   const [lastMediaKey,setLastMediaKey] = useState(null);
   const [recordLink,setRecordLink] = useState(null);
+  const [mobileMenuOpen,setMobileMenuOpen] = useState(false);
   const timer = useRef(null);
+  const recStartedAtRef = useRef(null);
 
   const loadAppData = useCallback(async ()=>{
     const [data, kb] = await Promise.all([api.bootstrap(), api.listKb()]);
@@ -816,9 +888,27 @@ function App(){
   useEffect(()=>{ restoreSession(); },[restoreSession]);
 
   useEffect(()=>{
-    if(phase==="rec"){ timer.current=setInterval(()=>setSecs(s=>s+1),1000); }
-    else clearInterval(timer.current);
+    if(phase==="rec"){
+      const tick=()=>{
+        if(recStartedAtRef.current){
+          setSecs(Math.max(0,Math.floor((Date.now()-recStartedAtRef.current)/1000)));
+        }
+      };
+      tick();
+      timer.current=setInterval(tick,1000);
+    }else clearInterval(timer.current);
     return ()=>clearInterval(timer.current);
+  },[phase]);
+
+  useEffect(()=>{
+    if(phase!=="rec") return;
+    const sync=()=>{
+      if(document.visibilityState==="visible"&&recStartedAtRef.current){
+        setSecs(Math.max(0,Math.floor((Date.now()-recStartedAtRef.current)/1000)));
+      }
+    };
+    document.addEventListener("visibilitychange",sync);
+    return ()=>document.removeEventListener("visibilitychange",sync);
   },[phase]);
 
   const handleAuth = async (result)=>{
@@ -837,16 +927,16 @@ function App(){
     if(!isInstallDismissed()) setShowInstall(true);
   },[user]);
 
-  const goTab=(t)=>{ setClient(null); setKbView(null); setPricing(false); setCardScan(false); setOverlay(null); setDetail(null); if(t!=="record"){ setTab(t);} };
+  const goTab=(t)=>{ setMobileMenuOpen(false); setClient(null); setKbView(null); setPricing(false); setCardScan(false); setOverlay(null); setDetail(null); if(t!=="record"){ setTab(t);} };
   const startRec=(link=null)=>{
     if(user && user.hasAccess===false){
-      setPricing(true);
-      toastError("이용 기간이 만료되었습니다. 요금제를 선택해 주세요.");
+      toastError(BETA_HIDE_PRICING?"베타 기간이 종료되었습니다. 관리자에게 문의해 주세요.":"이용 기간이 만료되었습니다. 요금제를 선택해 주세요.");
+      if(!BETA_HIDE_PRICING) setPricing(true);
       return;
     }
     if(user?.isTrial && user.recordingLimitSec && user.recordingUsedSec>=user.recordingLimitSec){
-      setPricing(true);
-      toastError("체험 녹음 한도(1시간)를 모두 사용했습니다.");
+      toastError(BETA_HIDE_PRICING?"녹음 한도에 도달했습니다. 베타 기간에는 관리자에게 문의해 주세요.":"체험 녹음 한도(1시간)를 모두 사용했습니다.");
+      if(!BETA_HIDE_PRICING) setPricing(true);
       return;
     }
     setRecordLink(link||null);
@@ -862,35 +952,56 @@ function App(){
       contactId:contactIds[0]||null,
     });
   };
-  const startLiveRec=useCallback(()=>{ setSecs(0); setHl(0); setPhase("rec"); },[]);
-  const cancelLiveRec=useCallback(()=>{ setSecs(0); setHl(0); setPhase("setup"); },[]);
+  const startLiveRec=useCallback(()=>{ recStartedAtRef.current=Date.now(); setSecs(0); setHl(0); setPhase("rec"); },[]);
+  const cancelLiveRec=useCallback(()=>{ recStartedAtRef.current=null; setSecs(0); setHl(0); setPhase("setup"); },[]);
   const handleRecordComplete=useCallback(async (job)=>{
     setRecordLink(null);
     setPhase("setup");
-    setTab("today");
     setSecs(0);
-    toastSuccess("백그라운드에서 업로드·변환 중이에요. 완료되면 알려드릴게요.");
+    toastSuccess("변환을 시작했어요.");
     try{
-      const { mode, attendees, contactId, companyName, eventId, secs: recSecs, audioDur, audioFile, photos, blob }=job;
+      const { mode, attendees, contactId, companyName, eventId, secs: recSecs, audioDur, audioFile, photos, blob, nativeMediaKey, nativeDurationSec }=job;
       const isPhoto=mode==="photo";
       let mediaKey;
       let imageKeys;
       let durationSec;
       if(mode==="rec"){
-        const ext=blob.type.includes("webm")?"webm":"m4a";
-        mediaKey=await uploadBlob(blob,`recording-${Date.now()}.${ext}`,blob.type||"audio/webm");
-        durationSec=recSecs;
+        if(nativeMediaKey){
+          mediaKey=nativeMediaKey;
+          durationSec=nativeDurationSec??recSecs;
+        }else{
+          const ext=blob.type.includes("webm")?"webm":"m4a";
+          mediaKey=await uploadBlob(blob,`recording-${Date.now()}.${ext}`,blob.type||"audio/webm");
+          durationSec=recSecs;
+        }
+        if(photos?.length){
+          imageKeys=await Promise.all(photos.map(async (p)=>{
+            if(p.mediaKey) return p.mediaKey;
+            if(p.file) return uploadFile(p.file);
+            throw new Error("사진 업로드에 실패했습니다");
+          }));
+        }
       }else if(mode==="upload"){
         mediaKey=await uploadFile(audioFile,{ audio:true });
         durationSec=audioDur||Math.max(1,Math.round(audioFile.size/(128*1024/8)));
-      }else{
+      }else if(mode==="photo"){
+        if(!photos?.length) throw new Error("사진을 추가해주세요");
         imageKeys=await Promise.all(photos.map((p)=>uploadFile(p.file)));
+      }else{
+        throw new Error("녹음 방식을 확인할 수 없습니다. 다시 시도해주세요.");
       }
       if(!isPhoto){
         const tooLong=recordingTooLong(durationSec);
         if(tooLong) throw new Error(tooLong);
       }
       const source=isPhoto?"photo":mode==="upload"?"upload":"live";
+      const photoNotesPayload=(photos?.length&&imageKeys?.length)
+        ? photos.map((p,i)=>({
+            key:imageKeys[i],
+            note:(p.note||"").trim()||undefined,
+            ...(p.atSec!=null?{ atSec:p.atSec }:{}),
+          }))
+        : [];
       const { meetingId }=await api.enqueueSummary(mediaKey||null,{
         template:"영업",
         contactId: contactId??null,
@@ -898,15 +1009,18 @@ function App(){
         source,
         attendees,
         imageKeys: imageKeys??[],
+        photoNotes: photoNotesPayload,
         durationSec: isPhoto?0:(durationSec??0),
         eventId: eventId??null,
       });
       addPendingMeeting(meetingId);
+      const m=await api.getMeeting(meetingId);
+      setDetail({ type:"meeting", data:meetingToUi(m) });
       await loadAppData();
       const { user:u }=await api.me().catch(()=>({}));
       if(u) setUser(u);
     }catch(e){
-      if(isAccessError(e)){ setPricing(true); setUser(u=>u?{...u,hasAccess:false}:u); }
+      if(isAccessError(e)){ if(!BETA_HIDE_PRICING) setPricing(true); setUser(u=>u?{...u,hasAccess:false}:u); }
       notifyError(e, friendlyAiError(e.message)||"업로드·변환 실패");
     }
   },[loadAppData]);
@@ -998,6 +1112,7 @@ function App(){
   );
 
   const showMobileNav = boot==="app" && kbView?.mode!=="edit";
+  const showMobileHeader = showMobileNav && !detail && !client && !overlay && !pricing && !cardScan && tab!=="record";
   const prefs = userPreferences(user);
 
   return (
@@ -1023,13 +1138,31 @@ function App(){
           </aside>
         )}
         <div className="app-main">
-        <div className={"screen"+(kbView?" screen-kb":"")} key={boot+tab+phase+(client?client.id:"")+(pricing?"P":"")+(overlay||"")+(detail?detail.type:"")+(kbView?.mode||"")}>
+        {showMobileHeader && (
+          <div className="mob-header">
+            <button type="button" className="iconbtn mob-menu-btn" onClick={()=>setMobileMenuOpen(true)} aria-label="메뉴 열기">
+              {I.menu({width:20,height:20})}
+            </button>
+          </div>
+        )}
+        <MobileMenuSheet
+          open={showMobileHeader && mobileMenuOpen}
+          onClose={()=>setMobileMenuOpen(false)}
+          tab={tab}
+          client={client}
+          onGoTab={goTab}
+          onSearch={()=>setOverlay("search")}
+          onSettings={()=>setOverlay("settings")}
+          onRecord={startRec}
+        />
+        <div className={"screen"+(kbView?" screen-kb":"")+(showMobileHeader?" has-mob-header":"")} key={boot+tab+phase+(client?client.id:"")+(pricing?"P":"")+(overlay||"")+(detail?detail.type:"")+(kbView?.mode||"")}>
           {boot==="auth" ? <AuthScreen onSuccess={handleAuth}/>
           : boot==="welcome" ? <WelcomeScreen user={user} contactCount={getClients().length}
               onStartRec={async ()=>{ await completeWelcome(); startRec(); }}
               onAddContact={async ()=>{ await completeWelcome(); setTab("clients"); setCardScan(true); }}
               onDone={completeWelcome}/>
           : detail ? <Detail d={detail} todos={todos} back={()=>setDetail(null)} onTodoToggle={toggleTodo} onTodoUpdated={loadAppData} refreshTodos={loadAppData} onDeleted={()=>{ setDetail(null); loadAppData(); }} prefs={prefs}
+              onAppRefresh={loadAppData}
               meetings={meetings}
               startRecFromEvent={(ev)=>{ setDetail(null); startRecFromEvent(ev); }}
               openMeeting={(m)=>setDetail({type:"meeting",data:m})}
@@ -1041,12 +1174,12 @@ function App(){
               meetings={meetings} kbArticles={kbArticles} todos={todos}/>
           : overlay==="mypage" ? <MyPage user={user} back={()=>setOverlay("settings")} onUserUpdated={setUser}/>
           : overlay==="settings" ? <Settings user={user} back={()=>setOverlay(null)} go={(o)=>setOverlay(o)}
-              openPricing={()=>{setOverlay(null);setPricing(true);}}
+              openPricing={()=>{ if(!BETA_HIDE_PRICING){ setOverlay(null); setPricing(true); } }}
               onLogout={async ()=>{ try{ await api.logout(); }catch{/* ignore */} clearToken(); setUser(null); setBoot("auth"); setOverlay(null); }}/>
           : overlay==="trash" ? <Trash back={()=>setOverlay("settings")}/>
           : overlay==="export" ? <ExportData back={()=>setOverlay("settings")}/>
           : overlay==="categorytags" ? <CategoryTagSettings user={user} back={()=>setOverlay("settings")} onUserUpdated={setUser}/>
-          : pricing ? <Pricing back={()=>setPricing(false)} segment={segment} user={user} onUserUpdated={setUser}/>
+          : pricing && !BETA_HIDE_PRICING ? <Pricing back={()=>setPricing(false)} segment={segment} user={user} onUserUpdated={setUser}/>
           : tab==="record" ? <RecordScreen phase={phase} secs={secs} mmss={mmss} hl={hl} setHl={setHl}
                               onRunInBackground={handleRecordComplete} todos={todos} toggleTodo={toggleTodo}
                               summary={lastSummary} mediaKey={lastMediaKey} user={user}
@@ -1062,7 +1195,7 @@ function App(){
           : tab==="today" ? <Today user={user} startRec={startRec} todos={todos} toggleTodo={toggleTodo} setTodoStatus={setTodoStatus}
                               eventsToday={eventsToday} meetings={meetings} revenue={revenue}
                               openClient={(c)=>setClient(c)} seeSummary={(m)=>openDetail("meeting",m)}
-                              openPricing={()=>setPricing(true)} segment={segment}
+                              openPricing={()=>{ if(!BETA_HIDE_PRICING) setPricing(true); }} segment={segment}
                               openSearch={()=>setOverlay("search")} openSettings={()=>setOverlay("settings")}
                               openMeetings={()=>goTab("meetings")}
                               openTodoArchive={()=>goTab("todos")}
@@ -1092,12 +1225,9 @@ function App(){
         <div className="nav">
           <div className="nav-grid">
             <NavBtn on={tab==="today"&&!client} icon={I.home} label="투데이" onClick={()=>goTab("today")}/>
-            <NavBtn on={tab==="todos"} icon={I.todo} label="할 일" onClick={()=>goTab("todos")}/>
-            <NavBtn on={tab==="clients"||client} icon={I.users} label={T(segment,"contacts")} onClick={()=>goTab("clients")}/>
             <NavBtn on={tab==="meetings"} icon={I.meet} label="미팅" onClick={()=>goTab("meetings")}/>
-            <NavBtn on={tab==="calendar"} icon={I.cal} label="캘린더" onClick={()=>goTab("calendar")}/>
-            <NavBtn on={tab==="places"} icon={I.place} label="맛집" onClick={()=>goTab("places")}/>
-            <NavBtn on={tab==="kb"} icon={I.book} label="지식" onClick={()=>goTab("kb")}/>
+            <NavBtn on={tab==="clients"||client} icon={I.users} label={T(segment,"contacts")} onClick={()=>goTab("clients")}/>
+            <NavBtn on={tab==="todos"} icon={I.todo} label="할 일" onClick={()=>goTab("todos")}/>
           </div>
         </div>
         )}
@@ -1112,6 +1242,52 @@ function App(){
 function NavBtn({on,icon,label,onClick,layout="bottom"}){
   if(layout==="side") return <button type="button" className={"sidenavitem"+(on?" on":"")} onClick={onClick}>{icon({width:20,height:20})}<span>{label}</span></button>;
   return <button type="button" className={"navitem"+(on?" on":"")} onClick={onClick}>{icon({})}<span>{label}</span></button>;
+}
+
+function MobileMenuSheet({open,onClose,tab,client,onGoTab,onSearch,onSettings,onRecord}){
+  if(!open) return null;
+  const pick=(fn)=>()=>{ onClose(); fn(); };
+  const menuTabs=[
+    {id:"calendar",icon:I.cal,label:"캘린더"},
+    {id:"places",icon:I.place,label:"맛집"},
+    {id:"kb",icon:I.book,label:"지식백과"},
+  ];
+  return createPortal(
+    <>
+      <div className="mob-menu-backdrop" onClick={onClose}/>
+      <div className="mob-menu-sheet" role="dialog" aria-modal="true" aria-label="메뉴">
+        <div className="row between" style={{marginBottom:4,paddingBottom:10,borderBottom:"1px solid var(--line)"}}>
+          <div style={{fontWeight:800,fontSize:17}}>메뉴</div>
+          <button type="button" className="iconbtn" style={{width:38,height:38}} onClick={onClose} aria-label="닫기">
+            <span style={{fontSize:18,color:"var(--muted)",lineHeight:1}}>✕</span>
+          </button>
+        </div>
+        <div className="small" style={{fontWeight:700,color:"var(--muted)",margin:"14px 0 6px",paddingLeft:4}}>바로가기</div>
+        {menuTabs.map((item)=>(
+          <button key={item.id} type="button" className={"mob-menu-item"+(tab===item.id&&!client?" on":"")}
+            onClick={pick(()=>onGoTab(item.id))}>
+            {item.icon({width:20,height:20})}
+            <span>{item.label}</span>
+          </button>
+        ))}
+        <div className="divider" style={{margin:"14px 0"}}/>
+        <div className="small" style={{fontWeight:700,color:"var(--muted)",marginBottom:6,paddingLeft:4}}>기능</div>
+        <button type="button" className="mob-menu-item" onClick={pick(onSearch)}>
+          {I.search({width:20,height:20})}<span>검색</span>
+        </button>
+        <button type="button" className="mob-menu-item" onClick={pick(onSettings)}>
+          {I.gear({width:20,height:20})}<span>설정</span>
+        </button>
+        <button type="button" className="mob-menu-item" style={{color:"var(--accent-deep)"}} onClick={pick(onRecord)}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/>
+          </svg>
+          <span>미팅 기록</span>
+        </button>
+      </div>
+    </>,
+    document.body
+  );
 }
 
 /* ---------------- TODAY ---------------- */
@@ -1144,13 +1320,13 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
           <div className="h-eyebrow">{dateLabel}</div>
           <div className="h-title">안녕하세요, {greetName}님</div>
         </div>
-        <div className="row" style={{gap:8}}>
+        <div className="row today-top-actions" style={{gap:8}}>
           <button className="iconbtn" onClick={openSearch} aria-label="검색">{I.search({width:19,height:19})}</button>
           <button className="iconbtn" onClick={openSettings} aria-label="설정">{I.gear({width:19,height:19})}</button>
         </div>
       </div>
 
-      {trialLeft!=null && (
+      {trialLeft!=null && !BETA_HIDE_PRICING && (
       <div className="pad" style={{marginTop:14}}>
         <div className="card row between" style={{padding:"13px 15px",cursor:"pointer",
           background:"var(--ink)",border:"none"}} onClick={openPricing}>
@@ -1159,6 +1335,14 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
             <div style={{color:"#C9C2B4",fontSize:12,marginTop:2}}>하루 ₩330 · 커피 두 잔이면 한 달</div>
           </div>
           <span style={{color:"#fff",background:"var(--accent)",padding:"7px 13px",borderRadius:10,fontWeight:700,fontSize:13}}>요금제 보기</span>
+        </div>
+      </div>
+      )}
+      {trialLeft!=null && BETA_HIDE_PRICING && (
+      <div className="pad" style={{marginTop:14}}>
+        <div className="card" style={{padding:"13px 15px",background:"#FBF9F4",border:"1px solid var(--line)"}}>
+          <div style={{fontWeight:700,fontSize:13.5}}>베타 체험 · {trialLeft}일 남음</div>
+          <div className="small" style={{marginTop:4,lineHeight:1.5,color:"var(--muted)"}}>요금제는 정식 오픈 전까지 안내하지 않아요.</div>
         </div>
       </div>
       )}
@@ -1208,8 +1392,15 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
               <div style={{fontWeight:700,fontSize:14,color:"var(--accent-deep)"}}>₩ {(revenue?.pipeline||0).toLocaleString("ko-KR")}</div>
             </div>
           </div>
-          <div className="row" style={{gap:6,marginTop:12}}>
-            <span className="tag green">성사 {revenue?.wonCount||0}건</span><span className="tag amber">진행 {revenue?.pipelineCount||0}건</span>
+          <div className="row between" style={{marginTop:12,alignItems:"center"}}>
+            <div className="row" style={{gap:6}}>
+              <span className="tag green">성사 {revenue?.wonCount||0}건</span>
+              <span className="tag amber">진행 {revenue?.pipelineCount||0}건</span>
+            </div>
+            <button type="button" className="chip" style={{color:"var(--accent-deep)",fontWeight:700}}
+              onClick={(e)=>{ e.stopPropagation(); openDetail("revenue",{addQuote:true}); }}>
+              + 견적
+            </button>
           </div>
         </div>
       </div>
@@ -1261,7 +1452,7 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
       </div>
       <div className="pad" style={{marginTop:10}}>
         {todoView==="check" ? (
-          <NestedTodoList todos={todos} meetings={meetings} onRefresh={onRefresh} openDetail={(t)=>openDetail("task",t)} showAdd focusAdd={focusTodoAdd} hideCompletedGroups/>
+          <NestedTodoList todos={todos} meetings={meetings} onRefresh={onRefresh} openDetail={(t)=>openDetail("task",t)} showAdd editable focusAdd={focusTodoAdd} hideCompletedGroups/>
         ) : (
           <TodoBoard todos={todos.filter(t=>!t.isCategory&&!isTodoDone(t))} setTodoStatus={setTodoStatus} openDetail={openDetail}/>
         )}
@@ -1308,7 +1499,7 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
               <div className="row" style={{gap:11}}>
                 <div className="avatar">{c.init}</div>
                 <div><div style={{fontWeight:600,fontSize:14}}>{c.person || c.co}</div>
-                  <div className="small">{c.person && c.co ? c.co : ""}</div></div>
+                  <div className="small">{[contactRoleLine(c), c.person && c.co ? c.co : null].filter(Boolean).join(" · ")}</div></div>
               </div>
               <div className="row" style={{gap:10}}>
                 <span className="tag green" style={{fontWeight:700}}>{c.dist}</span>
@@ -1366,15 +1557,103 @@ function TagChip({t}){
   return <span className={"tag"+(c&&c!=="accent"?" "+c:"")}>{t}</span>;
 }
 
+function FilterSelectField({label,valueLabel,onClick}){
+  return (
+    <button type="button" className="filter-pick-btn" onClick={onClick}>
+      <div className="filter-pick-label">{label}</div>
+      <div className="row between" style={{gap:8,alignItems:"center"}}>
+        <span className="filter-pick-value">{valueLabel}</span>
+        <span style={{color:"var(--muted)",flex:"0 0 auto",display:"flex"}}>{I.chevron({width:16,height:16})}</span>
+      </div>
+    </button>
+  );
+}
+
+function FilterSelectSheet({open,title,options,value,onSelect,onClose,searchPlaceholder="검색"}){
+  const [q,setQ]=useState("");
+  const [kbInset,setKbInset]=useState(0);
+  useEffect(()=>{ if(open) setQ(""); },[open,title]);
+  useEffect(()=>{
+    if(!open) return;
+    const vv=window.visualViewport;
+    if(!vv) return;
+    const sync=()=>setKbInset(Math.max(0,window.innerHeight-vv.height-vv.offsetTop));
+    sync();
+    vv.addEventListener("resize",sync);
+    vv.addEventListener("scroll",sync);
+    return ()=>{ vv.removeEventListener("resize",sync); vv.removeEventListener("scroll",sync); };
+  },[open]);
+  if(!open) return null;
+  const ql=q.trim().toLowerCase();
+  const filtered=ql
+    ? options.filter((opt)=>{
+        const hay=(opt.searchText||opt.label||"").toLowerCase();
+        return hay.includes(ql);
+      })
+    : options;
+  return createPortal(
+    <div className="sheet-bg" style={{paddingBottom:kbInset}} onClick={onClose}>
+      <div
+        className="sheet-bottom filter-select-sheet"
+        style={{maxHeight:kbInset?`min(calc(100dvh - ${kbInset}px - 12px),88dvh)`:undefined}}
+        onClick={e=>e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
+        <div className="sheet-handle"/>
+        <div style={{fontWeight:800,fontSize:17,marginBottom:12,flexShrink:0}}>{title}</div>
+        <div className="filter-select-list">
+          {filtered.length===0 && (
+            <div className="small" style={{textAlign:"center",padding:"28px 0",lineHeight:1.5}}>
+              {ql ? `"${q.trim()}" 검색 결과가 없어요` : "항목이 없어요"}
+            </div>
+          )}
+          {filtered.map((opt)=>(
+            <button key={opt.value} type="button"
+              className={"filter-pick-item"+(value===opt.value?" on":"")}
+              onClick={()=>{ onSelect(opt.value); onClose(); }}>
+              <span>{opt.label}</span>
+              <span className="row" style={{gap:8,flex:"0 0 auto",alignItems:"center"}}>
+                {opt.count!=null && <span className="filter-pick-count">{opt.count}명</span>}
+                {value===opt.value && <span style={{color:"var(--accent-deep)",display:"flex"}}>{I.check({width:16,height:16})}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="filter-select-search-wrap">
+          <div className="filter-pick-search" style={{marginBottom:0}}>
+            {I.search({width:16,height:16})}
+            <input
+              autoFocus
+              value={q}
+              onChange={e=>setQ(e.target.value)}
+              placeholder={searchPlaceholder}
+            />
+            {q && <span onClick={()=>setQ("")} style={{cursor:"pointer",flex:"0 0 auto"}}>✕</span>}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function Clients({group,setGroup,open,onAdd,onRefresh,seg,contactPresets={},user,onUserUpdated}){
   const CLIENTS=getClients();
   const GROUPS=mergedContactGroups({ contacts: contactPresets }, CLIENTS);
+  const COMPANIES=mergedContactCompanies(CLIENTS);
   const [view,setView]=useState("list");
+  const [classBy,setClassBy]=useState("group");
+  const [company,setCompany]=useState("전체");
   const [presetEdit,setPresetEdit]=useState(false);
   const [tag,setTag]=useState("전체");
   const [favs,setFavs]=useState(()=>new Set(CLIENTS.filter(c=>c.fav).map(c=>c.id)));
   const [onlyFav,setOnlyFav]=useState(false);
   const [sortGrade,setSortGrade]=useState(false);
+  const [groupByPerson,setGroupByPerson]=useState(true);
+  const [classPickerOpen,setClassPickerOpen]=useState(false);
+  const [tagPickerOpen,setTagPickerOpen]=useState(false);
   const toggleFav=async (id,e)=>{
     e&&e.stopPropagation();
     const c=CLIENTS.find(x=>x.id===id);
@@ -1386,10 +1665,78 @@ function Clients({group,setGroup,open,onAdd,onRefresh,seg,contactPresets={},user
   };
   const term=T(seg,"contacts");
   const allTags=["전체",...Array.from(new Set(CLIENTS.flatMap(c=>c.tags||[])))];
-  let list=group==="전체"?CLIENTS:CLIENTS.filter(c=>c.group===group);
+  let list=classBy==="group"
+    ? (group==="전체"?CLIENTS:CLIENTS.filter(c=>c.group===group))
+    : (company==="전체"?CLIENTS:CLIENTS.filter(c=>(c.co||"").trim()===company));
   if(tag!=="전체") list=list.filter(c=>(c.tags||[]).includes(tag));
   if(onlyFav) list=list.filter(c=>favs.has(c.id));
   if(sortGrade) list=[...list].sort((a,b)=>totalInfluence(b)-totalInfluence(a));
+  const listByCompany=classBy==="company"&&company==="전체"&&!sortGrade?(()=>{
+    const map=new Map();
+    for(const c of list){
+      const key=(c.co||"").trim()||"회사 미입력";
+      if(!map.has(key)) map.set(key,[]);
+      map.get(key).push(c);
+    }
+    return [...map.entries()].sort((a,b)=>{
+      if(a[0]==="회사 미입력") return 1;
+      if(b[0]==="회사 미입력") return -1;
+      return a[0].localeCompare(b[0],"ko");
+    });
+  })():null;
+  const listRows=groupByPerson && !sortGrade && !listByCompany
+    ? layoutContactsByIdentity(list)
+    : list.map(c=>({ kind:"contact", contact:c }));
+  const classOptions=(classBy==="group"?GROUPS:COMPANIES).map(v=>({
+    value:v,
+    label:v,
+    searchText:v,
+    count:v==="전체"?CLIENTS.length:classBy==="group"
+      ? CLIENTS.filter(c=>c.group===v).length
+      : CLIENTS.filter(c=>(c.co||"").trim()===v).length,
+  }));
+  const classValue=classBy==="group"?group:company;
+  const classFieldLabel=classBy==="group"?"소속":"회사";
+  const classSheetTitle=classBy==="group"?"소속 선택":"회사 선택";
+  const classSearchPlaceholder=classBy==="group"?"소속 · 그룹 검색":"회사명 검색";
+  const tagOptions=allTags.map(t=>({
+    value:t,
+    label:t,
+    searchText:t,
+    count:t==="전체"?CLIENTS.length:CLIENTS.filter(c=>(c.tags||[]).includes(t)).length,
+  }));
+  const renderRow=(c)=>{
+    const g=grade(c);const fav=favs.has(c.id);const intro=introduced(c).length;
+    return (
+      <div key={c.id} className="list-item row between" onClick={()=>open(c)}>
+        <div className="row" style={{gap:11,minWidth:0}}>
+          <div style={{position:"relative",flex:"0 0 auto"}}>
+            <div className="avatar">{c.init}</div>
+            {g!=="-"&&<span style={{position:"absolute",right:-4,bottom:-4,width:18,height:18,borderRadius:"50%",
+              background:GRADE_COLOR[g],color:"#fff",fontSize:10,fontWeight:800,
+              display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid #fff"}}>{g}</span>}
+          </div>
+          <div style={{minWidth:0}}>
+            <div className="row" style={{gap:5}}>
+              <div style={{fontWeight:700,fontSize:14.5}}>{c.person || c.co}</div>
+            </div>
+            <div className="small">
+                    {[contactRoleLine(c), c.person && c.co ? c.co : null, intro > 0 ? `소개 ${intro}명` : null]
+                .filter(Boolean)
+                .join(" · ")}
+            </div>
+            <div className="row" style={{gap:5,marginTop:6,flexWrap:"wrap"}}>
+              {classBy==="group" && <span className="tag gray" style={{fontSize:10.5}}>{c.group}</span>}
+              {classBy==="company" && c.co && <span className="tag blue" style={{fontSize:10.5}}>{c.co}</span>}
+              {(c.tags||[]).map(t=><TagChip key={t} t={t}/>)}
+            </div>
+          </div>
+        </div>
+        <button className="iconbtn" style={{width:38,height:38,flex:"0 0 auto",color:fav?"var(--accent)":"#CFC8BB"}}
+          onClick={(e)=>toggleFav(c.id,e)}>{I.star({})}</button>
+      </div>
+    );
+  };
   return (
     <div className="fade">
       <div className="pad" style={{marginTop:8}}>
@@ -1408,16 +1755,55 @@ function Clients({group,setGroup,open,onAdd,onRefresh,seg,contactPresets={},user
 
       {view==="map" ? <ClientMap open={open} onRefresh={onRefresh}/> : (
       <>
-      {/* 그룹(소속) 필터 */}
-      <div className="pad row between" style={{gap:8,marginTop:14,alignItems:"center"}}>
-        <div className="row" style={{gap:8,overflowX:"auto",flex:1}}>
-          {GROUPS.map(g=><button key={g} className={"chip"+(group===g?" on":"")} onClick={()=>setGroup(g)}>{g}</button>)}
+      {/* 소속 / 회사 · 태그 필터 */}
+      <div className="pad" style={{marginTop:14}}>
+        <div className="card client-filter-card">
+          <div className="client-filter-top">
+            <div className="small">분류</div>
+            {classBy==="group" && (
+              <button type="button" style={{border:"none",background:"none",padding:0,fontFamily:"inherit",fontSize:13,fontWeight:700,
+                color:presetEdit?"var(--accent-deep)":"var(--muted)",cursor:"pointer"}}
+                onClick={()=>setPresetEdit(v=>!v)}>
+                {presetEdit?"완료":"그룹 편집"}
+              </button>
+            )}
+          </div>
+          <div className="class-mode-tabs">
+            <button type="button" className={classBy==="group"?"on":""} onClick={()=>{ setClassBy("group"); setClassPickerOpen(false); }}>소속</button>
+            <button type="button" className={classBy==="company"?"on":""} onClick={()=>{ setClassBy("company"); setClassPickerOpen(false); }}>회사</button>
+          </div>
+          <FilterSelectField
+            label={classFieldLabel}
+            valueLabel={classValue}
+            onClick={()=>setClassPickerOpen(true)}
+          />
+          <div style={{height:8}}/>
+          <FilterSelectField
+            label="태그"
+            valueLabel={tag}
+            onClick={()=>setTagPickerOpen(true)}
+          />
         </div>
-        <button type="button" className="chip" style={{flex:"0 0 auto",color:presetEdit?"var(--accent-deep)":"var(--muted)"}} onClick={()=>setPresetEdit(v=>!v)}>
-          {presetEdit?"완료":"편집"}
-        </button>
       </div>
-      {presetEdit && (
+      <FilterSelectSheet
+        open={classPickerOpen}
+        title={classSheetTitle}
+        options={classOptions}
+        value={classValue}
+        searchPlaceholder={classSearchPlaceholder}
+        onSelect={(v)=>classBy==="group"?setGroup(v):setCompany(v)}
+        onClose={()=>setClassPickerOpen(false)}
+      />
+      <FilterSelectSheet
+        open={tagPickerOpen}
+        title="태그 선택"
+        options={tagOptions}
+        value={tag}
+        searchPlaceholder="태그 검색"
+        onSelect={setTag}
+        onClose={()=>setTagPickerOpen(false)}
+      />
+      {presetEdit && classBy==="group" && (
         <ContactGroupTagPanel
           user={user}
           onUserUpdated={onUserUpdated}
@@ -1429,52 +1815,40 @@ function Clients({group,setGroup,open,onAdd,onRefresh,seg,contactPresets={},user
           onContactsRefresh={onRefresh}
         />
       )}
-      {/* 태그(상태) 필터 */}
-      <div className="pad row" style={{gap:7,marginTop:9,overflowX:"auto",alignItems:"center"}}>
-        <span className="small" style={{flex:"0 0 auto",fontWeight:700}}>태그</span>
-        {allTags.map(t=>(
-          <button key={t} onClick={()=>setTag(t)}
-            style={{flex:"0 0 auto",border:"none",background:"none",cursor:"pointer",padding:0,opacity:tag===t?1:.5}}>
-            {t==="전체"?<span className={"chip"+(tag==="전체"?" on":"")}>전체</span>:<TagChip t={t}/>}
-          </button>
-        ))}
-      </div>
       {/* 즐겨찾기 · 정렬 */}
-      <div className="pad row" style={{gap:8,marginTop:9}}>
+      <div className="pad row" style={{gap:8,marginTop:9,flexWrap:"wrap"}}>
         <button className={"chip"+(onlyFav?" on":"")} onClick={()=>setOnlyFav(v=>!v)}
           style={{display:"flex",alignItems:"center",gap:5}}>{I.star({width:13,height:13})} 즐겨찾기</button>
         <button className={"chip"+(sortGrade?" on":"")} onClick={()=>setSortGrade(v=>!v)}>기여도순</button>
+        <button className={"chip"+(groupByPerson?" on":"")} onClick={()=>setGroupByPerson(v=>!v)}>동일인 묶기</button>
       </div>
       <div className="pad" style={{marginTop:14}}>
         <div className="card" style={{padding:"4px 16px"}}>
-          {list.map(c=>{const g=grade(c);const fav=favs.has(c.id);const intro=introduced(c).length;return (
-            <div key={c.id} className="list-item row between" onClick={()=>open(c)}>
-              <div className="row" style={{gap:11,minWidth:0}}>
-                <div style={{position:"relative",flex:"0 0 auto"}}>
-                  <div className="avatar">{c.init}</div>
-                  {g!=="-"&&<span style={{position:"absolute",right:-4,bottom:-4,width:18,height:18,borderRadius:"50%",
-                    background:GRADE_COLOR[g],color:"#fff",fontSize:10,fontWeight:800,
-                    display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid #fff"}}>{g}</span>}
+          {listByCompany
+            ? listByCompany.map(([coName,items],si)=>(
+              <div key={coName} style={{borderTop:si>0?"1px solid var(--line)":"none",paddingTop:si>0?8:0}}>
+                <div className="small row between" style={{padding:"10px 0 6px",fontWeight:800,color:"var(--muted)"}}>
+                  <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{coName}</span>
+                  <span style={{flex:"0 0 auto",marginLeft:8}}>{items.length}명</span>
                 </div>
-                <div style={{minWidth:0}}>
-                  <div className="row" style={{gap:5}}>
-                    <div style={{fontWeight:700,fontSize:14.5}}>{c.person || c.co}</div>
-                  </div>
-                  <div className="small">
-                    {[c.person && c.co ? c.co : null, intro > 0 ? `소개 ${intro}명` : null]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </div>
-                  <div className="row" style={{gap:5,marginTop:6,flexWrap:"wrap"}}>
-                    <span className="tag gray" style={{fontSize:10.5}}>{c.group}</span>
-                    {(c.tags||[]).map(t=><TagChip key={t} t={t}/>)}
-                  </div>
-                </div>
+                {items.map(renderRow)}
               </div>
-              <button className="iconbtn" style={{width:38,height:38,flex:"0 0 auto",color:fav?"var(--accent)":"#CFC8BB"}}
-                onClick={(e)=>toggleFav(c.id,e)}>{I.star({})}</button>
-            </div>
-          );})}
+            ))
+            : listRows.map((row,ri)=>{
+              if(row.kind==="identityGroup"){
+                const primary=row.members[0];
+                return (
+                  <div key={row.key} style={{borderTop:ri>0?"1px solid var(--line)":"none",paddingTop:ri>0?8:0}}>
+                    <div className="small row between" style={{padding:"10px 0 6px",fontWeight:800,color:"var(--accent-deep)"}}>
+                      <span>{primary.person}{primary.phone?` · ${primary.phone}`:""}</span>
+                      <span>{row.members.length}개 소속</span>
+                    </div>
+                    {row.members.map(renderRow)}
+                  </div>
+                );
+              }
+              return renderRow(row.contact);
+            })}
           {list.length===0 && <div className="small" style={{textAlign:"center",padding:"24px 0"}}>{onlyFav?"즐겨찾기한 인맥이 없어요":"해당 조건의 인맥이 없어요"}</div>}
         </div>
         <div className="small" style={{textAlign:"center",marginTop:16}}>{list.length}개 {term}</div>
@@ -1572,7 +1946,7 @@ function ClientMap({open,onRefresh}){
           return (
             <div key={c.id} className="cpin" style={{left:pos.left,top:pos.top}} onClick={()=>setSel(c)}>
               <div className="cpinhead" style={{background:active?"var(--accent)":"#5C6BC0",width:active?38:34,height:active?38:34}}>
-                <span>{c.init}</span>
+                <span>{(c.person||c.co||"?")[0]}</span>
               </div>
             </div>
           );
@@ -1583,10 +1957,12 @@ function ClientMap({open,onRefresh}){
         <div className="card" style={{padding:16}}>
           <div className="row between">
             <div className="row" style={{gap:12}}>
-              <div className="avatar">{sel.init}</div>
+              <div className="avatar">{(sel.person||sel.co||"?")[0]}</div>
               <div>
-                <div style={{fontWeight:700,fontSize:14.5}}>{sel.co}</div>
-                <div className="small">{sel.person}</div>
+                <div style={{fontWeight:700,fontSize:14.5}}>{sel.person||sel.co}</div>
+                <div className="small">
+                  {[sel.person&&sel.co?sel.co:null,contactRoleLine(sel)].filter(Boolean).join(" · ")}
+                </div>
               </div>
             </div>
             <div className="row" style={{gap:6}}>
@@ -1612,7 +1988,9 @@ function ClientMap({open,onRefresh}){
           <div className="row" style={{gap:8,marginTop:12,overflowX:"auto"}}>
             {near.map(c=>(
               <button key={c.id} className={"chip"+(sel.id===c.id?" on":"")} onClick={()=>setSel(c)}>
-                {c.co||c.person}{c.km!=null?` · ${formatDistanceKm(c.km)}`:""}
+                <span style={{fontWeight:600}}>{c.person||c.co}</span>
+                {c.person&&c.co?<span style={{opacity:.75}}> · {c.co}</span>:null}
+                {c.km!=null?` · ${formatDistanceKm(c.km)}`:""}
               </button>
             ))}
           </div>
@@ -1651,11 +2029,10 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
   const [introSheet,setIntroSheet]=useState(false);
   const [addingDeal,setAddingDeal]=useState(false);
   const [dealSaving,setDealSaving]=useState(false);
-  const [dealForm,setDealForm]=useState({title:"",stage:"리드",supplyAmount:"",quoteFile:null});
   const [editingInfo,setEditingInfo]=useState(false);
   const [infoSaving,setInfoSaving]=useState(false);
   const [profile,setProfile]=useState({
-    person:c.person||"", co:c.co||"", phone:c.phone||"", email:c.email||"", area:c.area||"",
+    person:c.person||"", title:c.title||"", department:c.department||"", co:c.co||"", phone:c.phone||"", email:c.email||"", area:c.area||"",
   });
   const [draft,setDraft]=useState(profile);
   const reload=()=>api.getContact(c.id).then(setDetail).catch(()=>setDetail(null));
@@ -1665,10 +2042,10 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
   },[c.id]);
   useEffect(()=>{ setTags(c.tags||[]); setGrp(c.group||"미분류"); },[c.id,c.tags,c.group]);
   useEffect(()=>{
-    const next={ person:c.person||"", co:c.co||"", phone:c.phone||"", email:c.email||"", area:c.area||"" };
+    const next={ person:c.person||"", title:c.title||"", department:c.department||"", co:c.co||"", phone:c.phone||"", email:c.email||"", area:c.area||"" };
     setProfile(next);
     if(!editingInfo) setDraft(next);
-  },[c.id,c.person,c.co,c.phone,c.email,c.area,editingInfo]);
+  },[c.id,c.person,c.title,c.department,c.co,c.phone,c.email,c.area,editingInfo]);
   const patchTags=async (next)=>{
     setTags(next);
     try{ await api.updateContact(c.id,{ tags: next }); onRefresh?.(); }
@@ -1697,6 +2074,8 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
     try{
       await api.updateContact(c.id,{
         person: draft.person.trim()||null,
+        title: draft.title.trim()||null,
+        department: draft.department.trim()||null,
         company: draft.co.trim()||null,
         phone: draft.phone.trim()||null,
         email: draft.email.trim()||null,
@@ -1704,6 +2083,8 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
       });
       const saved={
         person: draft.person.trim(),
+        title: draft.title.trim(),
+        department: draft.department.trim(),
         co: draft.co.trim(),
         phone: draft.phone.trim(),
         email: draft.email.trim(),
@@ -1716,14 +2097,6 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
       reload();
     }catch(e){ notifyError(e, e.message); }
     finally{ setInfoSaving(false); }
-  };
-  const pickQuoteFile=async ()=>{
-    try{
-      const file=await pickAnyFile();
-      setDealForm(p=>({...p,quoteFile:file}));
-    }catch(e){
-      if(!isPickCancelled(e) && e?.message!=="파일이 선택되지 않았습니다") notifyError(e, e.message);
-    }
   };
   const attachQuoteToDeal=async (d)=>{
     try{
@@ -1739,26 +2112,6 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
     }catch(e){
       if(!isPickCancelled(e) && e?.message!=="파일이 선택되지 않았습니다") notifyError(e, e.message||"첨부 실패");
     }finally{ setDealSaving(false); }
-  };
-  const saveDeal=async ()=>{
-    if(!dealForm.title.trim()){ toastError("딜 제목을 입력하세요"); return; }
-    setDealSaving(true);
-    try{
-      let quoteKey;
-      if(dealForm.quoteFile) quoteKey=await uploadFile(dealForm.quoteFile);
-      await api.saveDeal({
-        contactId: c.id,
-        title: dealForm.title.trim(),
-        stage: dealForm.stage,
-        supplyAmount: parseInt(String(dealForm.supplyAmount).replace(/\D/g,""),10)||0,
-        ...(quoteKey?{quoteKey}:{}),
-      });
-      setAddingDeal(false);
-      setDealForm({title:"",stage:"리드",supplyAmount:"",quoteFile:null});
-      reload();
-      onRefresh?.();
-    }catch(e){ notifyError(e, e.message); }
-    finally{ setDealSaving(false); }
   };
   const toggleOpenTodo=async (t)=>{
     if(!t.id) return;
@@ -1827,11 +2180,14 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
                 {I.edit({width:16,height:16})}
               </button>
             </div>
+            {contactRoleLine(profile) && <div className="small" style={{marginTop:4,fontWeight:600}}>{contactRoleLine(profile)}</div>}
             <div className="small" style={{marginTop:2}}>{profile.co||"회사 미입력"}</div>
           </>
         ) : (
           <div style={{marginTop:12,textAlign:"left"}}>
             {profileInput("person","이름","이름")}
+            {profileInput("title","직책","직책")}
+            {profileInput("department","부서","부서 · 팀")}
             {profileInput("co","회사","회사명")}
           </div>
         )}
@@ -1966,44 +2322,16 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
       </div>
       )}
 
-      {/* 딜 / 견적 */}
-      <div className="pad row between"><div className="section-h">딜 · 견적</div>
-        <button className="chip" style={{color:"var(--accent-deep)",marginTop:22}} onClick={()=>setAddingDeal(v=>!v)}>+ 딜</button></div>
+      {/* 견적 · 매출 */}
+      <div className="pad row between"><div className="section-h">견적 · 매출</div>
+        <button className="chip" style={{color:"var(--accent-deep)",marginTop:22}} onClick={()=>setAddingDeal(v=>!v)}>+ 견적</button></div>
       <div className="pad">
         {addingDeal && (
-          <div className="card" style={{padding:16,marginBottom:10}}>
-            <input value={dealForm.title} onChange={e=>setDealForm(p=>({...p,title:e.target.value}))} placeholder="딜 제목"
-              style={{width:"100%",border:"1px solid var(--line)",borderRadius:12,padding:"12px",fontFamily:"inherit",fontSize:14,marginBottom:10}}/>
-            <div className="row" style={{gap:10,marginBottom:10}}>
-              <select value={dealForm.stage} onChange={e=>setDealForm(p=>({...p,stage:e.target.value}))}
-                style={{flex:1,border:"1px solid var(--line)",borderRadius:12,padding:"12px",fontFamily:"inherit",fontSize:14}}>
-                {["리드","견적","협상","성사","실패"].map(s=><option key={s}>{s}</option>)}
-              </select>
-              <input value={dealForm.supplyAmount} onChange={e=>setDealForm(p=>({...p,supplyAmount:e.target.value}))} placeholder="공급가액(원)"
-                style={{flex:1,border:"1px solid var(--line)",borderRadius:12,padding:"12px",fontFamily:"inherit",fontSize:14}}/>
-            </div>
-            <div style={{marginBottom:10}}>
-              <div className="small" style={{fontWeight:700,marginBottom:6}}>견적서 파일</div>
-              {dealForm.quoteFile ? (
-                <div className="row between card" style={{padding:"10px 12px",gap:8}}>
-                  <div className="row" style={{gap:8,minWidth:0,flex:1}}>
-                    {I.quote({style:{color:"var(--accent-deep)",flex:"0 0 auto"}})}
-                    <span style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{dealForm.quoteFile.name}</span>
-                  </div>
-                  <button type="button" className="chip" style={{padding:"5px 10px",fontSize:12}}
-                    onClick={()=>setDealForm(p=>({...p,quoteFile:null}))}>제거</button>
-                </div>
-              ) : (
-                <button type="button" className="btn btn-ghost" style={{width:"100%",padding:12,fontSize:13,display:"flex",justifyContent:"center",gap:7}}
-                  onClick={pickQuoteFile}>
-                  {I.plus({width:15,height:15})} PDF · 엑셀 · 이미지 첨부
-                </button>
-              )}
-            </div>
-            <button className="btn btn-accent" style={{width:"100%",padding:12}} onClick={saveDeal} disabled={dealSaving}>
-              {dealSaving?"저장 중…":"저장"}
-            </button>
-          </div>
+          <AddQuoteForm
+            contactId={c.id}
+            onCancel={()=>setAddingDeal(false)}
+            onSaved={()=>{ setAddingDeal(false); reload(); onRefresh?.(); toastSuccess("견적을 등록했어요"); }}
+          />
         )}
         {deals.length===0 && !deal && !addingDeal ? (
         <div className="card small" style={{padding:20,textAlign:"center"}}>등록된 딜이 없어요</div>
@@ -2185,6 +2513,285 @@ function MediaPlayer({mediaKey,compact}){
   return null;
 }
 
+function MeetingAttendeesPanel({ meeting, onSave, disabled }) {
+  const CLIENTS = getClients();
+  const [editing, setEditing] = useState(false);
+  const [pick, setPick] = useState(false);
+  const [q, setQ] = useState("");
+  const [att, setAtt] = useState(() => meetingAttendeeIds(meeting));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!editing) setAtt(meetingAttendeeIds(meeting));
+  }, [meeting.id, meeting.attendeeIds, meeting.contactId, editing]);
+
+  const attContacts = att.map((id) => CLIENTS.find((c) => c.id === id)).filter(Boolean);
+  const ql = q.trim().toLowerCase();
+  const found = CLIENTS.filter((c) => {
+    if (!ql) return true;
+    return (c.person || "").toLowerCase().includes(ql) || (c.co || "").toLowerCase().includes(ql);
+  }).slice(0, 40);
+
+  const toggleAtt = (id) => setAtt((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await onSave(att, att[0] || null);
+      setEditing(false);
+      setPick(false);
+      setQ("");
+      toastSuccess("참석자를 저장했어요");
+    } catch (e) {
+      notifyError(e, e.message || "저장 실패");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        className="card"
+        style={{ padding: 14, marginBottom: 14, width: "100%", textAlign: "left", cursor: disabled ? "default" : "pointer" }}
+        onClick={() => !disabled && setEditing(true)}
+        disabled={disabled}
+      >
+        <div className="row between" style={{ gap: 10, alignItems: "flex-start" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="small" style={{ fontWeight: 700, marginBottom: 8, color: "var(--muted)" }}>
+              참석자{!disabled ? " · 탭해서 수정" : ""}
+            </div>
+            {attContacts.length === 0 ? (
+              <div className="small" style={{ color: "var(--muted)" }}>참석자 없음</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {attContacts.map((c) => (
+                  <div key={c.id} className="row" style={{ gap: 10 }}>
+                    <div className="avatar" style={{ width: 34, height: 34, borderRadius: 11, fontSize: 13 }}>{c.init}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{c.person || c.co || "이름 없음"}</div>
+                      {(contactRoleLine(c) || (c.person && c.co)) && (
+                        <div className="small">{[contactRoleLine(c), c.person && c.co ? c.co : null].filter(Boolean).join(" · ")}</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {meeting.createdLabel && (
+                  <div className="small" style={{ marginTop: 4, color: "var(--muted)" }}>{meeting.createdLabel}</div>
+                )}
+              </div>
+            )}
+            {attContacts.length === 0 && meeting.createdLabel && (
+              <div className="small" style={{ marginTop: 6 }}>{meeting.createdLabel}</div>
+            )}
+          </div>
+          {!disabled && <span style={{ color: "var(--muted)", flex: "0 0 auto", marginTop: 2 }}>{I.edit({})}</span>}
+        </div>
+      </button>
+    );
+  }
+
+  return (
+    <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+      <div className="row between" style={{ marginBottom: 10 }}>
+        <div style={{ fontWeight: 800, fontSize: 14 }}>참석자 수정</div>
+        <button type="button" className="chip" style={{ padding: "4px 10px", fontSize: 12, color: "var(--muted)" }}
+          onClick={() => { setEditing(false); setPick(false); setQ(""); setAtt(meetingAttendeeIds(meeting)); }}>
+          취소
+        </button>
+      </div>
+      <div className="row" style={{ gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
+        {att.map((id) => {
+          const c = CLIENTS.find((x) => x.id === id);
+          if (!c) return null;
+          return (
+            <span key={id} className="tag" style={{ padding: "7px 10px", fontSize: 12.5, gap: 6 }}>
+              {c.person || c.co}
+              <span onClick={() => toggleAtt(id)} style={{ cursor: "pointer", opacity: 0.6 }}>✕</span>
+            </span>
+          );
+        })}
+        <button type="button" className="chip" style={{ padding: "7px 11px", color: "var(--accent-deep)", borderColor: "#F3D8CB" }}
+          onClick={() => setPick((p) => !p)}>+ 참석자</button>
+      </div>
+      {pick && (
+        <div className="card fade" style={{ padding: "12px 14px 4px", marginBottom: 10, background: "#FBFAF7" }}>
+          <div className="row" style={{ gap: 9, background: "#F4F1EA", borderRadius: 11, padding: "10px 12px", color: "var(--muted)" }}>
+            {I.search({ width: 16, height: 16 })}
+            <input
+              autoFocus
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="이름 · 회사 검색"
+              style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 13.5, color: "var(--ink)" }}
+            />
+            {q && <span onClick={() => setQ("")} style={{ cursor: "pointer" }}>✕</span>}
+          </div>
+          <div style={{ maxHeight: 220, overflowY: "auto", marginTop: 4 }}>
+            {found.length === 0 && <div className="small" style={{ textAlign: "center", padding: "22px 0" }}>검색 결과 없음</div>}
+            {found.map((c) => (
+              <div key={c.id} className="list-item row between" style={{ padding: "11px 0", cursor: "pointer" }} onClick={() => toggleAtt(c.id)}>
+                <div className="row" style={{ gap: 10 }}>
+                  <div className="avatar" style={{ width: 34, height: 34, borderRadius: 11, fontSize: 13 }}>{c.init}</div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{c.person || c.co}</div>
+                    <div className="small" style={{ fontSize: 11.5 }}>{[contactRoleLine(c), c.co].filter(Boolean).join(" · ")}</div>
+                  </div>
+                </div>
+                <Checkbox on={att.includes(c.id)} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <button type="button" className="btn btn-accent" style={{ width: "100%", padding: 12 }} disabled={saving} onClick={save}>
+        {saving ? "저장 중…" : "저장"}
+      </button>
+    </div>
+  );
+}
+
+function MeetingAttachmentsPanel({ meeting, disabled, onUpdated }) {
+  const imageKeys = meeting.imageKeys || [];
+  const photoNotes = meeting.photoNotes || [];
+  const [urls, setUrls] = useState({});
+  const [uploading, setUploading] = useState(false);
+  const [savingKey, setSavingKey] = useState(null);
+  const [draftNotes, setDraftNotes] = useState({});
+  const [galleryIdx, setGalleryIdx] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    imageKeys.forEach((key) => {
+      mediaUrl(key)
+        .then((u) => { if (alive) setUrls((p) => ({ ...p, [key]: u })); })
+        .catch(() => {});
+    });
+    return () => { alive = false; };
+  }, [imageKeys.join("|")]);
+
+  useEffect(() => {
+    const next = {};
+    photoNotes.forEach((pn) => { if (pn.key) next[pn.key] = pn.note || ""; });
+    setDraftNotes(next);
+  }, [photoNotes.map((p) => `${p.key}:${p.note || ""}`).join("|")]);
+
+  const noteFor = (key) => draftNotes[key] ?? photoNotes.find((p) => p.key === key)?.note ?? "";
+  const galleryUrls = imageKeys.map((key) => urls[key]).filter(Boolean);
+
+  const openGallery = (key) => {
+    const url = urls[key];
+    if (!url) return;
+    const idx = galleryUrls.indexOf(url);
+    if (idx >= 0) setGalleryIdx(idx);
+  };
+
+  const addPhoto = async () => {
+    if (!meeting.id || uploading || disabled) return;
+    try {
+      const file = await pickImageFile(true);
+      setUploading(true);
+      const imageKey = await uploadFile(file);
+      const m = await api.addMeetingAttachment(meeting.id, { imageKey });
+      onUpdated?.(meetingToUi(m));
+      toastSuccess("사진을 추가했어요");
+    } catch (e) {
+      if (!isPickCancelled(e)) notifyError(e, e.message || "사진 추가 실패");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const saveNote = async (key) => {
+    if (!meeting.id || savingKey) return;
+    const note = (draftNotes[key] ?? "").trim();
+    setSavingKey(key);
+    try {
+      const m = await api.updateMeetingAttachmentNote(meeting.id, { key, note });
+      onUpdated?.(meetingToUi(m));
+    } catch (e) {
+      notifyError(e, e.message || "메모 저장 실패");
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      {galleryIdx != null && galleryUrls.length > 0 && (
+        <PhotoGallery urls={galleryUrls} initialIndex={galleryIdx} onClose={() => setGalleryIdx(null)} />
+      )}
+      <div className="section-h" style={{ marginTop: 0 }}>현장 사진 · 메모</div>
+      <div className="card" style={{ padding: 14 }}>
+        <div className="small" style={{ lineHeight: 1.55, color: "var(--muted)", marginBottom: 12 }}>
+          {meeting.isProcessing
+            ? "변환 중에도 사진과 캡션을 추가할 수 있어요."
+            : "추가 사진·캡션이 필요하면 여기서 남길 수 있어요."}
+        </div>
+        {imageKeys.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
+            {imageKeys.map((key) => (
+              <div key={key} style={{ display: "grid", gridTemplateColumns: "72px 1fr", gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => openGallery(key)}
+                  disabled={!urls[key]}
+                  aria-label="사진 크게 보기"
+                  style={{
+                    width: 72,
+                    height: 72,
+                    borderRadius: 12,
+                    overflow: "hidden",
+                    background: "#ECE8E0",
+                    border: "none",
+                    padding: 0,
+                    cursor: urls[key] ? "pointer" : "default",
+                  }}
+                >
+                  {urls[key] ? (
+                    <img src={urls[key]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    <div className="small" style={{ padding: 8, color: "var(--muted)" }}>…</div>
+                  )}
+                </button>
+                <div style={{ minWidth: 0 }}>
+                  <input
+                    value={noteFor(key)}
+                    onChange={(e) => setDraftNotes((p) => ({ ...p, [key]: e.target.value }))}
+                    onBlur={() => saveNote(key)}
+                    placeholder="캡션 (선택)"
+                    disabled={disabled || savingKey === key}
+                    style={{
+                      width: "100%",
+                      border: "1px solid var(--line)",
+                      borderRadius: 10,
+                      padding: "8px 10px",
+                      fontFamily: "inherit",
+                      fontSize: 13,
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          className="chip"
+          style={{ padding: "8px 12px", color: "var(--accent-deep)" }}
+          onClick={addPhoto}
+          disabled={disabled || uploading}
+        >
+          {uploading ? "업로드 중…" : (<>{I.plus({ width: 14, height: 14 })} 사진 추가</>)}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={categories:[],tags:[]},openEvent}){
   const seed=data||{};
   const [meeting,setMeeting]=useState(seed);
@@ -2261,24 +2868,17 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
   };
   const s=meeting.summary||meeting._raw?.summary;
   const mediaKey=meeting.mediaKey||meeting._raw?.mediaKey;
-  const contact=meeting.contact;
+  const peopleLabel=meetingPeopleLabel(meeting, getClients());
   const displayTodos=meetingTodos.length
     ? meetingTodos
     : (s?.actions||[]).map((a,i)=>({id:`action-${i}`,t:a.task,due:a.due?formatWhen(a.due):"-",status:"todo",done:false,pseudo:true}));
-  const toggleMeetingTodo=async (todo)=>{
-    if(todo.pseudo||!todo.id) return;
-    const next=todo.status==="done"?"todo":"done";
-    await api.updateTodo(todo.id,{status:next});
-    setMeetingTodos(p=>p.map(t=>t.id===todo.id?{...t,status:next,done:next==="done"}:t));
-    refreshTodos?.();
-  };
   return (
     <div className="fade">
-      <DetailHead back={back} eyebrow="기록" title={contact?.company||contact?.person||meeting.oneLine||"미팅 기록"}/>
+      <DetailHead back={back} eyebrow="기록" title={peopleLabel||meeting.oneLine||"미팅 기록"}/>
       <div className="pad" style={{marginTop:12,marginBottom:16}}>
         {meeting.isProcessing && (
           <div className="card small" style={{padding:14,marginBottom:14,lineHeight:1.55,background:"#E8F0FF",border:"1px solid #C5D8F5",color:"#3A6BB5"}}>
-            ⏳ 변환 중이에요. 잠시 후 새로고침하거나 미팅 목록에서 확인해 주세요.
+            ⏳ 변환 중이에요. 아래에서 사진·메모를 추가할 수 있어요.
           </div>
         )}
         {meeting.isFailed && (
@@ -2315,13 +2915,13 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
             <span style={{color:"var(--muted)"}}>{I.chevron({})}</span>
           </button>
         )}
-        {contact && (
-          <div className="card row" style={{padding:14,gap:11,marginBottom:14}}>
-            <div className="avatar">{(contact.company||contact.person||"?")[0]}</div>
-            <div><div style={{fontWeight:700,fontSize:14.5}}>{contact.company||"기록"}</div>
-              <div className="small">{contact.person||""}{meeting.createdLabel?` · ${meeting.createdLabel}`:""}</div></div>
-          </div>
-        )}
+        <MeetingAttendeesPanel
+          meeting={meeting}
+          disabled={loading || !meeting.id}
+          onSave={async (attendees, contactId) => {
+            await patchMeeting({ attendees, contactId });
+          }}
+        />
         <div className="section-h" style={{marginTop:0}}>분류 · 태그</div>
         <div className="card" style={{padding:14,marginBottom:14}}>
           <div className="small" style={{fontWeight:700,marginBottom:8}}>카테고리</div>
@@ -2348,6 +2948,17 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
             저장된 녹음 파일이 없어요. (요약만 저장된 기록이거나 사진 기록일 수 있어요)
           </div>
         )}
+        {meeting.id && meeting.source !== "photo" && (
+          <MeetingAttachmentsPanel
+            meeting={meeting}
+            disabled={loading || !meeting.id}
+            onUpdated={(ui) => {
+              setMeeting(ui);
+              setMetaTags(ui.tags || []);
+              setCategory(ui.category || "");
+            }}
+          />
+        )}
         {!meeting.isFailed && !meeting.isProcessing && (
           <MeetingInsights summary={s} oneLine={meeting.oneLine||s?.one_line}/>
         )}
@@ -2361,20 +2972,31 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
         {!meeting.isFailed && !meeting.isProcessing && displayTodos.length>0 && (
           <>
             <div className="section-h" style={{marginTop:16}}>이 미팅에서 나온 할 일</div>
-            <div className="card" style={{padding:"4px 16px",marginBottom:14}}>
-              {displayTodos.map((todo,i)=>(
-                <div key={todo.id||i} className="row between" style={{padding:"13px 0",borderBottom:i<displayTodos.length-1?"1px solid var(--line)":"none",gap:10,
-                  cursor:todo.pseudo?"default":"pointer",opacity:todo.done||todo.status==="done"?0.65:1}}
-                  onClick={()=>!todo.pseudo&&toggleMeetingTodo(todo)}>
-                  <div className="row" style={{gap:10,flex:1,minWidth:0}}>
-                    {!todo.pseudo && <Checkbox on={todo.done||todo.status==="done"}/>}
-                    <span style={{fontWeight:600,fontSize:14,lineHeight:1.4,
-                      textDecoration:todo.done||todo.status==="done"?"line-through":"none"}}>{todo.t}</span>
+            {meetingTodos.length>0 ? (
+              <div style={{marginBottom:14}}>
+                <NestedTodoList
+                  todos={meetingTodos}
+                  meetings={[meeting]}
+                  onRefresh={async ()=>{ await reloadMeeting(); refreshTodos?.(); }}
+                  showAdd={false}
+                  editable
+                  compact
+                  groupBySource={false}
+                />
+              </div>
+            ) : (
+              <div className="card" style={{padding:"4px 16px",marginBottom:14}}>
+                {displayTodos.map((todo,i)=>(
+                  <div key={todo.id||i} className="row between" style={{padding:"13px 0",borderBottom:i<displayTodos.length-1?"1px solid var(--line)":"none",gap:10,opacity:.85}}>
+                    <span style={{fontWeight:600,fontSize:14,lineHeight:1.4}}>{todo.t}</span>
+                    {todo.due&&todo.due!=="-" && <span className="tag gray" style={{flex:"0 0 auto",fontSize:11}}>{todo.due}</span>}
                   </div>
-                  {todo.due&&todo.due!=="-" && <span className="tag gray" style={{flex:"0 0 auto",fontSize:11}}>{todo.due}</span>}
+                ))}
+                <div className="small" style={{padding:"10px 0 4px",lineHeight:1.5,color:"var(--muted)"}}>
+                  할 일 목록에 저장되면 수정할 수 있어요. 잠시 후 새로고침해 보세요.
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </>
         )}
         {s?.next_meeting?.date && (
@@ -2388,7 +3010,7 @@ function MeetingDetailView({data,back,refreshTodos,onDeleted,meetingPresets={cat
                   <span style={{fontSize:18,fontWeight:800,lineHeight:1}}>{s.next_meeting.date.split("-")[2]}</span>
                 </div>
                 <div>
-                  <div style={{fontWeight:700,fontSize:14.5}}>{contact?.company||"다음 미팅"}</div>
+                  <div style={{fontWeight:700,fontSize:14.5}}>{meeting.contact?.company||peopleLabel||"다음 미팅"}</div>
                   <div className="small">{s.next_meeting.time||""}{s.next_meeting.place?` · ${s.next_meeting.place}`:""}</div>
                 </div>
               </div>
@@ -2422,17 +3044,20 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
   const [audioDur,setAudioDur]=useState(0);
   const [finishing,setFinishing]=useState(false);
   const [interrupted,setInterrupted]=useState(false);
+  const [photoGalleryIdx,setPhotoGalleryIdx]=useState(null);
   const recorderRef=useRef(null);
   const toggleAtt=(id)=>setAtt(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
   const found=CLIENTS.filter(c=>(c.person+c.co).toLowerCase().includes(q.trim().toLowerCase()));
   const primary=CLIENTS.find(c=>att.includes(c.id))||null;
-  const finishLabel=finishing?"업로드 중…":"녹음 종료 · 올리기";
+  const finishLabel=finishing?"종료 중…":"미팅 종료";
+  const photoPreviewUrls=photos.map(p=>p.preview).filter(Boolean);
 
   const resetChoose=()=>{
     setInputMode(null);
     setAudioFile(null);
     setAudioDur(0);
     setInterrupted(false);
+    setPhotos([]);
   };
 
   const cancelLive=()=>{
@@ -2454,25 +3079,42 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
   useEffect(()=>{
     if(!liveOn) return;
     setInterrupted(false);
+    const onInterruptedRef=()=>{
+      setInterrupted(true);
+      onCancelLive?.();
+      setInputMode(null);
+    };
     const rec=new AudioRecorder({
-      onInterrupted: ()=>{
-        setInterrupted(true);
-        onCancelLive?.();
-        setInputMode(null);
-      },
+      onInterrupted: ()=>onInterruptedRef(),
     });
     recorderRef.current=rec;
     rec.start().catch(e=>toastError("마이크 권한이 필요합니다: "+e.message));
     return ()=>{ rec.dispose(); };
-  },[liveOn,onCancelLive]);
+  },[liveOn]);
+
+  const canAddPhotos=!(user?.isTrial||user?.allowFileUpload===false);
 
   const addPhoto=async ()=>{
+    if(!canAddPhotos) return;
     try{
       const file=await pickImageFile(true);
       const preview=URL.createObjectURL(file);
-      setPhotos(p=>[...p,{file,preview}]);
+      const atSec=liveOn?secs:undefined;
+      setPhotos(p=>[...p,{file,preview,note:"",atSec,...(liveOn?{uploading:true}:{})}]);
+      if(!liveOn) return;
+      try{
+        const mediaKey=await uploadFile(file);
+        setPhotos(p=>p.map(x=>x.preview===preview?{...x,mediaKey,uploading:false}:x));
+      }catch(e){
+        setPhotos(p=>p.filter(x=>x.preview!==preview));
+        URL.revokeObjectURL(preview);
+        throw e;
+      }
     }catch(e){ if(!isPickCancelled(e)) notifyError(e, e.message); }
   };
+
+  const setPhotoNote=(i,note)=>setPhotos(p=>p.map((x,k)=>k===i?{...x,note}:x));
+  const removePhoto=(i)=>setPhotos(p=>p.filter((_,k)=>k!==i));
 
   const pickAudio=async ()=>{
     try{
@@ -2486,6 +3128,7 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
   };
 
   const startLive=()=>{
+    setPhotos([]);
     setInputMode("rec");
     onStartLive?.();
   };
@@ -2499,13 +3142,22 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
   const finish=async ()=>{
     if(finishing) return;
     setFinishing(true);
-    const mode=inputMode;
+    const mode=liveOn?(inputMode||"rec"):inputMode;
     try{
       let blob;
+      let nativeMediaKey;
+      let nativeDurationSec;
       if(mode==="rec"){
+        if(photos.some(p=>p.uploading)) throw new Error("사진 업로드가 끝날 때까지 잠시만 기다려주세요");
         if(!recorderRef.current) throw new Error("녹음이 준비되지 않았습니다");
-        blob=await recorderRef.current.stop();
-        const tooLong=recordingTooLong(secs);
+        const recording=await recorderRef.current.stop();
+        if(isNativeRecordingResult(recording)){
+          nativeMediaKey=recording.mediaKey;
+          nativeDurationSec=recording.durationSec??secs;
+        }else{
+          blob=recording;
+        }
+        const tooLong=recordingTooLong(nativeDurationSec??secs);
         if(tooLong) throw new Error(tooLong);
       }else if(mode==="upload"){
         if(!audioFile) throw new Error("녹음 파일을 선택해주세요");
@@ -2516,8 +3168,10 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
         }
         const tooLong=recordingTooLong(audioDur);
         if(tooLong) throw new Error(tooLong);
-      }else{
+      }else if(mode==="photo"){
         if(!photos.length) throw new Error("사진을 추가해주세요");
+      }else{
+        throw new Error("녹음 방식을 확인할 수 없습니다. 다시 시도해주세요.");
       }
       await onRunInBackground({
         mode,
@@ -2530,6 +3184,8 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
         audioFile,
         photos,
         blob,
+        nativeMediaKey,
+        nativeDurationSec,
       });
     }catch(e){
       notifyError(e, e.message||"업로드 실패");
@@ -2541,6 +3197,9 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
   // 입력 화면
   return (
     <div className="fade" style={{padding:"24px 24px 30px"}}>
+      {photoGalleryIdx!=null && photoPreviewUrls.length>0 && (
+        <PhotoGallery urls={photoPreviewUrls} initialIndex={photoGalleryIdx} onClose={()=>setPhotoGalleryIdx(null)}/>
+      )}
       <div className="row between" style={{alignItems:"center"}}>
         <button type="button" className="chip" style={{color:"var(--muted)",padding:"6px 10px"}} onClick={onBack}>← 돌아가기</button>
         <div className="h-eyebrow" style={{textAlign:"center",flex:1}}>새 기록{primary?` · ${primary.co||primary.person}`:""}</div>
@@ -2626,7 +3285,7 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
       </>
       ) : liveOn ? (
       <>
-      {interrupted && (
+      {interrupted && !isNativeShell() && (
         <div className="card fade" style={{padding:"12px 14px",marginTop:14,background:"#FFF8F6",border:"1px solid #F3D8CB"}}>
           <div className="small" style={{color:"var(--accent-deep)",lineHeight:1.55,fontWeight:600}}>
             녹음이 중단됐어요. 폰을 잠그거나 다른 앱으로 나가면 녹음이 멈출 수 있어요.
@@ -2635,7 +3294,9 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
       )}
       <div className="card" style={{padding:"11px 14px",marginTop:14,background:"#FBF9F4",border:"1px solid var(--line)"}}>
         <div className="small" style={{lineHeight:1.5,textAlign:"center"}}>
-          녹음 중 · 화면이 꺼지지 않도록 유지해요
+          {isNativeShell()
+            ? "녹음 중 · 잠금 화면에서도 계속 녹음됩니다"
+            : "녹음 중 · 화면을 켜 두거나 앱(WebView)에서는 백그라운드 녹음 가능"}
         </div>
       </div>
       <div style={{position:"relative",width:150,height:150,margin:"24px auto 0"}}>
@@ -2659,10 +3320,56 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
         <button className="btn btn-ghost" style={{flex:1,padding:14,color:"var(--muted)"}}
           onClick={()=>{ if(confirm("녹음을 취소할까요?")) cancelLive(); }}>취소</button>
       </div>
-      <button className="btn" style={{width:"100%",marginTop:12,padding:16,background:"var(--ink)",color:"#fff",fontSize:15}}
+      {canAddPhotos && (
+        <div style={{marginTop:18}}>
+          <div className="row between" style={{alignItems:"center",marginBottom:4}}>
+            <div className="small" style={{fontWeight:700}}>현장 사진 · 캡션{photos.length?` (${photos.length})`:""}</div>
+            <button type="button" className="chip" style={{padding:"6px 10px",fontSize:12,color:"var(--accent-deep)"}}
+              onClick={addPhoto}>📷 촬영</button>
+          </div>
+          {photos.length>0 && (
+            <div className="small" style={{color:"var(--muted)",marginBottom:8}}>탭하면 크게 보기</div>
+          )}
+          {photos.length>0 && (
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+              {photos.map((p,i)=>(
+                <div key={p.preview||i}>
+                  <div style={{aspectRatio:"1/1",borderRadius:14,background:"#ECE8E0",position:"relative",overflow:"hidden"}}>
+                    <button type="button" disabled={p.uploading} aria-label="사진 크게 보기"
+                      onClick={()=>!p.uploading&&setPhotoGalleryIdx(i)}
+                      style={{position:"absolute",inset:0,border:"none",padding:0,borderRadius:14,overflow:"hidden",
+                        cursor:p.uploading?"default":"pointer",background:"transparent"}}>
+                      <img src={p.preview} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:p.uploading?0.6:1}}/>
+                    </button>
+                    {p.uploading && (
+                      <div className="small" style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+                        background:"rgba(255,255,255,.55)",color:"var(--accent-deep)",fontWeight:600,fontSize:11,pointerEvents:"none"}}>업로드 중…</div>
+                    )}
+                    {!p.uploading && (
+                      <span onClick={()=>removePhoto(i)}
+                        style={{position:"absolute",top:5,right:5,zIndex:2,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,.5)",
+                          color:"#fff",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>✕</span>
+                    )}
+                    {p.atSec!=null && (
+                      <span className="small" style={{position:"absolute",left:5,bottom:5,zIndex:2,padding:"2px 6px",borderRadius:6,
+                        background:"rgba(0,0,0,.45)",color:"#fff",fontSize:10,fontVariantNumeric:"tabular-nums",pointerEvents:"none"}}>{mmss(p.atSec)}</span>
+                    )}
+                  </div>
+                  <input value={p.note||""} onChange={e=>setPhotoNote(i,e.target.value)} placeholder="캡션 (선택)"
+                    style={{width:"100%",marginTop:6,border:"1px solid var(--line)",borderRadius:10,padding:"7px 9px",fontFamily:"inherit",fontSize:12}}/>
+                </div>
+              ))}
+            </div>
+          )}
+          {photos.length===0 && (
+            <div className="small" style={{color:"var(--muted)",lineHeight:1.5}}>미팅 중 화이트보드·자료를 촬영해 두세요. 사진 없이 종료해도 돼요.</div>
+          )}
+        </div>
+      )}
+      <button className="btn" style={{width:"100%",marginTop:20,padding:16,background:"var(--ink)",color:"#fff",fontSize:15}}
         onClick={finish} disabled={finishing}>{finishLabel}</button>
       <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center"}}>
-        올리면 백그라운드에서 전사·요약이 진행돼요. 완료되면 알려드릴게요.<br/>
+        종료하면 녹음 변환이 시작돼요. 사진은 선택 사항이에요.<br/>
         최대 2시간 · 150MB
       </div>
       </>
@@ -2695,14 +3402,22 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
       ) : inputMode==="photo" ? (
       <>
       <button type="button" className="chip" style={{marginTop:14,color:"var(--muted)"}} onClick={()=>setInputMode(null)}>← 녹음 · 파일로</button>
-      <div className="small" style={{fontWeight:700,marginTop:14,marginBottom:8}}>사진 · 문서 ({photos.length})</div>
+      <div className="small" style={{fontWeight:700,marginTop:14,marginBottom:4}}>사진 · 문서 ({photos.length})</div>
+      {photos.length>0 && <div className="small" style={{color:"var(--muted)",marginBottom:8}}>탭하면 크게 보기</div>}
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
         {photos.map((p,i)=>(
-          <div key={i} style={{aspectRatio:"1/1",borderRadius:14,background:"#ECE8E0",position:"relative",overflow:"hidden"}}>
-            <img src={p.preview} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-            <span onClick={()=>setPhotos(s=>s.filter((_,k)=>k!==i))}
-              style={{position:"absolute",top:5,right:5,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,.5)",
-                color:"#fff",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>✕</span>
+          <div key={i} style={{gridColumn:photos.length%3===0||i<photos.length?"auto":"span 1"}}>
+            <div style={{aspectRatio:"1/1",borderRadius:14,background:"#ECE8E0",position:"relative",overflow:"hidden"}}>
+              <button type="button" aria-label="사진 크게 보기" onClick={()=>setPhotoGalleryIdx(i)}
+                style={{position:"absolute",inset:0,border:"none",padding:0,borderRadius:14,overflow:"hidden",cursor:"pointer",background:"transparent"}}>
+                <img src={p.preview} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+              </button>
+              <span onClick={()=>removePhoto(i)}
+                style={{position:"absolute",top:5,right:5,zIndex:2,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,.5)",
+                  color:"#fff",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>✕</span>
+            </div>
+            <input value={p.note||""} onChange={e=>setPhotoNote(i,e.target.value)} placeholder="캡션 (선택)"
+              style={{width:"100%",marginTop:6,border:"1px solid var(--line)",borderRadius:10,padding:"7px 9px",fontFamily:"inherit",fontSize:12}}/>
           </div>
         ))}
         <button onClick={addPhoto}
@@ -3358,228 +4073,9 @@ function InstallSheet({close,onConfirm}){
 }
 
 /* ---------------- CARD SCAN (명함 스캔 → 항목 추출) ---------------- */
-const isMobileDevice=()=>/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-function CardScan({back,onSaved,user,onUserUpdated,contactPresets={groups:[],tags:[]}}){
-  const [step,setStep]=useState("capture");
-  const [fields,setFields]=useState({
-    name:"", title:"", co:"",
-    phone:"", email:"", addr:"",
-  });
-  const [group,setGroup]=useState("미분류");
-  const [tags,setTags]=useState([]);
-  const [cardImageKey,setCardImageKey]=useState(null);
-  const [preview,setPreview]=useState(null);
-  const [ocrError,setOcrError]=useState("");
-  const fileRef=useRef(null);
-  const previewRef=useRef(null);
-  const [saving,setSaving]=useState(false);
-  const set=(k,v)=>setFields(p=>({...p,[k]:v}));
-
-  useEffect(()=>{
-    previewRef.current=preview;
-    return ()=>{ if(previewRef.current) URL.revokeObjectURL(previewRef.current); };
-  },[preview]);
-
-  const processFile=async (file)=>{
-    if(!file?.type?.startsWith("image/")){
-      setOcrError("이미지 파일만 선택할 수 있습니다.");
-      return;
-    }
-    setOcrError("");
-    setPreview(URL.createObjectURL(file));
-    setStep("scanning");
-    try{
-      const mime=file.type||"image/jpeg";
-      let result;
-      try{
-        const mediaKey=await uploadFile(file);
-        setCardImageKey(mediaKey);
-        result=await api.ocrCard({ mediaKey, mimeType: mime });
-      }catch(uploadErr){
-        console.warn("upload fallback to base64 OCR", uploadErr);
-        const imageBase64=await fileToBase64(file);
-        result=await api.ocrCard({ imageBase64, mimeType: mime });
-      }
-      setFields({
-        name: result.name||"",
-        title: result.title||"",
-        co: result.company||"",
-        phone: result.phone||"",
-        email: result.email||"",
-        addr: result.address||"",
-      });
-      if(!result.name&&!result.company) setOcrError("글자를 읽지 못했습니다. 직접 입력해주세요.");
-      setStep("review");
-    }catch(e){
-      const msg=e.message||"OCR 실패";
-      setOcrError(msg);
-      setStep("capture");
-      toastError(msg.includes("fetch")||msg.includes("연결")?"서버에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인해주세요.":msg);
-    }
-  };
-
-  const pickFromDialog=async (capture=false)=>{
-    setOcrError("");
-    try{
-      const file=await pickImageFile(capture);
-      await processFile(file);
-    }catch(e){
-      if(isPickCancelled(e)) return;
-      const msg=e.message||"파일 선택 실패";
-      setOcrError(msg);
-      toastError(msg);
-    }
-  };
-
-  const onFileInput=e=>{
-    const file=e.target.files?.[0];
-    e.target.value="";
-    if(file) processFile(file);
-  };
-
-  const onDrop=e=>{
-    e.preventDefault();
-    const file=e.dataTransfer.files?.[0];
-    if(file) processFile(file);
-  };
-
-  useEffect(()=>{
-    const onPaste=e=>{
-      if(step!=="capture") return;
-      const item=[...e.clipboardData.items].find(i=>i.type.startsWith("image/"));
-      const file=item?.getAsFile();
-      if(file) processFile(file);
-    };
-    window.addEventListener("paste",onPaste);
-    return ()=>window.removeEventListener("paste",onPaste);
-  },[step]);
-  const save=async ()=>{
-    setSaving(true);
-    try{
-      await api.createContact({
-        person: [fields.name, fields.title].filter(Boolean).join(" "),
-        company: fields.co,
-        phone: fields.phone,
-        email: fields.email,
-        address: fields.addr,
-        group: group==="미분류"?null:group,
-        tags,
-        cardImageKey,
-      });
-      onSaved?.();
-      setStep("done");
-      setTimeout(back,1100);
-    }catch(e){ notifyError(e, e.message); }
-    finally{ setSaving(false); }
-  };
-
-  const field=(k,label)=>(
-    <div style={{marginBottom:12}}>
-      <div className="small" style={{fontWeight:700,marginBottom:5}}>{label}</div>
-      <input value={fields[k]} onChange={e=>set(k,e.target.value)}
-        style={{width:"100%",border:"1px solid var(--line)",borderRadius:12,padding:"12px 13px",
-          fontFamily:"inherit",fontSize:14,color:"var(--ink)",background:"#fff",outline:"none"}}/>
-    </div>
-  );
-
-  return (
-    <div className="fade">
-      <div className="pad row between" style={{marginTop:8}}>
-        <button className="iconbtn" onClick={back}>{I.back({})}</button>
-        <div className="h-eyebrow" style={{marginTop:0}}>명함 스캔</div>
-        <div style={{width:42}}/>
-      </div>
-
-      {step==="capture" && (
-        <div className="pad fade" style={{marginTop:10}}>
-          <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={onFileInput}/>
-          <div role="button" tabIndex={0}
-            onClick={()=>fileRef.current?.click()}
-            onKeyDown={e=>{ if(e.key==="Enter"||e.key===" ") fileRef.current?.click(); }}
-            onDragOver={e=>e.preventDefault()}
-            onDrop={onDrop}
-            style={{borderRadius:18,border:"2px dashed var(--line)",background:"#FBFAF6",
-              padding:"50px 20px",textAlign:"center",cursor:"pointer"}}>
-            <div style={{display:"flex",justifyContent:"center",color:"var(--accent-deep)"}}>{I.image({width:34,height:34})}</div>
-            <div style={{fontWeight:800,fontSize:16,marginTop:14}}>명함 사진을 올려주세요</div>
-            <div className="small" style={{marginTop:6,lineHeight:1.5}}>
-              클릭 · 드래그 · 붙여넣기(Cmd+V)<br/>또는 아래 버튼으로 선택
-            </div>
-          </div>
-          <button className="btn btn-accent" style={{width:"100%",padding:16,marginTop:16,fontSize:15}}
-            onClick={()=>pickFromDialog(false)}>사진 / 파일 선택</button>
-          {isMobileDevice() && (
-            <button className="btn" style={{width:"100%",padding:14,marginTop:10,fontSize:14}}
-              onClick={()=>pickFromDialog(true)}>카메라로 촬영</button>
-          )}
-          <button
-            className="btn"
-            style={{width:"100%",padding:14,marginTop:10,fontSize:14}}
-            onClick={()=>{
-              setOcrError("");
-              setCardImageKey(null);
-              setStep("review");
-            }}
-          >
-            명함 없이 직접 입력
-          </button>
-          {ocrError && <div className="small" style={{color:"var(--accent-deep)",textAlign:"center",marginTop:10}}>{ocrError}</div>}
-          <div className="small" style={{textAlign:"center",marginTop:12,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-            <span className="tag green" style={{fontSize:11}}>무제한 무료</span> 명함 스캔은 모든 플랜에서 무료예요</div>
-        </div>
-      )}
-
-      {step==="scanning" && (
-        <div className="fade" style={{padding:"110px 30px",textAlign:"center"}}>
-          <div className="spinner" style={{margin:"0 auto"}}/>
-          <div style={{marginTop:22,fontWeight:700,fontSize:17}}>명함 인식 중…</div>
-          <div className="small" style={{marginTop:8,lineHeight:1.6}}>글자를 읽고(OCR)<br/>이름·회사·연락처를 분류하고 있어요</div>
-        </div>
-      )}
-
-      {step==="review" && (
-        <div className="pad fade" style={{marginTop:10,marginBottom:12}}>
-          <div className="card row" style={{padding:12,gap:12,marginBottom:14,background:"var(--green-soft)",border:"1px solid #CDE5D6"}}>
-            <span style={{color:"var(--green)"}}>{I.check({})}</span>
-            <div style={{fontSize:13,fontWeight:600,color:"var(--green)"}}>인식 완료 · 내용을 확인하고 저장하세요</div>
-          </div>
-          {field("name","이름")}
-          {field("title","직책")}
-          {field("co","회사")}
-          {field("phone","전화")}
-          {field("email","이메일")}
-          {field("addr","주소")}
-          <div className="small" style={{display:"flex",alignItems:"center",gap:5,marginTop:-2,marginBottom:14,color:"var(--accent-deep)"}}>
-            {I.pin({})} 주소를 위치로 변환해 ‘내 주변 거래처’에 자동 연결돼요
-          </div>
-
-          <ContactGroupTagPanel
-            user={user}
-            onUserUpdated={onUserUpdated}
-            contactPresets={contactPresets}
-            contacts={getClients()}
-            group={group}
-            tags={tags}
-            onGroupChange={setGroup}
-            onTagsChange={setTags}
-          />
-
-          <button className="btn btn-accent" style={{width:"100%",padding:16,fontSize:15}} onClick={save} disabled={saving}>{saving?"저장 중…":"연락처로 저장"}</button>
-          <button className="btn" style={{width:"100%",padding:12,marginTop:8,background:"transparent",color:"var(--muted)"}} onClick={()=>setStep("capture")}>다시 촬영</button>
-        </div>
-      )}
-
-      {step==="done" && (
-        <div className="fade" style={{padding:"110px 30px",textAlign:"center"}}>
-          <div style={{width:60,height:60,borderRadius:"50%",background:"var(--green-soft)",color:"var(--green)",
-            display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto"}}>{I.check({width:28,height:28})}</div>
-          <div style={{marginTop:18,fontWeight:800,fontSize:18}}>저장 완료</div>
-          <div className="small" style={{marginTop:8}}>{fields.name} · {fields.co}</div>
-        </div>
-      )}
-    </div>
-  );
+function CardScan(props){
+  return <CardScanView {...props} I={I}/>;
 }
 
 /* ---------------- TODO BOARD (칸반: 할일/진행중/완료) ---------------- */
@@ -3637,6 +4133,7 @@ function TodoBoard({todos,setTodoStatus,openDetail}){
 
 /* ---------------- MEETINGS TAB (미팅 내역 · 요약 · 할 일) ---------------- */
 function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh,meetingPresets={categories:[],tags:[]}}){
+  const CLIENTS=getClients();
   const bootRef=useRef(bootMeetings);
   bootRef.current=bootMeetings;
   const [items,setItems]=useState(()=>(bootMeetings||[]).map(meetingToUi));
@@ -3666,7 +4163,7 @@ function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh,mee
   const catFilters=["전체",...(meetingPresets.categories||[])];
   const shown=catFilter==="전체"?items:items.filter(m=>(m.category||"")===catFilter);
   return (
-    <div className="fade">
+    <div className="fade" style={{position:"relative",minHeight:"100%"}}>
       <div className="pad" style={{marginTop:8}}>
         <div className="h-eyebrow">녹음 · 요약 · 후속 할 일</div>
         <div className="h-title">미팅 내역</div>
@@ -3689,7 +4186,7 @@ function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh,mee
           </div>
         </div>
       )}
-      <div className="pad" style={{marginTop:8,marginBottom:16}}>
+      <div className="pad" style={{marginTop:8,marginBottom:88}}>
         {!loading && shown.length===0 && !loadErr && (
           <div className="card" style={{padding:36,textAlign:"center"}}>
             <div style={{fontWeight:700,fontSize:16,marginBottom:8}}>{catFilter!=="전체"?"해당 분류의 기록이 없어요":"아직 미팅 기록이 없어요"}</div>
@@ -3700,6 +4197,7 @@ function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh,mee
         {shown.map((m)=>{
           const pts=m.summary?.key_points;
           const ptCount=Array.isArray(pts)?pts.length:0;
+          const people=meetingPeopleLabel(m, CLIENTS);
           return (
             <div key={m.id} className="card list-item" style={{padding:16,marginBottom:10}} onClick={()=>openDetail?.(m)}>
               <div className="row between" style={{gap:10}}>
@@ -3719,10 +4217,10 @@ function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh,mee
                       </span>
                     )}
                   </div>
-                  <div style={{fontWeight:700,fontSize:15,lineHeight:1.45}}>{m.oneLine||m.t}</div>
-                  {(m.contact?.company||m.contact?.person) && (
-                    <div className="small" style={{marginTop:5}}>{m.contact.company||m.contact.person}{m.contact.company&&m.contact.person?` · ${m.contact.person}`:""}</div>
+                  {people && (
+                    <div className="small" style={{marginBottom:6,fontWeight:700,color:"var(--ink)",lineHeight:1.45}}>{people}</div>
                   )}
+                  <div style={{fontWeight:700,fontSize:15,lineHeight:1.45}}>{m.oneLine||m.t}</div>
                   {preview(m) && preview(m)!==(m.oneLine||m.t) && (
                     <div className="small" style={{marginTop:8,lineHeight:1.5,color:"var(--muted)",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>
                       {preview(m)}
@@ -3736,6 +4234,9 @@ function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh,mee
           );
         })}
       </div>
+      <button type="button" className="meet-fab" aria-label="새 미팅 기록" onClick={()=>startRec?.()}>
+        {I.plus({width:26,height:26})}
+      </button>
     </div>
   );
 }
@@ -3804,7 +4305,7 @@ function TodoArchive({back,embedded=false,openDetail,meetings=[],todos:bootTodos
             {q.trim()||status ? "검색 결과가 없어요" : "등록된 할 일이 없어요"}
           </div>
         )}
-        <NestedTodoList todos={items} meetings={meetings} onRefresh={()=>{ reload(); onRefresh?.(); }} openDetail={openDetail} showAdd groupBySource hideCompletedGroups={false}/>
+        <NestedTodoList todos={items} meetings={meetings} onRefresh={()=>{ reload(); onRefresh?.(); }} openDetail={openDetail} showAdd editable groupBySource hideCompletedGroups={false}/>
       </div>
     </div>
   );
@@ -3906,6 +4407,7 @@ function MyPage({user,back,onUserUpdated}){
   const joined=user?.createdAt?new Date(user.createdAt).toLocaleDateString("ko-KR",{year:"numeric",month:"long",day:"numeric"}):"";
   const st=usage?.storage;
   const rec=usage?.access;
+  const recStats=usage?.recording;
   const pct=st?.percent??0;
   const overLimit=st && st.usedBytes>st.limitBytes;
 
@@ -3971,7 +4473,7 @@ function MyPage({user,back,onUserUpdated}){
                 <span className="small" style={{fontWeight:700,color:overLimit?"#DD5E39":"var(--muted)"}}>{pct}%</span>
               </div>
               {overLimit && <div className="small" style={{marginTop:10,color:"#B23B2E",lineHeight:1.5}}>
-                한도를 초과했어요. 오래된 파일을 정리하거나 플랜을 올려주세요.
+                한도를 초과했어요. 오래된 파일을 정리해 주세요.{!BETA_HIDE_PRICING && " 플랜을 올릴 수도 있어요."}
               </div>}
               {st.breakdown?.length>0 && <>
                 <div style={{height:1,background:"var(--line)",margin:"14px 0"}}/>
@@ -3988,11 +4490,41 @@ function MyPage({user,back,onUserUpdated}){
 
         {rec && <><div className="section-h">녹음 · 변환</div>
         <div className="card" style={{padding:16,marginBottom:16}}>
-          <div className="row between" style={{marginBottom:8}}>
-            <span style={{fontWeight:700,fontSize:14}}>{Math.round(rec.recordingUsedSec/60)}분 사용</span>
+          <div className="row between" style={{marginBottom:10}}>
+            <span style={{fontWeight:700,fontSize:14}}>{formatDurationHm(rec.recordingUsedSec)} 사용</span>
             <span className="small">한도 {rec.recordingLimitLabel}</span>
           </div>
-          {rec.isTrial && <div className="small" style={{lineHeight:1.5}}>체험 중에는 사진·문서 업로드가 불가하고, 녹음·음성 파일은 1시간까지 가능해요.</div>}
+          {rec.recordingLimitSec>0 && (
+            <div style={{height:10,borderRadius:99,background:"#EDE9E0",overflow:"hidden",marginBottom:10}}>
+              <div style={{height:"100%",width:`${Math.min(100,Math.round(rec.recordingUsedSec/rec.recordingLimitSec*100))}%`,borderRadius:99,background:"var(--accent)"}}/>
+            </div>
+          )}
+          {recStats && <>
+            <div className="row between" style={{padding:"8px 0",borderTop:"1px solid var(--line)"}}>
+              <span className="small">이번 달 변환</span>
+              <span style={{fontWeight:700,fontSize:13}}>{formatDurationHm(recStats.thisMonthSec)}</span>
+            </div>
+            <div className="row between" style={{padding:"8px 0"}}>
+              <span className="small">지난 달</span>
+              <span style={{fontWeight:600,fontSize:13}}>{formatDurationHm(recStats.lastMonthSec)}</span>
+            </div>
+            <div className="row between" style={{padding:"8px 0"}}>
+              <span className="small">누적 (전체 기록)</span>
+              <span style={{fontWeight:600,fontSize:13}}>{formatDurationHm(recStats.lifetimeUsedSec)} · {recStats.lifetimeSessionCount}회</span>
+            </div>
+            {rec.periodResetAt && (
+              <div className="small" style={{marginTop:6,color:"var(--muted)"}}>
+                이번 기간 리셋: {new Date(rec.periodResetAt).toLocaleDateString("ko-KR")}
+              </div>
+            )}
+          </>}
+          {user?.lifetimeAccess && (
+            <div className="small" style={{marginTop:8,lineHeight:1.5,color:"var(--green)"}}>무제한 플랜 — 변환 시간 제한 없음</div>
+          )}
+          {rec.isTrial && <div className="small" style={{marginTop:8,lineHeight:1.5}}>체험 중: 녹음·음성 1시간 · 사진·문서 업로드 불가</div>}
+          <div className="small" style={{marginTop:10,lineHeight:1.5,color:"var(--muted)"}}>
+            베타 통계는 DB에 저장돼요. 한 달 운영 후 요금제 설계에 활용할 수 있습니다.
+          </div>
         </div></>}
 
         <div className="section-h">내 데이터</div>
@@ -4004,6 +4536,7 @@ function MyPage({user,back,onUserUpdated}){
               ["할 일",usage?.counts?.todos],
               ["지식백과",usage?.counts?.kbArticles],
               ["딜",usage?.counts?.deals],
+              ["맛집",usage?.counts?.savedPlaces],
             ].map(([l,n])=>(
               <div key={l} style={{flex:"1 1 30%",minWidth:88,textAlign:"center",padding:"10px 6px",background:"#FBF9F4",borderRadius:12}}>
                 <div style={{fontWeight:800,fontSize:18}}>{usageLoading?"—":(n??0)}</div>
@@ -4069,7 +4602,7 @@ function Settings({back,go,user,onLogout,openPricing}){
         <div className="section-h" style={{marginTop:0}}>계정 · 구독</div>
         <div className="card" style={{padding:"4px 16px",marginBottom:16}}>
           {Row(I.gear({width:18,height:18}),"마이페이지","용량 · 프로필",()=>go("mypage"))}
-          {Row(I.bolt({width:18,height:18}),"플랜 · 결제",trialLabel,openPricing)}
+          {!BETA_HIDE_PRICING && Row(I.bolt({width:18,height:18}),"플랜 · 결제",trialLabel,openPricing)}
           {Row(I.bell({width:18,height:18}),"알림","1시간 전",()=>{})}
           {Row(I.users({width:18,height:18}),"공유 · 초대 관리",null,()=>{})}
         </div>
@@ -4220,6 +4753,196 @@ function TodoAttachmentRow({att}){
   );
 }
 
+const quoteFieldStyle={
+  width:"100%",border:"1px solid var(--line)",borderRadius:12,padding:"12px 13px",
+  fontFamily:"inherit",fontSize:14,color:"var(--ink)",background:"#fff",outline:"none",
+};
+
+function contactQuoteLabel(c){
+  if(!c) return "";
+  const person=c.person||"";
+  const role=contactRoleLine(c);
+  const co=c.co||c.company||"";
+  const who=[person,role].filter(Boolean).join(" · ");
+  if(co&&who) return `${co} · ${who}`;
+  return who||co||"이름 없음";
+}
+
+function AddQuoteForm({contactId:lockedContactId,onSaved,onCancel}){
+  const CLIENTS=getClients();
+  const [contactId,setContactId]=useState(lockedContactId||"");
+  const [pick,setPick]=useState(false);
+  const [q,setQ]=useState("");
+  const [title,setTitle]=useState("");
+  const [stage,setStage]=useState("견적");
+  const [supplyAmount,setSupplyAmount]=useState("");
+  const [quoteFile,setQuoteFile]=useState(null);
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{ if(lockedContactId) setContactId(lockedContactId); },[lockedContactId]);
+
+  const selected=CLIENTS.find(x=>x.id===contactId);
+  const ql=q.trim().toLowerCase();
+  const found=CLIENTS.filter(c=>!ql||(c.person+c.co+(c.title||"")+(c.department||"")).toLowerCase().includes(ql)).slice(0,40);
+
+  const pickQuoteFile=async ()=>{
+    try{
+      const file=await pickAnyFile();
+      setQuoteFile(file);
+    }catch(e){
+      if(!isPickCancelled(e) && e?.message!=="파일이 선택되지 않았습니다") notifyError(e, e.message);
+    }
+  };
+
+  const save=async ()=>{
+    if(!contactId){ toastError("인맥을 선택하세요"); return; }
+    const amount=parseInt(String(supplyAmount).replace(/\D/g,""),10);
+    if(!amount){ toastError("공급가액을 입력하세요"); return; }
+    setSaving(true);
+    try{
+      let quoteKey;
+      if(quoteFile) quoteKey=await uploadFile(quoteFile);
+      const sel=CLIENTS.find(x=>x.id===contactId);
+      const autoTitle=sel?`${sel.co||sel.person||"견적"} 견적`:"견적";
+      await api.saveDeal({
+        contactId,
+        title:title.trim()||autoTitle,
+        stage,
+        supplyAmount:amount,
+        ...(quoteKey?{quoteKey}:{}),
+      });
+      onSaved?.();
+    }catch(e){ notifyError(e, e.message); }
+    finally{ setSaving(false); }
+  };
+
+  return (
+    <div className="card" style={{padding:16,marginBottom:10}}>
+      {lockedContactId && selected && (
+        <div className="row" style={{gap:10,marginBottom:12,alignItems:"center"}}>
+          <div className="avatar" style={{width:36,height:36,borderRadius:12,fontSize:14}}>{selected.init}</div>
+          <div style={{minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:14}}>{contactQuoteLabel(selected)}</div>
+            <div className="small">이 인맥에 견적을 등록해요</div>
+          </div>
+        </div>
+      )}
+      {!lockedContactId && (
+        <div style={{marginBottom:12}}>
+          <div className="small" style={{fontWeight:700,marginBottom:6}}>인맥</div>
+          {selected&&!pick ? (
+            <div className="row between card" style={{padding:"10px 12px",gap:8}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:14}}>{contactQuoteLabel(selected)}</div>
+              </div>
+              <button type="button" className="chip" style={{padding:"5px 10px",fontSize:12,flex:"0 0 auto"}} onClick={()=>setPick(true)}>변경</button>
+            </div>
+          ) : (
+            <>
+              {!pick && (
+                <button type="button" className="btn btn-ghost" style={{width:"100%",padding:12,fontSize:13}}
+                  onClick={()=>setPick(true)}>+ 인맥 선택</button>
+              )}
+              {pick && (
+                <div className="card fade" style={{padding:"12px 14px 4px",background:"#FBFAF7"}}>
+                  <div className="row" style={{gap:9,background:"#F4F1EA",borderRadius:11,padding:"10px 12px",color:"var(--muted)",marginBottom:4}}>
+                    {I.search({width:16,height:16})}
+                    <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="이름 · 회사 검색"
+                      style={{flex:1,border:"none",outline:"none",background:"transparent",fontFamily:"inherit",fontSize:13.5,color:"var(--ink)"}}/>
+                    {q && <span onClick={()=>setQ("")} style={{cursor:"pointer"}}>✕</span>}
+                  </div>
+                  <div style={{maxHeight:200,overflowY:"auto"}}>
+                    {found.length===0 && <div className="small" style={{textAlign:"center",padding:"18px 0"}}>검색 결과 없음</div>}
+                    {found.map(c=>(
+                      <div key={c.id} className="list-item row between" style={{padding:"11px 0",cursor:"pointer"}}
+                        onClick={()=>{ setContactId(c.id); setPick(false); setQ(""); }}>
+                        <div className="row" style={{gap:10,minWidth:0}}>
+                          <div className="avatar" style={{width:34,height:34,borderRadius:11,fontSize:13}}>{c.init}</div>
+                          <div style={{minWidth:0}}>
+                            <div style={{fontWeight:600,fontSize:13.5}}>{c.person||c.co}</div>
+                            <div className="small" style={{fontSize:11.5}}>{[contactRoleLine(c),c.co].filter(Boolean).join(" · ")}</div>
+                          </div>
+                        </div>
+                        <Checkbox on={contactId===c.id}/>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="견적 제목 (비우면 자동)"
+        style={{...quoteFieldStyle,marginBottom:10}}/>
+
+      <div className="row" style={{gap:10,marginBottom:10}}>
+        <select value={stage} onChange={e=>setStage(e.target.value)}
+          style={{flex:1,...quoteFieldStyle,padding:"12px"}}>
+          {["리드","견적","협상","성사","실패"].map(s=><option key={s}>{s}</option>)}
+        </select>
+        <input value={supplyAmount} onChange={e=>setSupplyAmount(e.target.value)} placeholder="공급가액(원)"
+          inputMode="numeric" style={{flex:1,...quoteFieldStyle}}/>
+      </div>
+
+      <div style={{marginBottom:12}}>
+        <div className="small" style={{fontWeight:700,marginBottom:6}}>견적서 파일</div>
+        {quoteFile ? (
+          <div className="row between card" style={{padding:"10px 12px",gap:8}}>
+            <div className="row" style={{gap:8,minWidth:0,flex:1}}>
+              {I.quote({style:{color:"var(--accent-deep)",flex:"0 0 auto"}})}
+              <span style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{quoteFile.name}</span>
+            </div>
+            <button type="button" className="chip" style={{padding:"5px 10px",fontSize:12}} onClick={()=>setQuoteFile(null)}>제거</button>
+          </div>
+        ) : (
+          <button type="button" className="btn btn-ghost" style={{width:"100%",padding:12,fontSize:13,display:"flex",justifyContent:"center",gap:7}}
+            onClick={pickQuoteFile}>
+            {I.plus({width:15,height:15})} PDF · 엑셀 · 이미지 첨부
+          </button>
+        )}
+      </div>
+
+      <div className="row" style={{gap:10}}>
+        {onCancel && (
+          <button type="button" className="btn btn-ghost" style={{flex:1,padding:12}} onClick={onCancel} disabled={saving}>취소</button>
+        )}
+        <button type="button" className="btn btn-accent" style={{flex:1,padding:12}} onClick={save} disabled={saving}>
+          {saving?"저장 중…":"견적 저장"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DealListRow({d}){
+  const c=d.contact;
+  const sup=d.supplyAmount||0;
+  const won=(n)=>"₩ "+Number(n).toLocaleString("ko-KR");
+  return (
+    <div style={{padding:"13px 0",borderBottom:"1px solid var(--line)"}}>
+      <div className="row between" style={{gap:10,alignItems:"flex-start"}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:700,fontSize:14}}>{d.title||"견적"}</div>
+          {c && <div className="small" style={{marginTop:4,fontWeight:600}}>{contactQuoteLabel(c)}</div>}
+          <span className="tag amber" style={{marginTop:6,display:"inline-block"}}>{d.stage}</span>
+        </div>
+        <div style={{fontWeight:700,flex:"0 0 auto"}}>{won(sup)}</div>
+      </div>
+      {d.quoteKey && (
+        <div style={{marginTop:10}}>
+          <TodoAttachmentRow att={{
+            key:d.quoteKey,
+            name:fileNameFromKey(d.quoteKey),
+            kind:/\.(png|jpe?g|gif|webp)$/i.test(d.quoteKey)?"image":"file",
+          }}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TaskDetailView({data,back,onUpdated,onDeleted}){
   const seed=data||{};
   const [task,setTask]=useState(seed);
@@ -4316,7 +5039,7 @@ function TaskDetailView({data,back,onUpdated,onDeleted}){
         </div>
 
         <div className="section-h">세부 항목</div>
-        <NestedTodoList todos={[task]} onRefresh={refreshSubs} showAdd={false} compact/>
+        <NestedTodoList todos={[task]} onRefresh={refreshSubs} showAdd editable compact onTaskDeleted={onDeleted}/>
 
         <div className="section-h">상세</div>
         <div className="card" style={{padding:16}}>
@@ -4361,39 +5084,45 @@ function TaskDetailView({data,back,onUpdated,onDeleted}){
   );
 }
 
-function RevenueDetailView({back}){
+function RevenueDetailView({back,onRefresh,startAdd}){
   const [dealsData,setDealsData]=useState(null);
-  useEffect(()=>{ api.listDeals().then(setDealsData).catch(()=>setDealsData({deals:[],revenueThisMonth:{supplyAmount:0},pipeline:0})); },[]);
+  const [adding,setAdding]=useState(!!startAdd);
+  const reload=()=>api.listDeals().then(setDealsData).catch(()=>setDealsData({deals:[],revenueThisMonth:{supplyAmount:0},pipeline:0}));
+  useEffect(()=>{ reload(); },[]);
   const deals=dealsData?.deals||[];
   const sup=dealsData?.revenueThisMonth?.supplyAmount||0;
   const pipe=dealsData?.pipeline||0;
   const won=(n)=>"₩ "+Number(n).toLocaleString("ko-KR");
   const month=new Date().getMonth()+1;
   const done=deals.filter(x=>x.stage==="성사");
+  const active=deals.filter(x=>!["성사","실패"].includes(x.stage));
+  const afterSave=()=>{ setAdding(false); reload(); onRefresh?.(); toastSuccess("견적을 등록했어요"); };
   return (
     <div className="fade">
       <DetailHead back={back} eyebrow={`${month}월 매출`} title="이번 달 매출"/>
       <div className="pad" style={{marginTop:14,marginBottom:12}}>
         {!dealsData && <div className="small" style={{textAlign:"center",padding:20}}>불러오는 중…</div>}
         {dealsData && <>
+          <div className="row between" style={{marginBottom:12,alignItems:"center"}}>
+            <div className="small" style={{fontWeight:700,color:"var(--muted)"}}>견적 · 매출 관리</div>
+            <button type="button" className="chip" style={{color:"var(--accent-deep)",fontWeight:700}}
+              onClick={()=>setAdding(v=>!v)}>{adding?"닫기":"+ 견적 추가"}</button>
+          </div>
+          {adding && <AddQuoteForm onCancel={()=>setAdding(false)} onSaved={afterSave}/>}
           <div className="card" style={{padding:16}}>
             <div className="brk"><span className="small">확정 공급가액</span><span style={{fontWeight:700}}>{won(sup)}</span></div>
             <div className="brk"><span className="small">부가세 (10%)</span><span style={{fontWeight:600}}>{won(sup*0.1)}</span></div>
             <div className="row between" style={{padding:"10px 0"}}><span style={{fontWeight:700}}>합계</span><span style={{fontWeight:800,fontSize:18}}>{won(sup*1.1)}</span></div>
           </div>
-          <div className="section-h">성사 딜</div>
+          <div className="section-h">성사</div>
           <div className="card" style={{padding:"4px 16px"}}>
-            {done.length===0 && <div className="small" style={{textAlign:"center",padding:16}}>성사 딜 없음</div>}
-            {done.map(x=><div key={x.id} className="row between" style={{padding:"13px 0",borderBottom:"1px solid var(--line)"}}>
-              <span style={{fontWeight:600}}>{x.title||"딜"}</span><span style={{fontWeight:700}}>{won(x.supplyAmount)}</span>
-            </div>)}
+            {done.length===0 && <div className="small" style={{textAlign:"center",padding:16}}>성사 견적 없음</div>}
+            {done.map(x=><DealListRow key={x.id} d={x}/>)}
           </div>
           <div className="section-h">진행 중 (파이프라인 {won(pipe)})</div>
           <div className="card" style={{padding:"4px 16px"}}>
-            {deals.filter(x=>x.stage!=="성사").map(x=><div key={x.id} className="row between" style={{padding:"13px 0",borderBottom:"1px solid var(--line)"}}>
-              <span style={{fontWeight:600}}>{x.title||"딜"} <span className="tag amber">{x.stage}</span></span>
-              <span>{won(x.supplyAmount)}</span>
-            </div>)}
+            {active.length===0 && <div className="small" style={{textAlign:"center",padding:16}}>진행 중인 견적 없음</div>}
+            {active.map(x=><DealListRow key={x.id} d={x}/>)}
           </div>
         </>}
       </div>
@@ -4401,19 +5130,105 @@ function RevenueDetailView({back}){
   );
 }
 
-function FollowupDetailView({back,todos,onTodoToggle}){
-  const items=todos.filter(x=>!x.done);
+function FollowupDetailView({back,todos,meetings,onRefresh}){
+  const clients=getClients();
+  const items=listOpenFollowupItems(todos,{meetings,contacts:clients});
+  const [editKey,setEditKey]=useState(null);
+  const [draft,setDraft]=useState("");
+  const [savingKey,setSavingKey]=useState(null);
+
+  const startEdit=(item)=>{
+    setEditKey(item.key);
+    setDraft(item.text||"");
+  };
+
+  const saveEdit=async (item)=>{
+    if(!item.parent?.id || savingKey) return;
+    const next=draft.trim();
+    setEditKey(null);
+    if(!next || next===item.text) return;
+    setSavingKey(item.key);
+    try{
+      if(item.subId){
+        const subs=(item.parent.subs||[]).map((s)=>
+          s.id===item.subId?{...s,text:next}:s
+        );
+        await api.updateTodo(item.parent.id,{subs});
+      }else{
+        await api.updateTodo(item.parent.id,{title:next});
+      }
+      await onRefresh?.();
+    }catch(e){
+      notifyError(e,e.message||"수정 실패");
+    }finally{
+      setSavingKey(null);
+    }
+  };
+
+  const toggleItem=async (item)=>{
+    if(!item.parent?.id || editKey===item.key) return;
+    try{
+      if(item.subId){
+        const subs=(item.parent.subs||[]).map((s)=>
+          s.id===item.subId?{...s,done:!s.done}:s
+        );
+        await api.updateTodo(item.parent.id,{subs});
+      }else{
+        const next=item.parent.done||item.parent.status==="done"?"todo":"done";
+        await api.updateTodo(item.parent.id,{status:next});
+      }
+      await onRefresh?.();
+    }catch(e){
+      notifyError(e,e.message||"할 일 업데이트 실패");
+    }
+  };
+
   return (
     <div className="fade">
-      <DetailHead back={back} eyebrow="미완료 액션" title="후속 챙기기"/>
+      <DetailHead back={back} eyebrow="미완료 액션" title={`후속 챙기기 · ${items.length}건`}/>
       <div className="pad" style={{marginTop:14,marginBottom:12}}>
+        {items.length>0 && (
+          <div className="small" style={{marginBottom:10,lineHeight:1.5,color:"var(--muted)"}}>
+            텍스트를 탭하면 내용을 수정할 수 있어요.
+          </div>
+        )}
         {items.length===0 && <div className="small" style={{textAlign:"center",padding:40}}>미완료 할 일이 없어요</div>}
         <div className="card" style={{padding:"4px 16px"}}>
-          {items.map(it=><div key={it.id} className="row between" style={{padding:"15px 0",borderBottom:"1px solid var(--line)",cursor:"pointer"}}
-            onClick={()=>onTodoToggle?.(todos.indexOf(it))}>
-            <div className="row" style={{gap:10}}><Checkbox on={false}/><span style={{fontWeight:600}}>{it.t}</span></div>
-            {it.due!=="-" && <span className="tag gray">{it.due}</span>}
-          </div>)}
+          {items.map((it,i)=>(
+            <div key={it.key} className="row between" style={{padding:"15px 0",borderBottom:i<items.length-1?"1px solid var(--line)":"none",gap:10}}>
+              <div className="row" style={{gap:10,flex:1,minWidth:0}}>
+                <span onClick={()=>toggleItem(it)} style={{cursor:"pointer",flex:"0 0 auto"}}>
+                  <Checkbox on={false}/>
+                </span>
+                <div style={{minWidth:0,flex:1}}>
+                  {editKey===it.key ? (
+                    <input
+                      className="nt-edit-input"
+                      value={draft}
+                      autoFocus
+                      disabled={savingKey===it.key}
+                      onChange={(e)=>setDraft(e.target.value)}
+                      onBlur={()=>saveEdit(it)}
+                      onKeyDown={(e)=>{
+                        if(e.key==="Enter"){ e.preventDefault(); saveEdit(it); }
+                        if(e.key==="Escape") setEditKey(null);
+                      }}
+                      style={{width:"100%"}}
+                    />
+                  ) : (
+                    <span
+                      style={{fontWeight:600,lineHeight:1.4,cursor:"text"}}
+                      onClick={()=>startEdit(it)}
+                    >
+                      {it.text}
+                    </span>
+                  )}
+                  {it.groupLabel && <div className="small" style={{marginTop:3,color:"var(--muted)"}}>{it.groupLabel}</div>}
+                </div>
+              </div>
+              {it.due!=="-" && <span className="tag gray" style={{flex:"0 0 auto"}}>{it.due}</span>}
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -4500,11 +5315,11 @@ function EventDetailView({data,back,onDeleted,linkedMeetings=[],onStartRec,openM
   );
 }
 
-function Detail({d,back,todos=[],onTodoToggle,onTodoUpdated,refreshTodos,onDeleted,prefs,meetings=[],startRecFromEvent,openMeeting,openEvent}){
+function Detail({d,back,todos=[],onTodoToggle,onTodoUpdated,refreshTodos,onDeleted,prefs,meetings=[],startRecFromEvent,openMeeting,openEvent,onAppRefresh}){
   if(d.type==="meeting") return <MeetingDetailView data={d.data} back={back} refreshTodos={refreshTodos} onDeleted={onDeleted} meetingPresets={prefs?.meeting} openEvent={openEvent}/>;
   if(d.type==="task") return <TaskDetailView data={d.data} back={back} onUpdated={onTodoUpdated} onDeleted={onDeleted}/>;
-  if(d.type==="revenue") return <RevenueDetailView back={back}/>;
-  if(d.type==="followup") return <FollowupDetailView back={back} todos={todos} onTodoToggle={onTodoToggle}/>;
+  if(d.type==="revenue") return <RevenueDetailView back={back} onRefresh={onAppRefresh} startAdd={!!d.data?.addQuote}/>;
+  if(d.type==="followup") return <FollowupDetailView back={back} todos={todos} meetings={meetings} onRefresh={refreshTodos}/>;
   const linkedMeetings=(meetings||[]).filter(m=>m.eventId===d.data?.id);
   return <EventDetailView data={d.data} back={back} onDeleted={onDeleted} linkedMeetings={linkedMeetings} onStartRec={startRecFromEvent} openMeeting={openMeeting}/>;
 }

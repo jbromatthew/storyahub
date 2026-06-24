@@ -1,5 +1,5 @@
-import { geminiJson, geminiText } from "./gemini.js";
-import { FULL_STT_MAX_BYTES, LONG_MEETING_SEC } from "./meetingLimits.js";
+import { geminiJson, geminiText, uploadGeminiFile } from "./gemini.js";
+import { FULL_STT_MAX_BYTES, GEMINI_INLINE_MAX_BYTES, LONG_MEETING_SEC } from "./meetingLimits.js";
 
 export interface Utterance {
   speaker: string;
@@ -40,7 +40,7 @@ const STT_JSON_SCHEMA = `오디오를 화자 분리하여 한국어로 전사하
 
 const STT_TEXT_PROMPT = `오디오 전체를 한국어로 전사한다. JSON 금지, 줄 단위 텍스트만 출력.
 각 줄: [mm:ss] 참석자 N: 발화내용
-긴 미팅(30분+)이면 3~5분 간격 핵심 발화 위주로 샘pling해도 된다. 최대 150줄.
+긴 미팅(20분+)이면 3~5분 간격 핵심 발화 위주로 샘pling해도 된다. 최대 150줄.
 화자는 "참석자 1", "참석자 2" 형식.`;
 
 function normalizeUtterances(raw: Partial<Utterance>[] | undefined): Utterance[] {
@@ -93,9 +93,26 @@ function shouldUseCompactStt(opts?: TranscribeOptions): boolean {
   return durationSec >= LONG_MEETING_SEC || fileBytes > FULL_STT_MAX_BYTES;
 }
 
-async function transcribeAudioCompact(audioBase64: string, mimeType: string): Promise<TranscriptResult> {
+function shouldUseGeminiFileApi(fileBytes: number): boolean {
+  return fileBytes > GEMINI_INLINE_MAX_BYTES;
+}
+
+type AudioPart =
+  | { inline_data: { mime_type: string; data: string } }
+  | { file_data: { mime_type: string; file_uri: string } };
+
+async function audioPartFromBuffer(buf: Buffer, mimeType: string): Promise<AudioPart> {
+  if (shouldUseGeminiFileApi(buf.length)) {
+    const uri = await uploadGeminiFile(buf, mimeType, `meeting-${Date.now()}`);
+    return { file_data: { mime_type: mimeType, file_uri: uri } };
+  }
+  return { inline_data: { mime_type: mimeType, data: buf.toString("base64") } };
+}
+
+async function transcribeAudioCompact(buf: Buffer, mimeType: string): Promise<TranscriptResult> {
+  const audio = await audioPartFromBuffer(buf, mimeType);
   const text = await geminiText(
-    [{ text: STT_TEXT_PROMPT }, { inline_data: { mime_type: mimeType, data: audioBase64 } }],
+    [{ text: STT_TEXT_PROMPT }, audio],
     "음성 전사(STT) 전문가",
     { maxOutputTokens: 8192 }
   );
@@ -106,12 +123,13 @@ async function transcribeAudioCompact(audioBase64: string, mimeType: string): Pr
   return buildResult(utterances);
 }
 
-async function transcribeAudioFull(audioBase64: string, mimeType: string): Promise<TranscriptResult> {
+async function transcribeAudioFull(buf: Buffer, mimeType: string): Promise<TranscriptResult> {
+  const audio = await audioPartFromBuffer(buf, mimeType);
   const raw = await geminiJson<{
     utterances?: Partial<Utterance>[];
     talk_ratio?: TalkRatio;
   }>(
-    [{ text: STT_JSON_SCHEMA }, { inline_data: { mime_type: mimeType, data: audioBase64 } }],
+    [{ text: STT_JSON_SCHEMA }, audio],
     "음성 전사(STT)·화자 분리 전문가",
     { maxOutputTokens: 8192 }
   );
@@ -121,14 +139,16 @@ async function transcribeAudioFull(audioBase64: string, mimeType: string): Promi
 }
 
 export async function transcribeAudio(
-  audioBase64: string,
+  audio: Buffer,
   mimeType: string,
   opts?: TranscribeOptions
 ): Promise<TranscriptResult> {
-  if (shouldUseCompactStt(opts)) {
-    return transcribeAudioCompact(audioBase64, mimeType);
+  const fileBytes = opts?.fileBytes ?? audio.length;
+  const effectiveOpts = { ...opts, fileBytes };
+  if (shouldUseCompactStt(effectiveOpts)) {
+    return transcribeAudioCompact(audio, mimeType);
   }
-  return transcribeAudioFull(audioBase64, mimeType);
+  return transcribeAudioFull(audio, mimeType);
 }
 
 export function mimeFromKey(key: string, fallback = "application/octet-stream"): string {

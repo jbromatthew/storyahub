@@ -3,7 +3,7 @@ import { getAccessStatus } from "./access.js";
 import { PLAN_LIMITS, type PlanId } from "./plans.js";
 import { headObjectSize, listUserObjects, r2Configured } from "./r2.js";
 
-type BreakdownKey = "meetings" | "contacts" | "deals" | "todos" | "kb" | "other";
+type BreakdownKey = "meetings" | "contacts" | "deals" | "todos" | "kb" | "places" | "other";
 
 const BREAKDOWN_LABEL: Record<BreakdownKey, string> = {
   meetings: "녹음 · 기록",
@@ -11,6 +11,7 @@ const BREAKDOWN_LABEL: Record<BreakdownKey, string> = {
   deals: "딜 · 견적서",
   todos: "할 일 첨부",
   kb: "지식백과",
+  places: "맛집 · 장소",
   other: "기타",
 };
 
@@ -48,12 +49,13 @@ export async function getUserUsage(userId: string) {
   const access = getAccessStatus(user);
   const limitBytes = access.storageLimitBytes;
 
-  const [contacts, meetings, todos, deals, kbArticles] = await Promise.all([
+  const [contacts, meetings, todos, deals, kbArticles, savedPlaces] = await Promise.all([
     prisma.contact.findMany({ where: { userId }, select: { cardImageKey: true } }),
     prisma.meeting.findMany({ where: { userId }, select: { mediaKey: true } }),
     prisma.todo.findMany({ where: { userId }, select: { attachments: true } }),
     prisma.deal.findMany({ where: { userId }, select: { quoteKey: true } }),
     prisma.kbArticle.findMany({ where: { userId }, select: { blocks: true } }),
+    prisma.savedPlace.findMany({ where: { userId }, select: { photoKeys: true } }),
   ]);
 
   const keyCategory = new Map<string, BreakdownKey>();
@@ -74,6 +76,11 @@ export async function getUserUsage(userId: string) {
   }
   for (const a of kbArticles) {
     for (const key of collectKbMediaKeys(a.blocks)) keyCategory.set(key, "kb");
+  }
+  for (const p of savedPlaces) {
+    for (const key of p.photoKeys ?? []) {
+      if (key) keyCategory.set(key, "places");
+    }
   }
 
   const breakdown = emptyBreakdown();
@@ -110,6 +117,32 @@ export async function getUserUsage(userId: string) {
   const percent = limitBytes > 0 ? Math.min(100, Math.round((usedBytes / limitBytes) * 1000) / 10) : 0;
   const plan = access.plan as PlanId | null;
 
+  const MS_DAY = 86400000;
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  const [lifetimeAgg, thisMonthAgg, lastMonthAgg] = await Promise.all([
+    prisma.recordingUsageEvent.aggregate({
+      where: { userId },
+      _sum: { seconds: true },
+      _count: true,
+    }),
+    prisma.recordingUsageEvent.aggregate({
+      where: { userId, createdAt: { gte: monthStart } },
+      _sum: { seconds: true },
+    }),
+    prisma.recordingUsageEvent.aggregate({
+      where: { userId, createdAt: { gte: lastMonthStart, lt: monthStart } },
+      _sum: { seconds: true },
+    }),
+  ]);
+
+  let periodResetAt: string | null = null;
+  if (access.reason === "paid" && !access.lifetimeAccess && user.recordingPeriodStart) {
+    periodResetAt = new Date(user.recordingPeriodStart.getTime() + 30 * MS_DAY).toISOString();
+  }
+
   return {
     access: {
       isTrial: access.isTrial,
@@ -122,6 +155,16 @@ export async function getUserUsage(userId: string) {
           ? `${Math.round(access.recordingLimitSec / 3600)}시간`
           : `${Math.round(access.recordingLimitSec / 60)}분`,
       purgeAt: access.purgeAt,
+      periodResetAt,
+    },
+    recording: {
+      periodUsedSec: access.recordingUsedSec,
+      periodLimitSec: access.recordingLimitSec,
+      periodResetAt,
+      lifetimeUsedSec: lifetimeAgg._sum.seconds ?? 0,
+      lifetimeSessionCount: lifetimeAgg._count,
+      thisMonthSec: thisMonthAgg._sum.seconds ?? 0,
+      lastMonthSec: lastMonthAgg._sum.seconds ?? 0,
     },
     storage: {
       usedBytes,
@@ -139,6 +182,7 @@ export async function getUserUsage(userId: string) {
       todos: todos.length,
       kbArticles: kbArticles.length,
       deals: deals.length,
+      savedPlaces: savedPlaces.length,
     },
   };
 }

@@ -130,6 +130,9 @@ export function isPickCancelled(err) {
 
 /** @param {boolean} capture true면 모바일 카메라 우선 (데스크톱에서는 false 권장) */
 export function pickImageFile(capture = false) {
+  if (isNativeShell() && getNativePlatform() === "ios") {
+    return pickNativeImageFile(capture ? "camera" : "library");
+  }
   return new Promise((resolve, reject) => {
     const input = document.createElement("input");
     input.type = "file";
@@ -149,6 +152,9 @@ export function pickImageFile(capture = false) {
 
 /** 여러 장 선택 (iOS·Android 갤러리 다중 선택) */
 export function pickImageFiles(maxCount = 5) {
+  if (isNativeShell() && getNativePlatform() === "ios") {
+    return pickNativeImageFile("library").then((file) => [file]);
+  }
   return new Promise((resolve, reject) => {
     const input = document.createElement("input");
     input.type = "file";
@@ -224,86 +230,25 @@ function estimateAudioSec(file) {
   return Math.max(1, Math.round(bytes / (128 * 1024 / 8)));
 }
 
+import { createAudioRecorder, isNativeRecordingResult, isNativeShell, getNativePlatform, pickNativeImageFile } from "./nativeBridge.js";
+
+export { isNativeRecordingResult, isNativeShell } from "./nativeBridge.js";
+
+/** @param {{ onInterrupted?: () => void }} [opts] */
 export class AudioRecorder {
-  /** @param {{ onInterrupted?: () => void }} [opts] */
-  constructor({ onInterrupted } = {}) {
-    this.mediaRecorder = null;
-    this.chunks = [];
-    this.stream = null;
-    this.wakeLock = null;
-    this.onInterrupted = onInterrupted;
-    this._onVisibility = () => this._handleVisibility();
+  constructor(opts = {}) {
+    this._impl = createAudioRecorder(opts);
   }
 
-  async _requestWakeLock() {
-    if (!("wakeLock" in navigator)) return;
-    try {
-      this.wakeLock?.release?.();
-      this.wakeLock = await navigator.wakeLock.request("screen");
-    } catch {
-      /* 권한 거부·미지원 */
-    }
-  }
-
-  _handleVisibility() {
-    if (document.visibilityState === "visible" && this.mediaRecorder?.state === "recording") {
-      void this._requestWakeLock();
-    }
-  }
-
-  _bindInterruptHandlers() {
-    const track = this.stream?.getAudioTracks?.()[0];
-    if (track) {
-      track.onended = () => {
-        if (this.mediaRecorder?.state === "recording") this.onInterrupted?.();
-      };
-    }
-    this.mediaRecorder.onerror = () => this.onInterrupted?.();
-  }
-
-  _cleanup() {
-    document.removeEventListener("visibilitychange", this._onVisibility);
-    this.wakeLock?.release?.();
-    this.wakeLock = null;
-  }
-
-  async start() {
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
-    this.mediaRecorder = new MediaRecorder(this.stream, { mimeType: mime });
-    this.chunks = [];
-    this.mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) this.chunks.push(e.data);
-    };
-    this.mediaRecorder.start(250);
-    this.mime = mime;
-    this._bindInterruptHandlers();
-    document.addEventListener("visibilitychange", this._onVisibility);
-    await this._requestWakeLock();
+  start() {
+    return this._impl.start();
   }
 
   stop() {
-    return new Promise((resolve, reject) => {
-      if (!this.mediaRecorder) return reject(new Error("녹음이 시작되지 않았습니다"));
-      this.mediaRecorder.onstop = () => {
-        const blob = new Blob(this.chunks, { type: this.mime });
-        this.stream?.getTracks().forEach((t) => t.stop());
-        this._cleanup();
-        resolve(blob);
-      };
-      this.mediaRecorder.stop();
-    });
+    return this._impl.stop();
   }
 
   dispose() {
-    this._cleanup();
-    this.stream?.getTracks().forEach((t) => t.stop());
-    if (this.mediaRecorder?.state === "recording") {
-      try {
-        this.mediaRecorder.stop();
-      } catch {
-        /* ignore */
-      }
-    }
+    return this._impl.dispose();
   }
 }

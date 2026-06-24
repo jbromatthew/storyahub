@@ -13,7 +13,11 @@ function withVat(supplyAmount: number) {
 }
 
 dealsRouter.get("/", async (req: AuthedRequest, res) => {
-  const deals = await prisma.deal.findMany({ where: { userId: req.userId }, orderBy: { createdAt: "desc" } });
+  const deals = await prisma.deal.findMany({
+    where: { userId: req.userId },
+    orderBy: { createdAt: "desc" },
+    include: { contact: { select: { id: true, person: true, title: true, department: true, company: true } } },
+  });
 
   // 이번 달 매출 = 이번 달에 성사된 딜의 공급가액 합
   const now = new Date();

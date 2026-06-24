@@ -11,3 +11,8 @@ coverage/
 .vite/
 prisma/dev.db
 scripts/deploy-frontend.env
+mobile/ios/Pods/
+mobile/ios/build/
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/build/

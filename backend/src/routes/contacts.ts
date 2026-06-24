@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 import { geocodeAddress } from "../services/geocode.js";
+import { computeIdentityKey } from "../services/contactIdentity.js";
 import { optionalUserMediaKey } from "../services/mediaValidation.js";
 
 export const contactsRouter = Router();
@@ -48,7 +49,7 @@ contactsRouter.post("/geocode-pending", async (req: AuthedRequest, res) => {
 
 contactsRouter.post("/", async (req: AuthedRequest, res) => {
   const userId = req.userId!;
-  const { person, company, phone, email, address, group, tags, cardImageKey } = req.body ?? {};
+  const { person, title, department, company, phone, email, address, group, tags, cardImageKey } = req.body ?? {};
   let validatedCardKey: string | null = null;
   try {
     validatedCardKey = optionalUserMediaKey(cardImageKey, userId, "cardImageKey");
@@ -56,21 +57,30 @@ contactsRouter.post("/", async (req: AuthedRequest, res) => {
     return res.status(400).json({ error: "명함 이미지 키가 올바르지 않습니다" });
   }
   const coords = await applyGeocode(address);
+  const personStr = String(person ?? "").trim() || String(company ?? "").trim() || "이름 없음";
+  const phoneStr = phone != null ? String(phone).trim() : null;
+  const identityKey = computeIdentityKey(personStr, phoneStr);
   const c = await prisma.contact.create({
     data: {
       userId,
-      person,
+      person: personStr,
+      title: title ?? null,
+      department: department ?? null,
       company,
-      phone,
+      phone: phoneStr,
       email,
       address,
       ...coords,
       group,
       tags: tags ?? [],
       cardImageKey: validatedCardKey,
+      identityKey,
     },
   });
-  res.status(201).json(c);
+  const linkedCount = identityKey
+    ? await prisma.contact.count({ where: { userId, identityKey } })
+    : 1;
+  res.status(201).json({ ...c, linkedCount });
 });
 
 contactsRouter.patch("/:id", async (req: AuthedRequest, res) => {
@@ -78,7 +88,7 @@ contactsRouter.patch("/:id", async (req: AuthedRequest, res) => {
   const cur = await prisma.contact.findFirst({ where: { id: req.params.id, userId } });
   if (!cur) return res.status(404).json({ error: "not found" });
 
-  const { person, company, phone, email, address, group, tags, favorite, referredById, meetCount, wonAmount } =
+  const { person, title, department, company, phone, email, address, group, tags, favorite, referredById, meetCount, wonAmount } =
     req.body ?? {};
 
   const nextAddress = address !== undefined ? address : cur.address;
@@ -104,12 +114,18 @@ contactsRouter.patch("/:id", async (req: AuthedRequest, res) => {
     }
   }
 
+  const nextPerson = person ?? cur.person;
+  const nextPhone = phone !== undefined ? (phone != null ? String(phone).trim() : null) : cur.phone;
+  const identityKey = computeIdentityKey(nextPerson, nextPhone);
+
   const c = await prisma.contact.update({
     where: { id: cur.id },
     data: {
-      person: person ?? cur.person,
+      person: nextPerson,
+      title: title !== undefined ? title : cur.title,
+      department: department !== undefined ? department : cur.department,
       company: company ?? cur.company,
-      phone: phone ?? cur.phone,
+      phone: nextPhone,
       email: email ?? cur.email,
       address: nextAddress,
       lat,
@@ -120,6 +136,7 @@ contactsRouter.patch("/:id", async (req: AuthedRequest, res) => {
       referredById: nextReferredById,
       meetCount: meetCount ?? cur.meetCount,
       wonAmount: wonAmount ?? cur.wonAmount,
+      identityKey,
     },
   });
   res.json(c);

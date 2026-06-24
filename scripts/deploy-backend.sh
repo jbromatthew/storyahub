@@ -25,11 +25,10 @@ SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new)
 if [[ -n "${SSH_KEY:-}" ]]; then
   SSH_OPTS+=(-i "$SSH_KEY")
 fi
-SSH="${SSH_OPTS[@]}"
-RSYNC_SSH="ssh ${SSH[*]}"
+RSYNC_SSH="ssh ${SSH_OPTS[*]}"
 
 echo "→ EC2 연결 확인 ($EC2_USER@$EC2_HOST)"
-ssh "${SSH[@]}" "${EC2_USER}@${EC2_HOST}" "echo ok" >/dev/null
+ssh "${SSH_OPTS[@]}" "${EC2_USER}@${EC2_HOST}" "echo ok" >/dev/null
 
 echo "→ backend rsync"
 rsync -avz --delete \
@@ -42,7 +41,7 @@ rsync -avz --delete \
   "${EC2_USER}@${EC2_HOST}:${REMOTE_DIR}/"
 
 echo "→ migrate + build + PM2 restart"
-ssh "${SSH[@]}" "${EC2_USER}@${EC2_HOST}" bash -s <<'REMOTE'
+ssh "${SSH_OPTS[@]}" "${EC2_USER}@${EC2_HOST}" bash -s <<'REMOTE'
 set -euo pipefail
 cd ~/storyahub/backend
 export NODE_ENV=production
