@@ -2,6 +2,8 @@ import { NativeModules, Platform } from 'react-native';
 
 type DeviceContact = {
   person?: string;
+  title?: string;
+  department?: string;
   phone?: string;
   email?: string;
   company?: string;
@@ -11,7 +13,7 @@ type StoryahubContactsModule = {
   fetchContacts: () => Promise<DeviceContact[]>;
   exportContacts: (
     contacts: DeviceContact[],
-  ) => Promise<{ added: number; skipped: number }>;
+  ) => Promise<{ added: number; updated: number; skipped: number }>;
 };
 
 const iosContacts = NativeModules.StoryahubContacts as
@@ -32,13 +34,14 @@ export async function fetchNativeDeviceContacts(): Promise<DeviceContact[]> {
 
 export async function exportNativeDeviceContacts(
   contacts: DeviceContact[],
-): Promise<{ added: number; skipped: number }> {
+): Promise<{ added: number; updated: number; skipped: number }> {
   if (!isNativeContactsAvailable() || !iosContacts?.exportContacts) {
-    return { added: 0, skipped: contacts.length };
+    return { added: 0, updated: 0, skipped: contacts.length };
   }
   const result = await iosContacts.exportContacts(contacts);
   return {
     added: Number(result?.added) || 0,
+    updated: Number(result?.updated) || 0,
     skipped: Number(result?.skipped) || 0,
   };
 }

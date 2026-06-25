@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from
 import { createPortal } from "react-dom";
 import { api } from "../api/client.js";
 import { confirmDelete } from "../confirmDelete.js";
-import { uploadFile, pickImageFile, pickAnyFile, mediaUrl, isPickCancelled } from "../api/upload.js";
+import { uploadFile, pickImageFile, pickAnyFile, mediaUrl, openMediaFile, isPickCancelled } from "../api/upload.js";
 import { KB_SECTIONS, kbSectionLabel, kbCoverKey } from "../mappers.js";
 import { kbPresets, tagColor, mergePreferencesRaw } from "../preferences.js";
 import { notifyError, toastSuccess } from "../toast.js";
@@ -135,20 +135,29 @@ function AddBlockMenu({ onPick, onClose }) {
 }
 
 function KbFileRow({ block, onClick }) {
-  const [url, setUrl] = useState(null);
+  const [opening, setOpening] = useState(false);
   const kind = block.kind || fileKind(block.mime, block.name);
-  useEffect(() => {
-    if (!block.mediaKey) return;
-    mediaUrl(block.mediaKey)
-      .then(setUrl)
-      .catch(() => {});
-  }, [block.mediaKey]);
+  const handleOpen = async () => {
+    if (onClick) {
+      onClick();
+      return;
+    }
+    if (!block.mediaKey || opening) return;
+    setOpening(true);
+    try {
+      await openMediaFile(block.mediaKey);
+    } catch (err) {
+      notifyError(err, err.message || "파일을 열 수 없습니다");
+    } finally {
+      setOpening(false);
+    }
+  };
   return (
-    <div className="fileblk" style={{ cursor: url || onClick ? "pointer" : "default" }} onClick={() => (url ? window.open(url, "_blank", "noopener") : onClick?.())}>
+    <div className="fileblk" style={{ cursor: block.mediaKey ? "pointer" : "default" }} onClick={handleOpen}>
       <div className="fileic" style={{ background: FILE_COLORS[kind] || FILE_COLORS.file }}>{FILE_ICONS[kind] || "📄"}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{block.name || "첨부파일"}</div>
-        <div className="small">{block.meta || (url ? "탭해서 열기" : "불러오는 중…")}</div>
+        <div className="small">{block.meta || (opening ? "여는 중…" : block.mediaKey ? "탭해서 열기" : "…")}</div>
       </div>
     </div>
   );

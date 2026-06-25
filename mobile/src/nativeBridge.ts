@@ -15,7 +15,7 @@ export type WebToNativeMessage =
   | {
       type: 'EXPORT_DEVICE_CONTACTS';
       requestId: string;
-      contacts: Array<{ person?: string; phone?: string; email?: string; company?: string }>;
+      contacts: Array<{ person?: string; title?: string; department?: string; phone?: string; email?: string; company?: string }>;
     };
 
 export type NativeToWebMessage =
@@ -54,12 +54,13 @@ export type NativeToWebMessage =
   | {
       type: 'DEVICE_CONTACTS_FETCHED';
       requestId: string;
-      contacts: Array<{ person?: string; phone?: string; email?: string; company?: string }>;
+      contacts: Array<{ person?: string; title?: string; department?: string; phone?: string; email?: string; company?: string }>;
     }
   | {
       type: 'DEVICE_CONTACTS_EXPORTED';
       requestId: string;
       added: number;
+      updated: number;
       skipped: number;
     }
   | { type: 'CONTACTS_ERROR'; requestId: string; message: string };

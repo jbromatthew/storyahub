@@ -181,6 +181,7 @@ export function WebApp() {
               type: 'DEVICE_CONTACTS_EXPORTED',
               requestId: msg.requestId,
               added: result.added,
+              updated: result.updated,
               skipped: result.skipped,
             });
           } catch (err) {

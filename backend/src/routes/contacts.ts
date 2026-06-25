@@ -69,6 +69,8 @@ contactsRouter.post("/import", async (req: AuthedRequest, res) => {
     const phone = raw?.phone != null ? String(raw.phone).trim() : null;
     const email = raw?.email != null ? String(raw.email).trim() : null;
     const company = raw?.company != null ? String(raw.company).trim() : null;
+    const title = raw?.title != null ? String(raw.title).trim() : null;
+    const department = raw?.department != null ? String(raw.department).trim() : null;
     const identityKey = computeIdentityKey(person, phone);
     const normPhone = normalizePhone(phone);
 
@@ -86,6 +88,8 @@ contactsRouter.post("/import", async (req: AuthedRequest, res) => {
         userId,
         person,
         company: company || null,
+        title: title || null,
+        department: department || null,
         phone,
         email: email || null,
         identityKey,

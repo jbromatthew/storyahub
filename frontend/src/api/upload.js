@@ -117,6 +117,18 @@ export async function mediaUrl(mediaKey) {
   return url;
 }
 
+/** 첨부파일 열기 — WebView에서는 blob URL 대신 presigned URL 사용 */
+export async function openMediaFile(mediaKey) {
+  if (!mediaKey) throw new Error("파일이 없습니다");
+  const { url } = await api.getUploadUrl(mediaKey);
+  if (!url) throw new Error("파일 URL을 가져오지 못했습니다");
+  if (isNativeShell()) {
+    window.location.assign(url);
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 export class PickCancelled extends Error {
   constructor() {
     super("cancelled");

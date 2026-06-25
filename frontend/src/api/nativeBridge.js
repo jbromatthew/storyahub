@@ -87,7 +87,7 @@ function ensurePickImageListener() {
       const { resolve, reject } = contactsExportPending;
       contactsExportPending = null;
       if (msg.type === "DEVICE_CONTACTS_EXPORTED") {
-        resolve({ added: msg.added || 0, skipped: msg.skipped || 0 });
+        resolve({ added: msg.added || 0, updated: msg.updated || 0, skipped: msg.skipped || 0 });
       } else if (msg.type === "CONTACTS_ERROR") {
         reject(new Error(msg.message || "연락처 저장 실패"));
       }
@@ -119,7 +119,7 @@ export function fetchDeviceContacts() {
 
 export function exportDeviceContacts(contacts) {
   if (!isDeviceContactsAvailable()) {
-    return Promise.resolve({ added: 0, skipped: (contacts || []).length });
+    return Promise.resolve({ added: 0, updated: 0, skipped: (contacts || []).length });
   }
   ensurePickImageListener();
   const requestId = `contacts-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

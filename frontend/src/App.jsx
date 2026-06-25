@@ -15,7 +15,7 @@ import PlacesView from "./components/PlacesView.jsx";
 import CalendarView from "./components/CalendarView.jsx";
 import PhotoGallery from "./components/PhotoGallery.jsx";
 import { api, loadToken, saveToken, clearToken, setToken, isAuthError, isAccessError } from "./api/client.js";
-import { uploadBlob, uploadFile, pickImageFile, pickAudioFile, audioDurationSec, pickAnyFile, fileToBase64, mediaUrl, AudioRecorder, isPickCancelled, isNativeRecordingResult, isNativeShell } from "./api/upload.js";
+import { uploadBlob, uploadFile, pickImageFile, pickAudioFile, audioDurationSec, pickAnyFile, fileToBase64, mediaUrl, openMediaFile, AudioRecorder, isPickCancelled, isNativeRecordingResult, isNativeShell } from "./api/upload.js";
 import { setClients, getClients, setPlaces, getPlaces } from "./store.js";
 import { contactToUi, todoToUi, todoSearchText, formatWhen, eventToUi, kbToUi, meetingToUi, meetingPeopleLabel, meetingAttendeeIds, isAudioMediaKey, isImageMediaKey, kbCategories, kbTags, KB_SECTIONS, kbSectionLabel, kbCoverKey, haversineKm, formatDistanceKm, kakaoDirectionsUrl, kbExcerpt, kbReadMinutes, kbFileCount, kbThumbMeta, placeToUi, contactRoleLine, formatDurationHm } from "./mappers.js";
 import { useSwipeBack } from "./useSwipeBack.js";
@@ -1724,6 +1724,7 @@ function Clients({group,setGroup,open,onAdd,onRefresh,goTab,seg,contactPresets={
       const parts=[];
       if(r.importAdded) parts.push(`Storyahub ${r.importAdded}명 추가`);
       if(r.exportAdded) parts.push(`휴대폰 ${r.exportAdded}명 추가`);
+      if(r.exportUpdated) parts.push(`휴대폰 ${r.exportUpdated}명 갱신`);
       const skipped=(r.importSkipped||0)+(r.exportSkipped||0);
       if(parts.length){
         toastSuccess(parts.join(" · ")+(skipped?` · ${skipped}명 건너뜀`:""));
@@ -4984,14 +4985,25 @@ function fileNameFromKey(key){
 function TodoAttachmentRow({att}){
   const [url,setUrl]=useState(null);
   const [err,setErr]=useState(false);
+  const [opening,setOpening]=useState(false);
   useEffect(()=>{
     if(!att?.key) return;
     mediaUrl(att.key).then(setUrl).catch(()=>setErr(true));
   },[att?.key]);
   const isImage=att?.kind==="image"||(att?.name||"").match(/\.(png|jpe?g|gif|webp)$/i);
-  const open=()=>{ if(url) window.open(url,"_blank","noopener"); };
+  const open=async ()=>{
+    if(!att?.key||opening) return;
+    setOpening(true);
+    try{
+      await openMediaFile(att.key);
+    }catch(e){
+      notifyError(e, e.message||"파일을 열 수 없습니다");
+    }finally{
+      setOpening(false);
+    }
+  };
   return (
-    <div className="row between" style={{padding:"12px 0",borderBottom:"1px solid var(--line)",cursor:url?"pointer":"default"}} onClick={open}>
+    <div className="row between" style={{padding:"12px 0",borderBottom:"1px solid var(--line)",cursor:att?.key?"pointer":"default"}} onClick={open}>
       <div className="row" style={{gap:10,flex:1,minWidth:0}}>
         {isImage && url ? (
           <img src={url} alt="" style={{width:44,height:44,borderRadius:8,objectFit:"cover",flex:"0 0 auto"}}/>
@@ -5002,10 +5014,10 @@ function TodoAttachmentRow({att}){
         )}
         <div style={{minWidth:0}}>
           <div style={{fontWeight:600,fontSize:13.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{att?.name||"첨부파일"}</div>
-          <div className="small">{err?"열기 실패":url?"탭해서 열기":"불러오는 중…"}</div>
+          <div className="small">{err?"열기 실패":opening?"여는 중…":att?.key?"탭해서 열기":"불러오는 중…"}</div>
         </div>
       </div>
-      {url && <span style={{color:"var(--muted)"}}>{I.chevron({})}</span>}
+      {att?.key && <span style={{color:"var(--muted)"}}>{I.chevron({})}</span>}
     </div>
   );
 }
