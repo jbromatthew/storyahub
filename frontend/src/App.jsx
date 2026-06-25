@@ -15,7 +15,7 @@ import PlacesView from "./components/PlacesView.jsx";
 import CalendarView from "./components/CalendarView.jsx";
 import PhotoGallery from "./components/PhotoGallery.jsx";
 import { api, loadToken, saveToken, clearToken, setToken, isAuthError, isAccessError } from "./api/client.js";
-import { uploadBlob, uploadFile, pickImageFile, pickAudioFile, audioDurationSec, pickAnyFile, fileToBase64, mediaUrl, openMediaFile, AudioRecorder, isPickCancelled, isNativeRecordingResult, isNativeShell } from "./api/upload.js";
+import { uploadBlob, uploadFile, pickImageFile, pickImportAudioFile, audioDurationSec, pickAnyFile, fileToBase64, mediaUrl, openMediaFile, AudioRecorder, isPickCancelled, isNativeRecordingResult, isNativeShell } from "./api/upload.js";
 import { setClients, getClients, setPlaces, getPlaces } from "./store.js";
 import { contactToUi, todoToUi, todoSearchText, formatWhen, eventToUi, kbToUi, meetingToUi, meetingPeopleLabel, meetingAttendeeIds, isAudioMediaKey, isImageMediaKey, kbCategories, kbTags, KB_SECTIONS, kbSectionLabel, kbCoverKey, haversineKm, formatDistanceKm, kakaoDirectionsUrl, kbExcerpt, kbReadMinutes, kbFileCount, kbThumbMeta, placeToUi, contactRoleLine, formatDurationHm } from "./mappers.js";
 import { useSwipeBack } from "./useSwipeBack.js";
@@ -987,6 +987,7 @@ function App(){
     setRecordLink(link||null);
     setTab("record"); setPhase("setup"); setSecs(0); setHl(0); setLastSummary(null); setLastMediaKey(null);
   };
+  const startImportRec=()=>startRec({ importAudio: true });
   const startRecFromEvent=(event)=>{
     if(!event?.id) return;
     const contactIds=event.contactIds?.length?event.contactIds:event.contactId?[event.contactId]:[];
@@ -1258,7 +1259,7 @@ function App(){
           : tab==="todos" ? <TodoArchive embedded meetings={meetings} todos={todos} onRefresh={loadAppData} openDetail={(t)=>setDetail({type:"task",data:t})}/>
           : tab==="clients" ? (cardScan ? <CardScan back={()=>setCardScan(false)} onSaved={refreshContacts} user={user} onUserUpdated={setUser} contactPresets={prefs.contacts}/> : <Clients group={group} setGroup={setGroup} open={(c)=>setClient(c)} onAdd={()=>setCardScan(true)} onRefresh={loadAppData} goTab={goTab} seg={segment} user={user} onUserUpdated={setUser} contactPresets={prefs.contacts}/>)
           : tab==="places" ? <PlacesView placePresets={prefs.places} onRefresh={loadAppData}/>
-          : tab==="meetings" ? <MeetingsTab meetings={meetings} openDetail={(m)=>setDetail({type:"meeting",data:m})} startRec={startRec} onRefresh={loadAppData} meetingPresets={prefs.meeting}/>
+          : tab==="meetings" ? <MeetingsTab meetings={meetings} openDetail={(m)=>setDetail({type:"meeting",data:m})} startRec={startRec} startImportRec={startImportRec} onRefresh={loadAppData} meetingPresets={prefs.meeting}/>
           : tab==="calendar" ? <CalendarView openDetail={(t,data)=>setDetail({type:t,data})} organizePrefs={prefs} onStartRecFromEvent={startRecFromEvent} onRefresh={loadAppData}/>
           : kbView ? (
             kbView.mode==="edit"
@@ -3249,10 +3250,13 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
   const [interrupted,setInterrupted]=useState(false);
   const [photoGalleryIdx,setPhotoGalleryIdx]=useState(null);
   const recorderRef=useRef(null);
+  const importTriggeredRef=useRef(false);
   const toggleAtt=(id)=>setAtt(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
   const found=CLIENTS.filter(c=>(c.person+c.co).toLowerCase().includes(q.trim().toLowerCase()));
   const primary=CLIENTS.find(c=>att.includes(c.id))||null;
-  const finishLabel=finishing?"종료 중…":"미팅 종료";
+  const finishLabel=finishing
+    ? (inputMode==="upload" ? "변환 중…" : "종료 중…")
+    : (inputMode==="upload" ? "가져와서 변환" : "미팅 종료");
   const photoPreviewUrls=photos.map(p=>p.preview).filter(Boolean);
 
   const resetChoose=()=>{
@@ -3278,6 +3282,16 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
         : [];
     if(ids.length) setAtt(ids);
   },[recordLink]);
+
+  useEffect(()=>{
+    if(!recordLink?.importAudio || inputMode || liveOn || importTriggeredRef.current) return;
+    importTriggeredRef.current=true;
+    importAudio();
+  },[recordLink?.importAudio, inputMode, liveOn]);
+
+  useEffect(()=>{
+    if(!recordLink?.importAudio) importTriggeredRef.current=false;
+  },[recordLink?.importAudio]);
 
   useEffect(()=>{
     if(!liveOn) return;
@@ -3319,9 +3333,9 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
   const setPhotoNote=(i,note)=>setPhotos(p=>p.map((x,k)=>k===i?{...x,note}:x));
   const removePhoto=(i)=>setPhotos(p=>p.filter((_,k)=>k!==i));
 
-  const pickAudio=async ()=>{
+  const importAudio=async ()=>{
     try{
-      const file=await pickAudioFile();
+      const file=await pickImportAudioFile();
       setAudioFile(file);
       setInputMode("upload");
       setAudioDur(0);
@@ -3470,13 +3484,16 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
           <span>녹음 시작</span>
         </button>
         <button className="btn" style={{padding:"22px 12px",fontSize:14,background:"var(--ink)",color:"#fff",flexDirection:"column",gap:8,display:"flex",alignItems:"center",justifyContent:"center"}}
-          onClick={pickAudio}>
-          {I.plus({width:24,height:24})}
-          <span>파일 올리기</span>
+          onClick={importAudio}>
+          {I.download({width:24,height:24})}
+          <span>녹음 가져오기</span>
         </button>
       </div>
-      <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center",color:"var(--muted)"}}>
-        m4a, mp3, wav, webm 등 · 보이스 메모·통화 녹음도 가능해요
+      <div className="card" style={{padding:"14px 16px",marginTop:14,background:"#FBF9F4",border:"1px solid var(--line)"}}>
+        <div className="small" style={{lineHeight:1.6,color:"var(--muted)"}}>
+          <b style={{color:"var(--ink)"}}>통화 녹음 · 보이스 메모</b> — 휴대폰에 저장된 m4a, mp3, wav 파일을 골라 전사·요약해요.
+          {isNativeShell() ? " iPhone은 Files·통화 녹음에서, LG 등은 녹음 폴더에서 선택하세요." : " 파일 선택 창에서 가져올 녹음을 고르세요."}
+        </div>
       </div>
       {!(user?.isTrial||user?.allowFileUpload===false) && (
         <button type="button" className="chip" style={{display:"block",width:"fit-content",margin:"16px auto 0",color:"var(--muted)"}}
@@ -3592,13 +3609,13 @@ function RecordScreen({phase,secs,mmss,hl,setHl,onRunInBackground,todos,toggleTo
           <span onClick={resetChoose} style={{cursor:"pointer",opacity:.55,fontSize:18,lineHeight:1,flexShrink:0}}>✕</span>
         </div>
       </div>
-      <button className="chip" style={{width:"100%",marginTop:10,padding:12,color:"var(--accent-deep)"}} onClick={pickAudio}>
+      <button className="chip" style={{width:"100%",marginTop:10,padding:12,color:"var(--accent-deep)"}} onClick={importAudio}>
         다른 파일 선택
       </button>
       <button className="btn" style={{width:"100%",marginTop:18,padding:16,background:"var(--ink)",color:"#fff",fontSize:15}}
         onClick={finish} disabled={finishing}>{finishLabel}</button>
       <div className="small" style={{marginTop:14,lineHeight:1.5,textAlign:"center"}}>
-        올리면 백그라운드에서 전사·요약이 진행돼요. 완료되면 알려드릴게요.<br/>
+        가져오면 백그라운드에서 전사·요약이 진행돼요. 완료되면 알려드릴게요.<br/>
         최대 2시간 · 150MB
       </div>
       </>
@@ -4390,7 +4407,7 @@ function TodoBoard({todos,setTodoStatus,openDetail}){
 }
 
 /* ---------------- MEETINGS TAB (미팅 내역 · 요약 · 할 일) ---------------- */
-function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh,meetingPresets={categories:[],tags:[]}}){
+function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,startImportRec,onRefresh,meetingPresets={categories:[],tags:[]}}){
   const CLIENTS=getClients();
   const bootRef=useRef(bootMeetings);
   bootRef.current=bootMeetings;
@@ -4427,6 +4444,12 @@ function MeetingsTab({meetings:bootMeetings=[],openDetail,startRec,onRefresh,mee
         <div className="h-title">미팅 내역</div>
         <div className="small" style={{marginTop:6,lineHeight:1.55}}>
           {loading&&!items.length?"불러오는 중…":`${shown.length}건 · 항목을 누르면 요약과 할 일을 볼 수 있어요`}
+        </div>
+        <div className="row" style={{gap:8,marginTop:12,flexWrap:"wrap"}}>
+          <button type="button" className="chip" style={{display:"flex",alignItems:"center",gap:6,color:"var(--accent-deep)"}}
+            onClick={()=>startImportRec?.()}>
+            {I.download({width:14,height:14})} 녹음 가져오기
+          </button>
         </div>
         {catFilters.length>1 && (
           <div className="row" style={{gap:7,marginTop:12,flexWrap:"wrap"}}>

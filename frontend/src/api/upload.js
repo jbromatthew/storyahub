@@ -205,20 +205,46 @@ export function pickAnyFile() {
 }
 
 export function pickAudioFile() {
-  return new Promise((resolve, reject) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "audio/*,audio/mp4,audio/x-m4a,.m4a,.mp3,.wav,.webm,.mp4,.aac,.ogg,.caf";
-    const finish = (file) => {
-      input.remove();
-      if (file) resolve(file);
-      else reject(new PickCancelled());
-    };
-    input.addEventListener("change", () => finish(input.files?.[0]));
-    input.addEventListener("cancel", () => finish(null));
-    document.body.appendChild(input);
-    input.click();
-  });
+  return pickImportAudioFile();
+}
+
+const AUDIO_IMPORT_RE = /\.(m4a|mp3|wav|aac|ogg|caf|amr|3gp|mp4|webm)$/i;
+
+export function isAudioImportFile(file) {
+  if (!file) return false;
+  const mime = (file.type || "").toLowerCase();
+  if (mime.startsWith("audio/")) return true;
+  if ((mime === "video/mp4" || mime === "application/octet-stream") && AUDIO_IMPORT_RE.test(file.name || "")) {
+    return true;
+  }
+  return AUDIO_IMPORT_RE.test(file.name || "");
+}
+
+/** 휴대폰에 저장된 통화·녹음 파일 가져오기 (iOS는 Files/통화녹음 폴더 선택) */
+export async function pickImportAudioFile() {
+  let file;
+  if (isNativeShell() && getNativePlatform() === "ios") {
+    file = await pickNativeDocumentFile();
+  } else {
+    file = await new Promise((resolve, reject) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "audio/*,audio/mp4,audio/x-m4a,.m4a,.mp3,.wav,.webm,.mp4,.aac,.ogg,.caf,.amr,.3gp";
+      const finish = (picked) => {
+        input.remove();
+        if (picked) resolve(picked);
+        else reject(new PickCancelled());
+      };
+      input.addEventListener("change", () => finish(input.files?.[0]));
+      input.addEventListener("cancel", () => finish(null));
+      document.body.appendChild(input);
+      input.click();
+    });
+  }
+  if (!isAudioImportFile(file)) {
+    throw new Error("음성 파일만 가져올 수 있어요 (m4a, mp3, wav 등)");
+  }
+  return file;
 }
 
 /** @param {File|Blob} file */
