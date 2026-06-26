@@ -8,6 +8,7 @@ import MeetingInsights from "./components/MeetingInsights.jsx";
 import CategoryTagSettings from "./components/CategoryTagSettings.jsx";
 import CalendarSyncSettings from "./components/CalendarSyncSettings.jsx";
 import FileViewerOverlay from "./components/FileViewerOverlay.jsx";
+import QuotesView from "./components/QuotesView.jsx";
 import ContactGroupTagPanel from "./components/ContactGroupTagPanel.jsx";
 import MeetingAskPanel from "./components/MeetingAskPanel.jsx";
 import CardScanView from "./components/CardScanView.jsx";
@@ -846,7 +847,6 @@ function App(){
   const [user,setUser] = useState(null);
   const [tab,setTab] = useState("today");
   const [client,setClient] = useState(null);
-  const [clientAddQuote,setClientAddQuote] = useState(false);
   const [group,setGroup] = useState("전체");
   const [phase,setPhase] = useState("idle");
   const [kbView,setKbView] = useState(null);
@@ -870,6 +870,7 @@ function App(){
   const [recordLink,setRecordLink] = useState(null);
   const [mobileMenuOpen,setMobileMenuOpen] = useState(false);
   const [fileViewer,setFileViewer] = useState(null);
+  const [quotesInit,setQuotesInit] = useState(null);
   const timer = useRef(null);
   const recStartedAtRef = useRef(null);
 
@@ -982,8 +983,15 @@ function App(){
       openBookSearch: !!opts.openBookSearch,
     });
   };
-  const openClient=(c,{addQuote=false}={})=>{ setClient(c); setClientAddQuote(!!addQuote); };
-  const closeClient=()=>{ setClient(null); setClientAddQuote(false); };
+  const openQuotes=(opts={})=>{ setQuotesInit(opts); setMobileMenuOpen(false); setClient(null); setKbView(null); setPricing(false); setCardScan(false); setOverlay(null); setDetail(null); setTab("quotes"); };
+  const openClient=(c,{addQuote=false}={})=>{
+    if(addQuote && c?.id){
+      openQuotes({ contactId: c.id, newQuote: true });
+      return;
+    }
+    setClient(c);
+  };
+  const closeClient=()=>{ setClient(null); };
   const goTab=(t)=>{ setMobileMenuOpen(false); closeClient(); setKbView(null); setPricing(false); setCardScan(false); setOverlay(null); setDetail(null); if(t!=="record"){ setTab(t);} };
   const startRec=(link=null)=>{
     if(user && user.hasAccess===false){
@@ -1193,6 +1201,7 @@ function App(){
               <NavBtn layout="side" on={tab==="today"&&!client} icon={I.home} label="투데이" onClick={()=>goTab("today")}/>
               <NavBtn layout="side" on={tab==="todos"} icon={I.todo} label="할 일" onClick={()=>goTab("todos")}/>
               <NavBtn layout="side" on={tab==="clients"||!!client} icon={I.users} label={T(segment,"contacts")} onClick={()=>goTab("clients")}/>
+              <NavBtn layout="side" on={tab==="quotes"} icon={I.quote} label="견적" onClick={()=>goTab("quotes")}/>
               <NavBtn layout="side" on={tab==="meetings"} icon={I.meet} label="미팅" onClick={()=>goTab("meetings")}/>
               <NavBtn layout="side" on={tab==="calendar"} icon={I.cal} label="캘린더" onClick={()=>goTab("calendar")}/>
               <NavBtn layout="side" on={tab==="places"} icon={I.place} label="맛집" onClick={()=>goTab("places")}/>
@@ -1216,6 +1225,7 @@ function App(){
           tab={tab}
           client={client}
           onGoTab={goTab}
+          onOpenQuotes={openQuotes}
           onSearch={()=>setOverlay("search")}
           onSettings={()=>setOverlay("settings")}
           onRecord={startRec}
@@ -1239,6 +1249,7 @@ function App(){
               meetings={meetings} kbArticles={kbArticles} todos={todos}/>
           : overlay==="mypage" ? <MyPage user={user} back={()=>setOverlay("settings")} onUserUpdated={setUser}/>
           : overlay==="settings" ? <Settings user={user} back={()=>setOverlay(null)} go={(o)=>setOverlay(o)}
+              openQuotes={()=>{ setOverlay(null); openQuotes(); }}
               openPricing={()=>{ if(!BETA_HIDE_PRICING){ setOverlay(null); setPricing(true); } }}
               onLogout={async ()=>{ try{ await api.logout(); }catch{/* ignore */} clearToken(); setUser(null); setBoot("auth"); setOverlay(null); }}/>
           : overlay==="trash" ? <Trash back={()=>setOverlay("settings")}/>
@@ -1258,8 +1269,10 @@ function App(){
               onDeleted={()=>{ closeClient(); loadAppData(); }}
               user={user} onUserUpdated={setUser}
               contactPresets={prefs.contacts}
-              initialAddQuote={clientAddQuote}
+              openQuotes={openQuotes}
               openMeeting={(m)=>setDetail({type:"meeting",data:m.mediaKey!==undefined?m:meetingToUi(m)})}/>
+          : tab==="quotes" ? <QuotesView contacts={getClients()} init={quotesInit} onInitConsumed={()=>setQuotesInit(null)}
+              onOpenContact={(c)=>openClient(c)} onRefresh={loadAppData} I={I}/>
           : tab==="today" ? <Today user={user} startRec={startRec} todos={todos} toggleTodo={toggleTodo} setTodoStatus={setTodoStatus}
                               eventsToday={eventsToday} meetings={meetings} revenue={revenue}
                               openClient={openClient} seeSummary={(m)=>openDetail("meeting",m)}
@@ -1269,7 +1282,7 @@ function App(){
                               openTodoArchive={()=>goTab("todos")}
                               kbArticles={kbArticles}
                               openKb={(a)=>openKbView(a,"read")}
-                              openDetail={(t,data)=>setDetail({type:t,data})} onRefresh={loadAppData}/>
+                              openDetail={(t,data)=>setDetail({type:t,data})} openQuotes={openQuotes} onRefresh={loadAppData}/>
           : tab==="todos" ? <TodoArchive embedded meetings={meetings} todos={todos} onRefresh={loadAppData} openDetail={(t)=>setDetail({type:"task",data:t})}/>
           : tab==="clients" ? (cardScan ? <CardScan back={()=>setCardScan(false)} onSaved={refreshContacts} user={user} onUserUpdated={setUser} contactPresets={prefs.contacts}/> : <Clients group={group} setGroup={setGroup} open={openClient} onAdd={()=>setCardScan(true)} onRefresh={loadAppData} goTab={goTab} seg={segment} user={user} onUserUpdated={setUser} contactPresets={prefs.contacts}/>)
           : tab==="places" ? <PlacesView placePresets={prefs.places} onRefresh={loadAppData}/>
@@ -1325,10 +1338,11 @@ function NavBtn({on,icon,label,onClick,layout="bottom"}){
   return <button type="button" className={"navitem"+(on?" on":"")} onClick={onClick}>{icon({})}<span>{label}</span></button>;
 }
 
-function MobileMenuSheet({open,onClose,tab,client,onGoTab,onSearch,onSettings,onRecord}){
+function MobileMenuSheet({open,onClose,tab,client,onGoTab,onOpenQuotes,onSearch,onSettings,onRecord}){
   if(!open) return null;
   const pick=(fn)=>()=>{ onClose(); fn(); };
   const menuTabs=[
+    {id:"quotes",icon:I.quote,label:"견적",action:()=>onGoTab("quotes")},
     {id:"calendar",icon:I.cal,label:"캘린더"},
     {id:"places",icon:I.place,label:"맛집"},
     {id:"kb",icon:I.book,label:"지식백과"},
@@ -1346,7 +1360,7 @@ function MobileMenuSheet({open,onClose,tab,client,onGoTab,onSearch,onSettings,on
         <div className="small" style={{fontWeight:700,color:"var(--muted)",margin:"14px 0 6px",paddingLeft:4}}>바로가기</div>
         {menuTabs.map((item)=>(
           <button key={item.id} type="button" className={"mob-menu-item"+(tab===item.id&&!client?" on":"")}
-            onClick={pick(()=>onGoTab(item.id))}>
+            onClick={pick(item.action || (()=>onGoTab(item.id)))}>
             {item.icon({width:20,height:20})}
             <span>{item.label}</span>
           </button>
@@ -1372,7 +1386,7 @@ function MobileMenuSheet({open,onClose,tab,client,onGoTab,onSearch,onSettings,on
 }
 
 /* ---------------- TODAY ---------------- */
-function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSummary,openPricing,segment,openSearch,openSettings,openTodoArchive,openMeetings,openDetail,eventsToday,meetings,revenue,onRefresh,kbArticles=[],openKb}){
+function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSummary,openPricing,segment,openSearch,openSettings,openTodoArchive,openMeetings,openDetail,openQuotes,eventsToday,meetings,revenue,onRefresh,kbArticles=[],openKb}){
   const clients=getClients();
   const near=clients.filter(c=>c.group&&c.group!=="미분류").slice(0,3);
   const isBiz=segment==="business";
@@ -1458,7 +1472,7 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
 
       {/* 이번 달 매출 */}
       <div className="pad" style={{marginTop:18}}>
-        <div className="card" style={{padding:16,cursor:"pointer"}} onClick={()=>openDetail("revenue")}>
+        <div className="card" style={{padding:16,cursor:"pointer"}} onClick={()=>openQuotes?.()}>
           <div className="row between">
             <div className="small" style={{fontWeight:700}}>이번 달 매출 (부가세 포함)</div>
             <span className="small" style={{display:"flex",alignItems:"center",gap:3}}>{now.getMonth()+1}월 {I.chevron({width:15,height:15})}</span>
@@ -1479,7 +1493,7 @@ function Today({user,startRec,todos,toggleTodo,setTodoStatus,openClient,seeSumma
               <span className="tag amber">진행 {revenue?.pipelineCount||0}건</span>
             </div>
             <button type="button" className="chip" style={{color:"var(--accent-deep)",fontWeight:700}}
-              onClick={(e)=>{ e.stopPropagation(); openDetail("revenue",{addQuote:true}); }}>
+              onClick={(e)=>{ e.stopPropagation(); openQuotes?.({ newQuote: true }); }}>
               + 견적
             </button>
           </div>
@@ -2169,7 +2183,7 @@ function CardImageThumb({mediaKey}){
   return <img src={url} alt="명함" style={{width:"100%",borderRadius:12,maxHeight:180,objectFit:"contain",background:"#f5f5f5",marginBottom:12}}/>;
 }
 
-function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,onUserUpdated,contactPresets={groups:[],tags:[]},initialAddQuote=false}){
+function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,onUserUpdated,contactPresets={groups:[],tags:[]},openQuotes}){
   const mt=T(seg,"meeting");
   const CLIENTS=getClients();
   const [fav,setFav]=useState(!!c.fav);
@@ -2178,7 +2192,6 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
   const [tags,setTags]=useState(c.tags||[]);
   const [grp,setGrp]=useState(c.group||"미분류");
   const [introSheet,setIntroSheet]=useState(false);
-  const [addingDeal,setAddingDeal]=useState(!!initialAddQuote);
   const [dealSaving,setDealSaving]=useState(false);
   const [editingInfo,setEditingInfo]=useState(false);
   const [infoSaving,setInfoSaving]=useState(false);
@@ -2353,8 +2366,8 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
             onClick={()=>startRec({ contactIds: [c.id], contactId: c.id, companyName: profile.co || profile.person })}>{mt}</button>
         </div>
         <button type="button" className="btn" style={{width:"100%",marginTop:10,padding:13,background:"var(--ink)",color:"#fff",display:"flex",justifyContent:"center",gap:7}}
-          onClick={()=>setAddingDeal(true)}>
-          {I.quote({width:16,height:16})} 견적 추가
+          onClick={()=>openQuotes?.({ contactId: c.id, newQuote: true })}>
+          {I.quote({width:16,height:16})} 견적 작성
         </button>
       </div>
 
@@ -2399,33 +2412,28 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
 
       {/* 견적 · 매출 */}
       <div className="pad row between"><div className="section-h">견적 · 매출</div>
-        <button type="button" className="chip" style={{color:"var(--accent-deep)",marginTop:22}} onClick={()=>setAddingDeal(v=>!v)}>
-          {addingDeal ? "닫기" : "+ 견적"}
+        <button type="button" className="chip" style={{color:"var(--accent-deep)",marginTop:22}}
+          onClick={()=>openQuotes?.({ contactId: c.id, newQuote: true })}>
+          + 견적 작성
         </button></div>
       <div className="pad">
-        {addingDeal && (
-          <AddQuoteForm
-            contactId={c.id}
-            compact
-            onCancel={()=>setAddingDeal(false)}
-            onSaved={()=>{ setAddingDeal(false); reload(); onRefresh?.(); toastSuccess("견적을 등록했어요"); }}
-          />
-        )}
-        {deals.length===0 && !deal && !addingDeal ? (
+        {deals.length===0 && !deal ? (
         <div className="card small" style={{padding:20,textAlign:"center",lineHeight:1.55}}>
-          등록된 견적이 없어요.<br/>위 「견적 추가」로 금액과 견적서 파일을 넣을 수 있어요.
+          등록된 견적이 없어요.<br/>「견적 작성」으로 품목·PDF 견적서를 만들 수 있어요.
         </div>
         ) : (
         <>
         {(deal ? [deal] : deals).map(d=>{
           const { supply, vat, total } = dealAmounts(d.supplyAmount);
           return (
-        <div key={d.id} className="card" style={{padding:16,marginBottom:10}}>
+        <div key={d.id} className="card" style={{padding:16,marginBottom:10,cursor:"pointer"}} onClick={()=>openQuotes?.({ dealId: d.id, contactId: c.id })}>
           <div className="row between" style={{marginBottom:4}}>
-            <div className="small" style={{fontSize:11}}>{d.title}</div>
+            <div className="small" style={{fontSize:11}}>{d.quoteNumber || d.title}</div>
             <div className="row" style={{gap:6}}>
               <span className="tag amber">{d.stage}</span>
-              <button type="button" className="iconbtn" style={{width:32,height:32}} onClick={()=>deleteDeal(d)} aria-label="딜 삭제">
+              <button type="button" className="chip" style={{padding:"4px 8px",fontSize:11}}
+                onClick={(e)=>{ e.stopPropagation(); openQuotes?.({ dealId: d.id, contactId: c.id }); }}>수정</button>
+              <button type="button" className="iconbtn" style={{width:32,height:32}} onClick={(e)=>{ e.stopPropagation(); deleteDeal(d); }} aria-label="견적 삭제">
                 {I.trash({width:15,height:15,style:{color:"var(--muted)"}})}
               </button>
             </div>
@@ -2455,7 +2463,7 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
         </div>
         );})}
         {deals.length>1 && deals.slice(1).map(d=>(
-          <div key={d.id} className="card" style={{padding:14,marginBottom:8}}>
+          <div key={d.id} className="card" style={{padding:14,marginBottom:8,cursor:"pointer"}} onClick={()=>openQuotes?.({ dealId: d.id, contactId: c.id })}>
             <div className="row between">
               <div style={{minWidth:0}}>
                 <span style={{fontWeight:600}}>{d.title}</span>
@@ -2463,7 +2471,9 @@ function ClientDetail({c,back,startRec,seg,onRefresh,onDeleted,openMeeting,user,
               </div>
               <div className="row" style={{gap:6}}>
                 <span className="tag amber">{d.stage}</span>
-                <button type="button" className="iconbtn" style={{width:32,height:32}} onClick={()=>deleteDeal(d)} aria-label="딜 삭제">
+                <button type="button" className="chip" style={{padding:"4px 8px",fontSize:11}}
+                  onClick={(e)=>{ e.stopPropagation(); openQuotes?.({ dealId: d.id, contactId: c.id }); }}>수정</button>
+                <button type="button" className="iconbtn" style={{width:32,height:32}} onClick={(e)=>{ e.stopPropagation(); deleteDeal(d); }} aria-label="견적 삭제">
                   {I.trash({width:15,height:15,style:{color:"var(--muted)"}})}
                 </button>
               </div>
@@ -4908,7 +4918,7 @@ function MyPage({user,back,onUserUpdated}){
 }
 
 /* ---------------- SETTINGS ---------------- */
-function Settings({back,go,user,onLogout,openPricing}){
+function Settings({back,go,user,onLogout,openPricing,openQuotes}){
   const trialLabel=user?.lifetimeAccess?"무제한":user?.plan?`${user.plan.toUpperCase()}`:user?.trialDaysLeft!=null?`체험 ${user.trialDaysLeft}일`:"체험 중";
   const Row=(icon,label,val,onClick)=>(
     <div className="list-item row between" style={{cursor:"pointer"}} onClick={onClick}>
@@ -4945,6 +4955,7 @@ function Settings({back,go,user,onLogout,openPricing}){
 
         <div className="section-h">앱</div>
         <div className="card" style={{padding:"4px 16px",marginBottom:16}}>
+          {Row(I.quote({width:18,height:18}),"견적 · 품목 · 소속","견적서 작성",openQuotes||(()=>{}))}
           {Row(I.book({width:18,height:18}),"분류 · 태그","인맥 · 캘린더 · 미팅 · 맛집 · 지식",()=>go("categorytags"))}
           {Row(I.meet({width:18,height:18}),"캘린더 연동","Google · Apple",()=>go("calendarsync"))}
           {Row(I.book({width:18,height:18}),"언어","한국어",()=>{})}

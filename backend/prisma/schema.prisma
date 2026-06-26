@@ -39,6 +39,8 @@ model User {
   sharesOwned          ResourceShare[] @relation("ShareOwner")
   sharesReceived       ResourceShare[] @relation("ShareGrantee")
   calendarConnections  CalendarConnection[]
+  organizations        Organization[]
+  products             Product[]
 }
 
 model Coupon {
@@ -188,18 +190,90 @@ model Todo {              // 할 일
   createdAt DateTime @default(now())
 }
 
-model Deal {              // 딜/매출 — 금액은 직접 입력, 부가세/합계는 계산
+model Organization {      // 견적 공급자(내 소속/회사) 프로필
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  bizNo        String?
+  ceoName      String?
+  address      String?
+  phone        String?
+  email        String?
+  businessType String?                      // 업태 · 종목
+  bankName     String?
+  bankAccount  String?
+  logoKey      String?
+  sealKey      String?                       // 직인·도장 이미지 R2 키
+  isDefault    Boolean  @default(false)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  deals        Deal[]
+
+  @@index([userId])
+}
+
+model Product {             // 품목 — 판매가·원가
   id          String   @id @default(cuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  contactId   String?
-  contact     Contact? @relation(fields: [contactId], references: [id])
-  title       String
-  stage       String   @default("리드")     // 리드|견적|협상|성사|실패
-  supplyAmount Int     @default(0)          // 공급가액(원). 부가세=*0.1, 합계=*1.1
-  quoteKey    String?                       // 견적서 파일 R2 키 (분석 안 함)
-  wonAt       DateTime?                      // 성사 시각 → 월 매출 집계
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  category    String?                          // 견적서 품목 분류 (IoT, 키오스크 등)
+  unit        String   @default("식")
+  sellPrice   Int      @default(0)          // 판매 단가(공급가)
+  cost        Int      @default(0)          // 원가 단가
+  description String?
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lineItems   DealLineItem[]
+
+  @@index([userId, active])
+}
+
+model DealLineItem {
+  id        String   @id @default(cuid())
+  dealId    String
+  deal      Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  name      String
+  category  String?                              // 품목 분류 (PDF 그룹 헤더)
+  unit      String   @default("식")
+  quantity  Int      @default(1)
+  unitPrice Int      @default(0)              // 공급가 단가 (할인 전)
+  unitCost  Int      @default(0)              // 원가 단가
+  lineDiscount Int  @default(0)              // 개당 할인액(원). 공급가 = qty*unitPrice - qty*lineDiscount
+  sortOrder Int      @default(0)
+
+  @@index([dealId])
+}
+
+model Deal {              // 딜/매출 — 금액은 직접 입력 또는 품목 합산, 부가세/합계는 계산
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  contactId      String?
+  contact        Contact? @relation(fields: [contactId], references: [id])
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  title          String
+  stage          String   @default("리드")     // 리드|견적|협상|성사|실패
+  supplyAmount   Int      @default(0)          // 공급가액(원). 부가세=*0.1, 합계=*1.1
+  quoteNumber    String?                       // 견적번호
+  validUntil     DateTime?                     // 견적 유효기간
+  notes          String?                       // 비고·특약
+  template       String   @default("standard") // standard|simple|formal
+  quoteKey       String?                       // 첨부/생성 견적서 R2 키
+  wonAt          DateTime?                     // 성사 시각 → 월 매출 집계
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  lineItems      DealLineItem[]
 }
 
 model Event {             // 캘린더 일정

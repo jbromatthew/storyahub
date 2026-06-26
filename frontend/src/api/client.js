@@ -168,8 +168,17 @@ export const api = {
     req(`/meetings/${id}/ask`, { method: "POST", body: { question } }),
 
   listDeals: () => req("/deals"),
+  getDeal: (id) => req(`/deals/${id}`),
   saveDeal: (data) => req("/deals", { method: "POST", body: data }),
   deleteDeal: (id) => req(`/deals/${id}`, { method: "DELETE" }),
+
+  listOrganizations: () => req("/organizations"),
+  saveOrganization: (data) => req("/organizations", { method: "POST", body: data }),
+  deleteOrganization: (id) => req(`/organizations/${id}`, { method: "DELETE" }),
+
+  listProducts: () => req("/products"),
+  saveProduct: (data) => req("/products", { method: "POST", body: data }),
+  deleteProduct: (id) => req(`/products/${id}`, { method: "DELETE" }),
 
   listEvents: (from, to) => req(`/calendar?from=${from}&to=${to}`),
   createEvent: (data) => req("/calendar", { method: "POST", body: data }),

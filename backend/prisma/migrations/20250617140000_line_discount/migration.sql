@@ -1,0 +1,1 @@
+ALTER TABLE "DealLineItem" ADD COLUMN "lineDiscount" INTEGER NOT NULL DEFAULT 0;
