@@ -80,6 +80,40 @@ export function contactRoleLine(c) {
   return [c.title, c.department].filter(Boolean).join(" · ");
 }
 
+export function contactSearchText(c) {
+  return [
+    c.person,
+    c.co,
+    c.title,
+    c.department,
+    c.phone,
+    c.email,
+    c.group,
+    c.area,
+    ...(c.tags || []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+/** DB 공급가액 → 부가세 포함 견적 금액 */
+export function dealAmounts(supplyAmount = 0) {
+  const supply = Math.max(0, Math.round(Number(supplyAmount) || 0));
+  const total = Math.round(supply * 1.1);
+  const vat = total - supply;
+  return { supply, vat, total };
+}
+
+/** 사용자 입력(부가세 포함) → DB 공급가액 */
+export function totalToSupplyAmount(total) {
+  return Math.round(Math.max(0, Number(total) || 0) / 1.1);
+}
+
+export function formatWon(n) {
+  return `₩ ${Number(n || 0).toLocaleString("ko-KR")}`;
+}
+
 export function contactToUi(c) {
   const co = c.company || "";
   const split = splitMergedContactFields(c);
@@ -214,6 +248,8 @@ export function eventToUi(e) {
     startsAt: e.startsAt,
     endsAt: e.endsAt,
     reminders: e.reminders || [],
+    googleId: e.googleId || null,
+    eventKitId: e.eventKitId || null,
     _series: e._series || null,
     _raw: e,
   };

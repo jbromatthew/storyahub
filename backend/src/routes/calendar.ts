@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 import { expandYearlyInRange } from "../services/eventRecurrence.js";
+import { deleteEventFromGoogle, pushEventToGoogle } from "../services/googleCalendar.js";
 
 export const calendarRouter = Router();
 calendarRouter.use(auth, requireAccess);
@@ -89,6 +90,7 @@ calendarRouter.post("/", async (req: AuthedRequest, res) => {
       repeatYearly: !!repeatYearly,
     },
   });
+  void pushEventToGoogle(req.userId!, e.id).catch((err) => console.warn("google push create", err));
   res.status(201).json(e);
 });
 
@@ -121,6 +123,7 @@ calendarRouter.patch("/:id", async (req: AuthedRequest, res) => {
       repeatYearly: repeatYearly !== undefined ? !!repeatYearly : cur.repeatYearly,
     },
   });
+  void pushEventToGoogle(userId, e.id).catch((err) => console.warn("google push update", err));
   res.json(e);
 });
 
@@ -147,7 +150,9 @@ calendarRouter.delete("/:id", async (req: AuthedRequest, res) => {
   const userId = req.userId!;
   const cur = await prisma.event.findFirst({ where: { id: req.params.id, userId } });
   if (!cur) return res.status(404).json({ error: "not found" });
+  const googleId = cur.googleId;
   await prisma.event.delete({ where: { id: cur.id } });
+  void deleteEventFromGoogle(userId, googleId).catch((err) => console.warn("google push delete", err));
   res.status(204).send();
 });
 

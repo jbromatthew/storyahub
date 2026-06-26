@@ -24,6 +24,8 @@ let pickImagesPending = null;
 let pickDocumentPending = null;
 let contactsFetchPending = null;
 let contactsExportPending = null;
+let calendarFetchPending = null;
+let calendarExportPending = null;
 let pickImageListenerReady = false;
 
 function ensurePickImageListener() {
@@ -91,6 +93,31 @@ function ensurePickImageListener() {
       } else if (msg.type === "CONTACTS_ERROR") {
         reject(new Error(msg.message || "연락처 저장 실패"));
       }
+      return;
+    }
+    if (calendarFetchPending && msg?.requestId && msg.requestId === calendarFetchPending.requestId) {
+      const { resolve, reject } = calendarFetchPending;
+      calendarFetchPending = null;
+      if (msg.type === "DEVICE_EVENTS_FETCHED") {
+        resolve(msg.events || []);
+      } else if (msg.type === "CALENDAR_ERROR") {
+        reject(new Error(msg.message || "캘린더를 불러오지 못했습니다"));
+      }
+      return;
+    }
+    if (calendarExportPending && msg?.requestId && msg.requestId === calendarExportPending.requestId) {
+      const { resolve, reject } = calendarExportPending;
+      calendarExportPending = null;
+      if (msg.type === "DEVICE_EVENTS_EXPORTED") {
+        resolve({
+          added: msg.added || 0,
+          updated: msg.updated || 0,
+          skipped: msg.skipped || 0,
+          mappings: msg.mappings || [],
+        });
+      } else if (msg.type === "CALENDAR_ERROR") {
+        reject(new Error(msg.message || "캘린더 저장 실패"));
+      }
     }
   });
 }
@@ -130,6 +157,45 @@ export function exportDeviceContacts(contacts) {
       if (!contactsExportPending || contactsExportPending.requestId !== requestId) return;
       contactsExportPending.reject(new Error("연락처 저장 시간 초과"));
       contactsExportPending = null;
+    }, 120000);
+  });
+}
+
+/** iOS 앱 — Apple 캘린더 읽기 */
+export function isDeviceCalendarAvailable() {
+  return isNativeShell() && getNativePlatform() === "ios";
+}
+
+export function fetchDeviceEvents(from, to) {
+  if (!isDeviceCalendarAvailable()) {
+    return Promise.reject(new Error("앱(iOS)에서만 Apple 캘린더 동기화를 사용할 수 있어요"));
+  }
+  ensurePickImageListener();
+  const requestId = `calendar-fetch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return new Promise((resolve, reject) => {
+    calendarFetchPending = { requestId, resolve, reject };
+    postNative({ type: "FETCH_DEVICE_EVENTS", requestId, from, to });
+    setTimeout(() => {
+      if (!calendarFetchPending || calendarFetchPending.requestId !== requestId) return;
+      calendarFetchPending.reject(new Error("캘린더 불러오기 시간 초과"));
+      calendarFetchPending = null;
+    }, 120000);
+  });
+}
+
+export function exportDeviceEvents(events) {
+  if (!isDeviceCalendarAvailable()) {
+    return Promise.resolve({ added: 0, updated: 0, skipped: (events || []).length, mappings: [] });
+  }
+  ensurePickImageListener();
+  const requestId = `calendar-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return new Promise((resolve, reject) => {
+    calendarExportPending = { requestId, resolve, reject };
+    postNative({ type: "EXPORT_DEVICE_EVENTS", requestId, events: events || [] });
+    setTimeout(() => {
+      if (!calendarExportPending || calendarExportPending.requestId !== requestId) return;
+      calendarExportPending.reject(new Error("캘린더 저장 시간 초과"));
+      calendarExportPending = null;
     }, 120000);
   });
 }

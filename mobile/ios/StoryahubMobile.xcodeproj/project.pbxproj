@@ -17,6 +17,8 @@
 		B2I3M4G22CA45674006654G2 /* StoryahubImagePicker.m in Sources */ = {isa = PBXBuildFile; fileRef = B2I3M4G32CA45674006654G3 /* StoryahubImagePicker.m */; };
 		C3N4T5C12CA45674006654H1 /* StoryahubContacts.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3N4T5C02CA45674006654H0 /* StoryahubContacts.swift */; };
 		C3N4T5C22CA45674006654H2 /* StoryahubContacts.m in Sources */ = {isa = PBXBuildFile; fileRef = C3N4T5C32CA45674006654H3 /* StoryahubContacts.m */; };
+		C4L5N6D12CA45674006654J1 /* StoryahubCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4L5N6D02CA45674006654J0 /* StoryahubCalendar.swift */; };
+		C4L5N6D22CA45674006654J2 /* StoryahubCalendar.m in Sources */ = {isa = PBXBuildFile; fileRef = C4L5N6D32CA45674006654J3 /* StoryahubCalendar.m */; };
 		C6D61D607FB657F5B82E0A95 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
@@ -36,6 +38,8 @@
 		B2I3M4G32CA45674006654G3 /* StoryahubImagePicker.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = StoryahubImagePicker.m; path = StoryahubMobile/StoryahubImagePicker.m; sourceTree = "<group>"; };
 		C3N4T5C02CA45674006654H0 /* StoryahubContacts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StoryahubContacts.swift; path = StoryahubMobile/StoryahubContacts.swift; sourceTree = "<group>"; };
 		C3N4T5C32CA45674006654H3 /* StoryahubContacts.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = StoryahubContacts.m; path = StoryahubMobile/StoryahubContacts.m; sourceTree = "<group>"; };
+		C4L5N6D02CA45674006654J0 /* StoryahubCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StoryahubCalendar.swift; path = StoryahubMobile/StoryahubCalendar.swift; sourceTree = "<group>"; };
+		C4L5N6D32CA45674006654J3 /* StoryahubCalendar.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = StoryahubCalendar.m; path = StoryahubMobile/StoryahubCalendar.m; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -62,6 +66,8 @@
 				B2I3M4G32CA45674006654G3 /* StoryahubImagePicker.m */,
 				C3N4T5C02CA45674006654H0 /* StoryahubContacts.swift */,
 				C3N4T5C32CA45674006654H3 /* StoryahubContacts.m */,
+				C4L5N6D02CA45674006654J0 /* StoryahubCalendar.swift */,
+				C4L5N6D32CA45674006654J3 /* StoryahubCalendar.m */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
@@ -271,6 +277,8 @@
 				B2I3M4G22CA45674006654G2 /* StoryahubImagePicker.m in Sources */,
 				C3N4T5C12CA45674006654H1 /* StoryahubContacts.swift in Sources */,
 				C3N4T5C22CA45674006654H2 /* StoryahubContacts.m in Sources */,
+				C4L5N6D12CA45674006654J1 /* StoryahubCalendar.swift in Sources */,
+				C4L5N6D22CA45674006654J2 /* StoryahubCalendar.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

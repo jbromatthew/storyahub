@@ -38,6 +38,7 @@ model User {
   friendsReceived      UserFriend[] @relation("FriendAddressee")
   sharesOwned          ResourceShare[] @relation("ShareOwner")
   sharesReceived       ResourceShare[] @relation("ShareGrantee")
+  calendarConnections  CalendarConnection[]
 }
 
 model Coupon {
@@ -222,9 +223,35 @@ model Event {             // 캘린더 일정
   reminders String[]                        // ["1시간 전","1일 전"] 등 (기본값 자동 적용)
   repeatYearly Boolean @default(false)    // 매년 반복 (시작일 기준 월·일·시각)
   googleId  String?                          // Google 캘린더 연동 id
+  eventKitId String?                         // Apple EventKit eventIdentifier
+  externalUpdatedAt DateTime?                // 외부 캘린더 최종 수정 시각
+  syncSource String?                         // storyahub | google | apple
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   meetings  Meeting[]
+
+  @@index([userId, googleId])
+  @@index([userId, eventKitId])
+}
+
+model CalendarConnection {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider      String   // google
+  accessToken   String
+  refreshToken  String?
+  tokenExpiry   DateTime?
+  calendarId    String?  // Google calendar id (primary 등)
+  calendarName  String?
+  syncToken     String?  // Google incremental sync token
+  lastSyncedAt  DateTime?
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, provider])
 }
 
 model SavedPlace {        // 맛집·장소 (카카오맵 연동)

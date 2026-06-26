@@ -177,6 +177,16 @@ export const api = {
   deleteEvent: (id) => req(`/calendar/${id}`, { method: "DELETE" }),
   shareEvent: (id) => req(`/calendar/${id}/share`, { method: "POST" }),
 
+  getCalendarSyncStatus: () => req("/calendar/sync/status"),
+  getGoogleCalendarConnectUrl: () => req("/calendar/sync/google/connect"),
+  syncGoogleCalendar: () => req("/calendar/sync/google/sync", { method: "POST" }),
+  disconnectGoogleCalendar: () => req("/calendar/sync/google", { method: "DELETE" }),
+  listGoogleCalendars: () => req("/calendar/sync/google/calendars"),
+  setGoogleCalendar: (calendarId, calendarName) =>
+    req("/calendar/sync/google/calendar", { method: "PATCH", body: { calendarId, calendarName } }),
+  importCalendarEvents: (events) => req("/calendar/sync/import", { method: "POST", body: { events } }),
+  patchEventKitIds: (mappings) => req("/calendar/sync/eventkit-ids", { method: "PATCH", body: { mappings } }),
+
   listKb: () => req("/kb"),
   saveKb: (data) => req("/kb", { method: "POST", body: data }),
   searchBooks: (q, { page = 1, size = 10 } = {}) =>

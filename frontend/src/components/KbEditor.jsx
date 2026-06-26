@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { api } from "../api/client.js";
 import { confirmDelete } from "../confirmDelete.js";
 import { uploadFile, pickImageFile, pickAnyFile, mediaUrl, openMediaFile, isPickCancelled } from "../api/upload.js";
+import { fileNameFromKey } from "../fileUtils.js";
 import { KB_SECTIONS, kbSectionLabel, kbCoverKey } from "../mappers.js";
 import { kbPresets, tagColor, mergePreferencesRaw } from "../preferences.js";
 import { notifyError, toastSuccess } from "../toast.js";
@@ -49,16 +50,6 @@ function blockText(b) {
   if (b.type === "table" && b.rows) return b.rows.flat().join(" ");
   if (b.name) return b.name;
   return "";
-}
-
-function fileNameFromKey(key) {
-  if (!key) return "첨부파일";
-  const name = key.split("/").pop() || "첨부파일";
-  try {
-    return decodeURIComponent(name);
-  } catch {
-    return name;
-  }
 }
 
 function fileKind(mime, name = "") {
@@ -145,7 +136,7 @@ function KbFileRow({ block, onClick }) {
     if (!block.mediaKey || opening) return;
     setOpening(true);
     try {
-      await openMediaFile(block.mediaKey);
+      await openMediaFile(block.mediaKey, block.name || fileNameFromKey(block.mediaKey));
     } catch (err) {
       notifyError(err, err.message || "파일을 열 수 없습니다");
     } finally {

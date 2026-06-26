@@ -22,6 +22,10 @@ import {
   exportNativeDeviceContacts,
   fetchNativeDeviceContacts,
 } from './nativeContacts';
+import {
+  exportNativeDeviceEvents,
+  fetchNativeDeviceEvents,
+} from './nativeCalendar';
 
 const INJECT_BEFORE = `
   window.__STORYAHUB_NATIVE__ = true;
@@ -189,6 +193,47 @@ export function WebApp() {
               err instanceof Error ? err.message : '연락처 저장 실패';
             sendToWeb({
               type: 'CONTACTS_ERROR',
+              requestId: msg.requestId,
+              message,
+            });
+          }
+          return;
+        }
+        case 'FETCH_DEVICE_EVENTS': {
+          try {
+            const events = await fetchNativeDeviceEvents(msg.from, msg.to);
+            sendToWeb({
+              type: 'DEVICE_EVENTS_FETCHED',
+              requestId: msg.requestId,
+              events,
+            });
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : '캘린더를 불러오지 못했습니다';
+            sendToWeb({
+              type: 'CALENDAR_ERROR',
+              requestId: msg.requestId,
+              message,
+            });
+          }
+          return;
+        }
+        case 'EXPORT_DEVICE_EVENTS': {
+          try {
+            const result = await exportNativeDeviceEvents(msg.events || []);
+            sendToWeb({
+              type: 'DEVICE_EVENTS_EXPORTED',
+              requestId: msg.requestId,
+              added: result.added,
+              updated: result.updated,
+              skipped: result.skipped,
+              mappings: result.mappings,
+            });
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : '캘린더 저장 실패';
+            sendToWeb({
+              type: 'CALENDAR_ERROR',
               requestId: msg.requestId,
               message,
             });

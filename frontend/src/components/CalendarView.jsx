@@ -18,6 +18,7 @@ import {
 } from "../calendarUtils.js";
 import { calendarList } from "../preferences.js";
 import { toastError, toastSuccess, notifyError } from "../toast.js";
+import { syncAllCalendars, formatSyncToast } from "../calendarSync.js";
 import KakaoPlacePicker from "./KakaoPlacePicker.jsx";
 
 const REM_OPTS = ["없음", "10분 전", "30분 전", "1시간 전", "1일 전"];
@@ -436,6 +437,7 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
   const [popover, setPopover] = useState(null);
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const year = viewMonth.getFullYear();
   const month = viewMonth.getMonth();
@@ -456,6 +458,23 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
   useEffect(() => {
     reload();
   }, [reload]);
+
+  const runSync = async () => {
+    setSyncing(true);
+    try {
+      const result = await syncAllCalendars();
+      if (result.events?.length) {
+        setEvents(result.events.map(eventToUi));
+      } else {
+        await reload();
+      }
+      toastSuccess(formatSyncToast(result));
+    } catch (e) {
+      notifyError(e, "캘린더 동기화 실패");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const visibleEvents = useMemo(
     () => events.filter((e) => !hiddenCals.has(e.category || calendars[0]?.name || "일정")),
@@ -653,6 +672,15 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
               );
             })}
           </div>
+          <button
+            type="button"
+            className="chip"
+            style={{ width: "100%", marginTop: 12, padding: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, color: "var(--accent-deep)" }}
+            onClick={runSync}
+            disabled={syncing}
+          >
+            {syncing ? "동기화 중…" : "↻ 캘린더 동기화"}
+          </button>
           <div className="cal-cal-list">
             <div className="small" style={{ fontWeight: 800, marginBottom: 8 }}>
               내 캘린더

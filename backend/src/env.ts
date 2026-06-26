@@ -95,4 +95,16 @@ export const env = {
   trialDays: Number(process.env.TRIAL_DAYS ?? 3),
   graceDays: Number(process.env.GRACE_DAYS ?? 7),
   couponAdminSecret: process.env.COUPON_ADMIN_SECRET ?? "",
+  publicAppUrl:
+    process.env.PUBLIC_APP_URL ||
+    (isProduction ? "https://record.storyahub.com" : "http://localhost:5173"),
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+    redirectUri:
+      process.env.GOOGLE_REDIRECT_URI ||
+      (isProduction
+        ? "https://api.storyahub.com/calendar/sync/google/callback"
+        : "http://localhost:4000/calendar/sync/google/callback"),
+  },
 };

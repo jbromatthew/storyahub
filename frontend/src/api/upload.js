@@ -117,9 +117,14 @@ export async function mediaUrl(mediaKey) {
   return url;
 }
 
-/** 첨부파일 열기 — WebView에서는 blob URL 대신 presigned URL 사용 */
-export async function openMediaFile(mediaKey) {
+/** 첨부파일 열기 — 이미지·PDF·엑셀은 앱 내 뷰어, 그 외는 외부 열기 */
+export async function openMediaFile(mediaKey, name) {
   if (!mediaKey) throw new Error("파일이 없습니다");
+  const displayName = name || fileNameFromKey(mediaKey);
+  if (canPreviewInApp(displayName)) {
+    openFileViewerRequest({ mediaKey, name: displayName });
+    return;
+  }
   const { url } = await api.getUploadUrl(mediaKey);
   if (!url) throw new Error("파일 URL을 가져오지 못했습니다");
   if (isNativeShell()) {
@@ -276,6 +281,7 @@ function estimateAudioSec(file) {
 }
 
 import { createAudioRecorder, isNativeRecordingResult, isNativeShell, getNativePlatform, pickNativeImageFile, pickNativeImageFiles, pickNativeDocumentFile } from "./nativeBridge.js";
+import { canPreviewInApp, fileNameFromKey, openFileViewerRequest } from "../fileUtils.js";
 
 export { isNativeRecordingResult, isNativeShell } from "./nativeBridge.js";
 

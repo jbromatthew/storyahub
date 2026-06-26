@@ -16,6 +16,12 @@ export type WebToNativeMessage =
       type: 'EXPORT_DEVICE_CONTACTS';
       requestId: string;
       contacts: Array<{ person?: string; title?: string; department?: string; phone?: string; email?: string; company?: string }>;
+    }
+  | { type: 'FETCH_DEVICE_EVENTS'; requestId: string; from: string; to: string }
+  | {
+      type: 'EXPORT_DEVICE_EVENTS';
+      requestId: string;
+      events: Array<{ id: string; title: string; startsAt: string; endsAt?: string | null; place?: string | null; notes?: string | null; eventKitId?: string | null }>;
     };
 
 export type NativeToWebMessage =
@@ -63,7 +69,21 @@ export type NativeToWebMessage =
       updated: number;
       skipped: number;
     }
-  | { type: 'CONTACTS_ERROR'; requestId: string; message: string };
+  | {
+      type: 'DEVICE_EVENTS_FETCHED';
+      requestId: string;
+      events: Array<{ eventKitId?: string; storyahubId?: string; title?: string; startsAt?: string; endsAt?: string | null; place?: string | null; notes?: string | null }>;
+    }
+  | {
+      type: 'DEVICE_EVENTS_EXPORTED';
+      requestId: string;
+      added: number;
+      updated: number;
+      skipped: number;
+      mappings: Array<{ id: string; eventKitId: string }>;
+    }
+  | { type: 'CONTACTS_ERROR'; requestId: string; message: string }
+  | { type: 'CALENDAR_ERROR'; requestId: string; message: string };
 
 export function parseWebMessage(raw: string): WebToNativeMessage | null {
   try {
