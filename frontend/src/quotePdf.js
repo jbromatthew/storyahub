@@ -1,6 +1,6 @@
 import { dealAmounts, formatWon } from "./mappers.js";
 import { mediaUrl } from "./api/upload.js";
-import { contactQuoteLabel, formatDateKo, groupLinesByCategory, lineAmount, normalizeQuoteLines, orgDisplayName } from "./quoteUtils.js";
+import { formatContactRecvLines, formatDateKo, groupLinesByCategory, lineAmount, normalizeQuoteLines, orgInfoRows } from "./quoteUtils.js";
 
 function wonPlain(n) {
   return Number(n || 0).toLocaleString("ko-KR");
@@ -104,10 +104,19 @@ function buildQuoteHtml(deal, { sealUrl = null } = {}) {
   const { vat, total } = dealAmounts(totals.supply);
   const lineRows = buildLineRows(lines);
   const dateStr = formatDateKo(deal.createdAt || new Date());
-  const recvName = contact.company || contactQuoteLabel(contact) || "귀사";
-  const ceoSeal = sealUrl
-    ? `<img src="${escapeHtml(sealUrl)}" class="seal-inline" alt="직인" crossorigin="anonymous"/>`
-    : "";
+  const recvHtml = formatContactRecvLines(contact)
+    .map((l) => `<div class="recv-line ${l.className}">${escapeHtml(l.text)}</div>`)
+    .join("");
+  const orgRows = orgInfoRows(org);
+  const orgHtml = orgRows
+    .map(([label, value]) => {
+      const isCeo = label === "대표자";
+      const cell = isCeo
+        ? `<div class="ceo-cell"><span class="ceo-name">${escapeHtml(value)}</span>${sealUrl ? `<img src="${escapeHtml(sealUrl)}" class="seal-inline" alt="직인" crossorigin="anonymous"/>` : ""}</div>`
+        : escapeHtml(value);
+      return `<div>${escapeHtml(label)}</div><div>${cell}</div>`;
+    })
+    .join("");
 
   return `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"/>
 <style>
@@ -116,7 +125,11 @@ function buildQuoteHtml(deal, { sealUrl = null } = {}) {
   .doc-title { text-align: center; font-size: 28px; font-weight: 800; letter-spacing: 0.35em; margin: 8px 0 18px; }
   .date-line { margin-bottom: 14px; font-size: 13px; }
   .info-grid { display: grid; grid-template-columns: 1fr 1.15fr; gap: 0; border: 1px solid #333; margin-bottom: 16px; }
-  .info-left { padding: 12px 14px; border-right: 1px solid #333; min-height: 120px; display: flex; align-items: center; font-size: 18px; font-weight: 700; }
+  .info-left { padding: 12px 14px; border-right: 1px solid #333; min-height: 120px; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+  .recv-line { line-height: 1.35; }
+  .recv-co { font-size: 18px; font-weight: 800; }
+  .recv-person { font-size: 16px; font-weight: 700; }
+  .recv-role { font-size: 14px; font-weight: 600; color: #333; }
   .info-right { display: grid; grid-template-columns: 72px 1fr; }
   .info-right div { border-bottom: 1px solid #333; padding: 7px 10px; }
   .info-right div:nth-child(odd) { background: #f3f3f3; font-weight: 700; border-right: 1px solid #333; }
@@ -142,14 +155,8 @@ function buildQuoteHtml(deal, { sealUrl = null } = {}) {
   <div class="date-line">${dateStr}${deal.validUntil ? ` · 유효기간 ${formatDateKo(deal.validUntil)}` : ""}${deal.quoteNumber ? ` · No.${escapeHtml(deal.quoteNumber)}` : ""}</div>
 
   <div class="info-grid">
-    <div class="info-left">${escapeHtml(recvName)}</div>
-    <div class="info-right">
-      <div>공급자</div><div>사업자 번호 ${escapeHtml(org.bizNo || "-")}</div>
-      <div>상호</div><div>${escapeHtml(orgDisplayName(org))}</div>
-      <div>대표자</div><div class="ceo-cell"><span class="ceo-name">${escapeHtml(org.ceoName || "-")}</span>${ceoSeal}</div>
-      <div>소재지</div><div>${escapeHtml(org.address || "-")}</div>
-      <div>담당자</div><div>${escapeHtml(org.ceoName || "-")}${org.phone ? ` · ${escapeHtml(org.phone)}` : ""}</div>
-    </div>
+    <div class="info-left">${recvHtml}</div>
+    <div class="info-right">${orgHtml}</div>
   </div>
 
   <table class="items">

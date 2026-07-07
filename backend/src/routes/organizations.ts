@@ -22,6 +22,8 @@ organizationsRouter.post("/", async (req: AuthedRequest, res) => {
     name,
     bizNo,
     ceoName,
+    contactName,
+    contactTitle,
     address,
     phone,
     email,
@@ -64,6 +66,8 @@ organizationsRouter.post("/", async (req: AuthedRequest, res) => {
     if (name !== undefined) data.name = String(name).trim() || existing.name;
     if (bizNo !== undefined) data.bizNo = bizNo || null;
     if (ceoName !== undefined) data.ceoName = ceoName || null;
+    if (contactName !== undefined) data.contactName = contactName || null;
+    if (contactTitle !== undefined) data.contactTitle = contactTitle || null;
     if (address !== undefined) data.address = address || null;
     if (phone !== undefined) data.phone = phone || null;
     if (email !== undefined) data.email = email || null;
@@ -93,6 +97,8 @@ organizationsRouter.post("/", async (req: AuthedRequest, res) => {
       name: trimmed,
       bizNo: bizNo || null,
       ceoName: ceoName || null,
+      contactName: contactName || null,
+      contactTitle: contactTitle || null,
       address: address || null,
       phone: phone || null,
       email: email || null,

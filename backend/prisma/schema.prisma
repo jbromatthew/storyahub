@@ -197,6 +197,8 @@ model Organization {      // 견적 공급자(내 소속/회사) 프로필
   name         String
   bizNo        String?
   ceoName      String?
+  contactName  String?                      // 견적 담당자 성명
+  contactTitle String?                      // 견적 담당자 직함
   address      String?
   phone        String?
   email        String?

@@ -59,6 +59,39 @@ export function orgDisplayName(org) {
   return org?.name || "공급자";
 }
 
+/** PDF 수신처 — 회사 · 이름 · 직함 줄바꿈 */
+export function formatContactRecvLines(contact) {
+  if (!contact) return [{ text: "귀사", className: "recv-co" }];
+  const co = String(contact.company || contact.co || "").trim();
+  const person = String(contact.person || "").trim();
+  const title = String(contact.title || "").trim();
+  const dept = String(contact.department || "").trim();
+  const lines = [];
+  if (co) lines.push({ text: co, className: "recv-co" });
+  if (person) lines.push({ text: person, className: "recv-person" });
+  if (title) lines.push({ text: title, className: "recv-role" });
+  if (dept && dept !== title) lines.push({ text: dept, className: "recv-role" });
+  if (!lines.length) lines.push({ text: "귀사", className: "recv-co" });
+  return lines;
+}
+
+/** PDF 공급자 정보 행 */
+export function orgInfoRows(org) {
+  const o = org || {};
+  const rows = [
+    ["공급자", `사업자 번호 ${o.bizNo || "-"}`],
+    ["상호", orgDisplayName(o)],
+    ["대표자", o.ceoName || "-"],
+    ["소재지", o.address || "-"],
+  ];
+  const contactName = o.contactName || o.ceoName;
+  if (contactName) rows.push(["담당자", contactName]);
+  if (o.contactTitle) rows.push(["직함", o.contactTitle]);
+  if (o.phone) rows.push(["전화", o.phone]);
+  if (o.email) rows.push(["이메일", o.email]);
+  return rows;
+}
+
 export function formatDateKo(iso) {
   if (!iso) return "";
   const d = new Date(iso);

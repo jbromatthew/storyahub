@@ -37,6 +37,8 @@ export default function OrgProfilesSettings({ back, I }) {
       name: "",
       bizNo: "",
       ceoName: "",
+      contactName: "",
+      contactTitle: "",
       address: "",
       phone: "",
       email: "",
@@ -130,6 +132,8 @@ export default function OrgProfilesSettings({ back, I }) {
             ["name", "회사명 *"],
             ["bizNo", "사업자등록번호"],
             ["ceoName", "대표자"],
+            ["contactName", "담당자 성명"],
+            ["contactTitle", "담당자 직함"],
             ["businessType", "업태 · 종목"],
             ["address", "주소"],
             ["phone", "전화"],
@@ -212,8 +216,13 @@ export default function OrgProfilesSettings({ back, I }) {
                     </span>
                   )}
                 </div>
-                <div className="small" style={{ marginTop: 4 }}>
-                  {[o.ceoName, o.bizNo, o.phone].filter(Boolean).join(" · ") || "정보 없음"}
+                <div className="small" style={{ marginTop: 4, lineHeight: 1.5 }}>
+                  {[o.contactName && `담당 ${o.contactName}`, o.contactTitle, o.ceoName && `대표 ${o.ceoName}`, o.bizNo, o.phone]
+                    .filter(Boolean)
+                    .map((t, i) => (
+                      <div key={i}>{t}</div>
+                    ))}
+                  {!o.contactName && !o.contactTitle && !o.ceoName && !o.bizNo && !o.phone && "정보 없음"}
                 </div>
               </div>
               <div className="row" style={{ gap: 6, flexShrink: 0 }}>

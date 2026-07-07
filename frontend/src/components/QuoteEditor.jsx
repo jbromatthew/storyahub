@@ -5,6 +5,7 @@ import {
   DEAL_STAGES,
   QUOTE_TEMPLATES,
   contactQuoteLabel,
+  formatContactRecvLines,
   emptyDiscountLine,
   emptyLine,
   formatDateKo,
@@ -317,8 +318,14 @@ export default function QuoteEditor({ dealId, initialContactId, contacts = [], o
             </select>
           )}
           {selectedOrg && (
-            <div className="small" style={{ marginTop: 8, lineHeight: 1.5, color: "var(--muted)" }}>
-              {[selectedOrg.ceoName, selectedOrg.bizNo, selectedOrg.phone].filter(Boolean).join(" · ")}
+            <div className="small" style={{ marginTop: 8, lineHeight: 1.55, color: "var(--muted)" }}>
+              <div style={{ fontWeight: 700, color: "var(--text)" }}>{selectedOrg.name}</div>
+              {selectedOrg.ceoName && <div>대표 {selectedOrg.ceoName}</div>}
+              {selectedOrg.contactName && <div>담당 {selectedOrg.contactName}</div>}
+              {selectedOrg.contactTitle && <div>{selectedOrg.contactTitle}</div>}
+              {[selectedOrg.bizNo, selectedOrg.phone].filter(Boolean).length > 0 && (
+                <div>{[selectedOrg.bizNo, selectedOrg.phone].filter(Boolean).join(" · ")}</div>
+              )}
             </div>
           )}
         </div>
@@ -330,7 +337,18 @@ export default function QuoteEditor({ dealId, initialContactId, contacts = [], o
           {selectedContact && !pickContact ? (
             <div className="row between card" style={{ padding: "10px 12px", gap: 8, background: "#FBFAF7" }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700 }}>{contactQuoteLabel(selectedContact)}</div>
+                {formatContactRecvLines(selectedContact).map((l, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      fontWeight: l.className === "recv-co" ? 700 : l.className === "recv-person" ? 600 : 500,
+                      fontSize: l.className === "recv-co" ? 14 : 13,
+                      color: l.className === "recv-role" ? "var(--muted)" : undefined,
+                    }}
+                  >
+                    {l.text}
+                  </div>
+                ))}
                 <div className="small">{[selectedContact.phone, selectedContact.email].filter(Boolean).join(" · ")}</div>
               </div>
               <button type="button" className="chip" style={{ fontSize: 12 }} onClick={() => setPickContact(true)}>
