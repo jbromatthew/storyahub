@@ -1789,17 +1789,32 @@ const ASSIGNEE_SPECIAL = {
   "미지정": { bg: "#F1F1EF", fg: "#55534E" },
   "미반영": { bg: "#F1F1EF", fg: "#55534E" },
   "대기": { bg: "#FAEBDD", fg: "#C45500" },
+  Jay: { bg: "#E8DEFF", fg: "#5B3E96" },
+  Owen: { bg: "#D3F8DF", fg: "#1F6B3A" },
+  Tae: { bg: "#2383E2", fg: "#FFFFFF" },
+  Sofia: { bg: "#FFE2DD", fg: "#B85C3A" },
+  Hailey: { bg: "#6B38C0", fg: "#FFFFFF" },
+  Dorosi: { bg: "#D7BDE2", fg: "#512E5F" },
+  Heum: { bg: "#5D4037", fg: "#FFFFFF" },
+  David: { bg: "#9B2C2C", fg: "#FFFFFF" },
+  Matthew: { bg: "#D6EAF8", fg: "#1A5276" },
+  Luke: { bg: "#D5F5E3", fg: "#196F3D" },
+  Jeff: { bg: "#2E4A4F", fg: "#FFFFFF" },
+  Jo: { bg: "#FDEBD0", fg: "#935116" },
+  Dinah: { bg: "#E8DAEF", fg: "#6C3483" },
+  Foy: { bg: "#B2DFDB", fg: "#004D40" },
 };
 
-function assigneeBadgeColors(name) {
+function assigneeBadgeColors(name, colorMap) {
+  if (colorMap?.[name]) return colorMap[name];
   if (ASSIGNEE_SPECIAL[name]) return ASSIGNEE_SPECIAL[name];
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return ASSIGNEE_PALETTE[h % ASSIGNEE_PALETTE.length];
 }
 
-function AssigneeBadge({ name, compact = false }) {
-  const { bg, fg } = assigneeBadgeColors(name);
+function AssigneeBadge({ name, compact = false, colorMap }) {
+  const { bg, fg } = assigneeBadgeColors(name, colorMap);
   return (
     <span
       className={"assignee-badge" + (compact ? " compact" : "")}
@@ -1810,7 +1825,7 @@ function AssigneeBadge({ name, compact = false }) {
   );
 }
 
-function AssigneePicker({ assignees, selected, onChange }) {
+function AssigneePicker({ assignees, selected, onChange, colorMap }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const rootRef = useRef(null);
@@ -1834,7 +1849,7 @@ function AssigneePicker({ assignees, selected, onChange }) {
   };
 
   const summary = selected.length
-    ? selected.map((name) => <AssigneeBadge key={name} name={name} compact />)
+    ? selected.map((name) => <AssigneeBadge key={name} name={name} compact colorMap={colorMap} />)
     : <span className="assignee-badge all">전체</span>;
 
   return (
@@ -1868,7 +1883,7 @@ function AssigneePicker({ assignees, selected, onChange }) {
                 className={"assignee-picker-row" + (selected.includes(name) ? " on" : "")}
                 onClick={() => toggle(name)}
               >
-                <AssigneeBadge name={name} />
+                <AssigneeBadge name={name} colorMap={colorMap} />
                 {selected.includes(name) && <span className="assignee-picker-check">✓</span>}
               </button>
             ))}
@@ -1936,27 +1951,14 @@ function buildPlanCompareRows(planTables) {
   }));
 }
 
-function buildAssigneeCompareRows(assigneeTables) {
-  if (!assigneeTables?.length) return [];
-  const order = [];
-  const seen = new Set();
-  for (const block of assigneeTables) {
-    for (const a of block.assignees ?? []) {
-      if (!seen.has(a.assignee)) {
-        seen.add(a.assignee);
-        order.push(a.assignee);
-      }
-    }
-  }
-  order.sort((a, b) => {
-    if (a === "미지정") return 1;
-    if (b === "미지정") return -1;
-    return a.localeCompare(b, "ko");
-  });
-  return order.map((assignee) => ({
-    assignee,
-    byGroup: assigneeTables.map((block) => block.assignees?.find((a) => a.assignee === assignee)?.metrics ?? null),
-  }));
+function buildAssigneeCompareRows(assigneeTables, names, onlyWithData = true) {
+  if (!assigneeTables?.length || !names?.length) return [];
+  return names
+    .map((assignee) => ({
+      assignee,
+      byGroup: assigneeTables.map((block) => block.assignees?.find((a) => a.assignee === assignee)?.metrics ?? null),
+    }))
+    .filter((row) => !onlyWithData || row.byGroup.some((m) => (m?.inquiries ?? 0) > 0));
 }
 
 function PlanMetricsCell({ metrics }) {
@@ -2175,7 +2177,10 @@ export function PaymentRateView() {
       assignees: selectedAssignees.length ? selectedAssignees : undefined,
       groups: valid.map((g) => ({ id: g.id, label: g.label, months: g.months })),
     })
-      .then(setResult)
+      .then((res) => {
+        setResult(res);
+        setShowAssignees(true);
+      })
       .catch(notifyError)
       .finally(() => setComputing(false));
   }, [groups, industry, selectedChannels, selectedAssignees]);
@@ -2220,7 +2225,11 @@ export function PaymentRateView() {
 
   const groupLabels = result?.groups?.map((g) => g.label) || groups.filter((g) => g.months.length).map((g) => g.label);
   const planCompareRows = useMemo(() => buildPlanCompareRows(result?.planTables), [result]);
-  const assigneeCompareRows = useMemo(() => buildAssigneeCompareRows(result?.assigneeTables), [result]);
+  const compareAssigneeNames = selectedAssignees.length ? selectedAssignees : (meta?.assignees || []);
+  const assigneeCompareRows = useMemo(
+    () => buildAssigneeCompareRows(result?.assigneeTables, compareAssigneeNames, !selectedAssignees.length),
+    [result, compareAssigneeNames, selectedAssignees.length],
+  );
   const noData = result?.rows?.find((r) => r.key === "inquiries")?.values?.every((v) => !v);
   const hasEmpty = groups.some((g) => !g.months.length);
 
@@ -2248,13 +2257,12 @@ export function PaymentRateView() {
             <input value={monthQ} onChange={(e) => setMonthQ(e.target.value)} placeholder="2026.07" />
           </div>
         </div>
-        {(meta?.assignees?.length > 0) && (
-          <AssigneePicker
-            assignees={meta.assignees}
-            selected={selectedAssignees}
-            onChange={setSelectedAssignees}
-          />
-        )}
+        <AssigneePicker
+          assignees={meta?.assignees || []}
+          selected={selectedAssignees}
+          onChange={setSelectedAssignees}
+          colorMap={meta?.assigneeColors}
+        />
       </div>
 
       {meta?.channelTree && (
@@ -2367,9 +2375,14 @@ export function PaymentRateView() {
             </button>
           </div>
 
-          {showAssignees && assigneeCompareRows.length > 0 && (
+          {showAssignees && (
             <div className="rate-plan-block">
               <div className="rate-plan-title">담당자별 비교</div>
+              {assigneeCompareRows.length === 0 ? (
+                <div className="small" style={{ padding: "12px 0", color: "var(--muted)", lineHeight: 1.6 }}>
+                  선택한 기간·필터에 담당자별 집계 데이터가 없습니다. 비교군 월을 확인하거나 필터를 해제해 보세요.
+                </div>
+              ) : (
               <div className="rate-table-wrap rate-table-scroll">
                 <table className="rate-table rate-plan-compare">
                   <thead>
@@ -2381,7 +2394,7 @@ export function PaymentRateView() {
                   <tbody>
                     {assigneeCompareRows.map((row) => (
                       <tr key={row.assignee}>
-                        <td className="plan-col"><AssigneeBadge name={row.assignee} /></td>
+                        <td className="plan-col"><AssigneeBadge name={row.assignee} colorMap={meta?.assigneeColors} /></td>
                         {row.byGroup.map((metrics, i) => (
                           <PlanMetricsCell key={i} metrics={metrics} />
                         ))}
@@ -2390,6 +2403,7 @@ export function PaymentRateView() {
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
           )}
 

@@ -7,6 +7,7 @@ import {
   matchesLegacyChannel,
 } from "./marketingChannels.js";
 import { INDUSTRY_TYPES } from "./industryTypes.js";
+import { ASSIGNEE_COLORS, mergeAssigneeList } from "./salesAssignees.js";
 
 export type ChannelFilter = "all" | "organic" | "non-organic";
 
@@ -89,6 +90,7 @@ function planName(data: Record<string, string>): string {
 }
 
 const ASSIGNEE_FIELD_KEYS = [
+  "미팅 담당자",
   "담당자",
   "상담담당",
   "상담 담당",
@@ -98,6 +100,7 @@ const ASSIGNEE_FIELD_KEYS = [
   "영업 담당",
   "사원명",
   "담당 사원",
+  "응대자",
 ];
 
 function assigneeName(data: Record<string, string>): string {
@@ -175,14 +178,14 @@ export async function getPaymentRateMeta() {
 
   const months = new Set<string>();
   const plans = new Set<string>();
-  const assignees = new Set<string>();
+  const dynamicAssignees: string[] = [];
 
   for (const row of rows) {
     months.add(row.sheetName);
     const data = row.data as Record<string, string>;
     if (data["구분"] !== "신규문의") continue;
     plans.add(planName(data));
-    assignees.add(assigneeName(data));
+    dynamicAssignees.push(assigneeName(data));
   }
 
   const monthList = [...months].sort((a, b) => b.localeCompare(a));
@@ -191,7 +194,8 @@ export async function getPaymentRateMeta() {
     months: monthList,
     industries: [...INDUSTRY_TYPES],
     plans: sortPlans([...plans]),
-    assignees: sortAssignees([...assignees]),
+    assignees: mergeAssigneeList(dynamicAssignees),
+    assigneeColors: ASSIGNEE_COLORS,
     presets: buildPresets(monthList),
     channelTree: channelTreeForApi(),
   };
