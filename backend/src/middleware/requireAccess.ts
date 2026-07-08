@@ -1,6 +1,7 @@
 import type { Response, NextFunction } from "express";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "./auth.js";
+import { env } from "../env.js";
 import { getAccessStatus, inGracePeriod } from "../services/access.js";
 import type { AccessStatus } from "../services/access.js";
 
@@ -15,6 +16,8 @@ async function loadAccess(req: AccessRequest, res: Response, next: NextFunction)
 
   const access = getAccessStatus(user);
   req.access = access;
+
+  if (env.erpMode) return next();
 
   if (!access.hasAccess && !inGracePeriod(user)) {
     if (!user.accessEndedAt) {

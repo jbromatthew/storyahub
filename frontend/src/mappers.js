@@ -290,6 +290,8 @@ export function kbToUi(a) {
     shareRole: a.shareRole || "owner",
     isShared: !!a.isShared,
     sharedBy: a.sharedBy || null,
+    status: a.status || "published",
+    visibility: a.visibility || "company",
     _raw: a,
   };
 }

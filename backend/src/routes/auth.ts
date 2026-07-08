@@ -100,6 +100,16 @@ authRouter.post("/login", async (req, res) => {
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: "이메일 또는 비밀번호가 맞지 않습니다" });
 
+  if (env.erpMode) {
+    const emp = await prisma.erpEmployee.findUnique({ where: { userId: user.id } });
+    if (emp?.status === "resigned") {
+      return res.status(403).json({ error: "퇴사 처리된 계정입니다. 관리자에게 문의하세요" });
+    }
+    if (emp?.status === "leave") {
+      return res.status(403).json({ error: "휴직 중인 계정입니다" });
+    }
+  }
+
   res.json(issueAuth(res, user, remember));
 });
 

@@ -41,6 +41,18 @@ model User {
   calendarConnections  CalendarConnection[]
   organizations        Organization[]
   products             Product[]
+  erpEmployee          ErpEmployee?
+  erpLeaveBalances     ErpLeaveBalance[]
+  erpLeaveRequests     ErpLeaveRequest[]
+  erpLeaveRewardGrants ErpLeaveRewardGrant[] @relation("LeaveRewardCreator")
+  erpApprovalDocs      ErpApprovalDocument[] @relation("ApprovalAuthor")
+  erpApprovalSteps     ErpApprovalStep[]     @relation("ApprovalStepUser")
+  erpMeetingNotes      ErpMeetingNote[]
+  erpCompanyEvents     ErpCompanyEvent[]
+  erpEventRsvps        ErpEventRsvp[]
+  erpOkrObjectives     ErpOkrObjective[]
+  erpOkrTodos          ErpOkrTodo[]
+  erpNotifications     ErpNotification[]
 }
 
 model Coupon {
@@ -354,16 +366,310 @@ model SavedPlace {        // 맛집·장소 (카카오맵 연동)
   @@unique([userId, kakaoPlaceId])
 }
 
-model KbArticle {         // 지식백과
+model KbArticle {         // 지식백과 / 지식경영
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  title      String
+  section    String   @default("knowledge")   // book | lecture | knowledge
+  category   String?
+  tags       String[]
+  bookMeta   Json?
+  blocks     Json
+  status     String   @default("published")   // draft | published | formal_pending | formal
+  visibility String   @default("company")     // company | department | private
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// ── 사내 ERP ─────────────────────────────────────────────
+
+model ErpDepartment {
+  id        String          @id @default(cuid())
+  name      String
+  parentId  String?
+  parent    ErpDepartment?  @relation("DeptTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  ErpDepartment[] @relation("DeptTree")
+  sortOrder Int             @default(0)
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  employees ErpEmployee[]
+}
+
+model ErpJobRank {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+model ErpEmployee {
+  id           String         @id @default(cuid())
+  userId       String?        @unique
+  user         User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name         String?
+  email        String?
+  employeeNo   String?        @unique
+  departmentId String?
+  department   ErpDepartment? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  jobTitle     String?
+  jobRank      String?
+  phone        String?
+  photoKey     String?
+  status       String         @default("active") // active | leave | resigned
+  roles        String[]       @default([])
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([email])
+  @@index([status])
+}
+
+model ErpApprovalForm {
+  id        String                @id @default(cuid())
+  name      String
+  code      String                @unique
+  fields    Json                  @default("[]")
+  active    Boolean               @default(true)
+  sortOrder Int                   @default(0)
+  createdAt DateTime              @default(now())
+  documents ErpApprovalDocument[]
+}
+
+model ErpApprovalDocument {
+  id          String          @id @default(cuid())
+  docNo       String          @unique
+  formId      String
+  form        ErpApprovalForm @relation(fields: [formId], references: [id])
+  authorId    String
+  author      User            @relation("ApprovalAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  title       String
+  body        Json            @default("{}")
+  attachments Json?
+  status      String          @default("draft")
+  security    String          @default("normal")
+  ccUserIds   String[]        @default([])
+  submittedAt DateTime?
+  completedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  steps       ErpApprovalStep[]
+
+  @@index([authorId, status])
+}
+
+model ErpApprovalStep {
+  id           String              @id @default(cuid())
+  documentId   String
+  document     ErpApprovalDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  stepOrder    Int
+  stepType     String              @default("approve")
+  approverId   String?
+  approver     User?               @relation("ApprovalStepUser", fields: [approverId], references: [id], onDelete: SetNull)
+  approverRole String?
+  status       String              @default("waiting")
+  comment      String?
+  actedAt      DateTime?
+
+  @@index([approverId, status])
+  @@index([documentId, stepOrder])
+}
+
+model ErpLeaveBalance {
+  id           String @id @default(cuid())
+  userId       String
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year         Int
+  regularTotal Float  @default(15)
+  regularUsed  Float  @default(0)
+  rewardTotal  Float  @default(0)
+  rewardUsed   Float  @default(0)
+  carriedOver  Float  @default(0)
+  remarks      String?
+
+  @@unique([userId, year])
+}
+
+model ErpLeaveRewardGrant {
+  id          String   @id @default(cuid())
+  title       String
+  grantType   String   @default("paid")
+  days        Float
+  year        Int
+  userIds     String[] @default([])
+  remarks     String?
+  createdById String
+  createdBy   User     @relation("LeaveRewardCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@index([year])
+}
+
+model ErpLeaveRequest {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leaveType     String
+  startDate     DateTime
+  endDate       DateTime
+  days          Float
+  reason        String?
+  status        String   @default("draft")
+  approvalDocId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId, status])
+}
+
+model ErpMeetingNote {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  startsAt    DateTime
+  endsAt      DateTime?
+  place       String?
+  attendeeIds String[] @default([])
+  agenda      String
+  discussion  String   @default("")
+  decisions   String?
+  actionItems Json?
+  attachments Json?
+  eventId     String?
+  kbArticleId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ErpCompanyEvent {
+  id           String         @id @default(cuid())
+  createdById  String
+  createdBy    User           @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  title        String
+  startsAt     DateTime
+  endsAt       DateTime?
+  place        String?
+  scope        String         @default("company")
+  scopeDeptIds String[]       @default([])
+  description  String?
+  attachments  Json?
+  requireRsvp  Boolean        @default(false)
+  status       String         @default("active")
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  rsvps        ErpEventRsvp[]
+}
+
+model ErpEventRsvp {
+  id       String          @id @default(cuid())
+  eventId  String
+  event    ErpCompanyEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  response String          @default("pending")
+
+  @@unique([eventId, userId])
+}
+
+model ErpOkrObjective {
+  id         String            @id @default(cuid())
+  ownerId    String
+  owner      User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title      String
+  teamDeptId String?
+  quarter    String
+  progress   Float             @default(0)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  keyResults ErpOkrKeyResult[]
+}
+
+model ErpOkrKeyResult {
+  id          String          @id @default(cuid())
+  objectiveId String
+  objective   ErpOkrObjective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  title       String
+  target      Float
+  current     Float           @default(0)
+  unit        String          @default("%")
+  todos       ErpOkrTodo[]
+}
+
+model ErpOkrTodo {
+  id          String          @id @default(cuid())
+  keyResultId String
+  keyResult   ErpOkrKeyResult @relation(fields: [keyResultId], references: [id], onDelete: Cascade)
+  content     String
+  assigneeId  String
+  assignee    User            @relation(fields: [assigneeId], references: [id], onDelete: Cascade)
+  due         DateTime?
+  status      String          @default("todo")
+}
+
+model ErpNotification {
   id        String   @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module    String
   title     String
-  section   String   @default("knowledge")   // book | lecture | knowledge
-  category  String?                          // 분류 내 하위 카테고리
-  tags      String[]
-  bookMeta  Json?                            // 책: { author, coverKey, isbn, publisher }
-  blocks    Json                            // 노션형 블록 배열
+  body      String?
+  link      String?
+  read      Boolean  @default(false)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+
+  @@index([userId, read, createdAt])
+}
+
+/// Google Sheets 상품 문의 (월별 탭 동기화)
+model ErpSalesInquiry {
+  id            String   @id @default(cuid())
+  externalKey   String
+  sheetName     String
+  spreadsheetId String
+  sheetRow      Int
+  data          Json
+  syncedAt      DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([spreadsheetId, sheetName, externalKey])
+  @@index([sheetName])
+  @@index([spreadsheetId, sheetName])
+}
+
+/// Google Sheets 결제 주문 내역 (월별 탭 동기화)
+model ErpSalesOrder {
+  id            String   @id @default(cuid())
+  externalKey   String
+  sheetName     String
+  spreadsheetId String
+  sheetRow      Int
+  data          Json
+  syncedAt      DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([spreadsheetId, sheetName, externalKey])
+  @@index([sheetName])
+  @@index([spreadsheetId, sheetName])
+}
+
+/// 세일즈 시트 동기화 이력
+model ErpSalesSyncLog {
+  id            String   @id @default(cuid())
+  kind          String
+  sheetName     String
+  spreadsheetId String
+  status        String
+  added         Int      @default(0)
+  updated       Int      @default(0)
+  deleted       Int      @default(0)
+  rowCount      Int      @default(0)
+  errorMessage  String?
+  syncedById    String?
+  createdAt     DateTime @default(now())
+
+  @@index([kind, sheetName, createdAt])
 }

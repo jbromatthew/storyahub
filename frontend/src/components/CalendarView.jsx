@@ -24,6 +24,17 @@ import KakaoPlacePicker from "./KakaoPlacePicker.jsx";
 const REM_OPTS = ["없음", "10분 전", "30분 전", "1시간 전", "1일 전"];
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 
+function eventPillStyle(color) {
+  const hex = color?.startsWith("#") ? color : "#1a73e8";
+  const r = parseInt(hex.slice(1, 3), 16) || 26;
+  const g = parseInt(hex.slice(3, 5), 16) || 115;
+  const b = parseInt(hex.slice(5, 7), 16) || 232;
+  return {
+    background: `rgba(${r},${g},${b},0.14)`,
+    color: hex,
+  };
+}
+
 function parseTimeToMins(t) {
   if (!t) return 0;
   const [h, m] = String(t).split(":").map(Number);
@@ -763,22 +774,36 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
                       {c.n ? <span className={badgeCls}>{formatCellDayLabel(c)}</span> : null}
                     </div>
                     <div className="cal-evlist">
-                      {dayEv.slice(0, 4).map((ev) => (
+                      {dayEv.slice(0, 4).map((ev) => {
+                        const col = eventColor(ev, organizePrefs);
+                        return (
                         <button
                           key={ev.id}
                           type="button"
                           className="cal-evitem"
+                          style={eventPillStyle(col)}
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelDate({ year: c.year, month: c.month, day: c.n });
-                            openDetail?.("event", ev);
+                            if (openDetail) openDetail("event", ev);
+                            else openEdit(ev, e);
                           }}
                         >
-                          <span className="cal-evbar" style={{ background: eventColor(ev, organizePrefs) }} />
                           <span className="cal-evtext">{ev.repeatYearly ? "↻ " : ""}{ev.title}</span>
                         </button>
-                      ))}
-                      {dayEv.length > 4 && <span className="cal-evmore">+{dayEv.length - 4}개 더</span>}
+                      );})}
+                      {dayEv.length > 4 && (
+                        <button
+                          type="button"
+                          className="cal-evmore"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (c.n) setSelDate({ year: c.year, month: c.month, day: c.n });
+                          }}
+                        >
+                          +{dayEv.length - 4}개 더
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -796,7 +821,7 @@ export default function CalendarView({ openDetail, organizePrefs, onStartRecFrom
               </div>
             )}
             {selectedEvents.map((ev) => (
-              <div key={ev.id} className="cal-dayrow" onClick={() => openDetail?.("event", ev)}>
+              <div key={ev.id} className="cal-dayrow" onClick={() => (openDetail ? openDetail("event", ev) : openEdit(ev))}>
                 <span className="cal-daybar" style={{ background: eventColor(ev, organizePrefs) }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{ev.title}</div>

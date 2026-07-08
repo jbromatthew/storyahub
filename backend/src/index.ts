@@ -29,6 +29,8 @@ import { placesRouter } from "./routes/places.js";
 import { ocrRouter } from "./routes/ocr.js";
 import { friendsRouter } from "./routes/friends.js";
 import { sharesRouter } from "./routes/shares.js";
+import { erpRouter } from "./routes/erp.js";
+import { salesSyncRouter } from "./routes/salesSync.js";
 import { startPurgeScheduler } from "./services/purge.js";
 
 const app = express();
@@ -68,6 +70,8 @@ app.use("/places", placesRouter);
 app.use("/ocr", ocrLimiter, ocrRouter);
 app.use("/friends", friendsRouter);
 app.use("/shares", sharesRouter);
+app.use("/erp", erpRouter);
+app.use("/erp/sales", salesSyncRouter);
 
 app.use((err: Error, _req: Request, res: Response, next: NextFunction) => {
   if (err.message === "CORS blocked") {
@@ -95,7 +99,7 @@ app.listen(env.port, () => {
     .$connect()
     .then(() => {
       console.log("PostgreSQL (RDS) connected");
-      startPurgeScheduler();
+      if (!env.erpMode) startPurgeScheduler();
     })
     .catch((e) => console.warn("PostgreSQL unreachable — check DATABASE_URL / RDS security group:", (e as Error).message));
 });

@@ -67,6 +67,7 @@ export const env = {
   trustProxy: parseBool("TRUST_PROXY", isProduction),
   allowDemoAuth: parseBool("ALLOW_DEMO_AUTH", isDevelopment),
   allowTestSubscribe: parseBool("ALLOW_TEST_SUBSCRIBE", isDevelopment),
+  erpMode: parseBool("ERP_MODE", false),
   cookieDomain: process.env.COOKIE_DOMAIN || (isProduction ? ".storyahub.com" : undefined),
   bcryptRounds: isProduction ? 12 : 10,
   databaseUrl: need("DATABASE_URL", "postgresql://localhost:5432/storyahub"),
@@ -106,5 +107,15 @@ export const env = {
       (isProduction
         ? "https://api.storyahub.com/calendar/sync/google/callback"
         : "http://localhost:4000/calendar/sync/google/callback"),
+  },
+  googleSheets: {
+    serviceAccountJson: process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON ?? "",
+    serviceAccountFile: process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE ?? "",
+    inquirySpreadsheetId:
+      process.env.GOOGLE_SHEETS_INQUIRY_SPREADSHEET_ID ??
+      "18sGtMD5n-PMuwtB_5N3uQe0gfLWsMURweT1w1B6Ax_0",
+    orderSpreadsheetId:
+      process.env.GOOGLE_SHEETS_ORDER_SPREADSHEET_ID ??
+      "1TWHPuMkDhb29KyJXNPmTy4xXNEF-MFiUIxzwz9bIZ58",
   },
 };

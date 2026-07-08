@@ -43,7 +43,7 @@ aws sts get-caller-identity --output text >/dev/null
 
 echo "→ production 빌드 (VITE_API_BASE=$API_BASE)"
 cd "$ROOT/frontend"
-printf 'VITE_API_BASE=%s\n' "$API_BASE" > .env.production
+printf 'VITE_API_BASE=%s\nVITE_ERP_MODE=true\n' "$API_BASE" > .env.production
 npm run build
 
 echo "→ S3 sync s3://$S3_BUCKET/"

@@ -44,13 +44,16 @@ echo "→ migrate + build + PM2 restart"
 ssh "${SSH_OPTS[@]}" "${EC2_USER}@${EC2_HOST}" bash -s <<'REMOTE'
 set -euo pipefail
 cd ~/storyahub/backend
+# NOTE: do not `source .env.production` into bash — JSON values get mangled.
+# The Node app loads .env.production via dotenv on startup.
 export NODE_ENV=production
-set -a
-source .env.production
-set +a
 npx prisma generate
 npm run build
 npx prisma migrate deploy
+# Clear any previously injected mangled Sheets JSON from PM2 process env
+pm2 restart storyahub-api --update-env -- \
+  || pm2 restart storyahub-api
+# Prefer deleting polluted env var if present in ecosystem/runtime
 pm2 restart storyahub-api
 sleep 2
 curl -sf http://localhost:4000/health

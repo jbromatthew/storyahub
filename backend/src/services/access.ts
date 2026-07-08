@@ -62,6 +62,24 @@ function purgeAt(user: User, now = new Date()): Date | null {
 }
 
 export function getAccessStatus(user: User, now = new Date()): AccessStatus {
+  if (env.erpMode) {
+    return {
+      hasAccess: true,
+      reason: "lifetime",
+      trialDaysLeft: null,
+      isTrial: false,
+      plan: "pro",
+      planUntil: null,
+      lifetimeAccess: true,
+      accessUntil: null,
+      purgeAt: null,
+      allowFileUpload: true,
+      recordingLimitSec: planRecordingSec("pro"),
+      recordingUsedSec: user.usedRecordingSec,
+      storageLimitBytes: planStorageBytes("pro"),
+    };
+  }
+
   const ends = trialEndsAt(user);
   const inTrial = !!ends && ends > now && !hasActivePlan(user, now);
   const trialLeft = ends && ends > now ? Math.max(0, Math.ceil((ends.getTime() - now.getTime()) / MS_DAY)) : 0;

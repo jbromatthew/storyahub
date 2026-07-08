@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { api, saveToken, setToken, EMAIL_KEY, getRememberLogin } from "../api/client.js";
 
-export default function AuthScreen({ onSuccess }) {
+export default function AuthScreen({ onSuccess, erpMode = false }) {
   const [mode, setMode] = useState("login"); // login | register
   const [email, setEmail] = useState(() => localStorage.getItem(EMAIL_KEY) || "");
   const [password, setPassword] = useState("");
@@ -51,10 +51,12 @@ export default function AuthScreen({ onSuccess }) {
             <path d="M12 17.5V21" />
           </svg>
         </div>
-        <div style={{ fontWeight: 800, fontSize: 22, marginTop: 20 }}>Storyahub</div>
-        <div style={{ fontWeight: 700, fontSize: 24, marginTop: 14, lineHeight: 1.3 }}>녹음하면, 알아서 정리되는 비서</div>
+        <div style={{ fontWeight: 800, fontSize: 22, marginTop: 20 }}>{erpMode ? "ERP" : "Storyahub"}</div>
+        <div style={{ fontWeight: 700, fontSize: 24, marginTop: 14, lineHeight: 1.3 }}>
+          {erpMode ? "지식경영 · 회의록 · OKR" : "녹음하면, 알아서 정리되는 비서"}
+        </div>
         <div className="small" style={{ marginTop: 10, lineHeight: 1.55 }}>
-          미팅 · 통화 · 강의를 자동으로 요약하고 정리해요
+          {erpMode ? "사번 또는 이메일로 로그인하세요" : "미팅 · 통화 · 강의를 자동으로 요약하고 정리해요"}
         </div>
       </div>
 

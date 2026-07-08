@@ -76,7 +76,7 @@ const KB_SECTIONS = new Set(["book", "lecture", "knowledge"]);
 
 kbRouter.post("/", async (req: AuthedRequest, res) => {
   const userId = req.userId!;
-  const { id, title, section, category, tags, blocks, bookMeta } = req.body ?? {};
+  const { id, title, section, category, tags, blocks, bookMeta, status, visibility } = req.body ?? {};
   const sec = typeof section === "string" && KB_SECTIONS.has(section) ? section : "knowledge";
   const data = {
     title: title ?? "제목 없음",
@@ -85,6 +85,8 @@ kbRouter.post("/", async (req: AuthedRequest, res) => {
     tags: tags ?? [],
     blocks: blocks ?? [],
     bookMeta: sec === "book" && bookMeta && typeof bookMeta === "object" ? bookMeta : sec === "lecture" && bookMeta && typeof bookMeta === "object" ? bookMeta : null,
+    ...(status !== undefined ? { status: String(status) } : {}),
+    ...(visibility !== undefined ? { visibility: String(visibility) } : {}),
   };
   if (id) {
     const access = await getKbAccess(userId, String(id));

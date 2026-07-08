@@ -12,10 +12,11 @@ export const EMAIL_KEY = "storyahub_email";
 let token = null;
 
 export class ApiError extends Error {
-  constructor(message, status = 0) {
+  constructor(message, status = 0, data = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.data = data;
   }
 }
 
@@ -84,14 +85,16 @@ async function req(path, { method = "GET", body, headers = {} } = {}) {
   }
   if (!res.ok) {
     let msg = `${res.status}`;
+    let data = null;
     try {
       const j = await res.json();
+      data = j;
       msg = j.error || msg;
     } catch {
       msg = await res.text();
     }
     if (TOAST_ERROR_STATUSES.has(res.status)) toastError(msg);
-    throw new ApiError(msg, res.status);
+    throw new ApiError(msg, res.status, data);
   }
   return res.status === 204 ? null : res.json();
 }
@@ -222,4 +225,79 @@ export const api = {
   addShare: (type, id, body) => req(`/shares/${type}/${id}`, { method: "POST", body }),
   updateShare: (shareId, body) => req(`/shares/${shareId}`, { method: "PATCH", body }),
   removeShare: (shareId) => req(`/shares/${shareId}`, { method: "DELETE" }),
+
+  // 사내 ERP
+  erpDashboard: () => req("/erp/dashboard"),
+  erpNotifications: (module) => req(`/erp/notifications${module ? `?module=${module}` : ""}`),
+  erpReadAllNotifications: () => req("/erp/notifications/read-all", { method: "PATCH" }),
+  erpReadNotification: (id) => req(`/erp/notifications/${id}/read`, { method: "PATCH" }),
+  erpProfile: () => req("/erp/me/profile"),
+  erpUpdateProfile: (data) => req("/erp/me/profile", { method: "PATCH", body: data }),
+  erpEmployees: (status) => req(`/erp/employees${status ? `?status=${status}` : ""}`),
+  erpCreateEmployee: (data) => req("/erp/employees", { method: "POST", body: data }),
+  erpBulkEmployees: (employees) => req("/erp/employees/bulk", { method: "POST", body: { employees } }),
+  erpUpdateEmployee: (id, data) => req(`/erp/employees/${id}`, { method: "PATCH", body: data }),
+  erpIssueAccount: (id, password) => req(`/erp/employees/${id}/issue-account`, { method: "POST", body: password ? { password } : {} }),
+  erpResetPassword: (id, password) => req(`/erp/employees/${id}/reset-password`, { method: "POST", body: password ? { password } : {} }),
+  erpDepartments: () => req("/erp/departments"),
+  erpCreateDepartment: (data) => req("/erp/departments", { method: "POST", body: data }),
+  erpRanks: () => req("/erp/ranks"),
+  erpApprovalForms: () => req("/erp/approval/forms"),
+  erpPreviewApprovalChain: (formCode, approvalChain) => {
+    const q = new URLSearchParams({ formCode });
+    if (approvalChain) q.set("approvalChain", approvalChain);
+    return req(`/erp/approval/preview-chain?${q}`);
+  },
+  erpApprovalDocs: (box) => req(`/erp/approval/documents?box=${box || "draft"}`),
+  erpApprovalDoc: (id) => req(`/erp/approval/documents/${id}`),
+  erpSaveApprovalDoc: (data) => req("/erp/approval/documents", { method: "POST", body: data }),
+  erpApproveDoc: (id, comment) => req(`/erp/approval/documents/${id}/approve`, { method: "POST", body: { comment } }),
+  erpRejectDoc: (id, comment) => req(`/erp/approval/documents/${id}/reject`, { method: "POST", body: { comment } }),
+  erpLeaveBalance: (year) => req(`/erp/leave/balance${year ? `?year=${year}` : ""}`),
+  erpLeaveStatus: (year) => req(`/erp/leave/status${year ? `?year=${year}` : ""}`),
+  erpLeaveCalendar: (year, month) => req(`/erp/leave/calendar?year=${year}&month=${month}`),
+  erpLeaveRewards: (year) => req(`/erp/leave/rewards${year ? `?year=${year}` : ""}`),
+  erpGrantLeaveReward: (data) => req("/erp/leave/rewards", { method: "POST", body: data }),
+  erpUpdateLeaveBalance: (userId, data) => req(`/erp/leave/balance/${userId}`, { method: "PATCH", body: data }),
+  erpLeaveRequests: () => req("/erp/leave/requests"),
+  erpSaveLeaveRequest: (data) => req("/erp/leave/requests", { method: "POST", body: data }),
+  erpMeetingNotes: () => req("/erp/meetings"),
+  erpMeetingNote: (id) => req(`/erp/meetings/${id}`),
+  erpSaveMeetingNote: (data) => req("/erp/meetings", { method: "POST", body: data }),
+  erpDeleteMeetingNote: (id) => req(`/erp/meetings/${id}`, { method: "DELETE" }),
+  erpCompanyEvents: () => req("/erp/events"),
+  erpCreateEvent: (data) => req("/erp/events", { method: "POST", body: data }),
+  erpEventRsvp: (id, response) => req(`/erp/events/${id}/rsvp`, { method: "POST", body: { response } }),
+  erpOkr: (quarter) => req(`/erp/okr${quarter ? `?quarter=${quarter}` : ""}`),
+  erpSaveOkr: (data) => req("/erp/okr", { method: "POST", body: data }),
+  erpUpdateKr: (id, data) => req(`/erp/okr/key-results/${id}`, { method: "PATCH", body: data }),
+  erpSalesSyncStatus: () => req("/erp/sales/status"),
+  erpSalesSyncSheets: (kind) => req(`/erp/sales/sheets?kind=${kind}`),
+  erpSalesSync: (kind, sheetName, opts = {}) =>
+    req("/erp/sales/sync", {
+      method: "POST",
+      body: {
+        kind,
+        sheetName,
+        mode: opts.mode || "one",
+        background: opts.background !== false,
+      },
+    }),
+  erpSalesSyncAll: (kind) =>
+    req("/erp/sales/sync", {
+      method: "POST",
+      body: { kind, mode: "all", background: true },
+    }),
+  erpSalesJob: (id) => req(`/erp/sales/jobs/${id}`),
+  erpSalesRows: ({ kind, sheetName, q, page, pageSize } = {}) => {
+    const p = new URLSearchParams();
+    if (kind) p.set("kind", kind);
+    if (sheetName) p.set("sheetName", sheetName);
+    if (q) p.set("q", q);
+    if (page) p.set("page", String(page));
+    if (pageSize) p.set("pageSize", String(pageSize));
+    return req(`/erp/sales/rows?${p}`);
+  },
+  erpPaymentRateMeta: () => req("/erp/sales/payment-rate/meta"),
+  erpPaymentRate: (body) => req("/erp/sales/payment-rate", { method: "POST", body }),
 };
