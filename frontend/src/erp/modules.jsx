@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { erpIcons as I } from "./icons.jsx";
 import { APPROVAL_BOXES, LEAVE_TYPES, LEAVE_POLICY, APPROVAL_CHAINS, FORM_CHAIN_HINT, EMPLOYEE_ROLES, REFUND_TYPES, PAYMENT_METHODS, REFUND_METHODS, EMPTY_REFUND_FORM } from "./config.js";
@@ -1766,6 +1766,127 @@ export function MembersView() {
   );
 }
 
+const ASSIGNEE_PALETTE = [
+  { bg: "#E8DEFF", fg: "#5B3E96" },
+  { bg: "#D3F8DF", fg: "#1F6B3A" },
+  { bg: "#2383E2", fg: "#FFFFFF" },
+  { bg: "#FFE2DD", fg: "#B85C3A" },
+  { bg: "#6B38C0", fg: "#FFFFFF" },
+  { bg: "#5D4037", fg: "#FFFFFF" },
+  { bg: "#9B2C2C", fg: "#FFFFFF" },
+  { bg: "#F1F1EF", fg: "#55534E" },
+  { bg: "#FAEBDD", fg: "#C45500" },
+  { bg: "#2E4A4F", fg: "#FFFFFF" },
+  { bg: "#D6EAF8", fg: "#1A5276" },
+  { bg: "#FADBD8", fg: "#922B21" },
+  { bg: "#E8DAEF", fg: "#6C3483" },
+  { bg: "#D5F5E3", fg: "#196F3D" },
+  { bg: "#FDEBD0", fg: "#935116" },
+  { bg: "#D7BDE2", fg: "#512E5F" },
+];
+
+const ASSIGNEE_SPECIAL = {
+  "미지정": { bg: "#F1F1EF", fg: "#55534E" },
+  "미반영": { bg: "#F1F1EF", fg: "#55534E" },
+  "대기": { bg: "#FAEBDD", fg: "#C45500" },
+};
+
+function assigneeBadgeColors(name) {
+  if (ASSIGNEE_SPECIAL[name]) return ASSIGNEE_SPECIAL[name];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return ASSIGNEE_PALETTE[h % ASSIGNEE_PALETTE.length];
+}
+
+function AssigneeBadge({ name, compact = false }) {
+  const { bg, fg } = assigneeBadgeColors(name);
+  return (
+    <span
+      className={"assignee-badge" + (compact ? " compact" : "")}
+      style={{ background: bg, color: fg }}
+    >
+      {name}
+    </span>
+  );
+}
+
+function AssigneePicker({ assignees, selected, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const rootRef = useRef(null);
+
+  const filtered = useMemo(() => {
+    const lower = q.trim().toLowerCase();
+    return (assignees || []).filter((a) => !lower || a.toLowerCase().includes(lower));
+  }, [assignees, q]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const toggle = (name) => {
+    onChange(selected.includes(name) ? selected.filter((a) => a !== name) : [...selected, name]);
+  };
+
+  const summary = selected.length
+    ? selected.map((name) => <AssigneeBadge key={name} name={name} compact />)
+    : <span className="assignee-badge all">전체</span>;
+
+  return (
+    <div className="assignee-picker" ref={rootRef}>
+      <label className="assignee-picker-label">담당자</label>
+      <button type="button" className={"assignee-picker-trigger" + (open ? " open" : "")} onClick={() => setOpen((v) => !v)}>
+        <div className="assignee-picker-value">{summary}</div>
+        <span className="assignee-picker-chev">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="assignee-picker-menu">
+          <input
+            className="assignee-picker-search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="검색"
+            autoFocus
+          />
+          <div className="assignee-picker-list">
+            <button
+              type="button"
+              className={"assignee-picker-row" + (!selected.length ? " on" : "")}
+              onClick={() => onChange([])}
+            >
+              <span className="assignee-badge all">전체</span>
+            </button>
+            {filtered.map((name) => (
+              <button
+                key={name}
+                type="button"
+                className={"assignee-picker-row" + (selected.includes(name) ? " on" : "")}
+                onClick={() => toggle(name)}
+              >
+                <AssigneeBadge name={name} />
+                {selected.includes(name) && <span className="assignee-picker-check">✓</span>}
+              </button>
+            ))}
+            {!filtered.length && (
+              <div className="small" style={{ padding: "12px 10px", color: "var(--muted)" }}>검색 결과 없음</div>
+            )}
+          </div>
+          {selected.length > 0 && (
+            <div className="assignee-picker-foot">
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange([])}>선택 해제</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const GROUP_PRESETS = [
   { id: "current", label: "당월", pick: (months, current) => (current ? [current] : []) },
   { id: "prev", label: "지난달", pick: (months, current) => {
@@ -2004,7 +2125,6 @@ export function PaymentRateView() {
   const [industry, setIndustry] = useState("");
   const [selectedChannels, setSelectedChannels] = useState([]);
   const [selectedAssignees, setSelectedAssignees] = useState([]);
-  const [assigneeQ, setAssigneeQ] = useState("");
   const [monthQ, setMonthQ] = useState("");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -2022,11 +2142,6 @@ export function PaymentRateView() {
     const q = monthQ.trim();
     return (meta?.months || []).filter((m) => !q || m.includes(q) || monthShortLabel(m).includes(q));
   }, [meta, monthQ]);
-
-  const filteredAssignees = useMemo(() => {
-    const q = assigneeQ.trim().toLowerCase();
-    return (meta?.assignees || []).filter((a) => !q || a.toLowerCase().includes(q));
-  }, [meta, assigneeQ]);
 
   useEffect(() => {
     api.erpPaymentRateMeta()
@@ -2103,12 +2218,6 @@ export function PaymentRateView() {
     updateGroup(groupId, { label: preset.label, months: picked });
   };
 
-  const toggleAssignee = (name) => {
-    setSelectedAssignees((prev) => (
-      prev.includes(name) ? prev.filter((a) => a !== name) : [...prev, name]
-    ));
-  };
-
   const groupLabels = result?.groups?.map((g) => g.label) || groups.filter((g) => g.months.length).map((g) => g.label);
   const planCompareRows = useMemo(() => buildPlanCompareRows(result?.planTables), [result]);
   const assigneeCompareRows = useMemo(() => buildAssigneeCompareRows(result?.assigneeTables), [result]);
@@ -2140,39 +2249,11 @@ export function PaymentRateView() {
           </div>
         </div>
         {(meta?.assignees?.length > 0) && (
-          <div className="rate-assignee-filter" style={{ marginTop: 12 }}>
-            <div className="rate-assignee-hd">
-              <label>담당자</label>
-              <span className="small">
-                {selectedAssignees.length ? `${selectedAssignees.length}명 선택` : "전체 담당자"}
-              </span>
-            </div>
-            <input
-              className="rate-assignee-search"
-              value={assigneeQ}
-              onChange={(e) => setAssigneeQ(e.target.value)}
-              placeholder="담당자 검색"
-            />
-            <div className="rate-assignee-picks">
-              <button
-                type="button"
-                className={"rate-month-chip" + (!selectedAssignees.length ? " on" : "")}
-                onClick={() => setSelectedAssignees([])}
-              >
-                전체
-              </button>
-              {filteredAssignees.map((a) => (
-                <button
-                  key={a}
-                  type="button"
-                  className={"rate-month-chip" + (selectedAssignees.includes(a) ? " on" : "")}
-                  onClick={() => toggleAssignee(a)}
-                >
-                  {a}
-                </button>
-              ))}
-            </div>
-          </div>
+          <AssigneePicker
+            assignees={meta.assignees}
+            selected={selectedAssignees}
+            onChange={setSelectedAssignees}
+          />
         )}
       </div>
 
@@ -2300,7 +2381,7 @@ export function PaymentRateView() {
                   <tbody>
                     {assigneeCompareRows.map((row) => (
                       <tr key={row.assignee}>
-                        <td className="plan-col">{row.assignee}</td>
+                        <td className="plan-col"><AssigneeBadge name={row.assignee} /></td>
                         {row.byGroup.map((metrics, i) => (
                           <PlanMetricsCell key={i} metrics={metrics} />
                         ))}

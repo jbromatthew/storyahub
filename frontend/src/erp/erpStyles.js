@@ -177,11 +177,24 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .rate-plan-cell div{display:flex;justify-content:space-between;gap:8px;}
 .rate-plan-cell .lbl{color:var(--muted);flex-shrink:0;}
 .rate-plan-cell .pct{font-weight:700;color:var(--accent-deep);}
-.rate-assignee-filter{border-top:1px solid var(--line);padding-top:12px;}
-.rate-assignee-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
-.rate-assignee-hd label{font-size:12px;font-weight:800;color:var(--muted);}
-.rate-assignee-search{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:14px;margin-bottom:8px;}
-.rate-assignee-picks{display:flex;flex-wrap:wrap;gap:6px;max-height:120px;overflow:auto;padding-bottom:2px;}
+
+.assignee-badge{display:inline-flex;align-items:center;padding:4px 10px;border-radius:6px;font-size:13px;font-weight:600;line-height:1.3;white-space:nowrap;}
+.assignee-badge.compact{font-size:12px;padding:3px 8px;}
+.assignee-badge.all{background:#F1F1EF;color:#55534E;}
+.assignee-picker{position:relative;margin-top:12px;}
+.assignee-picker-label{display:block;font-size:12px;font-weight:800;color:var(--muted);margin-bottom:6px;}
+.assignee-picker-trigger{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:42px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;font-family:inherit;cursor:pointer;text-align:left;}
+.assignee-picker-trigger.open{border-color:#2383E2;box-shadow:0 0 0 3px rgba(35,131,226,.12);}
+.assignee-picker-value{display:flex;flex-wrap:wrap;gap:6px;flex:1;min-width:0;}
+.assignee-picker-chev{font-size:10px;color:var(--muted);flex-shrink:0;}
+.assignee-picker-menu{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:30;background:#fff;border:1px solid #E8EAED;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.12);overflow:hidden;}
+.assignee-picker-search{width:100%;border:none;border-bottom:1px solid #F0F0F0;padding:12px 14px;font-family:inherit;font-size:14px;outline:none;}
+.assignee-picker-list{max-height:280px;overflow-y:auto;padding:6px 0;}
+.assignee-picker-row{display:flex;align-items:center;justify-content:space-between;width:100%;padding:6px 12px;border:none;background:transparent;font-family:inherit;cursor:pointer;text-align:left;}
+.assignee-picker-row:hover,.assignee-picker-row.on{background:#F7F6F3;}
+.assignee-picker-check{font-size:13px;font-weight:800;color:#2383E2;}
+.assignee-picker-foot{padding:8px 10px;border-top:1px solid #F0F0F0;display:flex;justify-content:flex-end;}
+.rate-plan-compare td.plan-col .assignee-badge{vertical-align:middle;}
 .ch-filter{border:1px solid var(--line);border-radius:12px;background:#fff;margin:12px 0;overflow:hidden;}
 .ch-filter-hd{display:flex;align-items:center;gap:8px;padding:12px 14px;cursor:pointer;user-select:none;}
 .ch-filter-hd strong{font-size:14px;flex:1;}
