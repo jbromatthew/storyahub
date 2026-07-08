@@ -1726,7 +1726,7 @@ export function MembersView() {
       <div className="h-eyebrow">Access</div>
       <div className="h-title">멤버 관리</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
-        초대한 사람만 가입할 수 있고, 승인한 멤버만 ERP를 이용합니다.
+        슈퍼어드민 계정으로 초대·승인합니다. 승인된 멤버만 ERP를 이용할 수 있습니다.
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>

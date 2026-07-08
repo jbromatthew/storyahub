@@ -157,13 +157,29 @@ function KbBlogCard({ article, onOpen, featured = false, erpMode = false }) {
   );
 }
 
-function KbArticleCard({ article, onOpen, pinned }) {
-  const isFormal = article.status === "formal" || article.status === "formal_pending";
+function KbVisibilityBadge({ article, erpMode }) {
+  if (!erpMode) return null;
+  const isPublic = article.visibility === "company";
   return (
-    <div className="kbh-item" onClick={() => onOpen(article)}>
+    <span className={"kbh-vis-badge" + (isPublic ? " public" : " private")}>
+      {isPublic ? "팀공개" : "비공개"}
+    </span>
+  );
+}
+
+function KbArticleCard({ article, onOpen, pinned, erpMode = false }) {
+  const isFormal = article.status === "formal" || article.status === "formal_pending";
+  const isPublic = article.visibility === "company";
+  const visClass = erpMode ? (isPublic ? " kbh-vis-public" : " kbh-vis-private") : "";
+  const authorHint = erpMode && article.isShared && article.sharedBy
+    ? (article.sharedBy.name || article.sharedBy.email?.split("@")[0] || "팀원")
+    : null;
+  return (
+    <div className={"kbh-item" + visClass} onClick={() => onOpen(article)}>
       <KbThumb article={article} />
       <div style={{ minWidth: 0, flex: 1 }}>
         <div className="kbh-meta">
+          <KbVisibilityBadge article={article} erpMode={erpMode} />
           {pinned && <span className="tag gray">📌 최신</span>}
           {isFormal && <span className="tag" style={{ background: "#E8F5E9", color: "#2E7D32" }}>정식지식</span>}
           <span className="tag gray">{article.c}</span>
@@ -172,7 +188,9 @@ function KbArticleCard({ article, onOpen, pinned }) {
         <div className="ttl">{article.t}</div>
         <div className="ex">{kbExcerpt(article)}</div>
         <div className="kbh-info">
-          <span className="kbh-dot">{article.d} · {kbReadMinutes(article)}분</span>
+          <span className="kbh-dot">
+            {authorHint ? `${authorHint} · ` : ""}{article.d} · {kbReadMinutes(article)}분
+          </span>
           {kbFileCount(article) > 0 && <span className="kbh-attach">📎 {kbFileCount(article)}</span>}
         </div>
       </div>
@@ -181,7 +199,8 @@ function KbArticleCard({ article, onOpen, pinned }) {
 }
 
 export default function KnowledgeFeed({ articles, openWrite, section = "knowledge", onSectionChange, erpMode = false }) {
-  const [viewMode, setViewMode] = useState(erpMode ? "blog" : "board");
+  const [viewMode, setViewMode] = useState(erpMode ? "list" : "board");
+  const [visFilter, setVisFilter] = useState("전체");
   const [cat, setCat] = useState("전체");
   const [tagFilter, setTagFilter] = useState("전체");
   const [q, setQ] = useState("");
@@ -192,13 +211,15 @@ export default function KnowledgeFeed({ articles, openWrite, section = "knowledg
   if (cat !== "전체") list = list.filter((a) => a.c === cat);
   if (tagFilter !== "전체") list = list.filter((a) => (a.tags || []).includes(tagFilter));
   if (ql) list = list.filter((a) => kbSearchText(a).includes(ql));
-  const feat = list[0] && cat === "전체" && !ql && viewMode === "blog" ? list[0] : (!erpMode && list[0] && cat === "전체" && !ql ? list[0] : null);
-  const rest = feat ? list.filter((a) => a.id !== feat.id) : list;
+  if (erpMode && visFilter === "비공개") list = list.filter((a) => a.visibility !== "company");
+  if (erpMode && visFilter === "팀공개") list = list.filter((a) => a.visibility === "company");
+  const feat = !erpMode && list[0] && cat === "전체" && !ql ? list[0] : null;
+  const rest = feat ? list.slice(1) : list;
   const sectionInfo = KB_SECTIONS.find((s) => s.id === section);
   const emptyMsg = section === "book" ? "아직 책 기록이 없어요."
     : section === "lecture" ? "아직 강연 정리가 없어요." : "아직 지식 글이 없어요. 우측 하단 + 로 첫 글을 작성해 보세요.";
-  const gridItems = viewMode === "board" ? rest : list;
-  const listClass = viewMode === "board" ? "kbh-board" : viewMode === "blog" ? "kbh-blog-list" : "kbh-listview";
+  const gridItems = erpMode ? list : (viewMode === "board" ? rest : list);
+  const listClass = erpMode ? "kbh-listview" : (viewMode === "board" ? "kbh-board" : "kbh-listview");
 
   return (
     <div className={erpMode ? "kb-feed" : "fade"} style={{ position: "relative" }}>
@@ -244,22 +265,28 @@ export default function KnowledgeFeed({ articles, openWrite, section = "knowledg
           </div>
         )}
 
+        {erpMode && (
+          <div className="kbh-cats" style={{ marginTop: 8 }}>
+            {["전체", "비공개", "팀공개"].map((v) => (
+              <button key={v} type="button" className={"kbh-cat" + (visFilter === v ? " on" : "")} onClick={() => setVisFilter(v)}>{v}</button>
+            ))}
+          </div>
+        )}
+
         {list.length > 0 && (
           <div className="kbh-blog-toolbar">
             <span className="count">글 {list.length}개</span>
-            <div className="seg" style={{ width: erpMode ? 148 : 128 }}>
-                {erpMode ? (
-                  <>
-                    <button type="button" className={viewMode === "blog" ? "on" : ""} onClick={() => setViewMode("blog")} style={{ padding: "6px 0", fontSize: 12.5 }}>블로그</button>
-                    <button type="button" className={viewMode === "list" ? "on" : ""} onClick={() => setViewMode("list")} style={{ padding: "6px 0", fontSize: 12.5 }}>간략</button>
-                  </>
-                ) : (
-                  <>
-                    <button type="button" className={viewMode === "board" ? "on" : ""} onClick={() => setViewMode("board")} style={{ padding: "6px 0", fontSize: 12.5 }}>보드</button>
-                    <button type="button" className={viewMode === "list" ? "on" : ""} onClick={() => setViewMode("list")} style={{ padding: "6px 0", fontSize: 12.5 }}>리스트</button>
-                  </>
-                )}
+            {erpMode ? (
+              <div className="kbh-vis-legend">
+                <span className="kbh-vis-badge private">비공개</span>
+                <span className="kbh-vis-badge public">팀공개</span>
               </div>
+            ) : (
+              <div className="seg" style={{ width: 128 }}>
+                <button type="button" className={viewMode === "board" ? "on" : ""} onClick={() => setViewMode("board")} style={{ padding: "6px 0", fontSize: 12.5 }}>보드</button>
+                <button type="button" className={viewMode === "list" ? "on" : ""} onClick={() => setViewMode("list")} style={{ padding: "6px 0", fontSize: 12.5 }}>리스트</button>
+              </div>
+            )}
           </div>
         )}
 
@@ -267,13 +294,6 @@ export default function KnowledgeFeed({ articles, openWrite, section = "knowledg
           <div className="small" style={{ textAlign: "center", padding: "50px 0", lineHeight: 1.6 }}>
             {q ? `"${q}"에 대한 글이 없어요.` : emptyMsg}
           </div>
-        )}
-
-        {feat && viewMode === "blog" && (
-          <>
-            <div className="kbh-sech">최신 글</div>
-            <KbBlogCard article={feat} onOpen={openWrite} featured erpMode={erpMode} />
-          </>
         )}
 
         {feat && viewMode === "board" && (
@@ -291,19 +311,12 @@ export default function KnowledgeFeed({ articles, openWrite, section = "knowledg
           </>
         )}
 
-        {gridItems.length > 0 && viewMode !== "blog" && <div className="kbh-sech">{kbSectionLabel(section)} 목록</div>}
-        {viewMode === "blog" && rest.length > 0 && <div className="kbh-sech">전체 글</div>}
-        {viewMode === "blog" ? (
-          <div className="kbh-blog-list">
-            {rest.map((a) => <KbBlogCard key={a.id} article={a} onOpen={openWrite} erpMode={erpMode} />)}
-          </div>
-        ) : (
-          <div className={`kbh-list ${listClass}${viewMode === "list" && erpMode ? " kbh-compact-list" : ""}`}>
-            {gridItems.map((a, i) => (
-              <KbArticleCard key={a.id} article={a} onOpen={openWrite} pinned={viewMode === "list" && i === 0 && !!feat} />
-            ))}
-          </div>
-        )}
+        {gridItems.length > 0 && <div className="kbh-sech">{erpMode ? "지식 목록" : `${kbSectionLabel(section)} 목록`}</div>}
+        <div className={`kbh-list ${listClass}${erpMode ? " kbh-compact-list" : ""}`}>
+          {gridItems.map((a, i) => (
+            <KbArticleCard key={a.id} article={a} onOpen={openWrite} pinned={!erpMode && viewMode === "list" && i === 0 && !!feat} erpMode={erpMode} />
+          ))}
+        </div>
       </div>
     </div>
   );

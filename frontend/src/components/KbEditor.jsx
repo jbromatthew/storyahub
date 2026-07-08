@@ -1286,6 +1286,16 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
         </div>
       </div>
 
+      {erpMode && isOwner && (
+        <div className="kbe-vis-strip">
+          <span className="kbe-vis-label">공개 범위</span>
+          <KbVisibilityToggle visibility={visibility} onChange={(v) => { setVisibility(v); setSaved(false); }} />
+          <span className="kbe-vis-desc">
+            {visibility === "private" ? "나만 보기" : "팀 전체 공개"}
+          </span>
+        </div>
+      )}
+
       <div className="kbe-scroll">
         <div className="kbe-inner">
           <div className="kbe-sheet">
@@ -1488,10 +1498,7 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
             {erpMode && isOwner && (
               <div style={{ marginBottom: 14 }}>
                 <div className="kbe-meta-h" style={{ marginTop: 0 }}>공개 범위</div>
-                <div className="seg" style={{ maxWidth: 280 }}>
-                  <button type="button" className={visibility === "private" ? "on" : ""} onClick={() => { setVisibility("private"); setSaved(false); }}>비공개</button>
-                  <button type="button" className={visibility === "company" ? "on" : ""} onClick={() => { setVisibility("company"); setSaved(false); }}>팀 공개</button>
-                </div>
+                <KbVisibilityToggle visibility={visibility} onChange={(v) => { setVisibility(v); setSaved(false); }} />
                 <div className="small" style={{ marginTop: 8, color: "#888" }}>
                   {visibility === "private" ? "나만 볼 수 있습니다" : "승인된 팀 멤버 모두가 볼 수 있습니다"}
                 </div>
@@ -1554,11 +1561,45 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
   );
 }
 
-export function KbReadView({ article, back, onEdit, onShare, canEdit = true }) {
+function kbSavePayload(article, extra = {}) {
+  const raw = article?._raw || {};
+  return {
+    id: article.id,
+    title: article.t || raw.title || "제목 없음",
+    section: article.section || raw.section || "knowledge",
+    category: article.c || raw.category || "미분류",
+    tags: article.tags || raw.tags || [],
+    blocks: article.blocks || raw.blocks || [],
+    bookMeta: article.bookMeta || raw.bookMeta || null,
+    ...extra,
+  };
+}
+
+function KbVisibilityToggle({ visibility, onChange, disabled, compact = false }) {
+  return (
+    <div className={"kbe-vis-toggle" + (compact ? " compact" : "")}>
+      <button type="button" className={visibility === "private" ? "on" : ""} disabled={disabled} onClick={() => onChange("private")}>
+        비공개
+      </button>
+      <button type="button" className={visibility === "company" ? "on" : ""} disabled={disabled} onClick={() => onChange("company")}>
+        팀공개
+      </button>
+    </div>
+  );
+}
+
+export function KbReadView({ article, back, onEdit, onShare, canEdit = true, erpMode = false, onArticleUpdated }) {
   const [imageUrls, setImageUrls] = useState({});
+  const [visibility, setVisibility] = useState(article?.visibility || "private");
+  const [visSaving, setVisSaving] = useState(false);
+  const isOwner = !article?.shareRole || article?.shareRole === "owner";
   const rawBlocks = article?.blocks || [];
   const coverKey = kbCoverKey(article);
   const blocks = rawBlocks.filter((b) => b.type !== "cover");
+
+  useEffect(() => {
+    setVisibility(article?.visibility || "private");
+  }, [article?.id, article?.visibility]);
 
   useEffect(() => {
     (async () => {
@@ -1583,17 +1624,34 @@ export function KbReadView({ article, back, onEdit, onShare, canEdit = true }) {
     })();
   }, [article?.id]);
 
+  const changeVisibility = async (next) => {
+    if (!article?.id || next === visibility || visSaving) return;
+    setVisSaving(true);
+    try {
+      const saved = await api.saveKb(kbSavePayload(article, { visibility: next }));
+      setVisibility(next);
+      onArticleUpdated?.(saved);
+      toastSuccess(next === "company" ? "팀 공개로 변경했어요" : "비공개로 변경했어요");
+    } catch (e) {
+      notifyError(e, e.message || "공개 설정 변경 실패");
+    } finally {
+      setVisSaving(false);
+    }
+  };
+
   return (
     <div className="fade kbe-read">
       <div className="kbe-read-top">
         <div className="kbe-inner kbe-read-top-inner">
           <button type="button" className="iconbtn" onClick={back}>←</button>
-          <div className="row" style={{ gap: 8 }}>
-            {onShare && (
+          <div className="row" style={{ gap: 8, alignItems: "center" }}>
+            {erpMode && isOwner ? (
+              <KbVisibilityToggle visibility={visibility} onChange={changeVisibility} disabled={visSaving} compact />
+            ) : onShare ? (
               <button type="button" className="btn btn-ghost" style={{ padding: "10px 16px", fontSize: 13 }} onClick={onShare}>
                 공유
               </button>
-            )}
+            ) : null}
             {canEdit && (
               <button type="button" className="btn btn-ghost" style={{ padding: "10px 16px", fontSize: 13 }} onClick={onEdit}>
                 편집
@@ -1602,6 +1660,11 @@ export function KbReadView({ article, back, onEdit, onShare, canEdit = true }) {
           </div>
         </div>
       </div>
+      {erpMode && isOwner && (
+        <div className="kbe-vis-hint">
+          {visibility === "private" ? "나만 볼 수 있는 글입니다" : "승인된 팀 멤버 모두가 볼 수 있습니다"}
+        </div>
+      )}
       {coverKey && imageUrls[coverKey] && (
         <div className="kbe-cover-read" style={article?.section === "book" ? { maxHeight: 360 } : undefined}>
           <img src={imageUrls[coverKey]} alt="" style={article?.section === "book" ? { objectFit: "contain", background: "#F4F1EA" } : undefined} />

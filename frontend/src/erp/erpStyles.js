@@ -146,6 +146,10 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .sales-table th{position:sticky;top:0;background:#F8F9FA;z-index:1;font-weight:700;color:var(--muted);text-align:left;}
 .sales-table tr:hover td{background:#FAFCFF;}
 .sidenav-group{font-size:11px;font-weight:800;color:var(--muted);padding:14px 12px 6px;letter-spacing:.02em;}
+.sidenav-top{display:flex;flex-direction:column;gap:4px;flex:1;min-height:0;}
+.sidenav-admin{margin-top:auto;padding-top:12px;border-top:1px solid var(--line);}
+.sidenav-admin .sidenav-group{padding-top:0;}
+.sidenav-subitem{padding-left:22px;font-size:13px;gap:10px;}
 .rate-filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0;}
 .rate-filters select,.rate-filters input{min-width:140px;}
 .rate-page{max-width:100%;}

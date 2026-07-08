@@ -3,11 +3,12 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
 import { prisma } from "../db.js";
 import { env } from "../env.js";
-import { isErpOwner, ensureOwnerEmployee } from "./erpAccess.js";
+import { isErpOwner, ensureOwnerEmployee, isErpSuperAdmin } from "./erpAccess.js";
 
 const ADMIN_ROLES = new Set(["시스템관리자", "인사"]);
 
-export function isErpAdmin(roles: string[]) {
+export function isErpAdmin(roles: string[], email?: string | null) {
+  if (isErpOwner(email)) return true;
   return roles.some((r) => ADMIN_ROLES.has(r));
 }
 

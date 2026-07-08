@@ -7,22 +7,37 @@ export type ErpAccessStatus = "approved" | "pending" | "rejected" | "none";
 export type ErpAccessInfo = {
   status: ErpAccessStatus;
   isOwner: boolean;
+  isSuperAdmin: boolean;
   canManageMembers: boolean;
   employeeId?: string;
 };
+
+const SUPER_ADMIN_ROLES = ["시스템관리자"] as const;
+const ADMIN_MEMBER_ROLES = ["시스템관리자", "인사"] as const;
+
+export function canManageErpMembers(email: string | null | undefined, roles: string[] = []): boolean {
+  if (isErpOwner(email)) return true;
+  return roles.some((r) => (ADMIN_MEMBER_ROLES as readonly string[]).includes(r));
+}
 
 export function isErpOwner(email: string | null | undefined): boolean {
   if (!email) return false;
   return email.trim().toLowerCase() === env.erpOwnerEmail;
 }
 
+export function isErpSuperAdmin(email: string | null | undefined, roles: string[] = []): boolean {
+  return isErpOwner(email) || roles.includes("시스템관리자");
+}
+
 export async function ensureOwnerEmployee(user: User) {
+  const superRoles = [...SUPER_ADMIN_ROLES];
   const existing = await prisma.erpEmployee.findUnique({ where: { userId: user.id } });
   if (existing) {
-    if (existing.memberStatus !== "approved") {
+    const roles = [...new Set([...existing.roles, ...superRoles])];
+    if (existing.memberStatus !== "approved" || roles.length !== existing.roles.length) {
       return prisma.erpEmployee.update({
         where: { id: existing.id },
-        data: { memberStatus: "approved", roles: existing.roles.length ? existing.roles : ["시스템관리자"] },
+        data: { memberStatus: "approved", roles, jobRank: existing.jobRank || "임원" },
       });
     }
     return existing;
@@ -35,7 +50,8 @@ export async function ensureOwnerEmployee(user: User) {
         userId: user.id,
         name: byEmail.name || user.name,
         memberStatus: "approved",
-        roles: byEmail.roles.length ? byEmail.roles : ["시스템관리자"],
+        jobRank: byEmail.jobRank || "임원",
+        roles: [...new Set([...byEmail.roles, ...superRoles])],
       },
     });
   }
@@ -46,7 +62,7 @@ export async function ensureOwnerEmployee(user: User) {
       email: user.email.toLowerCase(),
       employeeNo: user.email.split("@")[0],
       jobRank: "임원",
-      roles: ["시스템관리자"],
+      roles: [...superRoles],
       memberStatus: "approved",
     },
   });
@@ -55,7 +71,7 @@ export async function ensureOwnerEmployee(user: User) {
 export async function resolveErpAccess(userId: string, email: string): Promise<ErpAccessInfo> {
   if (isErpOwner(email)) {
     await ensureOwnerEmployee({ id: userId, email, name: null } as User);
-    return { status: "approved", isOwner: true, canManageMembers: true };
+    return { status: "approved", isOwner: true, isSuperAdmin: true, canManageMembers: true };
   }
 
   const emp = await prisma.erpEmployee.findUnique({ where: { userId } });
@@ -64,7 +80,8 @@ export async function resolveErpAccess(userId: string, email: string): Promise<E
     return {
       status: status === "approved" ? "approved" : status,
       isOwner: false,
-      canManageMembers: false,
+      isSuperAdmin: isErpSuperAdmin(email, emp.roles),
+      canManageMembers: canManageErpMembers(email, emp.roles),
       employeeId: emp.id,
     };
   }
@@ -73,10 +90,10 @@ export async function resolveErpAccess(userId: string, email: string): Promise<E
     where: { email: email.toLowerCase(), userId: null },
   });
   if (invited) {
-    return { status: "pending", isOwner: false, canManageMembers: false, employeeId: invited.id };
+    return { status: "pending", isOwner: false, isSuperAdmin: false, canManageMembers: false, employeeId: invited.id };
   }
 
-  return { status: "none", isOwner: false, canManageMembers: false };
+  return { status: "none", isOwner: false, isSuperAdmin: false, canManageMembers: false };
 }
 
 export async function isApprovedErpMember(userId: string, email: string): Promise<boolean> {

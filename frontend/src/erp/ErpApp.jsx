@@ -10,7 +10,7 @@ import { api, loadToken, saveToken, clearToken, setToken, isAuthError } from "..
 import { kbToUi, kbCategories } from "../mappers.js";
 import { userPreferences } from "../preferences.js";
 import { ERP_CSS } from "./erpStyles.js";
-import { ERP_MODULES } from "./config.js";
+import { ERP_MODULES, ERP_ADMIN_MODULES } from "./config.js";
 import { erpIcons as I } from "./icons.jsx";
 import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, MembersView } from "./modules.jsx";
 
@@ -23,25 +23,55 @@ function NavBtn({ on, icon, label, onClick, layout = "side" }) {
   );
 }
 
+const ERP_OWNER_EMAIL = "matthew@broj.company";
+
+function canAccessErpAdmin(user) {
+  if (user?.erpAccess?.canManageMembers) return true;
+  return (user?.email || "").trim().toLowerCase() === ERP_OWNER_EMAIL;
+}
+
+function erpModuleLabel(id) {
+  return ERP_MODULES.find((m) => m.id === id)?.label
+    || ERP_ADMIN_MODULES.find((m) => m.id === id)?.label
+    || "ERP";
+}
+
 function ErpNav({ tab, kbView, onSelect, onLogout, user }) {
-  const modules = ERP_MODULES.filter((m) => !m.ownerOnly || user?.erpAccess?.canManageMembers);
+  const showAdmin = canAccessErpAdmin(user);
   return (
     <>
-      {modules.map((m, i) => {
-        const prev = modules[i - 1];
-        const showGroup = m.groupLabel && m.groupLabel !== prev?.groupLabel;
-        return (
-          <React.Fragment key={m.id}>
-            {showGroup && <div className="sidenav-group">{m.groupLabel}</div>}
-            <NavBtn
-              on={tab === m.id && !kbView}
-              icon={I[m.icon] || I.book}
-              label={m.label}
+      <div className="sidenav-top">
+        {ERP_MODULES.map((m, i) => {
+          const prev = ERP_MODULES[i - 1];
+          const showGroup = m.groupLabel && m.groupLabel !== prev?.groupLabel;
+          return (
+            <React.Fragment key={m.id}>
+              {showGroup && <div className="sidenav-group">{m.groupLabel}</div>}
+              <NavBtn
+                on={tab === m.id && !kbView}
+                icon={I[m.icon] || I.book}
+                label={m.label}
+                onClick={() => onSelect(m.id)}
+              />
+            </React.Fragment>
+          );
+        })}
+      </div>
+      {showAdmin && (
+        <div className="sidenav-admin">
+          <div className="sidenav-group">관리</div>
+          {ERP_ADMIN_MODULES.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              className={"sidenavitem sidenav-subitem" + (tab === m.id && !kbView ? " on" : "")}
               onClick={() => onSelect(m.id)}
-            />
-          </React.Fragment>
-        );
-      })}
+            >
+              {(I[m.icon] || I.gear)({ width: 18, height: 18 })}<span>{m.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {onLogout && (
         <div className="mobile-drawer-foot" style={{ marginTop: 12, borderTop: "none", paddingTop: 0 }}>
           <button
@@ -56,6 +86,15 @@ function ErpNav({ tab, kbView, onSelect, onLogout, user }) {
       )}
     </>
   );
+}
+
+function enrichErpUser(user) {
+  if (!user) return user;
+  if (user.erpAccess) return user;
+  if (canAccessErpAdmin(user)) {
+    return { ...user, erpAccess: { status: "approved", isOwner: true, isSuperAdmin: true, canManageMembers: true } };
+  }
+  return user;
 }
 
 export default function ErpApp() {
@@ -84,7 +123,8 @@ export default function ErpApp() {
     setBoot("loading");
     setBootError("");
     try {
-      const { user: u } = await api.me();
+      const { user: raw } = await api.me();
+      const u = enrichErpUser(raw);
       setUser(u);
       if (u.erpAccess?.status === "pending") {
         setBoot("pending");
@@ -98,8 +138,8 @@ export default function ErpApp() {
       }
       if (!u.onboardingDone) {
         await api.completeOnboarding();
-        const { user: u2 } = await api.me();
-        setUser(u2);
+        const { user: u2raw } = await api.me();
+        setUser(enrichErpUser(u2raw));
       }
       await loadAppData();
       setBoot("app");
@@ -137,21 +177,22 @@ export default function ErpApp() {
 
   const handleAuth = async (result) => {
     if (result.token) setToken(result.token);
-    setUser(result.user);
-    if (result.user?.erpAccess?.status === "pending") {
+    const u = enrichErpUser(result.user);
+    setUser(u);
+    if (u?.erpAccess?.status === "pending") {
       setBoot("pending");
       return;
     }
-    if (result.user?.erpAccess?.status === "rejected" || result.user?.erpAccess?.status === "none") {
+    if (u?.erpAccess?.status === "rejected" || u?.erpAccess?.status === "none") {
       clearToken();
       setBoot("auth");
       setBootError("접근 권한이 없습니다.");
       return;
     }
-    if (!result.user.onboardingDone) {
+    if (!u.onboardingDone) {
       await api.completeOnboarding();
-      const { user: u } = await api.me();
-      setUser(u);
+      const { user: u2raw } = await api.me();
+      setUser(enrichErpUser(u2raw));
     }
     await loadAppData();
     setBoot("app");
@@ -180,7 +221,6 @@ export default function ErpApp() {
   };
 
   const prefs = userPreferences(user);
-  const currentModule = ERP_MODULES.find((m) => m.id === tab);
   const showMobileHeader = boot === "app" && kbView?.mode !== "edit";
 
   if (boot === "loading" || boot === "reconnect") {
@@ -224,14 +264,20 @@ export default function ErpApp() {
         ? <KbEditor article={kbView.article} back={closeKbView} onSaved={loadKb} onDeleted={loadKb}
             prefs={prefs} erpMode
             categories={kbCategories(kbArticles, kbView.article?.section).filter((c) => c !== "전체")} />
-        : <KbReadView article={kbView.article} back={closeKbView}
+        : <KbReadView article={kbView.article} back={closeKbView} erpMode
             canEdit={!kbView.article?.shareRole || kbView.article.shareRole === "owner" || kbView.article.shareRole === "editor"}
             onEdit={() => setKbView({ article: kbView.article, mode: "edit" })}
-            onShare={kbView.article?.shareRole === "owner" ? () => setShareTarget({ type: "kb", id: kbView.article.id, title: kbView.article.t }) : undefined} />;
+            onArticleUpdated={(saved) => {
+              const ui = kbToUi(saved);
+              setKbView({ article: { ...kbView.article, ...ui }, mode: "read" });
+              loadKb();
+            }} />;
     }
     switch (tab) {
       case "kb": return <KnowledgeFeed articles={kbArticles} section="knowledge" openWrite={openKbWrite} erpMode />;
-      case "members": return <MembersView />;
+      case "members":
+        if (!canAccessErpAdmin(user)) return <KnowledgeFeed articles={kbArticles} section="knowledge" openWrite={openKbWrite} erpMode />;
+        return <MembersView />;
       case "meetings": return <MeetingNotesView />;
       case "okr": return <OkrView />;
       case "sales-sync": return <SalesSyncView />;
@@ -255,6 +301,9 @@ export default function ErpApp() {
             </nav>
             <div className="app-sidebar-foot" style={{ fontSize: 12, color: "var(--muted)", padding: "12px 10px" }}>
               <div>지식경영 · 회의록 · OKR · 문의/결제</div>
+              {user?.erpAccess?.isOwner && (
+                <div style={{ marginTop: 6, fontWeight: 700, color: "var(--accent-deep)" }}>슈퍼어드민</div>
+              )}
               {user && (
                 <button
                   type="button"
@@ -274,7 +323,7 @@ export default function ErpApp() {
               <button type="button" className="mobile-menu-btn" aria-label="메뉴" onClick={() => setMenuOpen(true)}>
                 {I.menu({})}
               </button>
-              <div className="mobile-header-title">{kbView ? "지식경영" : (currentModule?.label || "ERP")}</div>
+              <div className="mobile-header-title">{kbView ? "지식경영" : erpModuleLabel(tab)}</div>
             </header>
           )}
           <div className={"screen" + (kbView ? " screen-kb" : "")}>

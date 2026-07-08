@@ -4,7 +4,6 @@ import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 import { requireErpMember } from "../middleware/requireErpMember.js";
-import { isErpOwner } from "../services/erpAccess.js";
 import { env } from "../env.js";
 import {
   ensureErpEmployee,
@@ -35,10 +34,15 @@ export const erpRouter = Router();
 erpRouter.use(auth, requireAccess);
 if (env.erpMode) erpRouter.use(requireErpMember);
 
-async function requireOwner(req: AuthedRequest, res: Response): Promise<boolean> {
+async function requireErpAdmin(req: AuthedRequest, res: Response): Promise<boolean> {
   const user = await prisma.user.findUnique({ where: { id: req.userId! } });
-  if (!user || !isErpOwner(user.email)) {
-    res.status(403).json({ error: "소유자만 이용할 수 있습니다" });
+  if (!user) {
+    res.status(403).json({ error: "관리자만 이용할 수 있습니다" });
+    return false;
+  }
+  const emp = await prisma.erpEmployee.findUnique({ where: { userId: user.id } });
+  if (!isErpAdmin(emp?.roles ?? [], user.email)) {
+    res.status(403).json({ error: "관리자만 이용할 수 있습니다" });
     return false;
   }
   return true;
@@ -53,8 +57,9 @@ async function getEmployee(userId: string) {
 }
 
 async function requireAdmin(req: AuthedRequest, res: Response): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: req.userId! } });
   const emp = await prisma.erpEmployee.findUnique({ where: { userId: req.userId! } });
-  if (!emp || !isErpAdmin(emp.roles)) {
+  if (!user || !emp || !isErpAdmin(emp.roles, user.email)) {
     res.status(403).json({ error: "관리자 권한이 필요합니다" });
     return false;
   }
@@ -78,9 +83,9 @@ function mapEmployee(e: {
   return erpEmployeePublic(e);
 }
 
-/** 멤버 초대·승인 (소유자 전용) */
+/** 멤버 초대·승인 (관리자 전용) */
 erpRouter.get("/members", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  if (!(await requireErpAdmin(req, res))) return;
   const members = await prisma.erpEmployee.findMany({
     include: { user: { select: userSelect }, department: true },
     orderBy: [{ memberStatus: "asc" }, { createdAt: "desc" }],
@@ -89,7 +94,7 @@ erpRouter.get("/members", async (req: AuthedRequest, res) => {
 });
 
 erpRouter.post("/members/invite", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  if (!(await requireErpAdmin(req, res))) return;
   const email = String(req.body?.email ?? "").trim().toLowerCase();
   const name = String(req.body?.name ?? "").trim();
   if (!email || !email.includes("@")) return res.status(400).json({ error: "이메일을 입력하세요" });
@@ -124,7 +129,7 @@ erpRouter.post("/members/invite", async (req: AuthedRequest, res) => {
 });
 
 erpRouter.post("/members/:id/approve", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  if (!(await requireErpAdmin(req, res))) return;
   const emp = await prisma.erpEmployee.update({
     where: { id: req.params.id },
     data: { memberStatus: "approved" },
@@ -134,7 +139,7 @@ erpRouter.post("/members/:id/approve", async (req: AuthedRequest, res) => {
 });
 
 erpRouter.post("/members/:id/reject", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  if (!(await requireErpAdmin(req, res))) return;
   const emp = await prisma.erpEmployee.update({
     where: { id: req.params.id },
     data: { memberStatus: "rejected" },
