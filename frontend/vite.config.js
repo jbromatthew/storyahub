@@ -16,12 +16,17 @@ export default defineConfig(({ mode }) => {
           name: erpMode ? "ERP" : "Storyahub",
           short_name: erpMode ? "ERP" : "Storyahub",
           description: erpMode ? "지식경영 · 회의록 · OKR" : "녹음하면 알아서 정리되는 AI 비서",
-          theme_color: "#DD5E39",
-          background_color: "#F7F4EE",
+          theme_color: "#FF5722",
+          background_color: "#FFFFFF",
           display: "standalone",
           start_url: "/",
           icons: [
-            { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" }
+            { src: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+            { src: "/favicon-16.png", sizes: "16x16", type: "image/png" },
+            { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+            { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+            { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+            { src: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
           ]
         }
       })
