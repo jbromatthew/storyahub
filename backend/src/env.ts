@@ -68,6 +68,7 @@ export const env = {
   allowDemoAuth: parseBool("ALLOW_DEMO_AUTH", isDevelopment),
   allowTestSubscribe: parseBool("ALLOW_TEST_SUBSCRIBE", isDevelopment),
   erpMode: parseBool("ERP_MODE", false),
+  erpOwnerEmail: (process.env.ERP_OWNER_EMAIL ?? "matthew@broj.company").trim().toLowerCase(),
   cookieDomain: process.env.COOKIE_DOMAIN || (isProduction ? ".storyahub.com" : undefined),
   bcryptRounds: isProduction ? 12 : 10,
   databaseUrl: need("DATABASE_URL", "postgresql://localhost:5432/storyahub"),

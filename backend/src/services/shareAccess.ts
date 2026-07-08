@@ -1,4 +1,6 @@
 import { prisma } from "../db.js";
+import { env } from "../env.js";
+import { isApprovedErpMember } from "./erpAccess.js";
 
 export type ShareRole = "viewer" | "editor" | "owner";
 export type ResourceType = "meeting" | "kb";
@@ -46,6 +48,23 @@ export async function getKbAccess(userId: string, articleId: string) {
   if (!article) return null;
   if (article.userId === userId) {
     return { article, role: "owner" as ShareRole, ownerId: userId };
+  }
+  if (env.erpMode && article.visibility === "company") {
+    const author = await prisma.user.findUnique({ where: { id: article.userId } });
+    const viewer = await prisma.user.findUnique({ where: { id: userId } });
+    if (
+      author &&
+      viewer &&
+      (await isApprovedErpMember(userId, viewer.email)) &&
+      (await isApprovedErpMember(article.userId, author.email))
+    ) {
+      return {
+        article,
+        role: "viewer" as ShareRole,
+        ownerId: article.userId,
+        sharedBy: { id: author.id, email: author.email, name: author.name },
+      };
+    }
   }
   const share = await prisma.resourceShare.findUnique({
     where: {

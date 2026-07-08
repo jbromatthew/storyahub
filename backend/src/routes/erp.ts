@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess } from "../middleware/requireAccess.js";
+import { requireErpMember } from "../middleware/requireErpMember.js";
+import { isErpOwner } from "../services/erpAccess.js";
 import { env } from "../env.js";
 import {
   ensureErpEmployee,
@@ -31,6 +33,16 @@ import {
 
 export const erpRouter = Router();
 erpRouter.use(auth, requireAccess);
+if (env.erpMode) erpRouter.use(requireErpMember);
+
+async function requireOwner(req: AuthedRequest, res: Response): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: req.userId! } });
+  if (!user || !isErpOwner(user.email)) {
+    res.status(403).json({ error: "소유자만 이용할 수 있습니다" });
+    return false;
+  }
+  return true;
+}
 
 const userSelect = { id: true, email: true, name: true };
 
@@ -65,6 +77,71 @@ function mapEmployee(e: {
 }) {
   return erpEmployeePublic(e);
 }
+
+/** 멤버 초대·승인 (소유자 전용) */
+erpRouter.get("/members", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const members = await prisma.erpEmployee.findMany({
+    include: { user: { select: userSelect }, department: true },
+    orderBy: [{ memberStatus: "asc" }, { createdAt: "desc" }],
+  });
+  res.json(members.map(mapEmployee));
+});
+
+erpRouter.post("/members/invite", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const email = String(req.body?.email ?? "").trim().toLowerCase();
+  const name = String(req.body?.name ?? "").trim();
+  if (!email || !email.includes("@")) return res.status(400).json({ error: "이메일을 입력하세요" });
+  if (email === env.erpOwnerEmail) return res.status(400).json({ error: "소유자 계정은 초대할 수 없습니다" });
+
+  const existingUser = await prisma.user.findUnique({ where: { email } });
+  const existingEmp = await prisma.erpEmployee.findFirst({ where: { email } });
+  if (existingEmp) return res.status(409).json({ error: "이미 초대되었거나 등록된 이메일입니다" });
+
+  const emp = await prisma.erpEmployee.create({
+    data: {
+      email,
+      name: name || email.split("@")[0],
+      memberStatus: "pending",
+      status: "active",
+    },
+    include: { user: { select: userSelect }, department: true },
+  });
+
+  if (existingUser) {
+    await prisma.erpEmployee.update({
+      where: { id: emp.id },
+      data: { userId: existingUser.id, name: name || existingUser.name },
+    });
+  }
+
+  const saved = await prisma.erpEmployee.findUniqueOrThrow({
+    where: { id: emp.id },
+    include: { user: { select: userSelect }, department: true },
+  });
+  res.status(201).json(mapEmployee(saved));
+});
+
+erpRouter.post("/members/:id/approve", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const emp = await prisma.erpEmployee.update({
+    where: { id: req.params.id },
+    data: { memberStatus: "approved" },
+    include: { user: { select: userSelect }, department: true },
+  });
+  res.json(mapEmployee(emp));
+});
+
+erpRouter.post("/members/:id/reject", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const emp = await prisma.erpEmployee.update({
+    where: { id: req.params.id },
+    data: { memberStatus: "rejected" },
+    include: { user: { select: userSelect }, department: true },
+  });
+  res.json(mapEmployee(emp));
+});
 
 /** 홈 대시보드 위젯 데이터 */
 erpRouter.get("/dashboard", async (req: AuthedRequest, res) => {
@@ -251,6 +328,7 @@ erpRouter.post("/employees", async (req: AuthedRequest, res) => {
       phone: phone || null,
       roles: Array.isArray(roles) ? roles : [],
       status: status || "active",
+      memberStatus: "pending",
     },
     include: { user: { select: userSelect }, department: true },
   });
@@ -291,6 +369,7 @@ erpRouter.post("/employees/bulk", async (req: AuthedRequest, res) => {
           jobRank: row.jobRank || "사원",
           jobTitle: row.jobTitle || null,
           status: "active",
+          memberStatus: "pending",
         },
         include: { user: { select: userSelect }, department: true },
       });

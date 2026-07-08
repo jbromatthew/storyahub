@@ -898,7 +898,7 @@ function KbTagBar({ tags, setTags, tagPresets, tagInput, setTagInput, onDirty, h
   );
 }
 
-export default function KbEditor({ article, back, onSaved, onDeleted, categories = [], prefs, onUserUpdated, initialBookSearchOpen = false }) {
+export default function KbEditor({ article, back, onSaved, onDeleted, categories = [], prefs, onUserUpdated, initialBookSearchOpen = false, erpMode = false }) {
   const isNew = !article?.id;
   const titleRef = useRef(null);
   const initial = parseArticleBlocks(article);
@@ -935,6 +935,7 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
   const [slash, setSlash] = useState(null);
   const [menuAt, setMenuAt] = useState(null);
   const [metaOpen, setMetaOpen] = useState(false);
+  const [visibility, setVisibility] = useState(article?.visibility || (erpMode ? "private" : "company"));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [imageUrls, setImageUrls] = useState({});
@@ -1230,6 +1231,7 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
         tags: saveTags,
         bookMeta: meta,
         blocks: payload,
+        visibility: erpMode ? visibility : undefined,
       });
       onSaved?.();
       setSaved(true);
@@ -1482,6 +1484,19 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
           <div className="kbe-inner">
             <div className="kbe-meta-h">글 설정</div>
             {metaSummary && <div className="small" style={{ marginBottom: 12, color: "#888" }}>{metaSummary}</div>}
+
+            {erpMode && isOwner && (
+              <div style={{ marginBottom: 14 }}>
+                <div className="kbe-meta-h" style={{ marginTop: 0 }}>공개 범위</div>
+                <div className="seg" style={{ maxWidth: 280 }}>
+                  <button type="button" className={visibility === "private" ? "on" : ""} onClick={() => { setVisibility("private"); setSaved(false); }}>비공개</button>
+                  <button type="button" className={visibility === "company" ? "on" : ""} onClick={() => { setVisibility("company"); setSaved(false); }}>팀 공개</button>
+                </div>
+                <div className="small" style={{ marginTop: 8, color: "#888" }}>
+                  {visibility === "private" ? "나만 볼 수 있습니다" : "승인된 팀 멤버 모두가 볼 수 있습니다"}
+                </div>
+              </div>
+            )}
 
             <div className="kbe-meta-h" style={{ marginTop: 4 }}>대표 이미지 (선택)</div>
             <div className={"kbe-cover" + (coverKey && imageUrls[coverKey] ? " compact" : "")} onClick={uploadCover} style={isBook ? { maxWidth: 220 } : undefined}>

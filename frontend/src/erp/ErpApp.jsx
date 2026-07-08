@@ -12,7 +12,7 @@ import { userPreferences } from "../preferences.js";
 import { ERP_CSS } from "./erpStyles.js";
 import { ERP_MODULES } from "./config.js";
 import { erpIcons as I } from "./icons.jsx";
-import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView } from "./modules.jsx";
+import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, MembersView } from "./modules.jsx";
 
 function NavBtn({ on, icon, label, onClick, layout = "side" }) {
   const cls = layout === "side" ? "sidenavitem" : "sidenavitem";
@@ -23,11 +23,12 @@ function NavBtn({ on, icon, label, onClick, layout = "side" }) {
   );
 }
 
-function ErpNav({ tab, kbView, onSelect, onLogout }) {
+function ErpNav({ tab, kbView, onSelect, onLogout, user }) {
+  const modules = ERP_MODULES.filter((m) => !m.ownerOnly || user?.erpAccess?.canManageMembers);
   return (
     <>
-      {ERP_MODULES.map((m, i) => {
-        const prev = ERP_MODULES[i - 1];
+      {modules.map((m, i) => {
+        const prev = modules[i - 1];
         const showGroup = m.groupLabel && m.groupLabel !== prev?.groupLabel;
         return (
           <React.Fragment key={m.id}>
@@ -85,6 +86,16 @@ export default function ErpApp() {
     try {
       const { user: u } = await api.me();
       setUser(u);
+      if (u.erpAccess?.status === "pending") {
+        setBoot("pending");
+        return;
+      }
+      if (u.erpAccess?.status === "rejected" || u.erpAccess?.status === "none") {
+        clearToken();
+        setBoot("auth");
+        setBootError("접근 권한이 없습니다. 관리자에게 초대를 요청하세요.");
+        return;
+      }
       if (!u.onboardingDone) {
         await api.completeOnboarding();
         const { user: u2 } = await api.me();
@@ -127,6 +138,16 @@ export default function ErpApp() {
   const handleAuth = async (result) => {
     if (result.token) setToken(result.token);
     setUser(result.user);
+    if (result.user?.erpAccess?.status === "pending") {
+      setBoot("pending");
+      return;
+    }
+    if (result.user?.erpAccess?.status === "rejected" || result.user?.erpAccess?.status === "none") {
+      clearToken();
+      setBoot("auth");
+      setBootError("접근 권한이 없습니다.");
+      return;
+    }
     if (!result.user.onboardingDone) {
       await api.completeOnboarding();
       const { user: u } = await api.me();
@@ -181,11 +202,28 @@ export default function ErpApp() {
   }
 
   const renderContent = () => {
-    if (boot === "auth") return <AuthScreen onSuccess={handleAuth} erpMode />;
-    if (kbView) {
+  if (boot === "auth") return <AuthScreen onSuccess={handleAuth} erpMode />;
+  if (boot === "pending") {
+    return (
+      <div className="erp-root">
+        <style>{ERP_CSS}</style>
+        <div className="app-main app-main-centered" style={{ textAlign: "center", padding: 40, maxWidth: 420, margin: "0 auto" }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
+          <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 8 }}>승인 대기 중</div>
+          <div className="small" style={{ lineHeight: 1.6, marginBottom: 20 }}>
+            {user?.email} 계정은 관리자 승인 후 이용할 수 있습니다.<br />승인되면 자동으로 접속됩니다.
+          </div>
+          <button type="button" className="btn btn-ghost" onClick={restoreSession}>새로고침</button>
+          <button type="button" className="btn btn-ghost" style={{ marginLeft: 8 }} onClick={handleLogout}>로그아웃</button>
+        </div>
+      </div>
+    );
+  }
+  if (kbView) {
       return kbView.mode === "edit"
         ? <KbEditor article={kbView.article} back={closeKbView} onSaved={loadKb} onDeleted={loadKb}
-            prefs={prefs} categories={kbCategories(kbArticles, kbView.article?.section).filter((c) => c !== "전체")} />
+            prefs={prefs} erpMode
+            categories={kbCategories(kbArticles, kbView.article?.section).filter((c) => c !== "전체")} />
         : <KbReadView article={kbView.article} back={closeKbView}
             canEdit={!kbView.article?.shareRole || kbView.article.shareRole === "owner" || kbView.article.shareRole === "editor"}
             onEdit={() => setKbView({ article: kbView.article, mode: "edit" })}
@@ -193,6 +231,7 @@ export default function ErpApp() {
     }
     switch (tab) {
       case "kb": return <KnowledgeFeed articles={kbArticles} section="knowledge" openWrite={openKbWrite} erpMode />;
+      case "members": return <MembersView />;
       case "meetings": return <MeetingNotesView />;
       case "okr": return <OkrView />;
       case "sales-sync": return <SalesSyncView />;
@@ -212,7 +251,7 @@ export default function ErpApp() {
           <aside className="app-sidebar">
             <div className="app-brand">ERP</div>
             <nav className="app-sidenav">
-              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} />
+              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} user={user} />
             </nav>
             <div className="app-sidebar-foot" style={{ fontSize: 12, color: "var(--muted)", padding: "12px 10px" }}>
               <div>지식경영 · 회의록 · OKR · 문의/결제</div>
@@ -259,7 +298,7 @@ export default function ErpApp() {
               </button>
             </div>
             <nav className="mobile-drawer-nav">
-              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} onLogout={handleLogout} />
+              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} onLogout={handleLogout} user={user} />
             </nav>
           </aside>
         </>

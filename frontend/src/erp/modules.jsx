@@ -1693,6 +1693,79 @@ export function SalesSyncView() {
 
 const RATE_STORAGE_KEY = "erp.sales.paymentRate.v3";
 
+export function MembersView() {
+  const [members, setMembers] = useState([]);
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  const load = () => {
+    api.erpMembers().then(setMembers).catch(notifyError).finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+
+  const invite = async () => {
+    if (!email.trim()) return notifyError(new Error("이메일을 입력하세요"));
+    try {
+      await api.erpInviteMember({ email: email.trim(), name: name.trim() || undefined });
+      setEmail("");
+      setName("");
+      toastSuccess("초대했습니다. 상대방이 가입하면 승인해 주세요.");
+      load();
+    } catch (e) { notifyError(e); }
+  };
+
+  const statusLabel = (s) => ({ pending: "승인 대기", approved: "승인됨", rejected: "거절" }[s] || s);
+
+  if (loading) return <div className="spinner" />;
+
+  const pending = members.filter((m) => m.memberStatus === "pending");
+
+  return (
+    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40, maxWidth: 720 }}>
+      <div className="h-eyebrow">Access</div>
+      <div className="h-title">멤버 관리</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+        초대한 사람만 가입할 수 있고, 승인한 멤버만 ERP를 이용합니다.
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="field"><label>이메일 초대</label><input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" /></div>
+        <div className="field"><label>이름 (선택)</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="홍길동" /></div>
+        <button type="button" className="btn btn-accent" onClick={invite}>초대하기</button>
+      </div>
+
+      {pending.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <div className="h-eyebrow">승인 대기 {pending.length}명</div>
+          {pending.map((m) => (
+            <div key={m.id} className="list-item between" style={{ alignItems: "center" }}>
+              <div>
+                <div className="ttl">{m.name || m.email}</div>
+                <div className="meta">{m.email}{m.hasAccount ? " · 가입 완료" : " · 가입 전"}</div>
+              </div>
+              <div className="row" style={{ gap: 6 }}>
+                <button type="button" className="btn btn-accent btn-sm" onClick={() => api.erpApproveMember(m.id).then(load).catch(notifyError)}>승인</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => api.erpRejectMember(m.id).then(load).catch(notifyError)}>거절</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ marginTop: 20 }}>
+        <div className="h-eyebrow">전체 멤버 {members.length}명</div>
+        {members.map((m) => (
+          <div key={m.id} className="list-item">
+            <div className="ttl">{m.name || m.email}</div>
+            <div className="meta">{m.email} · {statusLabel(m.memberStatus)} · {m.hasAccount ? "계정 있음" : "미가입"}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const GROUP_PRESETS = [
   { id: "current", label: "당월", pick: (months, current) => (current ? [current] : []) },
   { id: "prev", label: "지난달", pick: (months, current) => {

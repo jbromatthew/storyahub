@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
 import { prisma } from "../db.js";
 import { env } from "../env.js";
+import { isErpOwner, ensureOwnerEmployee } from "./erpAccess.js";
 
 const ADMIN_ROLES = new Set(["시스템관리자", "인사"]);
 
@@ -48,39 +49,27 @@ export async function ensureLeaveBalance(userId: string) {
 }
 
 export async function ensureErpEmployee(user: User) {
+  if (isErpOwner(user.email)) {
+    return ensureOwnerEmployee(user);
+  }
+
   const byUser = await prisma.erpEmployee.findUnique({ where: { userId: user.id } });
   if (byUser) return byUser;
 
   const byEmail = user.email
-    ? await prisma.erpEmployee.findFirst({ where: { email: user.email.toLowerCase(), userId: null } })
+    ? await prisma.erpEmployee.findFirst({ where: { email: user.email.toLowerCase() } })
     : null;
   if (byEmail) {
-    return prisma.erpEmployee.update({
-      where: { id: byEmail.id },
-      data: { userId: user.id, name: byEmail.name || user.name, email: user.email.toLowerCase() },
-    });
+    if (!byEmail.userId) {
+      return prisma.erpEmployee.update({
+        where: { id: byEmail.id },
+        data: { userId: user.id, name: byEmail.name || user.name, email: user.email.toLowerCase() },
+      });
+    }
+    return byEmail;
   }
 
-  const isFirst = (await prisma.erpEmployee.count()) === 0;
-  const year = new Date().getFullYear();
-  const [emp] = await prisma.$transaction([
-    prisma.erpEmployee.create({
-      data: {
-        userId: user.id,
-        name: user.name,
-        email: user.email.toLowerCase(),
-        employeeNo: user.email.split("@")[0],
-        jobRank: isFirst ? "임원" : "사원",
-        roles: isFirst ? ["시스템관리자"] : [],
-      },
-    }),
-    prisma.erpLeaveBalance.upsert({
-      where: { userId_year: { userId: user.id, year } },
-      create: { userId: user.id, year, regularTotal: 15 },
-      update: {},
-    }),
-  ]);
-  return emp;
+  throw new Error("ERP_ACCESS_DENIED");
 }
 
 export function erpEmployeePublic(emp: {
@@ -93,6 +82,7 @@ export function erpEmployeePublic(emp: {
   jobRank: string | null;
   phone: string | null;
   status: string;
+  memberStatus?: string;
   roles: string[];
   department?: { id: string; name: string } | null;
   user?: { id: string; email: string; name: string | null } | null;
@@ -110,6 +100,7 @@ export function erpEmployeePublic(emp: {
     jobRank: emp.jobRank,
     phone: emp.phone,
     status: emp.status,
+    memberStatus: emp.memberStatus,
     roles: emp.roles,
     department: emp.department ? { id: emp.department.id, name: emp.department.name } : null,
   };

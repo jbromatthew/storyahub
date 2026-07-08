@@ -56,8 +56,13 @@ export default function AuthScreen({ onSuccess, erpMode = false }) {
           {erpMode ? "지식경영 · 회의록 · OKR" : "녹음하면, 알아서 정리되는 비서"}
         </div>
         <div className="small" style={{ marginTop: 10, lineHeight: 1.55 }}>
-          {erpMode ? "사번 또는 이메일로 로그인하세요" : "미팅 · 통화 · 강의를 자동으로 요약하고 정리해요"}
+          {erpMode ? "초대받은 이메일로 로그인하세요" : "미팅 · 통화 · 강의를 자동으로 요약하고 정리해요"}
         </div>
+        {erpMode && mode === "register" && (
+          <div className="small" style={{ marginTop: 8, color: "#B06000" }}>
+            관리자가 초대한 이메일만 가입할 수 있습니다. 가입 후 승인되면 이용 가능합니다.
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: 28 }}>

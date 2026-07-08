@@ -291,7 +291,7 @@ export function kbToUi(a) {
     isShared: !!a.isShared,
     sharedBy: a.sharedBy || null,
     status: a.status || "published",
-    visibility: a.visibility || "company",
+    visibility: a.visibility || "private",
     _raw: a,
   };
 }

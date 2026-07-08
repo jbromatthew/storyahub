@@ -134,7 +134,7 @@ function KbBlogCover({ article }) {
   );
 }
 
-function KbBlogCard({ article, onOpen, featured = false }) {
+function KbBlogCard({ article, onOpen, featured = false, erpMode = false }) {
   const isFormal = article.status === "formal" || article.status === "formal_pending";
   return (
     <article className={"kbh-blog-card" + (featured ? " kbh-blog-feat" : "")} onClick={() => onOpen(article)}>
@@ -146,6 +146,8 @@ function KbBlogCard({ article, onOpen, featured = false }) {
           <span className="meta">{article.d} · {kbReadMinutes(article)}분 읽기{kbFileCount(article) > 0 ? ` · 📎${kbFileCount(article)}` : ""}</span>
           <div className="tags">
             {isFormal && <span className="tag" style={{ background: "#E8F5E9", color: "#2E7D32" }}>정식</span>}
+            {erpMode && article.visibility === "private" && <span className="tag">비공개</span>}
+            {erpMode && article.visibility === "company" && <span className="tag" style={{ background: "#E3F2FD", color: "#1565C0" }}>팀공개</span>}
             <span className="tag">{article.c}</span>
             {(article.tags || []).slice(0, 2).map((t) => <span key={t} className="tag">#{t}</span>)}
           </div>
@@ -270,7 +272,7 @@ export default function KnowledgeFeed({ articles, openWrite, section = "knowledg
         {feat && viewMode === "blog" && (
           <>
             <div className="kbh-sech">최신 글</div>
-            <KbBlogCard article={feat} onOpen={openWrite} featured />
+            <KbBlogCard article={feat} onOpen={openWrite} featured erpMode={erpMode} />
           </>
         )}
 
@@ -293,7 +295,7 @@ export default function KnowledgeFeed({ articles, openWrite, section = "knowledg
         {viewMode === "blog" && rest.length > 0 && <div className="kbh-sech">전체 글</div>}
         {viewMode === "blog" ? (
           <div className="kbh-blog-list">
-            {rest.map((a) => <KbBlogCard key={a.id} article={a} onOpen={openWrite} />)}
+            {rest.map((a) => <KbBlogCard key={a.id} article={a} onOpen={openWrite} erpMode={erpMode} />)}
           </div>
         ) : (
           <div className={`kbh-list ${listClass}${viewMode === "list" && erpMode ? " kbh-compact-list" : ""}`}>

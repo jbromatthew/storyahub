@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess, type AccessRequest } from "../middleware/requireAccess.js";
+import { requireErpMember } from "../middleware/requireErpMember.js";
 import { fileUploadBlocked, getAccessStatus } from "../services/access.js";
 import { getUserUsage } from "../services/usage.js";
 import {
@@ -18,6 +19,7 @@ import { env } from "../env.js";
 
 export const uploadsRouter = Router();
 uploadsRouter.use(auth, requireAccess);
+if (env.erpMode) uploadsRouter.use(requireErpMember);
 
 function safeFilename(raw: string): string {
   let decoded = raw || "upload";

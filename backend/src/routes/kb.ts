@@ -3,13 +3,17 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess } from "../middleware/requireAccess.js";
+import { requireErpMember } from "../middleware/requireErpMember.js";
+import { env } from "../env.js";
 import { searchKakaoBooks } from "../services/kakaoBook.js";
 import { buildUserMediaKey, putObjectBytes, r2Configured } from "../services/r2.js";
 import { fetchPublicHttpsImage } from "../services/safeFetch.js";
 import { getKbAccess, roleAtLeast } from "../services/shareAccess.js";
+import { listApprovedMemberUserIds } from "../services/erpAccess.js";
 
 export const kbRouter = Router();
 kbRouter.use(auth, requireAccess);
+if (env.erpMode) kbRouter.use(requireErpMember);
 
 kbRouter.get("/", async (req: AuthedRequest, res) => {
   const userId = req.userId!;
@@ -23,6 +27,32 @@ kbRouter.get("/", async (req: AuthedRequest, res) => {
   const shared = sharedIds.length
     ? await prisma.kbArticle.findMany({ where: { id: { in: sharedIds } }, orderBy: { updatedAt: "desc" } })
     : [];
+
+  const companyItems: Array<(typeof owned)[number] & { shareRole: string; isShared: boolean; sharedBy: { id: string; email: string; name: string | null } | null }> = [];
+  if (env.erpMode) {
+    const memberIds = await listApprovedMemberUserIds();
+    const publicAuthorIds = memberIds.filter((id) => id !== userId);
+    if (publicAuthorIds.length) {
+      const companyPublic = await prisma.kbArticle.findMany({
+        where: { userId: { in: publicAuthorIds }, visibility: "company" },
+        orderBy: { updatedAt: "desc" },
+      });
+      for (const a of companyPublic) {
+        if (ownedIds.has(a.id) || sharedIds.includes(a.id)) continue;
+        const author = await prisma.user.findUnique({
+          where: { id: a.userId },
+          select: { id: true, email: true, name: true },
+        });
+        companyItems.push({
+          ...a,
+          shareRole: "viewer",
+          isShared: true,
+          sharedBy: author,
+        });
+      }
+    }
+  }
+
   const shareByResource = new Map(shareRows.map((s) => [s.resourceId, s]));
   const items = [
     ...owned.map((a) => ({ ...a, shareRole: "owner", isShared: false, sharedBy: null })),
@@ -35,11 +65,12 @@ kbRouter.get("/", async (req: AuthedRequest, res) => {
         sharedBy: sh?.owner ?? null,
       };
     }),
-  ].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+    ...companyItems,
+  ].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
   res.json(items);
 });
 
-/** 카카오 다음 도서 검색 (REST API 키는 서버에서만 사용) */
 kbRouter.get("/books/search", async (req: AuthedRequest, res) => {
   try {
     const q = String(req.query.q ?? "").trim();
@@ -54,7 +85,6 @@ kbRouter.get("/books/search", async (req: AuthedRequest, res) => {
   }
 });
 
-/** 카카오 검색 결과 표지 URL → R2 저장 */
 kbRouter.post("/books/cover", async (req: AuthedRequest, res) => {
   try {
     const url = String(req.body?.url ?? "").trim();
@@ -78,6 +108,8 @@ kbRouter.post("/", async (req: AuthedRequest, res) => {
   const userId = req.userId!;
   const { id, title, section, category, tags, blocks, bookMeta, status, visibility } = req.body ?? {};
   const sec = typeof section === "string" && KB_SECTIONS.has(section) ? section : "knowledge";
+  const defaultVisibility = env.erpMode ? "private" : "company";
+  const vis = visibility !== undefined ? String(visibility) : defaultVisibility;
   const data = {
     title: title ?? "제목 없음",
     section: sec,
@@ -86,7 +118,7 @@ kbRouter.post("/", async (req: AuthedRequest, res) => {
     blocks: blocks ?? [],
     bookMeta: sec === "book" && bookMeta && typeof bookMeta === "object" ? bookMeta : sec === "lecture" && bookMeta && typeof bookMeta === "object" ? bookMeta : null,
     ...(status !== undefined ? { status: String(status) } : {}),
-    ...(visibility !== undefined ? { visibility: String(visibility) } : {}),
+    visibility: vis === "company" ? "company" : "private",
   };
   if (id) {
     const access = await getKbAccess(userId, String(id));

@@ -4,6 +4,7 @@ import { env } from "./env.js";
 import { prisma } from "./db.js";
 import { auth } from "./middleware/auth.js";
 import { requireAccess } from "./middleware/requireAccess.js";
+import { requireErpMember } from "./middleware/requireErpMember.js";
 import {
   authLimiter,
   globalLimiter,
@@ -44,6 +45,7 @@ app.post(
   uploadLimiter,
   auth,
   requireAccess,
+  ...(env.erpMode ? [requireErpMember] : []),
   express.raw({ type: () => true, limit: "150mb" }),
   directUploadHandler
 );

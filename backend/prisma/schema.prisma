@@ -377,7 +377,7 @@ model KbArticle {         // 지식백과 / 지식경영
   bookMeta   Json?
   blocks     Json
   status     String   @default("published")   // draft | published | formal_pending | formal
-  visibility String   @default("company")     // company | department | private
+  visibility String   @default("private")     // company | private
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
@@ -418,6 +418,7 @@ model ErpEmployee {
   phone        String?
   photoKey     String?
   status       String         @default("active") // active | leave | resigned
+  memberStatus String         @default("pending") // pending | approved | rejected
   roles        String[]       @default([])
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt

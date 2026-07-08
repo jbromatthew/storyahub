@@ -2,6 +2,8 @@ import { Router, type Response } from "express";
 import { z } from "zod";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess } from "../middleware/requireAccess.js";
+import { requireErpMember } from "../middleware/requireErpMember.js";
+import { env } from "../env.js";
 import {
   getSalesSyncStatus,
   listAvailableMonthSheets,
@@ -21,6 +23,7 @@ import {
 
 export const salesSyncRouter = Router();
 salesSyncRouter.use(auth, requireAccess);
+if (env.erpMode) salesSyncRouter.use(requireErpMember);
 
 const syncBodySchema = z.object({
   kind: z.enum(["inquiry", "order"]),

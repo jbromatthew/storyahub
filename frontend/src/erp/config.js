@@ -1,5 +1,6 @@
 export const ERP_MODULES = [
   { id: "kb", label: "지식경영", icon: "book", group: "main" },
+  { id: "members", label: "멤버 관리", icon: "admin", group: "main", ownerOnly: true },
   { id: "meetings", label: "회의록", icon: "meet", group: "work" },
   { id: "okr", label: "OKR", icon: "okr", group: "work" },
   { id: "sales-sync", label: "세일즈 동기화", icon: "sales", group: "sales", groupLabel: "문의/결제" },

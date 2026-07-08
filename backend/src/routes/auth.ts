@@ -9,6 +9,7 @@ import { getUserUsage } from "../services/usage.js";
 import { mergePreferences, normalizePreferencesPatch } from "../services/preferences.js";
 import { clearSessionCookie, setSessionCookie } from "../services/sessionCookie.js";
 import { env } from "../env.js";
+import { resolveErpAccess } from "../services/erpAccess.js";
 
 export const authRouter = Router();
 
@@ -56,6 +57,13 @@ function issueAuth(res: Response, user: User, remember: boolean) {
   return { token, user: publicUser(user) };
 }
 
+async function userWithErpAccess(user: User) {
+  const base = publicUser(user);
+  if (!env.erpMode) return base;
+  const erpAccess = await resolveErpAccess(user.id, user.email);
+  return { ...base, erpAccess };
+}
+
 authRouter.post("/register", async (req, res) => {
   const parsed = z
     .object({
@@ -71,6 +79,35 @@ authRouter.post("/register", async (req, res) => {
   if (exists) return res.status(409).json({ error: "이미 가입된 이메일입니다" });
 
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+
+  if (env.erpMode) {
+    const invite = await prisma.erpEmployee.findFirst({
+      where: { email: email.toLowerCase(), userId: null },
+    });
+    if (!invite) {
+      return res.status(403).json({ error: "초대된 이메일만 가입할 수 있습니다. 관리자에게 초대를 요청하세요." });
+    }
+    const user = await prisma.user.create({
+      data: {
+        email: email.toLowerCase(),
+        passwordHash,
+        name: name ?? invite.name ?? email.split("@")[0],
+        provider: "email",
+        trialStartedAt: new Date(),
+        onboardingDone: true,
+        lifetimeAccess: true,
+      },
+    });
+    await prisma.erpEmployee.update({
+      where: { id: invite.id },
+      data: { userId: user.id, name: user.name, email: user.email.toLowerCase() },
+    });
+    const remember = req.body?.remember !== false;
+    const token = signToken(user.id, remember);
+    setSessionCookie(res, token, remember);
+    return res.status(201).json({ token, user: await userWithErpAccess(user) });
+  }
+
   const user = await prisma.user.create({
     data: {
       email: email.toLowerCase(),
@@ -101,13 +138,22 @@ authRouter.post("/login", async (req, res) => {
   if (!ok) return res.status(401).json({ error: "이메일 또는 비밀번호가 맞지 않습니다" });
 
   if (env.erpMode) {
-    const emp = await prisma.erpEmployee.findUnique({ where: { userId: user.id } });
+    const erpAccess = await resolveErpAccess(user.id, user.email);
+    if (erpAccess.status === "none") {
+      return res.status(403).json({ error: "접근 권한이 없습니다. 관리자에게 초대를 요청하세요." });
+    }
+    const emp = erpAccess.employeeId
+      ? await prisma.erpEmployee.findUnique({ where: { id: erpAccess.employeeId } })
+      : await prisma.erpEmployee.findUnique({ where: { userId: user.id } });
     if (emp?.status === "resigned") {
       return res.status(403).json({ error: "퇴사 처리된 계정입니다. 관리자에게 문의하세요" });
     }
     if (emp?.status === "leave") {
       return res.status(403).json({ error: "휴직 중인 계정입니다" });
     }
+    const token = signToken(user.id, remember);
+    setSessionCookie(res, token, remember);
+    return res.json({ token, user: await userWithErpAccess(user) });
   }
 
   res.json(issueAuth(res, user, remember));
@@ -183,7 +229,7 @@ authRouter.patch("/me/password", auth, async (req: AuthedRequest, res) => {
 authRouter.get("/me", auth, async (req: AuthedRequest, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.userId } });
   if (!user) return res.status(404).json({ error: "not found" });
-  res.json({ user: publicUser(user) });
+  res.json({ user: await userWithErpAccess(user) });
 });
 
 authRouter.patch("/me", auth, async (req: AuthedRequest, res) => {
