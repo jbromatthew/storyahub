@@ -20,6 +20,7 @@ export type PaymentRateQuery = {
   industry?: string;
   channel?: ChannelFilter;
   channels?: string[];
+  assignees?: string[];
   groups: PaymentRateGroupInput[];
 };
 
@@ -87,6 +88,40 @@ function planName(data: Record<string, string>): string {
   return raw || "기타";
 }
 
+const ASSIGNEE_FIELD_KEYS = [
+  "담당자",
+  "상담담당",
+  "상담 담당",
+  "문의담당",
+  "문의 담당",
+  "영업담당",
+  "영업 담당",
+  "사원명",
+  "담당 사원",
+];
+
+function assigneeName(data: Record<string, string>): string {
+  for (const key of ASSIGNEE_FIELD_KEYS) {
+    const v = String(data[key] ?? "").trim();
+    if (v) return v;
+  }
+  for (const [k, v] of Object.entries(data)) {
+    if (/담당|상담사|영업사원/i.test(k)) {
+      const t = String(v).trim();
+      if (t) return t;
+    }
+  }
+  return "미지정";
+}
+
+function sortAssignees(names: string[]): string[] {
+  return [...names].sort((a, b) => {
+    if (a === "미지정") return 1;
+    if (b === "미지정") return -1;
+    return a.localeCompare(b, "ko");
+  });
+}
+
 function isConsultingRow(data: Record<string, string>): boolean {
   const status = String(data["부재율"] ?? "").trim();
   return status === "상담완료" || status === "부재 상담완료";
@@ -140,12 +175,14 @@ export async function getPaymentRateMeta() {
 
   const months = new Set<string>();
   const plans = new Set<string>();
+  const assignees = new Set<string>();
 
   for (const row of rows) {
     months.add(row.sheetName);
     const data = row.data as Record<string, string>;
     if (data["구분"] !== "신규문의") continue;
     plans.add(planName(data));
+    assignees.add(assigneeName(data));
   }
 
   const monthList = [...months].sort((a, b) => b.localeCompare(a));
@@ -154,6 +191,7 @@ export async function getPaymentRateMeta() {
     months: monthList,
     industries: [...INDUSTRY_TYPES],
     plans: sortPlans([...plans]),
+    assignees: sortAssignees([...assignees]),
     presets: buildPresets(monthList),
     channelTree: channelTreeForApi(),
   };
@@ -179,6 +217,7 @@ export async function computePaymentRate(query: PaymentRateQuery) {
   const channel = query.channel ?? "all";
   const channels = query.channels;
   const industry = query.industry?.trim() || undefined;
+  const assigneeFilter = query.assignees?.length ? new Set(query.assignees) : null;
 
   const monthSet = new Set<string>();
   for (const group of query.groups) {
@@ -193,6 +232,7 @@ export async function computePaymentRate(query: PaymentRateQuery) {
       groups: [],
       rows: PAYMENT_RATE_ROWS.map((row) => ({ ...row, values: [] })),
       planTables: [],
+      assigneeTables: [],
     };
   }
 
@@ -214,19 +254,26 @@ export async function computePaymentRate(query: PaymentRateQuery) {
   const groups = query.groups.map((group) => {
     const overall = emptyCounts();
     const byPlan = new Map<string, Counts>();
+    const byAssignee = new Map<string, Counts>();
 
     for (const rawMonth of group.months) {
       const month = normalizeMonthSheet(rawMonth);
       for (const data of byMonth.get(month) ?? []) {
+        const assignee = assigneeName(data);
+        if (assigneeFilter && !assigneeFilter.has(assignee)) continue;
         addToCounts(overall, data);
         const plan = planName(data);
-        const bucket = byPlan.get(plan) ?? emptyCounts();
-        addToCounts(bucket, data);
-        byPlan.set(plan, bucket);
+        const planBucket = byPlan.get(plan) ?? emptyCounts();
+        addToCounts(planBucket, data);
+        byPlan.set(plan, planBucket);
+        const assigneeBucket = byAssignee.get(assignee) ?? emptyCounts();
+        addToCounts(assigneeBucket, data);
+        byAssignee.set(assignee, assigneeBucket);
       }
     }
 
     const plans = sortPlans([...byPlan.keys()]);
+    const assignees = sortAssignees([...byAssignee.keys()]);
     return {
       id: group.id,
       label: group.label,
@@ -235,6 +282,10 @@ export async function computePaymentRate(query: PaymentRateQuery) {
       byPlan: plans.map((plan) => ({
         plan,
         metrics: withRates(byPlan.get(plan) ?? emptyCounts()),
+      })),
+      byAssignee: assignees.map((name) => ({
+        assignee: name,
+        metrics: withRates(byAssignee.get(name) ?? emptyCounts()),
       })),
     };
   });
@@ -248,12 +299,18 @@ export async function computePaymentRate(query: PaymentRateQuery) {
     industry: industry ?? null,
     channel,
     channels: channels ?? [],
+    assignees: assigneeFilter ? [...assigneeFilter] : [],
     groups: groups.map(({ id, label, months, overall }) => ({ id, label, months, overall })),
     rows,
     planTables: groups.map((g) => ({
       groupId: g.id,
       groupLabel: g.label,
       plans: g.byPlan,
+    })),
+    assigneeTables: groups.map((g) => ({
+      groupId: g.id,
+      groupLabel: g.label,
+      assignees: g.byAssignee,
     })),
   };
 }

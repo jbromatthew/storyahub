@@ -1691,7 +1691,7 @@ export function SalesSyncView() {
   );
 }
 
-const RATE_STORAGE_KEY = "erp.sales.paymentRate.v3";
+const RATE_STORAGE_KEY = "erp.sales.paymentRate.v4";
 
 export function MembersView() {
   const [members, setMembers] = useState([]);
@@ -1815,6 +1815,29 @@ function buildPlanCompareRows(planTables) {
   }));
 }
 
+function buildAssigneeCompareRows(assigneeTables) {
+  if (!assigneeTables?.length) return [];
+  const order = [];
+  const seen = new Set();
+  for (const block of assigneeTables) {
+    for (const a of block.assignees ?? []) {
+      if (!seen.has(a.assignee)) {
+        seen.add(a.assignee);
+        order.push(a.assignee);
+      }
+    }
+  }
+  order.sort((a, b) => {
+    if (a === "미지정") return 1;
+    if (b === "미지정") return -1;
+    return a.localeCompare(b, "ko");
+  });
+  return order.map((assignee) => ({
+    assignee,
+    byGroup: assigneeTables.map((block) => block.assignees?.find((a) => a.assignee === assignee)?.metrics ?? null),
+  }));
+}
+
 function PlanMetricsCell({ metrics }) {
   if (!metrics) return <td className="num rate-plan-cell empty">-</td>;
   return (
@@ -1862,8 +1885,8 @@ function loadSavedGroups(months, currentMonth) {
   }
 }
 
-function saveGroups(groups, industry, selectedChannels) {
-  localStorage.setItem(RATE_STORAGE_KEY, JSON.stringify({ groups, industry, selectedChannels }));
+function saveGroups(groups, industry, selectedChannels, selectedAssignees) {
+  localStorage.setItem(RATE_STORAGE_KEY, JSON.stringify({ groups, industry, selectedChannels, selectedAssignees }));
 }
 
 function collectDescendantIds(node) {
@@ -1980,11 +2003,14 @@ export function PaymentRateView() {
   const [groups, setGroups] = useState([]);
   const [industry, setIndustry] = useState("");
   const [selectedChannels, setSelectedChannels] = useState([]);
+  const [selectedAssignees, setSelectedAssignees] = useState([]);
+  const [assigneeQ, setAssigneeQ] = useState("");
   const [monthQ, setMonthQ] = useState("");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(true);
   const [computing, setComputing] = useState(false);
   const [showPlans, setShowPlans] = useState(false);
+  const [showAssignees, setShowAssignees] = useState(false);
 
   const currentMonthSheet = useMemo(() => {
     const now = new Date();
@@ -1996,6 +2022,11 @@ export function PaymentRateView() {
     const q = monthQ.trim();
     return (meta?.months || []).filter((m) => !q || m.includes(q) || monthShortLabel(m).includes(q));
   }, [meta, monthQ]);
+
+  const filteredAssignees = useMemo(() => {
+    const q = assigneeQ.trim().toLowerCase();
+    return (meta?.assignees || []).filter((a) => !q || a.toLowerCase().includes(q));
+  }, [meta, assigneeQ]);
 
   useEffect(() => {
     api.erpPaymentRateMeta()
@@ -2011,6 +2042,7 @@ export function PaymentRateView() {
           const prefs = raw ? JSON.parse(raw) : null;
           if (prefs?.industry) setIndustry(prefs.industry);
           if (Array.isArray(prefs?.selectedChannels)) setSelectedChannels(prefs.selectedChannels);
+          if (Array.isArray(prefs?.selectedAssignees)) setSelectedAssignees(prefs.selectedAssignees);
         } catch { /* */ }
       })
       .catch(notifyError)
@@ -2021,16 +2053,17 @@ export function PaymentRateView() {
     const valid = groups.filter((g) => g.months.length > 0);
     if (!valid.length) return notifyError(new Error("비교군에 월을 1개 이상 선택하세요"));
     setComputing(true);
-    saveGroups(groups, industry, selectedChannels);
+    saveGroups(groups, industry, selectedChannels, selectedAssignees);
     api.erpPaymentRate({
       industry: industry || undefined,
       channels: selectedChannels.length ? selectedChannels : undefined,
+      assignees: selectedAssignees.length ? selectedAssignees : undefined,
       groups: valid.map((g) => ({ id: g.id, label: g.label, months: g.months })),
     })
       .then(setResult)
       .catch(notifyError)
       .finally(() => setComputing(false));
-  }, [groups, industry, selectedChannels]);
+  }, [groups, industry, selectedChannels, selectedAssignees]);
 
   const addGroup = (preset) => {
     const months = meta?.months || [];
@@ -2070,8 +2103,15 @@ export function PaymentRateView() {
     updateGroup(groupId, { label: preset.label, months: picked });
   };
 
+  const toggleAssignee = (name) => {
+    setSelectedAssignees((prev) => (
+      prev.includes(name) ? prev.filter((a) => a !== name) : [...prev, name]
+    ));
+  };
+
   const groupLabels = result?.groups?.map((g) => g.label) || groups.filter((g) => g.months.length).map((g) => g.label);
   const planCompareRows = useMemo(() => buildPlanCompareRows(result?.planTables), [result]);
+  const assigneeCompareRows = useMemo(() => buildAssigneeCompareRows(result?.assigneeTables), [result]);
   const noData = result?.rows?.find((r) => r.key === "inquiries")?.values?.every((v) => !v);
   const hasEmpty = groups.some((g) => !g.months.length);
 
@@ -2099,6 +2139,41 @@ export function PaymentRateView() {
             <input value={monthQ} onChange={(e) => setMonthQ(e.target.value)} placeholder="2026.07" />
           </div>
         </div>
+        {(meta?.assignees?.length > 0) && (
+          <div className="rate-assignee-filter" style={{ marginTop: 12 }}>
+            <div className="rate-assignee-hd">
+              <label>담당자</label>
+              <span className="small">
+                {selectedAssignees.length ? `${selectedAssignees.length}명 선택` : "전체 담당자"}
+              </span>
+            </div>
+            <input
+              className="rate-assignee-search"
+              value={assigneeQ}
+              onChange={(e) => setAssigneeQ(e.target.value)}
+              placeholder="담당자 검색"
+            />
+            <div className="rate-assignee-picks">
+              <button
+                type="button"
+                className={"rate-month-chip" + (!selectedAssignees.length ? " on" : "")}
+                onClick={() => setSelectedAssignees([])}
+              >
+                전체
+              </button>
+              {filteredAssignees.map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  className={"rate-month-chip" + (selectedAssignees.includes(a) ? " on" : "")}
+                  onClick={() => toggleAssignee(a)}
+                >
+                  {a}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {meta?.channelTree && (
@@ -2197,12 +2272,45 @@ export function PaymentRateView() {
           <div className="sales-toolbar" style={{ marginTop: 16 }}>
             <button
               type="button"
+              className={"btn btn-sm" + (showAssignees ? " btn-accent" : " btn-ghost")}
+              onClick={() => setShowAssignees((v) => !v)}
+            >
+              {showAssignees ? "담당자별 숨기기" : "담당자별 비교"}
+            </button>
+            <button
+              type="button"
               className={"btn btn-sm" + (showPlans ? " btn-accent" : " btn-ghost")}
               onClick={() => setShowPlans((v) => !v)}
             >
               {showPlans ? "요금제별 숨기기" : "요금제별 상세"}
             </button>
           </div>
+
+          {showAssignees && assigneeCompareRows.length > 0 && (
+            <div className="rate-plan-block">
+              <div className="rate-plan-title">담당자별 비교</div>
+              <div className="rate-table-wrap rate-table-scroll">
+                <table className="rate-table rate-plan-compare">
+                  <thead>
+                    <tr>
+                      <th className="plan-col">담당자</th>
+                      {groupLabels.map((label) => <th key={label}>{label}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {assigneeCompareRows.map((row) => (
+                      <tr key={row.assignee}>
+                        <td className="plan-col">{row.assignee}</td>
+                        {row.byGroup.map((metrics, i) => (
+                          <PlanMetricsCell key={i} metrics={metrics} />
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {showPlans && planCompareRows.length > 0 && (
             <div className="rate-plan-block">

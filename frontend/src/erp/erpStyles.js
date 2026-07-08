@@ -177,6 +177,11 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .rate-plan-cell div{display:flex;justify-content:space-between;gap:8px;}
 .rate-plan-cell .lbl{color:var(--muted);flex-shrink:0;}
 .rate-plan-cell .pct{font-weight:700;color:var(--accent-deep);}
+.rate-assignee-filter{border-top:1px solid var(--line);padding-top:12px;}
+.rate-assignee-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
+.rate-assignee-hd label{font-size:12px;font-weight:800;color:var(--muted);}
+.rate-assignee-search{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:14px;margin-bottom:8px;}
+.rate-assignee-picks{display:flex;flex-wrap:wrap;gap:6px;max-height:120px;overflow:auto;padding-bottom:2px;}
 .ch-filter{border:1px solid var(--line);border-radius:12px;background:#fff;margin:12px 0;overflow:hidden;}
 .ch-filter-hd{display:flex;align-items:center;gap:8px;padding:12px 14px;cursor:pointer;user-select:none;}
 .ch-filter-hd strong{font-size:14px;flex:1;}

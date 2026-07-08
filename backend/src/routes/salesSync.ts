@@ -91,6 +91,7 @@ const paymentRateBodySchema = z.object({
   industry: z.string().optional(),
   channel: z.enum(["all", "organic", "non-organic"]).optional(),
   channels: z.array(z.string()).optional(),
+  assignees: z.array(z.string()).optional(),
   groups: z
     .array(
       z.object({
