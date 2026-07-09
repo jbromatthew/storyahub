@@ -2246,11 +2246,11 @@ export function PaymentRateView() {
   return (
     <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
       <div className="h-eyebrow">Sales</div>
-      <div className="h-title">당월 결제율</div>
+      <div className="h-title">결제율 분석</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
         비교군을 1개 이상 추가하고 월을 선택한 뒤 <strong>조회</strong>하세요.
         부재율은 상품문의 시트 <strong>부재율</strong> 컬럼 기준(완전부재·부재1차·부재2차)입니다.
-        상담진행&운영중은 <strong>오픈전</strong> 체크 건을 제외합니다.
+        상담진행&운영중은 <strong>상담완료</strong>·<strong>부재 상담완료</strong> 기준이며, <strong>오픈전</strong> 체크 건은 제외합니다.
       </div>
 
       <div className="card rate-filter-panel">

@@ -131,20 +131,24 @@ function sortAssignees(names: string[]): string[] {
   });
 }
 
+function consultingStatus(data: Record<string, string>): string {
+  return String(data["부재율"] ?? "").trim().replace(/\s+/g, " ");
+}
+
 function isOpenBeforeRow(data: Record<string, string>): boolean {
   return String(data["오픈전"] ?? "").trim().toUpperCase() === "TRUE";
 }
 
 function isConsultingRow(data: Record<string, string>): boolean {
   if (isOpenBeforeRow(data)) return false;
-  const status = String(data["부재율"] ?? "").trim();
-  return status === "상담완료" || status === "부재 상담완료";
+  const status = consultingStatus(data);
+  return status === "상담완료" || status === "부재 상담완료" || status === "부재상담완료";
 }
 
 const ABSENCE_STATUSES = new Set(["완전부재", "부재1차", "부재2차"]);
 
 function isAbsenceRow(data: Record<string, string>): boolean {
-  const status = String(data["부재율"] ?? "").trim();
+  const status = consultingStatus(data);
   return ABSENCE_STATUSES.has(status);
 }
 
