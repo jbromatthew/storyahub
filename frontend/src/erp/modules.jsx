@@ -4000,6 +4000,17 @@ export function SalesDailyView() {
   const [hideZero, setHideZero] = useState(true);
   const [period, setPeriod] = useState("day");
   const [anchorDate, setAnchorDate] = useState(todayDateKeyKst);
+  const [drill, setDrill] = useState(null);
+
+  const openDrill = (title, kind, items) => {
+    if (!items || !items.length) return;
+    setDrill({
+      title,
+      kindLabel: kind === "inquiry" ? "문의 요금제 분포" : "실결제 상품 분포",
+      total: items.reduce((a, b) => a + b.count, 0),
+      items,
+    });
+  };
 
   const load = useCallback(() => {
     setLoading(true);
@@ -4102,14 +4113,24 @@ export function SalesDailyView() {
           </div>
 
           <div className="daily-summary">
-            <div className="daily-stat inquiry">
+            <button
+              type="button"
+              className="daily-stat inquiry"
+              onClick={() => openDrill(`전체 · ${countLabel} 문의`, "inquiry", data.totals.inquiryPlans)}
+            >
               <div className="lbl">{countLabel} 문의</div>
               <div className="val">{data.totals.inquiries}</div>
-            </div>
-            <div className="daily-stat order">
+              {data.totals.inquiryPlans?.length > 0 && <div className="daily-stat-hint">요금제 보기 →</div>}
+            </button>
+            <button
+              type="button"
+              className="daily-stat order"
+              onClick={() => openDrill(`전체 · ${countLabel} 결제`, "order", data.totals.orderProducts)}
+            >
               <div className="lbl">{countLabel} 결제</div>
               <div className="val">{data.totals.orders}</div>
-            </div>
+              {data.totals.orderProducts?.length > 0 && <div className="daily-stat-hint">상품 보기 →</div>}
+            </button>
           </div>
 
           {!visibleRows.length ? (
@@ -4140,14 +4161,30 @@ export function SalesDailyView() {
                       {visibleRows.map((row) => (
                         <tr key={row.industry}>
                           <td className="industry">{row.industry}</td>
-                          <td className={"num" + (row.inquiries === 0 ? " zero" : "")}>{row.inquiries}</td>
-                          <td className={"num" + (row.orders === 0 ? " zero" : "")}>{row.orders}</td>
+                          <td className={"num" + (row.inquiries === 0 ? " zero" : "")}>
+                            {row.inquiries > 0 ? (
+                              <button type="button" className="daily-cell-btn" onClick={() => openDrill(`${row.industry} · 문의`, "inquiry", row.inquiryPlans)}>{row.inquiries}</button>
+                            ) : row.inquiries}
+                          </td>
+                          <td className={"num" + (row.orders === 0 ? " zero" : "")}>
+                            {row.orders > 0 ? (
+                              <button type="button" className="daily-cell-btn" onClick={() => openDrill(`${row.industry} · 결제`, "order", row.orderProducts)}>{row.orders}</button>
+                            ) : row.orders}
+                          </td>
                         </tr>
                       ))}
                       <tr className="total">
                         <td className="industry">합계</td>
-                        <td className="num">{data.totals.inquiries}</td>
-                        <td className="num">{data.totals.orders}</td>
+                        <td className="num">
+                          {data.totals.inquiries > 0 ? (
+                            <button type="button" className="daily-cell-btn" onClick={() => openDrill("전체 · 문의", "inquiry", data.totals.inquiryPlans)}>{data.totals.inquiries}</button>
+                          ) : data.totals.inquiries}
+                        </td>
+                        <td className="num">
+                          {data.totals.orders > 0 ? (
+                            <button type="button" className="daily-cell-btn" onClick={() => openDrill("전체 · 결제", "order", data.totals.orderProducts)}>{data.totals.orders}</button>
+                          ) : data.totals.orders}
+                        </td>
                       </tr>
                     </tbody>
                   </table>
@@ -4156,6 +4193,31 @@ export function SalesDailyView() {
             />
           )}
         </>
+      )}
+
+      {drill && (
+        <div className="daily-drill-back" onClick={() => setDrill(null)}>
+          <div className="daily-drill" onClick={(e) => e.stopPropagation()}>
+            <div className="daily-drill-hd">
+              <div style={{ minWidth: 0 }}>
+                <div className="daily-drill-eyebrow">{drill.kindLabel}</div>
+                <div className="daily-drill-title">{drill.title} · 총 {drill.total}건</div>
+              </div>
+              <button type="button" className="daily-drill-x" aria-label="닫기" onClick={() => setDrill(null)}>✕</button>
+            </div>
+            <div className="daily-drill-list">
+              {drill.items.map((it) => (
+                <div key={it.label} className="daily-drill-row">
+                  <span className="daily-drill-label">{it.label}</span>
+                  <div className="daily-drill-bar">
+                    <div className="daily-drill-fill" style={{ width: `${Math.round((it.count / (drill.items[0]?.count || 1)) * 100)}%` }} />
+                  </div>
+                  <span className="daily-drill-count">{it.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

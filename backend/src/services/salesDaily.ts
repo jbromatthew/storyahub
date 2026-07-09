@@ -12,10 +12,14 @@ const KST = "Asia/Seoul";
 
 export type DailyPeriod = "day" | "week" | "month";
 
+export type DailyBreakdown = { label: string; count: number };
+
 export type DailyIndustryRow = {
   industry: string;
   inquiries: number;
   orders: number;
+  inquiryPlans: DailyBreakdown[];
+  orderProducts: DailyBreakdown[];
 };
 
 export type SalesDailyData = {
@@ -34,6 +38,8 @@ export type SalesDailyData = {
   totals: {
     inquiries: number;
     orders: number;
+    inquiryPlans: DailyBreakdown[];
+    orderProducts: DailyBreakdown[];
   };
   syncedInquiryThrough: string | null;
   syncedOrderThrough: string | null;
@@ -146,6 +152,30 @@ function industryName(data: Record<string, string>): string {
   return raw || "확인불가";
 }
 
+const INQUIRY_PLAN_KEYS = ["문의요금제", "문의 요금제", "실제 결제 상품", "현재요금제"];
+const ORDER_PRODUCT_KEYS = ["실제 결제 상품", "결제 상품", "상품", "기본 요금제", "요금제"];
+
+function pickField(data: Record<string, string>, keys: string[], fallback = "미지정"): string {
+  for (const k of keys) {
+    const v = (data[k] || "").trim();
+    if (v) return v;
+  }
+  return fallback;
+}
+
+function bumpMap(map: Map<string, Map<string, number>>, industry: string, label: string) {
+  const inner = map.get(industry) ?? new Map<string, number>();
+  inner.set(label, (inner.get(label) ?? 0) + 1);
+  map.set(industry, inner);
+}
+
+function toBreakdown(m?: Map<string, number>): DailyBreakdown[] {
+  if (!m) return [];
+  return [...m.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "ko"));
+}
+
 function sortIndustries(labels: string[]): string[] {
   const order = new Map<string, number>(INDUSTRY_TYPES.map((label, i) => [label, i]));
   return [...labels].sort((a, b) => {
@@ -194,6 +224,8 @@ export async function getSalesDaily(query?: SalesDailyQuery): Promise<SalesDaily
   ]);
 
   const byIndustry = new Map<string, { inquiries: number; orders: number }>();
+  const planByIndustry = new Map<string, Map<string, number>>();
+  const productByIndustry = new Map<string, Map<string, number>>();
 
   const bump = (industry: string, field: "inquiries" | "orders") => {
     const bucket = byIndustry.get(industry) ?? { inquiries: 0, orders: 0 };
@@ -206,7 +238,9 @@ export async function getSalesDaily(query?: SalesDailyQuery): Promise<SalesDaily
     if ((data["구분"] || "").trim() !== INQUIRY_TYPE) continue;
     const rowDate = parseInquiryRowDate(data);
     if (!rowDate || !dateInRange(rowDate, startDate, endDate)) continue;
-    bump(industryName(data), "inquiries");
+    const industry = industryName(data);
+    bump(industry, "inquiries");
+    bumpMap(planByIndustry, industry, pickField(data, INQUIRY_PLAN_KEYS));
   }
 
   for (const row of orderRows) {
@@ -214,22 +248,36 @@ export async function getSalesDaily(query?: SalesDailyQuery): Promise<SalesDaily
     if ((data["구분"] || "").trim() !== ORDER_TYPE) continue;
     const rowDate = parseOrderRowDate(data);
     if (!rowDate || !dateInRange(rowDate, startDate, endDate)) continue;
-    bump(industryName(data), "orders");
+    const industry = industryName(data);
+    bump(industry, "orders");
+    bumpMap(productByIndustry, industry, pickField(data, ORDER_PRODUCT_KEYS));
   }
 
   const industries = sortIndustries([...byIndustry.keys()]);
   const rows: DailyIndustryRow[] = industries.map((industry) => {
     const counts = byIndustry.get(industry)!;
-    return { industry, inquiries: counts.inquiries, orders: counts.orders };
+    return {
+      industry,
+      inquiries: counts.inquiries,
+      orders: counts.orders,
+      inquiryPlans: toBreakdown(planByIndustry.get(industry)),
+      orderProducts: toBreakdown(productByIndustry.get(industry)),
+    };
   });
 
-  const totals = rows.reduce(
-    (acc, row) => ({
-      inquiries: acc.inquiries + row.inquiries,
-      orders: acc.orders + row.orders,
-    }),
-    { inquiries: 0, orders: 0 }
-  );
+  const planTotal = new Map<string, number>();
+  const productTotal = new Map<string, number>();
+  for (const inner of planByIndustry.values())
+    for (const [label, n] of inner) planTotal.set(label, (planTotal.get(label) ?? 0) + n);
+  for (const inner of productByIndustry.values())
+    for (const [label, n] of inner) productTotal.set(label, (productTotal.get(label) ?? 0) + n);
+
+  const totals = {
+    inquiries: rows.reduce((a, r) => a + r.inquiries, 0),
+    orders: rows.reduce((a, r) => a + r.orders, 0),
+    inquiryPlans: toBreakdown(planTotal),
+    orderProducts: toBreakdown(productTotal),
+  };
 
   return {
     period,
