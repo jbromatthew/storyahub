@@ -28,6 +28,8 @@ export type PaymentRateQuery = {
 type Counts = {
   inquiries: number;
   consulting: number;
+  openBefore: number;
+  absences: number;
   monthlyPayment: number;
   actualPayment: number;
 };
@@ -35,6 +37,7 @@ type Counts = {
 export type PaymentRateMetrics = Counts & {
   monthlyRate: number | null;
   actualRate: number | null;
+  absenceRate: number | null;
 };
 
 const PLAN_ORDER = [
@@ -58,6 +61,9 @@ const PLAN_ORDER = [
 export const PAYMENT_RATE_ROWS = [
   { key: "inquiries", label: "문의수", format: "number" as const },
   { key: "consulting", label: "상담진행&운영중", format: "number" as const },
+  { key: "openBefore", label: "오픈전", format: "number" as const },
+  { key: "absences", label: "부재", format: "number" as const },
+  { key: "absenceRate", label: "부재율(%)", format: "percent" as const },
   { key: "monthlyPayment", label: "당월 결제", format: "number" as const },
   { key: "actualPayment", label: "실결제", format: "number" as const },
   { key: "monthlyRate", label: "당월 결제전환율(%)", format: "percent" as const },
@@ -125,9 +131,21 @@ function sortAssignees(names: string[]): string[] {
   });
 }
 
+function isOpenBeforeRow(data: Record<string, string>): boolean {
+  return String(data["오픈전"] ?? "").trim().toUpperCase() === "TRUE";
+}
+
 function isConsultingRow(data: Record<string, string>): boolean {
+  if (isOpenBeforeRow(data)) return false;
   const status = String(data["부재율"] ?? "").trim();
   return status === "상담완료" || status === "부재 상담완료";
+}
+
+const ABSENCE_STATUSES = new Set(["완전부재", "부재1차", "부재2차"]);
+
+function isAbsenceRow(data: Record<string, string>): boolean {
+  const status = String(data["부재율"] ?? "").trim();
+  return ABSENCE_STATUSES.has(status);
 }
 
 function isMonthlyPaymentRow(data: Record<string, string>): boolean {
@@ -141,7 +159,7 @@ function isActualPaymentRow(data: Record<string, string>): boolean {
 }
 
 function emptyCounts(): Counts {
-  return { inquiries: 0, consulting: 0, monthlyPayment: 0, actualPayment: 0 };
+  return { inquiries: 0, consulting: 0, openBefore: 0, absences: 0, monthlyPayment: 0, actualPayment: 0 };
 }
 
 function withRates(counts: Counts): PaymentRateMetrics {
@@ -149,12 +167,15 @@ function withRates(counts: Counts): PaymentRateMetrics {
     ...counts,
     monthlyRate: counts.consulting > 0 ? counts.monthlyPayment / counts.consulting : null,
     actualRate: counts.consulting > 0 ? counts.actualPayment / counts.consulting : null,
+    absenceRate: counts.inquiries > 0 ? counts.absences / counts.inquiries : null,
   };
 }
 
 function addToCounts(counts: Counts, data: Record<string, string>) {
   counts.inquiries += 1;
   if (isConsultingRow(data)) counts.consulting += 1;
+  if (isOpenBeforeRow(data)) counts.openBefore += 1;
+  if (isAbsenceRow(data)) counts.absences += 1;
   if (isMonthlyPaymentRow(data)) counts.monthlyPayment += 1;
   if (isActualPaymentRow(data)) counts.actualPayment += 1;
 }
@@ -207,7 +228,7 @@ function buildPresets(months: string[]) {
   const currentMonth = months.includes(current) ? current : months[0];
 
   const y2025 = months.filter((m) => m.startsWith("2025."));
-  const last3 = months.filter((m) => !isHistoricalInquiryMonth(m)).slice(0, 3);
+  const last3 = months.filter((m) => m !== currentMonth).slice(0, 3);
 
   return [
     { id: "y2025", label: "2025년 전체", months: y2025 },

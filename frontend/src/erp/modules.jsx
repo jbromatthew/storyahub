@@ -1862,7 +1862,7 @@ function AssigneePicker({ assignees, selected, onChange, colorMap }) {
     : <span className="assignee-badge all">전체</span>;
 
   return (
-    <div className="assignee-picker" ref={rootRef}>
+    <div className={"assignee-picker" + (open ? " open" : "")} ref={rootRef}>
       <label className="assignee-picker-label">담당자</label>
       <button type="button" className={"assignee-picker-trigger" + (open ? " open" : "")} onClick={() => setOpen((v) => !v)}>
         <div className="assignee-picker-value">{summary}</div>
@@ -1917,7 +1917,7 @@ const GROUP_PRESETS = [
     const idx = months.indexOf(current);
     return idx >= 0 && idx < months.length - 1 ? [months[idx + 1]] : [];
   }},
-  { id: "last3", label: "직전 3개월", pick: (months) => months.slice(0, 3) },
+  { id: "last3", label: "직전 3개월", pick: (months, current) => months.filter((m) => m !== current).slice(0, 3) },
   { id: "y2025", label: "2025년", pick: (months) => months.filter((m) => m.startsWith("2025.")) },
 ];
 
@@ -1936,6 +1936,9 @@ function formatRateValue(value, format) {
 const PLAN_CELL_METRICS = [
   { key: "inquiries", label: "문의", format: "number" },
   { key: "consulting", label: "상담", format: "number" },
+  { key: "openBefore", label: "오픈전", format: "number" },
+  { key: "absences", label: "부재", format: "number" },
+  { key: "absenceRate", label: "부재%", format: "percent" },
   { key: "monthlyPayment", label: "당월결제", format: "number" },
   { key: "actualPayment", label: "실결제", format: "number" },
   { key: "monthlyRate", label: "당월%", format: "percent" },
@@ -1991,8 +1994,8 @@ function newGroupId() {
 function defaultGroups(months, currentMonth) {
   const cur = currentMonth || months[0];
   const g1 = { id: newGroupId(), label: "당월", months: cur ? [cur] : [] };
-  const last3 = months.slice(0, 3);
-  if (last3.length > 1) {
+  const last3 = months.filter((m) => m !== cur).slice(0, 3);
+  if (last3.length > 0) {
     return [g1, { id: newGroupId(), label: "직전 3개월", months: last3 }];
   }
   return [g1];
@@ -2246,6 +2249,8 @@ export function PaymentRateView() {
       <div className="h-title">당월 결제율</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
         비교군을 1개 이상 추가하고 월을 선택한 뒤 <strong>조회</strong>하세요.
+        부재율은 상품문의 시트 <strong>부재율</strong> 컬럼 기준(완전부재·부재1차·부재2차)입니다.
+        상담진행&운영중은 <strong>오픈전</strong> 체크 건을 제외합니다.
       </div>
 
       <div className="card rate-filter-panel">
@@ -2602,6 +2607,403 @@ export function SalesTrendView() {
             </tbody>
           </table>
         </div>
+      )}
+    </div>
+  );
+}
+
+const DASHBOARD_TABS = [
+  { id: "channel", label: "채널별" },
+  { id: "industry", label: "업종별" },
+  { id: "plan", label: "요금제별" },
+];
+
+function dashRateColor(rate) {
+  if (rate == null) return "#9AA0A6";
+  if (rate >= 100) return "#0D7A3E";
+  if (rate >= 70) return "#E37400";
+  return "#C5221F";
+}
+
+function formatDashRate(rate) {
+  if (rate == null) return "-";
+  return `${rate}%`;
+}
+
+function formatDashGap(gap) {
+  if (gap > 0) return `+${gap}`;
+  return String(gap);
+}
+
+function GaugeRing({ rate, size = 132 }) {
+  const pct = Math.min(Math.max(rate ?? 0, 0), 100);
+  const stroke = 11;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const offset = c - (pct / 100) * c;
+  const color = dashRateColor(rate);
+  return (
+    <svg className="dash-gauge" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#ECEEF0" strokeWidth={stroke} />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth={stroke}
+        strokeDasharray={c}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+      <text x="50%" y="46%" textAnchor="middle" fontSize="22" fontWeight="800" fill="currentColor">
+        {rate != null ? `${Math.round(rate)}%` : "-"}
+      </text>
+      <text x="50%" y="60%" textAnchor="middle" fontSize="11" fill="#787774">
+        달성률
+      </text>
+    </svg>
+  );
+}
+
+export function SalesDashboardView() {
+  const [selectedMonth, setSelectedMonth] = useState(null);
+  const [tab, setTab] = useState("industry");
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    api.erpSalesDashboard({ month: selectedMonth || undefined })
+      .then(setData)
+      .catch(notifyError)
+      .finally(() => setLoading(false));
+  }, [selectedMonth]);
+
+  const section = useMemo(
+    () => data?.sections?.find((s) => s.id === tab) || data?.sections?.[0],
+    [data, tab]
+  );
+
+  const months = data?.months || [];
+
+  return (
+    <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">Sales</div>
+      <div className="h-title">세일즈 계기판</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+        월별 목표는 <strong>대시보드 시트</strong>에서, 현황은 결제 주문 DB의 <strong>신규센터</strong> 건수로 집계합니다.
+        {data?.spreadsheetUrl && (
+          <>{" "}<a href={data.spreadsheetUrl} target="_blank" rel="noreferrer">목표 시트</a></>
+        )}
+        {data?.syncedThrough && (
+          <> · 주문 동기화: <strong>{data.syncedThrough}</strong></>
+        )}
+      </div>
+
+      {months.length > 0 && (
+        <div className="dash-month-picks">
+          {months.map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={"dash-month-chip" + (data?.month === m ? " on" : "")}
+              onClick={() => setSelectedMonth(m)}
+            >
+              {m.replace(/\.$/, "")}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="spinner" />
+      ) : !data ? (
+        <div className="small" style={{ textAlign: "center", padding: 40 }}>데이터가 없습니다</div>
+      ) : (
+        <>
+          <div className="dash-summary">
+            <div className="dash-summary-card">
+              <div className="dash-gauge-wrap">
+                <GaugeRing rate={data.summary.rate} />
+              </div>
+              <div className="dash-stats">
+                <div className="dash-stat">
+                  <div className="lbl">월</div>
+                  <div className="val">{data.monthLabel}</div>
+                </div>
+                <div className="dash-stat">
+                  <div className="lbl">전체 목표</div>
+                  <div className="val">{data.summary.totalGoal}</div>
+                </div>
+                <div className="dash-stat">
+                  <div className="lbl">현황 (DB)</div>
+                  <div className={"val" + (data.summary.gap >= 0 ? " pos" : " neg")}>{data.summary.actual}</div>
+                </div>
+                <div className="dash-stat">
+                  <div className="lbl">미달</div>
+                  <div className={"val" + (data.summary.gap >= 0 ? " pos" : " neg")}>
+                    {formatDashGap(data.summary.gap)}
+                  </div>
+                </div>
+                {(data.summary.remainingDays != null || data.summary.remainingBusinessDays != null) && (
+                  <>
+                    <div className="dash-stat">
+                      <div className="lbl">잔여일</div>
+                      <div className="val">{data.summary.remainingDays ?? "-"}</div>
+                    </div>
+                    <div className="dash-stat">
+                      <div className="lbl">잔여 영업일</div>
+                      <div className="val">{data.summary.remainingBusinessDays ?? "-"}</div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="sales-tabs">
+            {DASHBOARD_TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={"sales-tab" + (tab === t.id ? " on" : "")}
+                onClick={() => setTab(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {!section?.items?.length ? (
+            <div className="small" style={{ textAlign: "center", padding: 32 }}>표시할 항목이 없습니다</div>
+          ) : (
+            <div className="dash-table-wrap">
+              <table className="dash-table">
+                <thead>
+                  <tr>
+                    <th className="label">{section.label}</th>
+                    <th>목표</th>
+                    <th>현황</th>
+                    <th>달성률</th>
+                    <th>미달</th>
+                    <th>진행</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {section.items.map((row) => (
+                    <tr key={row.key}>
+                      <td className="label">{row.label}</td>
+                      <td className="num">{row.goal}</td>
+                      <td className="num">{row.actual}</td>
+                      <td className="num" style={{ color: dashRateColor(row.rate), fontWeight: 700 }}>
+                        {formatDashRate(row.rate)}
+                      </td>
+                      <td className={"num" + (row.gap >= 0 ? " gap-pos" : " gap-neg")}>
+                        {formatDashGap(row.gap)}
+                      </td>
+                      <td className="dash-bar-cell">
+                        <div className="dash-bar" title={formatDashRate(row.rate)}>
+                          <div
+                            className="dash-bar-fill"
+                            style={{
+                              width: `${Math.min(Math.max(row.rate ?? 0, 0), 100)}%`,
+                              background: dashRateColor(row.rate),
+                            }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: "#FFF8F0" }}>
+                    <td className="label">합계</td>
+                    <td className="num">{section.total.goal}</td>
+                    <td className="num">{section.total.actual}</td>
+                    <td className="num" style={{ color: dashRateColor(section.total.rate), fontWeight: 800 }}>
+                      {formatDashRate(section.total.rate)}
+                    </td>
+                    <td className={"num" + (section.total.gap >= 0 ? " gap-pos" : " gap-neg")}>
+                      {formatDashGap(section.total.gap)}
+                    </td>
+                    <td className="dash-bar-cell">
+                      <div className="dash-bar">
+                        <div
+                          className="dash-bar-fill"
+                          style={{
+                            width: `${Math.min(Math.max(section.total.rate ?? 0, 0), 100)}%`,
+                            background: dashRateColor(section.total.rate),
+                          }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+export function SalesDailyView() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [hideZero, setHideZero] = useState(true);
+  const [period, setPeriod] = useState("day");
+  const [anchorDate, setAnchorDate] = useState(() =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date())
+  );
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.erpSalesDaily({ date: anchorDate, period })
+      .then(setData)
+      .catch(notifyError)
+      .finally(() => setLoading(false));
+  }, [anchorDate, period]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const visibleRows = useMemo(() => {
+    const rows = data?.rows || [];
+    if (!hideZero) return rows;
+    return rows.filter((r) => r.inquiries > 0 || r.orders > 0);
+  }, [data, hideZero]);
+
+  const periodLabel = period === "day" ? "금일" : period === "week" ? "주간" : "월간";
+  const countLabel = period === "day" ? "금일" : "기간";
+
+  const goToday = () => {
+    setPeriod("day");
+    setAnchorDate(
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Seoul",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date())
+    );
+  };
+
+  return (
+    <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">Sales</div>
+      <div className="h-title">문의/결제 대시보드</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+        업종별 문의·결제 건수입니다. 기본은 <strong>금일</strong>이며 일/주/월 단위로 조회할 수 있습니다. 주간은 <strong>일요일~토요일</strong> 기준입니다.
+        문의는 <strong>{data?.inquirySource || "상품 문의 관리"}</strong> ({data?.inquiryFilter || "신규문의"}),
+        결제는 <strong>{data?.orderSource || "결제 주문 내역"}</strong> ({data?.orderFilter || "신규센터"}) 기준입니다.
+      </div>
+
+      <div className="daily-toolbar">
+        <div className="daily-period-tabs">
+          {[
+            { id: "day", label: "일" },
+            { id: "week", label: "주" },
+            { id: "month", label: "월" },
+          ].map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={"daily-period-tab" + (period === t.id ? " on" : "")}
+              onClick={() => setPeriod(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="field">
+          <label>기준일</label>
+          <input
+            type="date"
+            value={anchorDate}
+            onChange={(e) => setAnchorDate(e.target.value)}
+          />
+        </div>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={goToday}>오늘</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={load}>새로고침</button>
+        <button
+          type="button"
+          className={"btn btn-sm" + (hideZero ? " btn-accent" : " btn-ghost")}
+          onClick={() => setHideZero((v) => !v)}
+        >
+          {hideZero ? "0 숨김" : "0 표시"}
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="spinner" />
+      ) : !data ? (
+        <div className="small" style={{ textAlign: "center", padding: 40 }}>데이터가 없습니다</div>
+      ) : (
+        <>
+          <div style={{ marginBottom: 10 }}>
+            <span className="small" style={{ fontWeight: 800, fontSize: 15 }}>{data.rangeLabel}</span>
+            {data.period !== "day" && (
+              <span className="small" style={{ marginLeft: 8, color: "var(--muted)" }}>
+                ({periodLabel} · 일~토 · {data.startDate} ~ {data.endDate})
+              </span>
+            )}
+            {(data.syncedInquiryThrough || data.syncedOrderThrough) && (
+              <span className="small" style={{ display: "block", marginTop: 4, color: "var(--muted)" }}>
+                동기화: 문의 {data.syncedInquiryThrough || "-"} · 결제 {data.syncedOrderThrough || "-"}
+              </span>
+            )}
+          </div>
+
+          <div className="daily-summary">
+            <div className="daily-stat inquiry">
+              <div className="lbl">{countLabel} 문의</div>
+              <div className="val">{data.totals.inquiries}</div>
+            </div>
+            <div className="daily-stat order">
+              <div className="lbl">{countLabel} 결제</div>
+              <div className="val">{data.totals.orders}</div>
+            </div>
+          </div>
+
+          {!visibleRows.length ? (
+            <div className="small" style={{ textAlign: "center", padding: 32, color: "var(--muted)" }}>
+              선택한 기간에 집계된 업종별 데이터가 없습니다. 세일즈 동기화에서 해당 월 시트를 확인해 주세요.
+            </div>
+          ) : (
+            <div className="daily-table-wrap">
+              <table className="daily-table">
+                <thead>
+                  <tr>
+                    <th className="industry">업종</th>
+                    <th>문의</th>
+                    <th>결제</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleRows.map((row) => (
+                    <tr key={row.industry}>
+                      <td className="industry">{row.industry}</td>
+                      <td className={"num" + (row.inquiries === 0 ? " zero" : "")}>{row.inquiries}</td>
+                      <td className={"num" + (row.orders === 0 ? " zero" : "")}>{row.orders}</td>
+                    </tr>
+                  ))}
+                  <tr className="total">
+                    <td className="industry">합계</td>
+                    <td className="num">{data.totals.inquiries}</td>
+                    <td className="num">{data.totals.orders}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

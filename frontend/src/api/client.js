@@ -310,4 +310,15 @@ export const api = {
     if (industry) p.set("industry", industry);
     return req(`/erp/sales/trend?${p}`);
   },
+  erpSalesDashboard: ({ month } = {}) => {
+    const p = new URLSearchParams();
+    if (month) p.set("month", month);
+    return req(`/erp/sales/dashboard?${p}`);
+  },
+  erpSalesDaily: ({ date, period } = {}) => {
+    const p = new URLSearchParams();
+    if (date) p.set("date", date);
+    if (period) p.set("period", period);
+    return req(`/erp/sales/daily?${p}`);
+  },
 };

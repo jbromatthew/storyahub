@@ -2,9 +2,11 @@ export const ERP_MODULES = [
   { id: "kb", label: "지식경영", icon: "book", group: "main" },
   { id: "meetings", label: "회의록", icon: "meet", group: "work" },
   { id: "okr", label: "OKR", icon: "okr", group: "work" },
-  { id: "sales-sync", label: "세일즈 동기화", icon: "sales", group: "sales", groupLabel: "문의/결제" },
+  { id: "sales-daily", label: "문의/결제 대시보드", icon: "board", group: "sales", groupLabel: "문의/결제" },
+  { id: "sales-sync", label: "세일즈 동기화", icon: "sales", group: "sales" },
   { id: "sales-rate", label: "당월 결제율", icon: "chart", group: "sales" },
   { id: "sales-trend", label: "월간 추이", icon: "trend", group: "sales" },
+  { id: "sales-dashboard", label: "세일즈 계기판", icon: "gauge", group: "sales" },
 ];
 
 export const ERP_ADMIN_MODULES = [

@@ -25,6 +25,11 @@ import {
   listTrendTabs,
   type TrendTabId,
 } from "../services/salesTrend.js";
+import {
+  getSalesDashboard,
+  listDashboardMonths,
+} from "../services/salesDashboard.js";
+import { getSalesDaily } from "../services/salesDaily.js";
 
 export const salesSyncRouter = Router();
 salesSyncRouter.use(auth, requireAccess);
@@ -136,6 +141,39 @@ const TREND_TAB_IDS = new Set(listTrendTabs().map((t) => t.id));
 
 salesSyncRouter.get("/trend/tabs", async (_req: AuthedRequest, res: Response) => {
   res.json({ tabs: listTrendTabs() });
+});
+
+salesSyncRouter.get("/dashboard/months", async (_req: AuthedRequest, res: Response) => {
+  try {
+    const months = await listDashboardMonths();
+    res.json({ months, spreadsheetId: env.googleSheets.dashboardSpreadsheetId });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
+salesSyncRouter.get("/dashboard", async (req: AuthedRequest, res: Response) => {
+  const month = typeof req.query.month === "string" ? req.query.month : undefined;
+  try {
+    res.json(await getSalesDashboard(month));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
+salesSyncRouter.get("/daily", async (req: AuthedRequest, res: Response) => {
+  const date = typeof req.query.date === "string" ? req.query.date : undefined;
+  const periodRaw = typeof req.query.period === "string" ? req.query.period : undefined;
+  const period =
+    periodRaw === "week" || periodRaw === "month" || periodRaw === "day" ? periodRaw : undefined;
+  try {
+    res.json(await getSalesDaily({ date, period }));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
 });
 
 salesSyncRouter.get("/trend", async (req: AuthedRequest, res: Response) => {

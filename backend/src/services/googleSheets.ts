@@ -155,6 +155,51 @@ function hasValidDateValue(raw: unknown): boolean {
   return /^\d{4}[-/.]/.test(String(raw ?? "").trim());
 }
 
+function extractDateKey(raw: unknown): string | null {
+  const s = String(raw ?? "").trim();
+  const m = s.match(/^(\d{4})[-/.](\d{2})[-/.](\d{2})/);
+  if (!m) return null;
+  return `${m[1]}-${m[2]}-${m[3]}`;
+}
+
+function firstDateKey(candidates: unknown[]): string | null {
+  for (const raw of candidates) {
+    const key = extractDateKey(raw);
+    if (key) return key;
+  }
+  return null;
+}
+
+/** 결제 주문 행의 날짜 → YYYY-MM-DD */
+export function parseOrderRowDate(data: Record<string, string>): string | null {
+  const candidates = [
+    data["날짜"],
+    data["입금 날짜"],
+    data["입금일"],
+    data["결제일"],
+    data["_col_1"],
+  ];
+  for (const [key, val] of Object.entries(data)) {
+    if (/날짜/i.test(key)) candidates.push(val);
+  }
+  return firstDateKey(candidates.filter(Boolean));
+}
+
+/** 문의 행의 날짜 → YYYY-MM-DD */
+export function parseInquiryRowDate(data: Record<string, string>): string | null {
+  const candidates = [
+    data["문의 시간"],
+    data["문의시간"],
+    data["날짜"],
+    data["_col_1"],
+    data["_col_2"],
+  ];
+  for (const [key, val] of Object.entries(data)) {
+    if (/^날짜|문의\s*시간/i.test(key)) candidates.push(val);
+  }
+  return firstDateKey(candidates.filter(Boolean));
+}
+
 /** 결제 주문: 날짜가 있는 행만 실제 주문 (헤더명이 월마다 다름) */
 export function isValidOrderRow(
   data: Record<string, string>,
