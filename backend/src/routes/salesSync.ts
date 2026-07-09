@@ -28,6 +28,7 @@ import {
 import {
   getSalesDashboard,
   listDashboardMonths,
+  saveDashboardGoalOverrides,
 } from "../services/salesDashboard.js";
 import { getSalesDaily } from "../services/salesDaily.js";
 
@@ -99,6 +100,7 @@ salesSyncRouter.get("/jobs/:id", async (req: AuthedRequest, res: Response) => {
 
 const paymentRateBodySchema = z.object({
   industry: z.string().optional(),
+  industries: z.array(z.string()).optional(),
   channel: z.enum(["all", "organic", "non-organic"]).optional(),
   channels: z.array(z.string()).optional(),
   assignees: z.array(z.string()).optional(),
@@ -163,6 +165,33 @@ salesSyncRouter.get("/dashboard", async (req: AuthedRequest, res: Response) => {
   }
 });
 
+const dashboardGoalsBodySchema = z.object({
+  month: z.string().min(1),
+  industryGoals: z.record(z.coerce.number()).optional(),
+  industryPlanGoals: z.record(z.record(z.coerce.number())).optional(),
+});
+
+salesSyncRouter.put("/dashboard/goals", async (req: AuthedRequest, res: Response) => {
+  const parsed = dashboardGoalsBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "month과 목표 데이터가 필요합니다" });
+  }
+  try {
+    await saveDashboardGoalOverrides(
+      parsed.data.month,
+      {
+        industryGoals: parsed.data.industryGoals ?? {},
+        industryPlanGoals: parsed.data.industryPlanGoals ?? {},
+      },
+      req.userId
+    );
+    res.json(await getSalesDashboard(parsed.data.month));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
 salesSyncRouter.get("/daily", async (req: AuthedRequest, res: Response) => {
   const date = typeof req.query.date === "string" ? req.query.date : undefined;
   const periodRaw = typeof req.query.period === "string" ? req.query.period : undefined;
@@ -176,14 +205,24 @@ salesSyncRouter.get("/daily", async (req: AuthedRequest, res: Response) => {
   }
 });
 
+function parseTrendIndustryQuery(query: Record<string, unknown>): string[] {
+  const raw = query.industry ?? query.industries;
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map(String).map((s) => s.trim()).filter(Boolean);
+  if (typeof raw === "string") {
+    return raw.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
+}
+
 salesSyncRouter.get("/trend", async (req: AuthedRequest, res: Response) => {
   const tab = req.query.tab as TrendTabId | undefined;
   if (!tab || !TREND_TAB_IDS.has(tab)) {
     return res.status(400).json({ error: "tab이 필요합니다 (industry-plan, industry-channel, industry, plan)" });
   }
-  const industry = typeof req.query.industry === "string" ? req.query.industry : undefined;
+  const industries = parseTrendIndustryQuery(req.query as Record<string, unknown>);
   try {
-    res.json(await getTrendData(tab, { industry }));
+    res.json(await getTrendData(tab, { industries }));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: msg });

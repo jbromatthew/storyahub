@@ -46,6 +46,8 @@ export type TrendData = {
   columns: TrendColumn[];
   rows: TrendRow[];
   industries?: string[];
+  selectedIndustries?: string[];
+  /** @deprecated use selectedIndustries */
   selectedIndustry?: string;
   rowCount: number;
   syncedThrough?: string | null;
@@ -205,11 +207,14 @@ function buildMatrix(
 
 function buildIndustryCross(
   records: TrendRecord[],
-  industry: string,
+  industries: string[],
   dimensionPick: (r: TrendRecord) => string,
   preferredOrder: readonly string[]
 ): Pick<TrendData, "months" | "columns" | "rows"> {
-  const filtered = records.filter((r) => r.industry === industry);
+  const industrySet = new Set(industries);
+  const filtered = industries.length
+    ? records.filter((r) => industrySet.has(r.industry))
+    : records;
   const monthSet = new Set<string>();
   const dimCounts = new Map<string, Map<string, number>>();
 
@@ -259,7 +264,7 @@ export function listTrendTabs() {
 
 export async function getTrendData(
   tab: TrendTabId,
-  opts?: { industry?: string }
+  opts?: { industries?: string[] }
 ): Promise<TrendData> {
   const meta = TREND_TABS[tab];
   if (!meta) throw new Error("유효하지 않은 추이 탭입니다");
@@ -271,10 +276,12 @@ export async function getTrendData(
   );
 
   const isCross = tab === "industry-plan" || tab === "industry-channel";
-  const selectedIndustry =
-    (opts?.industry && industries.includes(opts.industry) ? opts.industry : null) ??
-    industries[0] ??
-    "";
+  const requested = (opts?.industries || []).filter((name) => industries.includes(name));
+  const selectedIndustries = requested.length
+    ? requested
+    : industries[0]
+      ? [industries[0]]
+      : [];
 
   let parsed: Pick<TrendData, "months" | "columns" | "rows">;
   if (tab === "industry") {
@@ -282,9 +289,9 @@ export async function getTrendData(
   } else if (tab === "plan") {
     parsed = buildMatrix(records, (r) => r.plan, PLAN_ORDER);
   } else if (tab === "industry-channel") {
-    parsed = buildIndustryCross(records, selectedIndustry, (r) => r.channel, []);
+    parsed = buildIndustryCross(records, selectedIndustries, (r) => r.channel, []);
   } else {
-    parsed = buildIndustryCross(records, selectedIndustry, (r) => r.plan, PLAN_ORDER);
+    parsed = buildIndustryCross(records, selectedIndustries, (r) => r.plan, PLAN_ORDER);
   }
 
   const latest = await prisma.erpSalesOrder.findFirst({
@@ -304,7 +311,8 @@ export async function getTrendData(
     columns: parsed.columns,
     rows: parsed.rows,
     industries,
-    selectedIndustry: isCross ? selectedIndustry : undefined,
+    selectedIndustries: isCross ? selectedIndustries : undefined,
+    selectedIndustry: isCross ? selectedIndustries.join(" · ") : undefined,
     rowCount: records.length,
     syncedThrough: latest?.sheetName ?? null,
   };

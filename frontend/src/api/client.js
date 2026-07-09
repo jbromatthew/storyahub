@@ -304,10 +304,12 @@ export const api = {
   },
   erpPaymentRateMeta: () => req("/erp/sales/payment-rate/meta"),
   erpPaymentRate: (body) => req("/erp/sales/payment-rate", { method: "POST", body }),
-  erpSalesTrend: ({ tab, industry } = {}) => {
+  erpSalesTrend: ({ tab, industries } = {}) => {
     const p = new URLSearchParams();
     if (tab) p.set("tab", tab);
-    if (industry) p.set("industry", industry);
+    for (const industry of industries || []) {
+      if (industry) p.append("industry", industry);
+    }
     return req(`/erp/sales/trend?${p}`);
   },
   erpSalesDashboard: ({ month } = {}) => {
@@ -315,6 +317,7 @@ export const api = {
     if (month) p.set("month", month);
     return req(`/erp/sales/dashboard?${p}`);
   },
+  erpSalesDashboardGoals: (body) => req("/erp/sales/dashboard/goals", { method: "PUT", body }),
   erpSalesDaily: ({ date, period } = {}) => {
     const p = new URLSearchParams();
     if (date) p.set("date", date);

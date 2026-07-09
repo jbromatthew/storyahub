@@ -674,3 +674,13 @@ model ErpSalesSyncLog {
 
   @@index([kind, sheetName, createdAt])
 }
+
+/// 세일즈 계기판 목표 (앱에서 수정한 값 — 시트 기본값 위에 덮어씀)
+model ErpSalesDashboardGoalSet {
+  month             String   @id
+  industryGoals     Json     @default("{}")
+  industryPlanGoals Json     @default("{}")
+  updatedById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}

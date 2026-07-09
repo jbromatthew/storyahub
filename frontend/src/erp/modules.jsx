@@ -1700,7 +1700,7 @@ export function SalesSyncView() {
   );
 }
 
-const RATE_STORAGE_KEY = "erp.sales.paymentRate.v4";
+const RATE_STORAGE_KEY = "erp.sales.paymentRate.v5";
 
 export function MembersView() {
   const [members, setMembers] = useState([]);
@@ -1831,6 +1831,80 @@ function AssigneeBadge({ name, compact = false, colorMap }) {
     >
       {name}
     </span>
+  );
+}
+
+function IndustryPicker({ industries, selected, onChange, fallback }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const rootRef = useRef(null);
+
+  const filtered = useMemo(() => {
+    const lower = q.trim().toLowerCase();
+    return (industries || []).filter((name) => !lower || name.toLowerCase().includes(lower));
+  }, [industries, q]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const toggle = (name) => {
+    onChange(selected.includes(name) ? selected.filter((n) => n !== name) : [...selected, name]);
+  };
+
+  const summary = selected.length ? (
+    selected.map((name) => <span key={name} className="trend-industry-chip">{name}</span>)
+  ) : fallback ? (
+    <span className="trend-industry-chip muted">{fallback}</span>
+  ) : (
+    <span className="trend-industry-chip muted">업종 선택</span>
+  );
+
+  return (
+    <div className={"assignee-picker trend-industry-picker" + (open ? " open" : "")} ref={rootRef}>
+      <label className="assignee-picker-label">업종</label>
+      <button type="button" className={"assignee-picker-trigger" + (open ? " open" : "")} onClick={() => setOpen((v) => !v)}>
+        <div className="assignee-picker-value">{summary}</div>
+        <span className="assignee-picker-chev">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="assignee-picker-menu">
+          <input
+            className="assignee-picker-search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="업종 검색"
+            autoFocus
+          />
+          <div className="assignee-picker-list">
+            {filtered.map((name) => (
+              <button
+                key={name}
+                type="button"
+                className={"assignee-picker-row" + (selected.includes(name) ? " on" : "")}
+                onClick={() => toggle(name)}
+              >
+                <span>{name}</span>
+                {selected.includes(name) && <span className="assignee-picker-check">✓</span>}
+              </button>
+            ))}
+            {!filtered.length && (
+              <div className="small" style={{ padding: "12px 10px", color: "var(--muted)" }}>검색 결과 없음</div>
+            )}
+          </div>
+          {selected.length > 0 && (
+            <div className="assignee-picker-foot">
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange([])}>선택 해제</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2020,8 +2094,8 @@ function loadSavedGroups(months, currentMonth) {
   }
 }
 
-function saveGroups(groups, industry, selectedChannels, selectedAssignees) {
-  localStorage.setItem(RATE_STORAGE_KEY, JSON.stringify({ groups, industry, selectedChannels, selectedAssignees }));
+function saveGroups(groups, selectedIndustries, selectedChannels, selectedAssignees) {
+  localStorage.setItem(RATE_STORAGE_KEY, JSON.stringify({ groups, selectedIndustries, selectedChannels, selectedAssignees }));
 }
 
 function collectDescendantIds(node) {
@@ -2133,10 +2207,258 @@ function ChannelTreeFilter({ tree, selected, onChange }) {
   );
 }
 
+const RATE_CHART_COLORS = ["#E37400", "#2383E2", "#0D7A3E", "#C5221F", "#9334E6", "#B06000"];
+
+const RATE_CHART_METRICS = [
+  { key: "monthlyRate", label: "당월 결제전환율", format: "percent" },
+  { key: "actualRate", label: "실 결제전환율", format: "percent" },
+  { key: "absenceRate", label: "부재율", format: "percent" },
+  { key: "inquiries", label: "문의수", format: "number" },
+  { key: "consulting", label: "상담진행&운영중", format: "number" },
+  { key: "monthlyPayment", label: "당월 결제", format: "number" },
+  { key: "actualPayment", label: "실결제", format: "number" },
+];
+
+function rateChartScalar(value, format) {
+  if (value == null || Number.isNaN(value)) return null;
+  return format === "percent" ? value * 100 : value;
+}
+
+function buildRateChartSeries(result, metricKey, format) {
+  const series = [];
+  if (result?.timeline?.length) {
+    series.push({
+      id: "timeline",
+      label: "월별 전체",
+      color: "#9AA0A6",
+      dashed: true,
+      points: result.timeline.map((t) => ({
+        month: t.month,
+        value: rateChartScalar(t.metrics?.[metricKey], format),
+      })),
+    });
+  }
+  for (const [i, g] of (result?.groups || []).entries()) {
+    if (!g.byMonth?.length) continue;
+    series.push({
+      id: g.id,
+      label: g.label,
+      color: RATE_CHART_COLORS[i % RATE_CHART_COLORS.length],
+      points: g.byMonth.map((m) => ({
+        month: m.month,
+        value: rateChartScalar(m.metrics?.[metricKey], format),
+      })),
+    });
+  }
+  const months = [...new Set(series.flatMap((s) => s.points.map((p) => p.month)))].sort((a, b) => a.localeCompare(b));
+  return { months, series };
+}
+
+function buildGroupMonthCompareRows(groups) {
+  const monthSet = new Set();
+  for (const g of groups || []) {
+    for (const m of g.byMonth || []) monthSet.add(m.month);
+  }
+  return [...monthSet].sort((a, b) => a.localeCompare(b)).map((month) => ({
+    month,
+    byGroup: (groups || []).map((g) => g.byMonth?.find((m) => m.month === month)?.metrics ?? null),
+  }));
+}
+
+function RateLineChart({ series, format, height = 260 }) {
+  const allMonths = useMemo(
+    () => [...new Set(series.flatMap((s) => s.points.map((p) => p.month)))].sort((a, b) => a.localeCompare(b)),
+    [series],
+  );
+  const allValues = useMemo(
+    () => series.flatMap((s) => s.points.map((p) => p.value)).filter((v) => v != null),
+    [series],
+  );
+
+  if (!allMonths.length || !allValues.length) {
+    return <div className="rate-chart-empty">표시할 데이터가 없습니다</div>;
+  }
+
+  const pad = { top: 20, right: 16, bottom: 36, left: 48 };
+  const w = 720;
+  const h = height;
+  const plotW = w - pad.left - pad.right;
+  const plotH = h - pad.top - pad.bottom;
+  const minV = Math.min(0, ...allValues);
+  const maxV = Math.max(...allValues, format === "percent" ? 5 : 1);
+  const yRange = maxV - minV || 1;
+  const monthIdx = (month) => allMonths.indexOf(month);
+  const xAt = (month) => {
+    const i = monthIdx(month);
+    return pad.left + (allMonths.length <= 1 ? plotW / 2 : (i / (allMonths.length - 1)) * plotW);
+  };
+  const yAt = (v) => pad.top + plotH - ((v - minV) / yRange) * plotH;
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((t) => minV + yRange * t);
+
+  return (
+    <div className="rate-chart-wrap">
+      <svg viewBox={`0 0 ${w} ${h}`} className="rate-chart" role="img" aria-hidden>
+        {yTicks.map((v) => {
+          const y = yAt(v);
+          return (
+            <g key={v}>
+              <line x1={pad.left} y1={y} x2={w - pad.right} y2={y} stroke="#ECEEF0" />
+              <text x={pad.left - 8} y={y + 4} textAnchor="end" fontSize="10" fill="#888">
+                {format === "percent" ? `${v.toFixed(0)}%` : Math.round(v)}
+              </text>
+            </g>
+          );
+        })}
+        {allMonths.map((m) => (
+          <text key={m} x={xAt(m)} y={h - 10} textAnchor="middle" fontSize="10" fill="#666">
+            {monthShortLabel(m)}
+          </text>
+        ))}
+        {series.map((s) => {
+          const pts = s.points.filter((p) => p.value != null);
+          if (!pts.length) return null;
+          const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${xAt(p.month)} ${yAt(p.value)}`).join(" ");
+          return (
+            <g key={s.id}>
+              <path
+                d={d}
+                fill="none"
+                stroke={s.color}
+                strokeWidth={2.5}
+                strokeDasharray={s.dashed ? "6 4" : undefined}
+              />
+              {pts.map((p) => (
+                <circle key={p.month} cx={xAt(p.month)} cy={yAt(p.value)} r={3.5} fill={s.color} />
+              ))}
+            </g>
+          );
+        })}
+      </svg>
+      <div className="rate-chart-legend">
+        {series.map((s) => (
+          <span key={s.id} className="rate-chart-legend-item">
+            <span
+              className={"rate-chart-swatch" + (s.dashed ? " dashed" : "")}
+              style={{ borderColor: s.color, background: s.dashed ? "transparent" : s.color }}
+            />
+            {s.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange }) {
+  const metricDef = RATE_CHART_METRICS.find((m) => m.key === statsMetric) || RATE_CHART_METRICS[0];
+  const chartSeries = useMemo(
+    () => buildRateChartSeries(result, metricDef.key, metricDef.format),
+    [result, metricDef],
+  );
+  const groupMonthRows = useMemo(() => buildGroupMonthCompareRows(result?.groups), [result]);
+  const timeline = result?.timeline || [];
+
+  return (
+    <div className="rate-stats-panel">
+      <div className="rate-stats-controls">
+        <div className="field" style={{ margin: 0 }}>
+          <label>그래프 지표</label>
+          <select value={statsMetric} onChange={(e) => onMetricChange(e.target.value)}>
+            {RATE_CHART_METRICS.map((m) => (
+              <option key={m.key} value={m.key}>{m.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="rate-plan-block">
+        <div className="rate-plan-title">{metricDef.label} 추이</div>
+        <RateLineChart series={chartSeries.series} format={metricDef.format} />
+      </div>
+
+      <div className="rate-plan-block">
+        <div className="rate-plan-title">비교군 × 월 ({metricDef.label})</div>
+        <div className="rate-table-wrap rate-table-scroll">
+          <table className="rate-table">
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left" }}>월</th>
+                {groupLabels.map((label) => <th key={label}>{label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {groupMonthRows.map((row) => (
+                <tr key={row.month}>
+                  <td className="metric-label">{monthShortLabel(row.month)}</td>
+                  {row.byGroup.map((metrics, i) => (
+                    <td key={i} className="num">
+                      {formatRateValue(metrics?.[metricDef.key], metricDef.format)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="rate-plan-block">
+        <div className="rate-plan-title">월별 지표 비교표</div>
+        <div className="rate-table-wrap rate-table-scroll">
+          <table className="rate-table">
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left" }}>월</th>
+                {RATE_CHART_METRICS.map((m) => <th key={m.key}>{m.label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {timeline.map((row) => (
+                <tr key={row.month}>
+                  <td className="metric-label">{monthShortLabel(row.month)}</td>
+                  {RATE_CHART_METRICS.map((m) => (
+                    <td key={m.key} className={"num" + (m.format === "percent" ? " metric-pct" : "")}>
+                      {formatRateValue(row.metrics?.[m.key], m.format)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="rate-plan-block">
+        <div className="rate-plan-title">비교군 요약</div>
+        <div className="rate-table-wrap rate-table-scroll">
+          <table className="rate-table">
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left" }}>지표</th>
+                {groupLabels.map((label) => <th key={label}>{label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {(result?.rows || []).map((row) => (
+                <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
+                  <td className="metric-label">{row.label}</td>
+                  {row.values.map((val, i) => (
+                    <td key={i} className="num">{formatRateValue(val, row.format)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PaymentRateView() {
   const [meta, setMeta] = useState(null);
   const [groups, setGroups] = useState([]);
-  const [industry, setIndustry] = useState("");
+  const [selectedIndustries, setSelectedIndustries] = useState([]);
   const [selectedChannels, setSelectedChannels] = useState([]);
   const [selectedAssignees, setSelectedAssignees] = useState([]);
   const [result, setResult] = useState(null);
@@ -2144,6 +2466,8 @@ export function PaymentRateView() {
   const [computing, setComputing] = useState(false);
   const [showPlans, setShowPlans] = useState(false);
   const [showAssignees, setShowAssignees] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  const [statsMetric, setStatsMetric] = useState("monthlyRate");
 
   const currentMonthSheet = useMemo(() => {
     const now = new Date();
@@ -2165,7 +2489,11 @@ export function PaymentRateView() {
         try {
           const raw = localStorage.getItem(RATE_STORAGE_KEY);
           const prefs = raw ? JSON.parse(raw) : null;
-          if (prefs?.industry) setIndustry(prefs.industry);
+          if (Array.isArray(prefs?.selectedIndustries)) {
+            setSelectedIndustries(prefs.selectedIndustries);
+          } else if (prefs?.industry) {
+            setSelectedIndustries([prefs.industry]);
+          }
           if (Array.isArray(prefs?.selectedChannels)) setSelectedChannels(prefs.selectedChannels);
           if (Array.isArray(prefs?.selectedAssignees)) setSelectedAssignees(prefs.selectedAssignees);
         } catch { /* */ }
@@ -2178,9 +2506,9 @@ export function PaymentRateView() {
     const valid = groups.filter((g) => g.months.length > 0);
     if (!valid.length) return notifyError(new Error("비교군에 월을 1개 이상 선택하세요"));
     setComputing(true);
-    saveGroups(groups, industry, selectedChannels, selectedAssignees);
+    saveGroups(groups, selectedIndustries, selectedChannels, selectedAssignees);
     api.erpPaymentRate({
-      industry: industry || undefined,
+      industries: selectedIndustries.length ? selectedIndustries : undefined,
       channels: selectedChannels.length ? selectedChannels : undefined,
       assignees: selectedAssignees.length ? selectedAssignees : undefined,
       groups: valid.map((g) => ({ id: g.id, label: g.label, months: g.months })),
@@ -2188,10 +2516,11 @@ export function PaymentRateView() {
       .then((res) => {
         setResult(res);
         setShowAssignees(true);
+        setShowStats(false);
       })
       .catch(notifyError)
       .finally(() => setComputing(false));
-  }, [groups, industry, selectedChannels, selectedAssignees]);
+  }, [groups, selectedIndustries, selectedChannels, selectedAssignees]);
 
   const addGroup = (preset) => {
     const months = meta?.months || [];
@@ -2249,6 +2578,7 @@ export function PaymentRateView() {
       <div className="h-title">결제율 분석</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
         비교군을 1개 이상 추가하고 월을 선택한 뒤 <strong>조회</strong>하세요.
+        업종은 <strong>1개 또는 여러 개</strong> 선택해 종합 집계할 수 있습니다.
         부재율은 상품문의 시트 <strong>부재율</strong> 컬럼 기준(완전부재·부재1차·부재2차)입니다.
         상담진행&운영중은 <strong>상담완료</strong>·<strong>부재 상담완료</strong> 기준이며, <strong>오픈전</strong> 체크 건은 제외합니다.
       </div>
@@ -2256,13 +2586,12 @@ export function PaymentRateView() {
       <div className="card rate-filter-panel">
         <div className="rate-filter-panel-hd">조회 조건</div>
         <div className="rate-filter-panel-body">
-          <div className="field rate-filter-industry">
-            <label>업종</label>
-            <select value={industry} onChange={(e) => setIndustry(e.target.value)}>
-              <option value="">전체</option>
-              {(meta?.industries || []).map((ind) => <option key={ind} value={ind}>{ind}</option>)}
-            </select>
-          </div>
+          <IndustryPicker
+            industries={meta?.industries || []}
+            selected={selectedIndustries}
+            onChange={setSelectedIndustries}
+            fallback="전체"
+          />
           <AssigneePicker
             assignees={meta?.assignees || []}
             selected={selectedAssignees}
@@ -2351,6 +2680,33 @@ export function PaymentRateView() {
               선택한 기간에 데이터가 없습니다. <strong>세일즈 동기화</strong>에서 해당 월을 먼저 동기화하세요.
             </div>
           )}
+
+          <div className="sales-toolbar" style={{ marginTop: 12 }}>
+            <button
+              type="button"
+              className={"btn btn-sm" + (!showStats ? " btn-accent" : " btn-ghost")}
+              onClick={() => setShowStats(false)}
+            >
+              요약
+            </button>
+            <button
+              type="button"
+              className={"btn btn-sm" + (showStats ? " btn-accent" : " btn-ghost")}
+              onClick={() => setShowStats(true)}
+            >
+              통계
+            </button>
+          </div>
+
+          {showStats ? (
+            <RateStatsPanel
+              result={result}
+              groupLabels={groupLabels}
+              statsMetric={statsMetric}
+              onMetricChange={setStatsMetric}
+            />
+          ) : (
+        <>
           <div className="rate-table-wrap rate-table-scroll">
             <table className="rate-table">
               <thead>
@@ -2447,6 +2803,8 @@ export function PaymentRateView() {
             </div>
           )}
         </>
+          )}
+        </>
       )}
     </div>
   );
@@ -2464,28 +2822,77 @@ function formatTrendCell(value) {
   return String(value);
 }
 
+function trendCellKey(month, colKey) {
+  return `${month}|${colKey}`;
+}
+
+function parseTrendCellKey(key) {
+  const sep = key.indexOf("|");
+  return { month: key.slice(0, sep), colKey: key.slice(sep + 1) };
+}
+
+function toggleTrendCell(selected, month, colKey) {
+  const key = trendCellKey(month, colKey);
+  const next = new Set(selected);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  return next;
+}
+
+function toggleTrendColumn(selected, colKey, rows) {
+  const keys = rows.map((row) => trendCellKey(row.month, colKey));
+  const allSelected = keys.length > 0 && keys.every((key) => selected.has(key));
+  const next = new Set(selected);
+  for (const key of keys) {
+    if (allSelected) next.delete(key);
+    else next.add(key);
+  }
+  return next;
+}
+
+function toggleTrendRow(selected, month, columns) {
+  const keys = columns.map((col) => trendCellKey(month, col.key));
+  const allSelected = keys.length > 0 && keys.every((key) => selected.has(key));
+  const next = new Set(selected);
+  for (const key of keys) {
+    if (allSelected) next.delete(key);
+    else next.add(key);
+  }
+  return next;
+}
+
+function isTrendColumnFullySelected(selected, colKey, rows) {
+  if (!rows.length) return false;
+  return rows.every((row) => selected.has(trendCellKey(row.month, colKey)));
+}
+
+function isTrendRowFullySelected(selected, month, columns) {
+  if (!columns.length) return false;
+  return columns.every((col) => selected.has(trendCellKey(month, col.key)));
+}
+
 export function SalesTrendView() {
   const [tab, setTab] = useState("industry-plan");
-  const [industry, setIndustry] = useState("");
+  const [selectedIndustries, setSelectedIndustries] = useState([]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [hideZero, setHideZero] = useState(true);
   const [recentOnly, setRecentOnly] = useState(false);
+  const [selectedCells, setSelectedCells] = useState(() => new Set());
 
   const isCross = tab === "industry-plan" || tab === "industry-channel";
 
   useEffect(() => {
+    setSelectedCells(new Set());
+  }, [tab, selectedIndustries, hideZero, recentOnly]);
+
+  useEffect(() => {
     setLoading(true);
-    api.erpSalesTrend({ tab, industry: isCross ? industry || undefined : undefined })
-      .then((res) => {
-        setData(res);
-        if (isCross && res?.selectedIndustry && !industry) {
-          setIndustry(res.selectedIndustry);
-        }
-      })
+    api.erpSalesTrend({ tab, industries: isCross ? selectedIndustries : undefined })
+      .then(setData)
       .catch(notifyError)
       .finally(() => setLoading(false));
-  }, [tab, industry, isCross]);
+  }, [tab, selectedIndustries, isCross]);
 
   const visibleColumns = useMemo(() => {
     if (!data?.columns?.length) return [];
@@ -2506,15 +2913,41 @@ export function SalesTrendView() {
     return rows.slice(-12);
   }, [data, recentOnly]);
 
+  const selectionStats = useMemo(() => {
+    if (!selectedCells.size) return null;
+    const nums = [];
+    for (const key of selectedCells) {
+      const { month, colKey } = parseTrendCellKey(key);
+      const row = visibleRows.find((r) => r.month === month);
+      const val = row?.values?.[colKey];
+      if (val != null && !Number.isNaN(val)) nums.push(val);
+    }
+    if (!nums.length) {
+      return { cellCount: selectedCells.size, valueCount: 0, sum: null, avg: null };
+    }
+    const sum = nums.reduce((acc, n) => acc + n, 0);
+    return {
+      cellCount: selectedCells.size,
+      valueCount: nums.length,
+      sum,
+      avg: sum / nums.length,
+    };
+  }, [selectedCells, visibleRows]);
+
   const tabLabel = TREND_TABS.find((t) => t.id === tab)?.label || "";
-  const selectedIndustry = data?.selectedIndustry || industry;
+  const activeIndustries = selectedIndustries.length
+    ? selectedIndustries
+    : (data?.selectedIndustries || []);
+  const industrySummary = activeIndustries.length > 1
+    ? `${activeIndustries.join(" · ")} (종합)`
+    : activeIndustries[0] || "";
 
   return (
     <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
       <div className="h-eyebrow">Sales</div>
       <div className="h-title">월간 추이 데이터</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
-        결제 주문 내역에서 <strong>구분 = 신규센터</strong>만 집계합니다.
+        업종X요금제·업종X채널 탭에서는 업종을 <strong>1개 또는 여러 개</strong> 선택해 종합 데이터를 볼 수 있습니다.
         2025.12. 이전은 Raw 아카이브, 2026.01. 이후는 월별 동기화 데이터를 사용합니다.
         {data?.spreadsheetUrl && (
           <>{" "}<a href={data.spreadsheetUrl} target="_blank" rel="noreferrer">결제 주문 시트</a></>
@@ -2527,7 +2960,7 @@ export function SalesTrendView() {
             key={t.id}
             type="button"
             className={"sales-tab" + (tab === t.id ? " on" : "")}
-            onClick={() => { setTab(t.id); setIndustry(""); }}
+            onClick={() => { setTab(t.id); setSelectedIndustries([]); }}
           >
             {t.label}
           </button>
@@ -2536,18 +2969,17 @@ export function SalesTrendView() {
 
       <div className="trend-toolbar">
         <span className="small" style={{ fontWeight: 700 }}>
-          {tabLabel} · 신규센터 {data?.rowCount ?? 0}건
+          {tabLabel}
+          {isCross && industrySummary ? ` · ${industrySummary}` : ""}
+          {" · "}신규센터 {data?.rowCount ?? 0}건
         </span>
         {isCross && (data?.industries?.length > 0) && (
-          <select
-            value={selectedIndustry}
-            onChange={(e) => setIndustry(e.target.value)}
-            style={{ minWidth: 140 }}
-          >
-            {data.industries.map((name) => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
+          <IndustryPicker
+            industries={data.industries}
+            selected={selectedIndustries}
+            onChange={setSelectedIndustries}
+            fallback={data?.selectedIndustries?.[0] ? `${data.selectedIndustries[0]} (기본)` : undefined}
+          />
         )}
         <button
           type="button"
@@ -2566,6 +2998,32 @@ export function SalesTrendView() {
         {data?.months?.length > 0 && (
           <span className="small">{visibleRows.length}개월 · {visibleColumns.length}열</span>
         )}
+        {selectedCells.size > 0 && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedCells(new Set())}>
+            선택 해제
+          </button>
+        )}
+      </div>
+
+      {selectionStats && (
+        <div className="trend-selection-bar">
+          <span className="trend-selection-label">선택 {selectionStats.cellCount}칸</span>
+          {selectionStats.valueCount > 0 ? (
+            <>
+              <span>합계 <strong>{selectionStats.sum}</strong></span>
+              <span>평균 <strong>{Number.isInteger(selectionStats.avg) ? selectionStats.avg : selectionStats.avg.toFixed(1)}</strong></span>
+              {selectionStats.valueCount < selectionStats.cellCount && (
+                <span className="small">({selectionStats.valueCount}개 숫자 기준)</span>
+              )}
+            </>
+          ) : (
+            <span className="small">선택한 칸에 집계할 숫자가 없습니다</span>
+          )}
+        </div>
+      )}
+
+      <div className="small trend-selection-hint">
+        칸을 클릭해 선택하세요. 월·열 헤더를 클릭하면 해당 행·열 전체를 선택할 수 있습니다.
       </div>
 
       {!loading && data?.rowCount === 0 && (
@@ -2585,19 +3043,36 @@ export function SalesTrendView() {
               <tr>
                 <th className="trend-month-hd">월</th>
                 {visibleColumns.map((col) => (
-                  <th key={col.key}>{col.label}</th>
+                  <th
+                    key={col.key}
+                    className={"trend-selectable" + (isTrendColumnFullySelected(selectedCells, col.key, visibleRows) ? " selected" : "")}
+                    onClick={() => setSelectedCells((prev) => toggleTrendColumn(prev, col.key, visibleRows))}
+                  >
+                    {col.label}
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {visibleRows.map((row) => (
                 <tr key={row.month}>
-                  <td className="trend-month">{row.month}</td>
+                  <td
+                    className={"trend-month trend-selectable" + (isTrendRowFullySelected(selectedCells, row.month, visibleColumns) ? " selected" : "")}
+                    onClick={() => setSelectedCells((prev) => toggleTrendRow(prev, row.month, visibleColumns))}
+                  >
+                    {row.month}
+                  </td>
                   {visibleColumns.map((col) => {
                     const val = row.values?.[col.key];
                     const isZero = val === 0;
+                    const cellKey = trendCellKey(row.month, col.key);
+                    const isSelected = selectedCells.has(cellKey);
                     return (
-                      <td key={col.key} className={"num" + (isZero ? " zero" : "")}>
+                      <td
+                        key={col.key}
+                        className={"num trend-selectable" + (isZero ? " zero" : "") + (isSelected ? " selected" : "")}
+                        onClick={() => setSelectedCells((prev) => toggleTrendCell(prev, row.month, col.key))}
+                      >
                         {formatTrendCell(val)}
                       </td>
                     );
@@ -2615,8 +3090,212 @@ export function SalesTrendView() {
 const DASHBOARD_TABS = [
   { id: "channel", label: "채널별" },
   { id: "industry", label: "업종별" },
+  { id: "industry-plan", label: "업종×요금제" },
   { id: "plan", label: "요금제별" },
+  { id: "weekly", label: "주차별" },
 ];
+
+function DashboardWeeklyMatrix({ title, rows, weekLabels, onRowClick }) {
+  if (!rows?.length) return null;
+  return (
+    <div className="rate-plan-block">
+      <div className="rate-plan-title">{title}</div>
+      <div className="dash-table-wrap">
+        <table className="dash-table dash-weekly-table">
+          <thead>
+            <tr>
+              <th className="label">항목</th>
+              {weekLabels.map((w) => <th key={w}>{w}</th>)}
+              <th>월합</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.label} className={onRowClick ? "dash-drill-row" : ""}>
+                <td className="label">
+                  {onRowClick ? (
+                    <button type="button" className="dash-drill-link" onClick={() => onRowClick(row.label)}>
+                      {row.label}
+                    </button>
+                  ) : row.label}
+                </td>
+                {weekLabels.map((w, i) => (
+                  <td key={w} className="num dash-weekly-cell">
+                    <div className="actual">{row.actuals[i] ?? 0}</div>
+                    {(row.goals[i] ?? 0) > 0 && (
+                      <div className="goal small">목표 {row.goals[i]}</div>
+                    )}
+                  </td>
+                ))}
+                <td className="num">
+                  <div>{row.monthActual}</div>
+                  {row.monthGoal > 0 && <div className="small" style={{ color: "var(--muted)" }}>목표 {row.monthGoal}</div>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function DashboardItemsTable({ title, labelHeader, items, showGoal = true }) {
+  if (!items?.length) {
+    return (
+      <div className="rate-plan-block">
+        <div className="rate-plan-title">{title}</div>
+        <div className="small" style={{ padding: "12px 0", color: "var(--muted)" }}>데이터가 없습니다</div>
+      </div>
+    );
+  }
+  const totalGoal = items.reduce((s, r) => s + r.goal, 0);
+  const totalActual = items.reduce((s, r) => s + r.actual, 0);
+  const totalRate = totalGoal > 0 ? Math.round((totalActual / totalGoal) * 1000) / 10 : null;
+  const totalGap = totalActual - totalGoal;
+  return (
+    <div className="rate-plan-block">
+      <div className="rate-plan-title">{title}</div>
+      <div className="dash-table-wrap">
+        <table className="dash-table">
+          <thead>
+            <tr>
+              <th className="label">{labelHeader}</th>
+              {showGoal && <th>목표</th>}
+              <th>현황</th>
+              {showGoal && <th>달성률</th>}
+              <th>미달</th>
+              <th>진행</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((row) => (
+              <tr key={row.key}>
+                <td className="label">{row.label}</td>
+                {showGoal && <td className="num">{row.goal || "-"}</td>}
+                <td className="num">{row.actual}</td>
+                {showGoal && (
+                  <td className="num" style={{ color: dashRateColor(row.rate), fontWeight: 700 }}>
+                    {formatDashRate(row.rate)}
+                  </td>
+                )}
+                <td className={"num" + (showGoal && row.gap >= 0 ? " gap-pos" : showGoal ? " gap-neg" : "")}>
+                  {showGoal ? formatDashGap(row.gap) : "-"}
+                </td>
+                <td className="dash-bar-cell">
+                  <div className="dash-bar">
+                    <div
+                      className="dash-bar-fill"
+                      style={{
+                        width: `${Math.min(Math.max((showGoal ? row.rate : (row.actual > 0 ? 100 : 0)) ?? 0, 0), 100)}%`,
+                        background: dashRateColor(showGoal ? row.rate : (row.actual > 0 ? 100 : null)),
+                      }}
+                    />
+                  </div>
+                </td>
+              </tr>
+            ))}
+            <tr style={{ background: "#FFF8F0" }}>
+              <td className="label">합계</td>
+              {showGoal && <td className="num">{totalGoal || "-"}</td>}
+              <td className="num">{totalActual}</td>
+              {showGoal && (
+                <td className="num" style={{ color: dashRateColor(totalRate), fontWeight: 800 }}>
+                  {formatDashRate(totalRate)}
+                </td>
+              )}
+              <td className={"num" + (showGoal && totalGap >= 0 ? " gap-pos" : showGoal ? " gap-neg" : "")}>
+                {showGoal ? formatDashGap(totalGap) : "-"}
+              </td>
+              <td />
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function DashboardIndustryDrill({ industry, detail, onBack }) {
+  const summary = detail?.summary;
+  return (
+    <div className="dash-drill">
+      <div className="dash-drill-hd">
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onBack}>← 업종 목록</button>
+        <strong>{industry}</strong>
+        {summary && (
+          <span className="small">
+            목표 {summary.goal} · 현황 {summary.actual} · {formatDashRate(summary.rate)}
+          </span>
+        )}
+      </div>
+      <DashboardItemsTable title="요금제별" labelHeader="요금제" items={detail?.plans} />
+      <DashboardItemsTable title="채널별" labelHeader="채널" items={detail?.channels} showGoal={false} />
+      <DashboardItemsTable title="주차별" labelHeader="주차" items={detail?.weekly} />
+    </div>
+  );
+}
+
+function cloneGoalOverrides(data) {
+  const src = data?.goalOverrides || {};
+  const industryPlanGoals = {};
+  for (const [industry, row] of Object.entries(src.industryPlanGoals || {})) {
+    industryPlanGoals[industry] = { ...row };
+  }
+  return {
+    industryGoals: { ...(src.industryGoals || {}) },
+    industryPlanGoals,
+  };
+}
+
+function goalInputValue(value) {
+  return value > 0 ? String(value) : "";
+}
+
+function parseGoalInput(value) {
+  const n = Number(String(value).replace(/,/g, "").trim());
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : 0;
+}
+
+function resolveIndustryGoal(draft, label, fallback = 0) {
+  if (draft.industryGoals[label] != null) return draft.industryGoals[label];
+  return fallback;
+}
+
+function sumDraftInboundGoal(draft, industryItems) {
+  const labels = new Set([
+    ...industryItems.map((it) => it.label),
+    ...Object.keys(draft.industryGoals),
+  ]);
+  let sum = 0;
+  for (const label of labels) {
+    const item = industryItems.find((it) => it.label === label);
+    sum += resolveIndustryGoal(draft, label, item?.goal ?? 0);
+  }
+  return sum;
+}
+
+function sumIndustryPlanRow(draft, industry) {
+  const row = draft.industryPlanGoals[industry];
+  if (!row) return 0;
+  return Object.values(row).reduce((s, n) => s + (n || 0), 0);
+}
+
+function buildDraftWarnings(draft) {
+  const warnings = [];
+  const industries = new Set([
+    ...Object.keys(draft.industryGoals),
+    ...Object.keys(draft.industryPlanGoals),
+  ]);
+  for (const industry of industries) {
+    const industryGoal = draft.industryGoals[industry] ?? 0;
+    const planSum = sumIndustryPlanRow(draft, industry);
+    if (planSum > 0 && industryGoal > 0 && planSum !== industryGoal) {
+      warnings.push(`${industry}: 요금제 합계 ${planSum} ≠ 업종 목표 ${industryGoal}`);
+    }
+  }
+  return warnings;
+}
 
 function dashRateColor(rate) {
   if (rate == null) return "#9AA0A6";
@@ -2672,19 +3351,96 @@ export function SalesDashboardView() {
   const [tab, setTab] = useState("industry");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [editMode, setEditMode] = useState(false);
+  const [draftGoals, setDraftGoals] = useState({ industryGoals: {}, industryPlanGoals: {} });
+  const [savingGoals, setSavingGoals] = useState(false);
+  const [drillIndustry, setDrillIndustry] = useState(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     setLoading(true);
-    api.erpSalesDashboard({ month: selectedMonth || undefined })
-      .then(setData)
+    return api.erpSalesDashboard({ month: selectedMonth || undefined })
+      .then((res) => {
+        setData(res);
+        setDraftGoals(cloneGoalOverrides(res));
+        setDrillIndustry(null);
+      })
       .catch(notifyError)
       .finally(() => setLoading(false));
   }, [selectedMonth]);
 
-  const section = useMemo(
-    () => data?.sections?.find((s) => s.id === tab) || data?.sections?.[0],
-    [data, tab]
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const industrySection = useMemo(
+    () => data?.sections?.find((s) => s.id === "industry"),
+    [data]
   );
+
+  const section = useMemo(() => {
+    if (tab === "industry-plan" || tab === "weekly") return null;
+    return data?.sections?.find((s) => s.id === tab) || data?.sections?.[0];
+  }, [data, tab]);
+
+  const draftWarnings = useMemo(() => buildDraftWarnings(draftGoals), [draftGoals]);
+  const inboundGoal = useMemo(() => {
+    if (editMode) return sumDraftInboundGoal(draftGoals, industrySection?.items || []);
+    return data?.summary?.inboundGoal ?? data?.summary?.totalGoal ?? 0;
+  }, [editMode, draftGoals, industrySection, data]);
+
+  const startEdit = () => {
+    setDraftGoals(cloneGoalOverrides(data));
+    setEditMode(true);
+  };
+
+  const cancelEdit = () => {
+    setDraftGoals(cloneGoalOverrides(data));
+    setEditMode(false);
+  };
+
+  const saveGoals = () => {
+    if (!data?.month) return;
+    setSavingGoals(true);
+    api.erpSalesDashboardGoals({
+      month: data.month,
+      industryGoals: draftGoals.industryGoals,
+      industryPlanGoals: draftGoals.industryPlanGoals,
+    })
+      .then((res) => {
+        setData(res);
+        setDraftGoals(cloneGoalOverrides(res));
+        setEditMode(false);
+      })
+      .catch(notifyError)
+      .finally(() => setSavingGoals(false));
+  };
+
+  const setIndustryGoal = (label, value) => {
+    setDraftGoals((prev) => ({
+      ...prev,
+      industryGoals: { ...prev.industryGoals, [label]: parseGoalInput(value) },
+    }));
+  };
+
+  const setIndustryPlanGoal = (industry, plan, value) => {
+    const goal = parseGoalInput(value);
+    setDraftGoals((prev) => {
+      const row = { ...(prev.industryPlanGoals[industry] || {}) };
+      if (goal > 0) row[plan] = goal;
+      else delete row[plan];
+      return {
+        ...prev,
+        industryPlanGoals: { ...prev.industryPlanGoals, [industry]: row },
+      };
+    });
+  };
+
+  const drillDetail = drillIndustry ? data?.industryDrilldowns?.[drillIndustry] : null;
+
+  const openIndustryDrill = (industry) => {
+    if (editMode || !data?.industryDrilldowns?.[industry]) return;
+    setDrillIndustry(industry);
+  };
 
   const months = data?.months || [];
 
@@ -2693,9 +3449,13 @@ export function SalesDashboardView() {
       <div className="h-eyebrow">Sales</div>
       <div className="h-title">세일즈 계기판</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
-        월별 목표는 <strong>대시보드 시트</strong>에서, 현황은 결제 주문 DB의 <strong>신규센터</strong> 건수로 집계합니다.
+        월별 목표는 <strong>대시보드 시트</strong>에서 불러오며, 앱에서 수정한 목표는 <strong>DB에 저장</strong>됩니다. (시트에는 아직 자동 반영되지 않음)
+        현황은 결제 주문 DB의 <strong>신규센터</strong> 건수입니다. <strong>업종</strong>을 누르면 요금제·채널·주차별 상세를 볼 수 있습니다.
         {data?.spreadsheetUrl && (
           <>{" "}<a href={data.spreadsheetUrl} target="_blank" rel="noreferrer">목표 시트</a></>
+        )}
+        {data?.goalsCustomized && !editMode && (
+          <> · <strong>앱 수정 목표 적용 중</strong></>
         )}
         {data?.syncedThrough && (
           <> · 주문 동기화: <strong>{data.syncedThrough}</strong></>
@@ -2734,6 +3494,10 @@ export function SalesDashboardView() {
                   <div className="val">{data.monthLabel}</div>
                 </div>
                 <div className="dash-stat">
+                  <div className="lbl">인바운드 목표</div>
+                  <div className="val">{inboundGoal}</div>
+                </div>
+                <div className="dash-stat">
                   <div className="lbl">전체 목표</div>
                   <div className="val">{data.summary.totalGoal}</div>
                 </div>
@@ -2763,21 +3527,213 @@ export function SalesDashboardView() {
             </div>
           </div>
 
+          <div className="sales-toolbar" style={{ marginTop: 0 }}>
+            {!editMode ? (
+              <button type="button" className="btn btn-sm btn-ghost" onClick={startEdit}>목표 편집</button>
+            ) : (
+              <>
+                <button type="button" className="btn btn-sm btn-accent" onClick={saveGoals} disabled={savingGoals}>
+                  {savingGoals ? "저장 중…" : "목표 저장"}
+                </button>
+                <button type="button" className="btn btn-sm btn-ghost" onClick={cancelEdit} disabled={savingGoals}>취소</button>
+              </>
+            )}
+          </div>
+
+          {(editMode ? draftWarnings : data.goalWarnings)?.length > 0 && (
+            <div className="dash-goal-warn small">
+              {(editMode ? draftWarnings : data.goalWarnings).map((w) => <div key={w}>{w}</div>)}
+            </div>
+          )}
+
+          {editMode && (
+            <div className="small dash-goal-hint">
+              1) <strong>업종별</strong>에서 업종 목표를 정하고 → 2) <strong>업종×요금제</strong>에서 요금제별로 나눠 합계가 맞게 세팅하세요.
+            </div>
+          )}
+
+          {drillIndustry && drillDetail ? (
+            <DashboardIndustryDrill
+              industry={drillIndustry}
+              detail={drillDetail}
+              onBack={() => setDrillIndustry(null)}
+            />
+          ) : (
+          <>
           <div className="sales-tabs">
             {DASHBOARD_TABS.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 className={"sales-tab" + (tab === t.id ? " on" : "")}
-                onClick={() => setTab(t.id)}
+                onClick={() => { setTab(t.id); setDrillIndustry(null); }}
               >
                 {t.label}
               </button>
             ))}
           </div>
 
-          {!section?.items?.length ? (
+          {!section?.items?.length && tab !== "industry-plan" && tab !== "weekly" ? (
             <div className="small" style={{ textAlign: "center", padding: 32 }}>표시할 항목이 없습니다</div>
+          ) : tab === "weekly" ? (
+            <>
+              {!data.weekly?.weekLabels?.length ? (
+                <div className="small" style={{ textAlign: "center", padding: 32 }}>주차별 데이터가 없습니다</div>
+              ) : (
+                <>
+                  <div className="dash-table-wrap">
+                    <table className="dash-table">
+                      <thead>
+                        <tr>
+                          <th className="label">주차</th>
+                          <th>목표</th>
+                          <th>현황</th>
+                          <th>달성률</th>
+                          <th>미달</th>
+                          <th>진행</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(data.weekly.summary || []).map((row) => (
+                          <tr key={row.key}>
+                            <td className="label">{row.label}</td>
+                            <td className="num">{row.goal}</td>
+                            <td className="num">{row.actual}</td>
+                            <td className="num" style={{ color: dashRateColor(row.rate), fontWeight: 700 }}>
+                              {formatDashRate(row.rate)}
+                            </td>
+                            <td className={"num" + (row.gap >= 0 ? " gap-pos" : " gap-neg")}>
+                              {formatDashGap(row.gap)}
+                            </td>
+                            <td className="dash-bar-cell">
+                              <div className="dash-bar">
+                                <div
+                                  className="dash-bar-fill"
+                                  style={{
+                                    width: `${Math.min(Math.max(row.rate ?? 0, 0), 100)}%`,
+                                    background: dashRateColor(row.rate),
+                                  }}
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        <tr style={{ background: "#FFF8F0" }}>
+                          <td className="label">월합</td>
+                          <td className="num">
+                            {(data.weekly.summary || []).reduce((s, r) => s + r.goal, 0)}
+                          </td>
+                          <td className="num">{data.summary.actual}</td>
+                          <td className="num" colSpan={3} />
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <DashboardWeeklyMatrix title="채널별 주차 현황" rows={data.weekly.channel} weekLabels={data.weekly.weekLabels} />
+                  <DashboardWeeklyMatrix
+                    title="업종별 주차 현황"
+                    rows={data.weekly.industry}
+                    weekLabels={data.weekly.weekLabels}
+                    onRowClick={(industry) => openIndustryDrill(industry)}
+                  />
+                  <DashboardWeeklyMatrix title="요금제별 주차 현황" rows={data.weekly.plan} weekLabels={data.weekly.weekLabels} />
+                </>
+              )}
+            </>
+          ) : tab === "industry-plan" ? (
+            <div className="dash-table-wrap">
+              <table className="dash-table dash-matrix-table">
+                <thead>
+                  <tr>
+                    <th className="label">업종</th>
+                    <th>업종목표</th>
+                    <th>요금제합</th>
+                    <th>현황</th>
+                    {(data.industryPlan?.plans || []).map((plan) => (
+                      <th key={plan}>{plan}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.industryPlan?.rows || []).map((row) => {
+                    const industryGoal = editMode
+                      ? resolveIndustryGoal(draftGoals, row.industry, row.industryGoal)
+                      : row.industryGoal;
+                    const planSum = editMode
+                      ? sumIndustryPlanRow(draftGoals, row.industry)
+                      : row.planGoalSum;
+                    const mismatch = industryGoal > 0 && planSum > 0 && industryGoal !== planSum;
+                    return (
+                      <tr key={row.industry} className={mismatch ? "dash-goal-mismatch" : ""}>
+                        <td className="label">
+                          {!editMode && data?.industryDrilldowns?.[row.industry] ? (
+                            <button type="button" className="dash-drill-link" onClick={() => openIndustryDrill(row.industry)}>
+                              {row.industry}
+                            </button>
+                          ) : row.industry}
+                        </td>
+                        <td className="num">
+                          {editMode ? (
+                            <input
+                              className="dash-goal-input"
+                              type="number"
+                              min="0"
+                              value={goalInputValue(industryGoal)}
+                              onChange={(e) => setIndustryGoal(row.industry, e.target.value)}
+                            />
+                          ) : industryGoal}
+                        </td>
+                        <td className={"num" + (mismatch ? " gap-neg" : "")}>{planSum}</td>
+                        <td className="num">{row.actual}</td>
+                        {(data.industryPlan?.plans || []).map((plan) => {
+                          const cell = row.cells.find((c) => c.plan === plan);
+                          const goal = editMode
+                            ? (draftGoals.industryPlanGoals[row.industry]?.[plan] ?? 0)
+                            : (cell?.goal ?? 0);
+                          return (
+                            <td key={plan} className="num dash-matrix-cell">
+                              {editMode ? (
+                                <input
+                                  className="dash-goal-input"
+                                  type="number"
+                                  min="0"
+                                  value={goalInputValue(goal)}
+                                  onChange={(e) => setIndustryPlanGoal(row.industry, plan, e.target.value)}
+                                />
+                              ) : (
+                                <>
+                                  <div>{goal || "-"}</div>
+                                  <div className="small" style={{ color: "var(--muted)" }}>{cell?.actual ?? 0}</div>
+                                </>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                  <tr style={{ background: "#FFF8F0" }}>
+                    <td className="label">합계</td>
+                    <td className="num">{inboundGoal}</td>
+                    <td className="num">
+                      {(data.industryPlan?.rows || []).reduce((s, row) => s + (editMode ? sumIndustryPlanRow(draftGoals, row.industry) : row.planGoalSum), 0)}
+                    </td>
+                    <td className="num">{data.industryPlan?.total?.actual ?? 0}</td>
+                    {(data.industryPlan?.plans || []).map((plan) => (
+                      <td key={plan} className="num">
+                        {(data.industryPlan?.rows || []).reduce((s, row) => {
+                          const cell = row.cells.find((c) => c.plan === plan);
+                          const goal = editMode
+                            ? (draftGoals.industryPlanGoals[row.industry]?.[plan] ?? 0)
+                            : (cell?.goal ?? 0);
+                          return s + goal;
+                        }, 0) || "-"}
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           ) : (
             <div className="dash-table-wrap">
               <table className="dash-table">
@@ -2792,33 +3748,56 @@ export function SalesDashboardView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {section.items.map((row) => (
-                    <tr key={row.key}>
-                      <td className="label">{row.label}</td>
-                      <td className="num">{row.goal}</td>
-                      <td className="num">{row.actual}</td>
-                      <td className="num" style={{ color: dashRateColor(row.rate), fontWeight: 700 }}>
-                        {formatDashRate(row.rate)}
+                  {section.items.map((row) => {
+                    const goal = editMode && tab === "industry"
+                      ? resolveIndustryGoal(draftGoals, row.label, row.goal)
+                      : row.goal;
+                    const rate = goal > 0 ? Math.round((row.actual / goal) * 1000) / 10 : null;
+                    const gap = row.actual - goal;
+                    return (
+                    <tr key={row.key} className={tab === "industry" && !editMode && data?.industryDrilldowns?.[row.label] ? "dash-drill-row" : ""}>
+                      <td className="label">
+                        {tab === "industry" && !editMode && data?.industryDrilldowns?.[row.label] ? (
+                          <button type="button" className="dash-drill-link" onClick={() => openIndustryDrill(row.label)}>
+                            {row.label}
+                          </button>
+                        ) : row.label}
                       </td>
-                      <td className={"num" + (row.gap >= 0 ? " gap-pos" : " gap-neg")}>
-                        {formatDashGap(row.gap)}
+                      <td className="num">
+                        {editMode && tab === "industry" ? (
+                          <input
+                            className="dash-goal-input"
+                            type="number"
+                            min="0"
+                            value={goalInputValue(goal)}
+                            onChange={(e) => setIndustryGoal(row.label, e.target.value)}
+                          />
+                        ) : goal}
+                      </td>
+                      <td className="num">{row.actual}</td>
+                      <td className="num" style={{ color: dashRateColor(rate), fontWeight: 700 }}>
+                        {formatDashRate(rate)}
+                      </td>
+                      <td className={"num" + (gap >= 0 ? " gap-pos" : " gap-neg")}>
+                        {formatDashGap(gap)}
                       </td>
                       <td className="dash-bar-cell">
-                        <div className="dash-bar" title={formatDashRate(row.rate)}>
+                        <div className="dash-bar" title={formatDashRate(rate)}>
                           <div
                             className="dash-bar-fill"
                             style={{
-                              width: `${Math.min(Math.max(row.rate ?? 0, 0), 100)}%`,
-                              background: dashRateColor(row.rate),
+                              width: `${Math.min(Math.max(rate ?? 0, 0), 100)}%`,
+                              background: dashRateColor(rate),
                             }}
                           />
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   <tr style={{ background: "#FFF8F0" }}>
                     <td className="label">합계</td>
-                    <td className="num">{section.total.goal}</td>
+                    <td className="num">{tab === "industry" && editMode ? inboundGoal : section.total.goal}</td>
                     <td className="num">{section.total.actual}</td>
                     <td className="num" style={{ color: dashRateColor(section.total.rate), fontWeight: 800 }}>
                       {formatDashRate(section.total.rate)}
@@ -2842,10 +3821,27 @@ export function SalesDashboardView() {
               </table>
             </div>
           )}
+          </>
+          )}
         </>
       )}
     </div>
   );
+}
+
+function addDaysToDateKey(dateKey, days) {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+}
+
+function todayDateKeyKst() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
 export function SalesDailyView() {
@@ -2853,14 +3849,7 @@ export function SalesDailyView() {
   const [loading, setLoading] = useState(true);
   const [hideZero, setHideZero] = useState(true);
   const [period, setPeriod] = useState("day");
-  const [anchorDate, setAnchorDate] = useState(() =>
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date())
-  );
+  const [anchorDate, setAnchorDate] = useState(todayDateKeyKst);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -2885,14 +3874,11 @@ export function SalesDailyView() {
 
   const goToday = () => {
     setPeriod("day");
-    setAnchorDate(
-      new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Seoul",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(new Date())
-    );
+    setAnchorDate(todayDateKeyKst());
+  };
+
+  const shiftAnchorDate = (days) => {
+    setAnchorDate((prev) => addDaysToDateKey(prev, days));
   };
 
   return (
@@ -2924,11 +3910,15 @@ export function SalesDailyView() {
         </div>
         <div className="field">
           <label>기준일</label>
-          <input
-            type="date"
-            value={anchorDate}
-            onChange={(e) => setAnchorDate(e.target.value)}
-          />
+          <div className="daily-date-nav">
+            <button type="button" aria-label="이전 날" onClick={() => shiftAnchorDate(-1)}>‹</button>
+            <input
+              type="date"
+              value={anchorDate}
+              onChange={(e) => setAnchorDate(e.target.value)}
+            />
+            <button type="button" aria-label="다음 날" onClick={() => shiftAnchorDate(1)}>›</button>
+          </div>
         </div>
         <button type="button" className="btn btn-ghost btn-sm" onClick={goToday}>오늘</button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={load}>새로고침</button>

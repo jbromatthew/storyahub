@@ -19,6 +19,7 @@ export type PaymentRateGroupInput = {
 
 export type PaymentRateQuery = {
   industry?: string;
+  industries?: string[];
   channel?: ChannelFilter;
   channels?: string[];
   assignees?: string[];
@@ -184,6 +185,19 @@ function addToCounts(counts: Counts, data: Record<string, string>) {
   if (isActualPaymentRow(data)) counts.actualPayment += 1;
 }
 
+function sumMonthRows(
+  rows: Record<string, string>[],
+  assigneeFilter: Set<string> | null
+): PaymentRateMetrics {
+  const counts = emptyCounts();
+  for (const data of rows) {
+    const assignee = assigneeName(data);
+    if (assigneeFilter && !assigneeFilter.has(assignee)) continue;
+    addToCounts(counts, data);
+  }
+  return withRates(counts);
+}
+
 function sortPlans(plans: string[]): string[] {
   const order = new Map(PLAN_ORDER.map((p, i) => [p, i]));
   return [...plans].sort((a, b) => {
@@ -245,7 +259,13 @@ export async function computePaymentRate(query: PaymentRateQuery) {
   const spreadsheetId = env.googleSheets.inquirySpreadsheetId;
   const channel = query.channel ?? "all";
   const channels = query.channels;
-  const industry = query.industry?.trim() || undefined;
+  const industryList = (query.industries?.length
+    ? query.industries
+    : query.industry?.trim()
+      ? [query.industry.trim()]
+      : []
+  ).map((name) => name.trim()).filter(Boolean);
+  const industryFilter = industryList.length ? new Set(industryList) : null;
   const assigneeFilter = query.assignees?.length ? new Set(query.assignees) : null;
 
   const monthSet = new Set<string>();
@@ -256,12 +276,14 @@ export async function computePaymentRate(query: PaymentRateQuery) {
   const monthList = [...monthSet];
   if (!monthList.length) {
     return {
-      industry: industry ?? null,
+      industry: industryList.length ? industryList.join(" · ") : null,
+      industries: industryList,
       channel,
       groups: [],
       rows: PAYMENT_RATE_ROWS.map((row) => ({ ...row, values: [] })),
       planTables: [],
       assigneeTables: [],
+      timeline: [],
     };
   }
 
@@ -275,7 +297,7 @@ export async function computePaymentRate(query: PaymentRateQuery) {
   for (const row of dbRows) {
     const data = row.data as Record<string, string>;
     if (data["구분"] !== "신규문의") continue;
-    if (industry && data["업종"] !== industry) continue;
+    if (industryFilter && !industryFilter.has((data["업종"] || "").trim())) continue;
     if (!rowMatchesChannelFilter(data, channels, channel)) continue;
     byMonth.get(row.sheetName)?.push(data);
   }
@@ -303,11 +325,19 @@ export async function computePaymentRate(query: PaymentRateQuery) {
 
     const plans = sortPlans([...byPlan.keys()]);
     const assignees = sortAssignees([...byAssignee.keys()]);
+    const monthSeries = group.months
+      .map(normalizeMonthSheet)
+      .sort((a, b) => a.localeCompare(b))
+      .map((month) => ({
+        month,
+        metrics: sumMonthRows(byMonth.get(month) ?? [], assigneeFilter),
+      }));
     return {
       id: group.id,
       label: group.label,
       months: group.months.map(normalizeMonthSheet),
       overall: withRates(overall),
+      byMonth: monthSeries,
       byPlan: plans.map((plan) => ({
         plan,
         metrics: withRates(byPlan.get(plan) ?? emptyCounts()),
@@ -319,18 +349,27 @@ export async function computePaymentRate(query: PaymentRateQuery) {
     };
   });
 
+  const timeline = [...monthSet]
+    .sort((a, b) => a.localeCompare(b))
+    .map((month) => ({
+      month,
+      metrics: sumMonthRows(byMonth.get(month) ?? [], assigneeFilter),
+    }));
+
   const rows = PAYMENT_RATE_ROWS.map((row) => ({
     ...row,
     values: groups.map((g) => g.overall[row.key as keyof PaymentRateMetrics]),
   }));
 
   return {
-    industry: industry ?? null,
+    industry: industryList.length ? industryList.join(" · ") : null,
+    industries: industryList,
     channel,
     channels: channels ?? [],
     assignees: assigneeFilter ? [...assigneeFilter] : [],
-    groups: groups.map(({ id, label, months, overall }) => ({ id, label, months, overall })),
+    groups: groups.map(({ id, label, months, overall, byMonth }) => ({ id, label, months, overall, byMonth })),
     rows,
+    timeline,
     planTables: groups.map((g) => ({
       groupId: g.id,
       groupLabel: g.label,
