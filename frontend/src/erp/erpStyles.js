@@ -187,7 +187,7 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .dash-table th,.dash-table td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:right;vertical-align:middle;}
 .dash-table th{background:#F8F9FA;font-weight:700;color:var(--muted);white-space:nowrap;}
 .dash-table td.label{text-align:left;font-weight:700;min-width:120px;position:sticky;left:0;background:#fff;z-index:1;}
-.dash-table th.label{z-index:2;background:#F8F9FA;}
+.dash-table th.label{text-align:left;min-width:120px;position:sticky;left:0;z-index:2;background:#F8F9FA;}
 .dash-table td.num{font-variant-numeric:tabular-nums;}
 .dash-table td.gap-pos{color:#0D7A3E;font-weight:700;}
 .dash-table td.gap-neg{color:#C5221F;font-weight:700;}
