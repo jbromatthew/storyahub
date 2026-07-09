@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# 백엔드 production 배포 → EC2 rsync + prisma migrate + build + PM2 restart
+# 백엔드 production 배포 → 로컬 빌드 + EC2 rsync(dist 포함) + prisma migrate + PM2 restart
 #
 # EC2는 GitLab/GitHub와 git으로 연결되어 있지 않아도 됩니다 (rsync 방식).
 # GitHub로 코드만 옮긴 뒤에도 이 스크립트 그대로 사용 가능합니다.
+#
+# NOTE: tsc 빌드는 EC2에서 OOM이 나므로 로컬(mac)에서 빌드한 dist를 그대로 올린다.
+#       원격에서는 빌드하지 않고 prisma generate/migrate + pm2 restart만 수행.
 #
 # 사용:
 #   ./scripts/deploy-backend.sh
@@ -27,20 +30,22 @@ if [[ -n "${SSH_KEY:-}" ]]; then
 fi
 RSYNC_SSH="ssh ${SSH_OPTS[*]}"
 
+echo "→ 로컬 빌드 (tsc) — EC2 OOM 회피"
+(cd "$ROOT/backend" && npm run build)
+
 echo "→ EC2 연결 확인 ($EC2_USER@$EC2_HOST)"
 ssh "${SSH_OPTS[@]}" "${EC2_USER}@${EC2_HOST}" "echo ok" >/dev/null
 
-echo "→ backend rsync"
+echo "→ backend rsync (dist 포함, node_modules 제외)"
 rsync -avz --delete \
   --exclude node_modules \
   --exclude .env \
   --exclude .env.local \
-  --exclude dist \
   -e "$RSYNC_SSH" \
   "$ROOT/backend/" \
   "${EC2_USER}@${EC2_HOST}:${REMOTE_DIR}/"
 
-echo "→ migrate + build + PM2 restart"
+echo "→ migrate + PM2 restart (원격 빌드 없음)"
 ssh "${SSH_OPTS[@]}" "${EC2_USER}@${EC2_HOST}" bash -s <<'REMOTE'
 set -euo pipefail
 cd ~/storyahub/backend
@@ -48,13 +53,11 @@ cd ~/storyahub/backend
 # The Node app loads .env.production via dotenv on startup.
 export NODE_ENV=production
 npx prisma generate
-npm run build
-npx prisma migrate deploy
-# Clear any previously injected mangled Sheets JSON from PM2 process env
-pm2 restart storyahub-api --update-env -- \
-  || pm2 restart storyahub-api
-# Prefer deleting polluted env var if present in ecosystem/runtime
-pm2 restart storyahub-api
+# migrate는 프로덕션 RDS 대상 — .env(localhost)가 아니라 .env.production의
+# DATABASE_URL만 주입해 실행한다 (JSON 값은 건드리지 않음).
+DB_URL="$(grep -E '^DATABASE_URL=' .env.production | head -1 | cut -d= -f2- | sed 's/^["'"'"']//;s/["'"'"']$//')"
+DATABASE_URL="$DB_URL" npx prisma migrate deploy
+pm2 restart storyahub-api --update-env || pm2 restart storyahub-api
 sleep 2
 curl -sf http://localhost:4000/health
 REMOTE
