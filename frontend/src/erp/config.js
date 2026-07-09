@@ -5,7 +5,8 @@ export const ERP_MODULES = [
   { id: "sales-daily", label: "문의/결제 대시보드", icon: "board", group: "sales", groupLabel: "문의/결제" },
   { id: "sales-sync", label: "세일즈 동기화", icon: "sales", group: "sales" },
   { id: "sales-rate", label: "결제율 분석", icon: "chart", group: "sales" },
-  { id: "sales-trend", label: "월간 추이", icon: "trend", group: "sales" },
+  { id: "sales-inquiry-trend", label: "문의 월간추이", icon: "trend", group: "sales" },
+  { id: "sales-trend", label: "세일즈 월간추이", icon: "trend", group: "sales" },
   { id: "sales-dashboard", label: "세일즈 계기판", icon: "gauge", group: "sales" },
 ];
 

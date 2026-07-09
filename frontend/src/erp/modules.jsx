@@ -2749,6 +2749,13 @@ const TREND_TABS = [
   { id: "plan", label: "요금제" },
 ];
 
+const INQUIRY_TREND_TABS = [
+  { id: "industry-plan", label: "업종X요금제" },
+  { id: "industry-prev", label: "업종X직전서비스" },
+  { id: "industry-feature", label: "업종X문의기능" },
+  { id: "industry-channel-plan", label: "업종X문의채널X요금제" },
+];
+
 function formatTrendCell(value) {
   if (value == null || Number.isNaN(value)) return "-";
   return String(value);
@@ -2803,8 +2810,8 @@ function isTrendRowFullySelected(selected, month, columns) {
   return columns.every((col) => selected.has(trendCellKey(month, col.key)));
 }
 
-export function SalesTrendView() {
-  const [tab, setTab] = useState("industry-plan");
+function TrendMatrixView({ title, subtitle, tabs, crossTabIds, fetchTrend, countLabel, sheetLinkLabel, emptyHint }) {
+  const [tab, setTab] = useState(tabs[0].id);
   const [selectedIndustries, setSelectedIndustries] = useState([]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -2812,7 +2819,7 @@ export function SalesTrendView() {
   const [recentOnly, setRecentOnly] = useState(false);
   const [selectedCells, setSelectedCells] = useState(() => new Set());
 
-  const isCross = tab === "industry-plan" || tab === "industry-channel";
+  const isCross = crossTabIds ? crossTabIds.has(tab) : true;
 
   useEffect(() => {
     setSelectedCells(new Set());
@@ -2820,11 +2827,11 @@ export function SalesTrendView() {
 
   useEffect(() => {
     setLoading(true);
-    api.erpSalesTrend({ tab, industries: isCross ? selectedIndustries : undefined })
+    fetchTrend({ tab, industries: isCross ? selectedIndustries : undefined })
       .then(setData)
       .catch(notifyError)
       .finally(() => setLoading(false));
-  }, [tab, selectedIndustries, isCross]);
+  }, [tab, selectedIndustries, isCross, fetchTrend]);
 
   const visibleColumns = useMemo(() => {
     if (!data?.columns?.length) return [];
@@ -2866,7 +2873,7 @@ export function SalesTrendView() {
     };
   }, [selectedCells, visibleRows]);
 
-  const tabLabel = TREND_TABS.find((t) => t.id === tab)?.label || "";
+  const tabLabel = tabs.find((t) => t.id === tab)?.label || "";
   const activeIndustries = selectedIndustries.length
     ? selectedIndustries
     : (data?.selectedIndustries || []);
@@ -2877,17 +2884,16 @@ export function SalesTrendView() {
   return (
     <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
       <div className="h-eyebrow">Sales</div>
-      <div className="h-title">월간 추이 데이터</div>
+      <div className="h-title">{title}</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
-        업종X요금제·업종X채널 탭에서는 업종을 <strong>1개 또는 여러 개</strong> 선택해 종합 데이터를 볼 수 있습니다.
-        2025.12. 이전은 Raw 아카이브, 2026.01. 이후는 월별 동기화 데이터를 사용합니다.
+        {subtitle}
         {data?.spreadsheetUrl && (
-          <>{" "}<a href={data.spreadsheetUrl} target="_blank" rel="noreferrer">결제 주문 시트</a></>
+          <>{" "}<a href={data.spreadsheetUrl} target="_blank" rel="noreferrer">{sheetLinkLabel}</a></>
         )}
       </div>
 
       <div className="sales-tabs">
-        {TREND_TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
@@ -2903,7 +2909,7 @@ export function SalesTrendView() {
         <span className="small" style={{ fontWeight: 700 }}>
           {tabLabel}
           {isCross && industrySummary ? ` · ${industrySummary}` : ""}
-          {" · "}신규센터 {data?.rowCount ?? 0}건
+          {" · "}{countLabel} {data?.rowCount ?? 0}건
         </span>
         {isCross && (data?.industries?.length > 0) && (
           <IndustryPicker
@@ -2960,7 +2966,7 @@ export function SalesTrendView() {
 
       {!loading && data?.rowCount === 0 && (
         <div className="small" style={{ marginBottom: 8, color: "#B06000", lineHeight: 1.6 }}>
-          신규센터 데이터가 없습니다. <strong>세일즈 동기화 → 결제 주문 내역</strong>에서 2026.01. 이후 월을 동기화하거나, 과거 Raw 데이터 적재가 필요합니다.
+          {emptyHint}
         </div>
       )}
 
@@ -3028,6 +3034,51 @@ export function SalesTrendView() {
         />
       )}
     </div>
+  );
+}
+
+const ORDER_TREND_CROSS_TABS = new Set(["industry-plan", "industry-channel"]);
+
+export function SalesTrendView() {
+  return (
+    <TrendMatrixView
+      title="세일즈 월간추이"
+      subtitle={
+        <>
+          업종X요금제·업종X채널 탭에서는 업종을 <strong>1개 또는 여러 개</strong> 선택해 종합 데이터를 볼 수 있습니다.
+          2025.12. 이전은 Raw 아카이브, 2026.01. 이후는 월별 동기화 데이터를 사용합니다.
+        </>
+      }
+      tabs={TREND_TABS}
+      crossTabIds={ORDER_TREND_CROSS_TABS}
+      fetchTrend={api.erpSalesTrend}
+      countLabel="신규센터"
+      sheetLinkLabel="결제 주문 시트"
+      emptyHint={
+        <>신규센터 데이터가 없습니다. <strong>세일즈 동기화 → 결제 주문 내역</strong>에서 2026.01. 이후 월을 동기화하거나, 과거 Raw 데이터 적재가 필요합니다.</>
+      }
+    />
+  );
+}
+
+export function SalesInquiryTrendView() {
+  return (
+    <TrendMatrixView
+      title="문의 월간추이"
+      subtitle={
+        <>
+          상품문의 DB(구분=신규문의) 기준 실시간 집계입니다. 모든 탭에서 업종을 <strong>1개 또는 여러 개</strong> 선택해 종합 데이터를 볼 수 있습니다.
+          세일즈 동기화에서 문의 데이터를 갱신하면 바로 반영됩니다.
+        </>
+      }
+      tabs={INQUIRY_TREND_TABS}
+      fetchTrend={api.erpSalesInquiryTrend}
+      countLabel="신규문의"
+      sheetLinkLabel="상품 문의 시트"
+      emptyHint={
+        <>신규문의 데이터가 없습니다. <strong>세일즈 동기화 → 상품 문의 관리</strong>에서 월 시트를 동기화해 주세요.</>
+      }
+    />
   );
 }
 

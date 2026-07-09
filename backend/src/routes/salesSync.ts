@@ -26,6 +26,11 @@ import {
   type TrendTabId,
 } from "../services/salesTrend.js";
 import {
+  getInquiryTrendData,
+  listInquiryTrendTabs,
+  type InquiryTrendTabId,
+} from "../services/salesInquiryTrend.js";
+import {
   getSalesDashboard,
   listDashboardMonths,
   saveDashboardGoalOverrides,
@@ -223,6 +228,24 @@ salesSyncRouter.get("/trend", async (req: AuthedRequest, res: Response) => {
   const industries = parseTrendIndustryQuery(req.query as Record<string, unknown>);
   try {
     res.json(await getTrendData(tab, { industries }));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
+const INQUIRY_TREND_TAB_IDS = new Set(listInquiryTrendTabs().map((t) => t.id));
+
+salesSyncRouter.get("/trend/inquiry", async (req: AuthedRequest, res: Response) => {
+  const tab = req.query.tab as InquiryTrendTabId | undefined;
+  if (!tab || !INQUIRY_TREND_TAB_IDS.has(tab)) {
+    return res.status(400).json({
+      error: "tab이 필요합니다 (industry-plan, industry-prev, industry-feature, industry-channel-plan)",
+    });
+  }
+  const industries = parseTrendIndustryQuery(req.query as Record<string, unknown>);
+  try {
+    res.json(await getInquiryTrendData(tab, { industries }));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: msg });

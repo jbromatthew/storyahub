@@ -312,6 +312,14 @@ export const api = {
     }
     return req(`/erp/sales/trend?${p}`);
   },
+  erpSalesInquiryTrend: ({ tab, industries } = {}) => {
+    const p = new URLSearchParams();
+    if (tab) p.set("tab", tab);
+    for (const industry of industries || []) {
+      if (industry) p.append("industry", industry);
+    }
+    return req(`/erp/sales/trend/inquiry?${p}`);
+  },
   erpSalesDashboard: ({ month } = {}) => {
     const p = new URLSearchParams();
     if (month) p.set("month", month);
