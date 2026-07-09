@@ -688,6 +688,15 @@ const CSS = `
 .segpill{display:inline-flex;background:#EFEBE2;border-radius:10px;padding:3px;gap:3px;}
 .segpill button{border:none;background:none;font-family:inherit;font-weight:700;font-size:12px;padding:6px 11px;border-radius:8px;color:var(--muted);cursor:pointer;}
 .segpill button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+
+/* ===== UI/UX 리파인 (가산 스타일) ===== */
+.card{box-shadow:0 1px 2px rgba(0,0,0,.04);}
+.btn:active{transform:translateY(.5px);}
+.btn-accent:hover{filter:brightness(1.05);}
+.widget{transition:box-shadow .15s,transform .12s;}
+.widget:hover{box-shadow:0 8px 20px -10px rgba(0,0,0,.16);transform:translateY(-1px);}
+.num,.widget .num,.stat .val{font-variant-numeric:tabular-nums;font-feature-settings:"tnum";}
+.chip{transition:background .12s,border-color .12s,color .12s;}
 `;
 
 /* --------- icons (inline svg) --------- */

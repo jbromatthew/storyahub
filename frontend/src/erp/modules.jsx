@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { erpIcons as I } from "./icons.jsx";
 import { APPROVAL_BOXES, LEAVE_TYPES, LEAVE_POLICY, APPROVAL_CHAINS, FORM_CHAIN_HINT, EMPLOYEE_ROLES, REFUND_TYPES, PAYMENT_METHODS, REFUND_METHODS, EMPTY_REFUND_FORM } from "./config.js";
 import { notifyError, toastSuccess } from "../toast.js";
+import { StatViz, seriesColor } from "./charts.jsx";
 
 const STATUS_LABEL = {
   draft: "임시저장", submitted: "상신", in_progress: "진행중",
@@ -2265,89 +2266,6 @@ function buildGroupMonthCompareRows(groups) {
   }));
 }
 
-function RateLineChart({ series, format, height = 260 }) {
-  const allMonths = useMemo(
-    () => [...new Set(series.flatMap((s) => s.points.map((p) => p.month)))].sort((a, b) => a.localeCompare(b)),
-    [series],
-  );
-  const allValues = useMemo(
-    () => series.flatMap((s) => s.points.map((p) => p.value)).filter((v) => v != null),
-    [series],
-  );
-
-  if (!allMonths.length || !allValues.length) {
-    return <div className="rate-chart-empty">표시할 데이터가 없습니다</div>;
-  }
-
-  const pad = { top: 20, right: 16, bottom: 36, left: 48 };
-  const w = 720;
-  const h = height;
-  const plotW = w - pad.left - pad.right;
-  const plotH = h - pad.top - pad.bottom;
-  const minV = Math.min(0, ...allValues);
-  const maxV = Math.max(...allValues, format === "percent" ? 5 : 1);
-  const yRange = maxV - minV || 1;
-  const monthIdx = (month) => allMonths.indexOf(month);
-  const xAt = (month) => {
-    const i = monthIdx(month);
-    return pad.left + (allMonths.length <= 1 ? plotW / 2 : (i / (allMonths.length - 1)) * plotW);
-  };
-  const yAt = (v) => pad.top + plotH - ((v - minV) / yRange) * plotH;
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((t) => minV + yRange * t);
-
-  return (
-    <div className="rate-chart-wrap">
-      <svg viewBox={`0 0 ${w} ${h}`} className="rate-chart" role="img" aria-hidden>
-        {yTicks.map((v) => {
-          const y = yAt(v);
-          return (
-            <g key={v}>
-              <line x1={pad.left} y1={y} x2={w - pad.right} y2={y} stroke="#ECEEF0" />
-              <text x={pad.left - 8} y={y + 4} textAnchor="end" fontSize="10" fill="#888">
-                {format === "percent" ? `${v.toFixed(0)}%` : Math.round(v)}
-              </text>
-            </g>
-          );
-        })}
-        {allMonths.map((m) => (
-          <text key={m} x={xAt(m)} y={h - 10} textAnchor="middle" fontSize="10" fill="#666">
-            {monthShortLabel(m)}
-          </text>
-        ))}
-        {series.map((s) => {
-          const pts = s.points.filter((p) => p.value != null);
-          if (!pts.length) return null;
-          const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${xAt(p.month)} ${yAt(p.value)}`).join(" ");
-          return (
-            <g key={s.id}>
-              <path
-                d={d}
-                fill="none"
-                stroke={s.color}
-                strokeWidth={2.5}
-                strokeDasharray={s.dashed ? "6 4" : undefined}
-              />
-              {pts.map((p) => (
-                <circle key={p.month} cx={xAt(p.month)} cy={yAt(p.value)} r={3.5} fill={s.color} />
-              ))}
-            </g>
-          );
-        })}
-      </svg>
-      <div className="rate-chart-legend">
-        {series.map((s) => (
-          <span key={s.id} className="rate-chart-legend-item">
-            <span
-              className={"rate-chart-swatch" + (s.dashed ? " dashed" : "")}
-              style={{ borderColor: s.color, background: s.dashed ? "transparent" : s.color }}
-            />
-            {s.label}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange }) {
   const metricDef = RATE_CHART_METRICS.find((m) => m.key === statsMetric) || RATE_CHART_METRICS[0];
@@ -2357,6 +2275,10 @@ function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange }) {
   );
   const groupMonthRows = useMemo(() => buildGroupMonthCompareRows(result?.groups), [result]);
   const timeline = result?.timeline || [];
+  const rateVizMonths = useMemo(
+    () => [...new Set(chartSeries.series.flatMap((s) => s.points.map((p) => p.month)))].sort((a, b) => a.localeCompare(b)),
+    [chartSeries],
+  );
 
   return (
     <div className="rate-stats-panel">
@@ -2372,8 +2294,18 @@ function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange }) {
       </div>
 
       <div className="rate-plan-block">
-        <div className="rate-plan-title">{metricDef.label} 추이</div>
-        <RateLineChart series={chartSeries.series} format={metricDef.format} />
+        <StatViz
+          title={`${metricDef.label} 추이`}
+          views={["line", "bar"]}
+          format={metricDef.format}
+          categories={rateVizMonths.map(monthShortLabel)}
+          series={chartSeries.series.map((s) => ({
+            label: s.label,
+            color: s.color,
+            dashed: s.dashed,
+            values: rateVizMonths.map((mm) => s.points.find((p) => p.month === mm)?.value ?? null),
+          }))}
+        />
       </div>
 
       <div className="rate-plan-block">
@@ -3037,6 +2969,16 @@ export function SalesTrendView() {
       ) : !data?.rows?.length ? (
         <div className="small" style={{ textAlign: "center", padding: 40 }}>데이터가 없습니다</div>
       ) : (
+        <StatViz
+          views={["table", "line", "bar"]}
+          format="number"
+          categories={visibleRows.map((r) => r.month)}
+          series={visibleColumns.map((col, i) => ({
+            label: col.label,
+            color: seriesColor(i),
+            values: visibleRows.map((r) => r.values?.[col.key] ?? null),
+          }))}
+          tableNode={
         <div className="trend-table-wrap">
           <table className="trend-table">
             <thead>
@@ -3082,6 +3024,8 @@ export function SalesTrendView() {
             </tbody>
           </table>
         </div>
+          }
+        />
       )}
     </div>
   );
@@ -3153,9 +3097,14 @@ function DashboardItemsTable({ title, labelHeader, items, showGoal = true }) {
   const totalActual = items.reduce((s, r) => s + r.actual, 0);
   const totalRate = totalGoal > 0 ? Math.round((totalActual / totalGoal) * 1000) / 10 : null;
   const totalGap = totalActual - totalGoal;
-  return (
+  const vizSeries = showGoal
+    ? [
+        { label: "목표", color: seriesColor(3), values: items.map((r) => r.goal) },
+        { label: "현황", color: seriesColor(0), values: items.map((r) => r.actual) },
+      ]
+    : [{ label: "현황", color: seriesColor(0), values: items.map((r) => r.actual) }];
+  const table = (
     <div className="rate-plan-block">
-      <div className="rate-plan-title">{title}</div>
       <div className="dash-table-wrap">
         <table className="dash-table">
           <thead>
@@ -3213,6 +3162,17 @@ function DashboardItemsTable({ title, labelHeader, items, showGoal = true }) {
         </table>
       </div>
     </div>
+  );
+  return (
+    <StatViz
+      title={title}
+      views={["table", "bar", "donut"]}
+      format="number"
+      categories={items.map((r) => r.label)}
+      series={vizSeries}
+      donutItems={items.map((r) => ({ label: r.label, value: r.actual }))}
+      tableNode={table}
+    />
   );
 }
 
@@ -3967,31 +3927,43 @@ export function SalesDailyView() {
               선택한 기간에 집계된 업종별 데이터가 없습니다. 세일즈 동기화에서 해당 월 시트를 확인해 주세요.
             </div>
           ) : (
-            <div className="daily-table-wrap">
-              <table className="daily-table">
-                <thead>
-                  <tr>
-                    <th className="industry">업종</th>
-                    <th>문의</th>
-                    <th>결제</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((row) => (
-                    <tr key={row.industry}>
-                      <td className="industry">{row.industry}</td>
-                      <td className={"num" + (row.inquiries === 0 ? " zero" : "")}>{row.inquiries}</td>
-                      <td className={"num" + (row.orders === 0 ? " zero" : "")}>{row.orders}</td>
-                    </tr>
-                  ))}
-                  <tr className="total">
-                    <td className="industry">합계</td>
-                    <td className="num">{data.totals.inquiries}</td>
-                    <td className="num">{data.totals.orders}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <StatViz
+              views={["table", "bar", "donut"]}
+              format="number"
+              categories={visibleRows.map((r) => r.industry)}
+              series={[
+                { label: "문의", color: seriesColor(1), values: visibleRows.map((r) => r.inquiries) },
+                { label: "결제", color: seriesColor(0), values: visibleRows.map((r) => r.orders) },
+              ]}
+              donutItems={visibleRows.map((r) => ({ label: r.industry, value: r.orders }))}
+              tableNode={
+                <div className="daily-table-wrap">
+                  <table className="daily-table">
+                    <thead>
+                      <tr>
+                        <th className="industry">업종</th>
+                        <th>문의</th>
+                        <th>결제</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleRows.map((row) => (
+                        <tr key={row.industry}>
+                          <td className="industry">{row.industry}</td>
+                          <td className={"num" + (row.inquiries === 0 ? " zero" : "")}>{row.inquiries}</td>
+                          <td className={"num" + (row.orders === 0 ? " zero" : "")}>{row.orders}</td>
+                        </tr>
+                      ))}
+                      <tr className="total">
+                        <td className="industry">합계</td>
+                        <td className="num">{data.totals.inquiries}</td>
+                        <td className="num">{data.totals.orders}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              }
+            />
           )}
         </>
       )}

@@ -334,6 +334,58 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
   .kbh-list.kbh-board{grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;}
   .kbh-feat .cover{height:180px;}
 }
+
+/* ===== 공용 통계 시각화 (표/막대/꺾은선/도넛 전환) ===== */
+.viz-block{margin:10px 0;}
+.viz-block-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;}
+.viz-block-title{font-size:14px;font-weight:800;color:var(--ink);letter-spacing:-.01em;}
+.viz-block-right{display:flex;align-items:center;gap:8px;margin-left:auto;}
+.viz-switch{display:inline-flex;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px;}
+.viz-switch-btn{display:inline-flex;align-items:center;gap:5px;border:none;background:transparent;font:inherit;font-size:12.5px;font-weight:700;color:var(--muted);padding:6px 11px;border-radius:8px;cursor:pointer;white-space:nowrap;}
+.viz-switch-btn.on{background:var(--card);color:var(--accent-deep);box-shadow:0 1px 3px rgba(0,0,0,.08);}
+.viz-switch-ic{font-size:12px;line-height:1;}
+.viz-block-body{min-height:40px;}
+@media(max-width:560px){.viz-switch-lbl{display:none;}.viz-switch-btn{padding:7px 9px;}}
+
+.viz-wrap{width:100%;}
+.viz-svg{width:100%;height:auto;display:block;overflow:visible;}
+.viz-grid{stroke:var(--line);stroke-width:1;}
+.viz-axis{fill:var(--muted);font-size:10.5px;font-family:inherit;}
+.viz-bar{transition:opacity .15s;}
+.viz-bar:hover{opacity:.82;}
+.viz-empty{padding:40px 12px;text-align:center;color:var(--muted);font-size:13px;background:var(--paper);border-radius:12px;}
+.viz-legend{display:flex;flex-wrap:wrap;gap:10px 16px;justify-content:center;margin-top:10px;}
+.viz-legend-item{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ink);}
+.viz-swatch{width:11px;height:11px;border-radius:3px;flex:0 0 auto;border:1px solid transparent;}
+
+.viz-donut-wrap{display:flex;align-items:center;gap:22px;flex-wrap:wrap;justify-content:center;padding:8px 0;}
+.viz-donut{flex:0 0 auto;}
+.viz-donut-total{font-size:22px;font-weight:800;fill:var(--ink);}
+.viz-donut-sub{font-size:11px;fill:var(--muted);font-weight:700;letter-spacing:.05em;}
+.viz-donut-legend{display:flex;flex-direction:column;gap:8px;min-width:180px;}
+.viz-donut-legend-item{display:flex;align-items:center;gap:8px;font-size:13px;}
+.viz-donut-legend-label{font-weight:700;color:var(--ink);flex:1;min-width:0;}
+.viz-donut-legend-val{color:var(--muted);font-weight:600;font-size:12px;white-space:nowrap;}
+
+/* ===== UI/UX 리파인 (카드·버튼·통계표 정리, 모두 가산 스타일) ===== */
+.card,.widget{box-shadow:0 1px 2px rgba(27,26,23,.05);}
+.widget{transition:box-shadow .15s,transform .12s;}
+.widget:hover{box-shadow:0 8px 20px -10px rgba(27,26,23,.22);transform:translateY(-1px);}
+.btn{transition:filter .12s,transform .06s;}
+.btn:active{transform:translateY(.5px);}
+.btn-accent:hover{filter:brightness(1.05);}
+.btn-ghost:hover{background:var(--paper);}
+.chip{transition:background .12s,border-color .12s,color .12s;}
+.chip:hover:not(.on){border-color:var(--muted);color:var(--ink);}
+.list-item{transition:box-shadow .15s,transform .1s;}
+.list-item:hover{box-shadow:0 6px 16px -10px rgba(27,26,23,.2);}
+.sidenavitem{transition:background .12s,color .12s;}
+.sidenavitem:hover:not(.on){background:var(--paper);color:var(--ink);}
+/* 통계표: 숫자 tabular-nums + 행 hover */
+.dash-table .num,.trend-table .num,.daily-table .num,.rate-table .num,.sales-table td{font-variant-numeric:tabular-nums;font-feature-settings:"tnum";}
+.dash-table tbody tr,.daily-table tbody tr,.rate-table tbody tr{transition:background .12s;}
+.dash-table tbody tr:hover,.daily-table tbody tr:hover,.rate-table tbody tr:hover{background:var(--accent-soft);}
+
 ${CALENDAR_CSS}
 ${KB_CSS}
 `;
