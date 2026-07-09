@@ -3076,25 +3076,29 @@ function TrendMatrixView({ title, subtitle, tabs, crossTabIds, fetchTrend, count
         )}
       </div>
 
-      {selectionStats && (
-        <div className="trend-selection-bar">
-          <span className="trend-selection-label">선택 {selectionStats.cellCount}칸</span>
-          {selectionStats.valueCount > 0 ? (
-            <>
-              <span>합계 <strong>{fmtStat(selectionStats.sum)}</strong></span>
-              <span>평균 <strong>{fmtStat(selectionStats.avg)}</strong></span>
-              <span>최소 <strong>{fmtStat(selectionStats.min)}</strong></span>
-              <span>최대 <strong>{fmtStat(selectionStats.max)}</strong></span>
-              <span>개수 <strong>{selectionStats.valueCount}</strong></span>
-              {selectionStats.valueCount < selectionStats.cellCount && (
-                <span className="small">({selectionStats.valueCount}개 숫자 기준)</span>
-              )}
-            </>
-          ) : (
-            <span className="small">선택한 칸에 집계할 숫자가 없습니다</span>
-          )}
-        </div>
-      )}
+      <div className={"trend-selection-bar" + (selectionStats ? "" : " empty")}>
+        {selectionStats ? (
+          <>
+            <span className="trend-selection-label">선택 {selectionStats.cellCount}칸</span>
+            {selectionStats.valueCount > 0 ? (
+              <>
+                <span>합계 <strong>{fmtStat(selectionStats.sum)}</strong></span>
+                <span>평균 <strong>{fmtStat(selectionStats.avg)}</strong></span>
+                <span>최소 <strong>{fmtStat(selectionStats.min)}</strong></span>
+                <span>최대 <strong>{fmtStat(selectionStats.max)}</strong></span>
+                <span>개수 <strong>{selectionStats.valueCount}</strong></span>
+                {selectionStats.valueCount < selectionStats.cellCount && (
+                  <span className="small">({selectionStats.valueCount}개 숫자 기준)</span>
+                )}
+              </>
+            ) : (
+              <span className="small">선택한 칸에 집계할 숫자가 없습니다</span>
+            )}
+          </>
+        ) : (
+          <span className="trend-selection-empty">칸을 선택하면 합계·평균·최소·최대·개수가 표시됩니다</span>
+        )}
+      </div>
 
       <div className="small trend-selection-hint">
         칸을 클릭하거나 <strong>드래그해서 여러 칸을 한 번에 선택</strong>하세요. 선택된 칸 위로 드래그하면 해제됩니다. 월·열 헤더 클릭 시 해당 행·열 전체 선택.

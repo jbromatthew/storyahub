@@ -149,7 +149,9 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .trend-industry-picker{min-width:220px;max-width:360px;}
 .trend-industry-chip{display:inline-flex;align-items:center;padding:3px 8px;border-radius:6px;background:#F1F1EF;font-size:12px;font-weight:600;line-height:1.3;white-space:nowrap;}
 .trend-industry-chip.muted{color:#777;background:#F8F9FA;}
-.trend-selection-bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 14px;margin-bottom:8px;border:1px solid #F0C4A8;background:#FFF7F2;border-radius:10px;font-size:13px;}
+.trend-selection-bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 14px;margin-bottom:8px;border:1px solid #F0C4A8;background:#FFF7F2;border-radius:10px;font-size:13px;min-height:42px;transition:border-color .15s,background .15s;}
+.trend-selection-bar.empty{border-color:var(--line);background:var(--card);}
+.trend-selection-empty{color:var(--muted);}
 .trend-selection-bar strong{font-size:15px;color:var(--accent);}
 .trend-selection-label{font-weight:700;}
 .trend-selection-hint{margin:-4px 0 10px;color:var(--muted);}
