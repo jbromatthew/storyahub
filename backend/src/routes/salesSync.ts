@@ -174,6 +174,7 @@ const dashboardGoalsBodySchema = z.object({
   month: z.string().min(1),
   industryGoals: z.record(z.coerce.number()).optional(),
   industryPlanGoals: z.record(z.record(z.coerce.number())).optional(),
+  industryChannelGoals: z.record(z.record(z.coerce.number())).optional(),
 });
 
 salesSyncRouter.put("/dashboard/goals", async (req: AuthedRequest, res: Response) => {
@@ -187,6 +188,7 @@ salesSyncRouter.put("/dashboard/goals", async (req: AuthedRequest, res: Response
       {
         industryGoals: parsed.data.industryGoals ?? {},
         industryPlanGoals: parsed.data.industryPlanGoals ?? {},
+        industryChannelGoals: parsed.data.industryChannelGoals ?? {},
       },
       req.userId
     );

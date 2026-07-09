@@ -3370,8 +3370,105 @@ function DashboardItemsTable({ title, labelHeader, items, showGoal = true }) {
   );
 }
 
-function DashboardIndustryDrill({ industry, detail, onBack }) {
+function DrillGoalTable({ title, labelHeader, items, editable, draft, onChange, industryGoal }) {
+  const list = items || [];
+  const sum = editable
+    ? Object.values(draft).reduce((a, b) => a + (Number(b) || 0), 0)
+    : list.reduce((a, r) => a + (r.goal || 0), 0);
+  const remaining = industryGoal - sum;
+  const over = industryGoal > 0 && sum > industryGoal;
+  return (
+    <div className="rate-plan-block">
+      <div className="rate-plan-title">{title}</div>
+      <div className="dash-table-wrap">
+        <table className="dash-table">
+          <thead>
+            <tr>
+              <th className="label">{labelHeader}</th>
+              <th>목표</th>
+              <th>현황</th>
+              <th>달성률</th>
+              <th>미달</th>
+              <th>진행</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((row) => {
+              const goal = editable ? (draft[row.label] ?? 0) : row.goal;
+              const rate = goal > 0 ? Math.round((row.actual / goal) * 1000) / 10 : row.rate;
+              const gap = row.actual - goal;
+              const pct = goal > 0 ? Math.min(Math.max((row.actual / goal) * 100, 0), 100) : (row.actual > 0 ? 100 : 0);
+              return (
+                <tr key={row.label}>
+                  <td className="label">{row.label}</td>
+                  <td className="num">
+                    {editable ? (
+                      <input
+                        className="dash-goal-input"
+                        inputMode="numeric"
+                        value={goalInputValue(draft[row.label] ?? 0)}
+                        onChange={(e) => onChange(row.label, e.target.value)}
+                      />
+                    ) : (row.goal || "-")}
+                  </td>
+                  <td className="num">{row.actual}</td>
+                  <td className="num" style={{ color: dashRateColor(goal > 0 ? rate : null), fontWeight: 700 }}>
+                    {goal > 0 ? formatDashRate(rate) : "-"}
+                  </td>
+                  <td className={"num" + (goal > 0 ? (gap >= 0 ? " gap-pos" : " gap-neg") : "")}>
+                    {goal > 0 ? formatDashGap(gap) : "-"}
+                  </td>
+                  <td className="dash-bar-cell">
+                    <div className="dash-bar">
+                      <div className="dash-bar-fill" style={{ width: `${pct}%`, background: dashRateColor(goal > 0 ? rate : (row.actual > 0 ? 100 : null)) }} />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {editable && (
+        <div className={"dash-goal-hint" + (over ? " dash-goal-mismatch" : "")}>
+          {title} 목표 합계 <strong>{sum}</strong> / 업종 목표 {industryGoal}
+          {industryGoal > 0 && (over ? ` · ${-remaining}개 초과` : ` · 남은 ${remaining}개`)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGoals, currentChannelGoals, onSaveGoals, saving }) {
   const summary = detail?.summary;
+  const industryGoal = summary?.goal || 0;
+  const [editing, setEditing] = useState(false);
+  const [planDraft, setPlanDraft] = useState({});
+  const [channelDraft, setChannelDraft] = useState({});
+
+  const startEdit = () => {
+    const pd = {};
+    (detail?.plans || []).forEach((p) => { pd[p.label] = currentPlanGoals?.[p.label] ?? p.goal ?? 0; });
+    const cd = {};
+    (detail?.channels || []).forEach((c) => { cd[c.label] = currentChannelGoals?.[c.label] ?? c.goal ?? 0; });
+    setPlanDraft(pd);
+    setChannelDraft(cd);
+    setEditing(true);
+  };
+
+  const cleanGoals = (o) => {
+    const r = {};
+    for (const [k, v] of Object.entries(o)) {
+      const n = Math.max(0, Math.round(Number(v) || 0));
+      if (n > 0) r[k] = n;
+    }
+    return r;
+  };
+
+  const save = () => {
+    Promise.resolve(onSaveGoals(industry, cleanGoals(planDraft), cleanGoals(channelDraft))).then(() => setEditing(false));
+  };
+
   return (
     <div className="dash-drill">
       <div className="dash-drill-hd">
@@ -3382,9 +3479,24 @@ function DashboardIndustryDrill({ industry, detail, onBack }) {
             목표 {summary.goal} · 현황 {summary.actual} · {formatDashRate(summary.rate)}
           </span>
         )}
+        <div style={{ marginLeft: "auto" }}>
+          {editing ? (
+            <span className="row" style={{ gap: 6 }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)} disabled={saving}>취소</button>
+              <button type="button" className="btn btn-accent btn-sm" onClick={save} disabled={saving}>{saving ? "저장 중…" : "저장"}</button>
+            </span>
+          ) : (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={startEdit}>목표 편집</button>
+          )}
+        </div>
       </div>
-      <DashboardItemsTable title="요금제별" labelHeader="요금제" items={detail?.plans} />
-      <DashboardItemsTable title="채널별" labelHeader="채널" items={detail?.channels} showGoal={false} />
+      {editing && (
+        <div className="small" style={{ margin: "2px 0 10px", color: "var(--muted)", lineHeight: 1.5 }}>
+          <strong>{industry}</strong> 업종 목표 <strong>{industryGoal}개</strong> 범위 안에서 요금제별·채널별 목표를 나눠 설정하세요.
+        </div>
+      )}
+      <DrillGoalTable title="요금제별" labelHeader="요금제" items={detail?.plans} editable={editing} draft={planDraft} onChange={(label, v) => setPlanDraft((p) => ({ ...p, [label]: parseGoalInput(v) }))} industryGoal={industryGoal} />
+      <DrillGoalTable title="채널별" labelHeader="채널" items={detail?.channels} editable={editing} draft={channelDraft} onChange={(label, v) => setChannelDraft((p) => ({ ...p, [label]: parseGoalInput(v) }))} industryGoal={industryGoal} />
       <DashboardItemsTable title="주차별" labelHeader="주차" items={detail?.weekly} />
     </div>
   );
@@ -3392,13 +3504,15 @@ function DashboardIndustryDrill({ industry, detail, onBack }) {
 
 function cloneGoalOverrides(data) {
   const src = data?.goalOverrides || {};
-  const industryPlanGoals = {};
-  for (const [industry, row] of Object.entries(src.industryPlanGoals || {})) {
-    industryPlanGoals[industry] = { ...row };
-  }
+  const clone2 = (obj) => {
+    const out = {};
+    for (const [k, row] of Object.entries(obj || {})) out[k] = { ...row };
+    return out;
+  };
   return {
     industryGoals: { ...(src.industryGoals || {}) },
-    industryPlanGoals,
+    industryPlanGoals: clone2(src.industryPlanGoals),
+    industryChannelGoals: clone2(src.industryChannelGoals),
   };
 }
 
@@ -3559,11 +3673,34 @@ export function SalesDashboardView() {
       month: data.month,
       industryGoals: draftGoals.industryGoals,
       industryPlanGoals: draftGoals.industryPlanGoals,
+      industryChannelGoals: draftGoals.industryChannelGoals,
     })
       .then((res) => {
         setData(res);
         setDraftGoals(cloneGoalOverrides(res));
         setEditMode(false);
+      })
+      .catch(notifyError)
+      .finally(() => setSavingGoals(false));
+  };
+
+  // 드릴다운(업종 내부)에서 요금제별·채널별 목표를 그 업종 총 목표 범위 내에서 저장
+  const saveDrillGoals = (industry, planGoals, channelGoals) => {
+    if (!data?.month) return Promise.resolve();
+    const base = cloneGoalOverrides(data);
+    base.industryPlanGoals[industry] = planGoals;
+    base.industryChannelGoals[industry] = channelGoals;
+    setSavingGoals(true);
+    return api.erpSalesDashboardGoals({
+      month: data.month,
+      industryGoals: base.industryGoals,
+      industryPlanGoals: base.industryPlanGoals,
+      industryChannelGoals: base.industryChannelGoals,
+    })
+      .then((res) => {
+        setData(res);
+        setDraftGoals(cloneGoalOverrides(res));
+        toastSuccess("목표를 저장했어요");
       })
       .catch(notifyError)
       .finally(() => setSavingGoals(false));
@@ -3711,6 +3848,10 @@ export function SalesDashboardView() {
               industry={drillIndustry}
               detail={drillDetail}
               onBack={() => setDrillIndustry(null)}
+              currentPlanGoals={data?.goalOverrides?.industryPlanGoals?.[drillIndustry]}
+              currentChannelGoals={data?.goalOverrides?.industryChannelGoals?.[drillIndustry]}
+              onSaveGoals={saveDrillGoals}
+              saving={savingGoals}
             />
           ) : (
           <>

@@ -538,10 +538,11 @@ function buildIndustryDrilldowns(
       .map((plan) => item(plan, planGoals[plan] ?? 0, planActuals.get(plan) ?? 0))
       .filter((it) => it.goal > 0 || it.actual > 0);
 
+    const channelGoals = overrides.industryChannelGoals[industry] ?? {};
     const channelActuals = counts.byIndustryChannel.get(industry) ?? new Map<string, number>();
-    const channels = sortLabels([...channelActuals.keys()], [])
-      .map((channel) => item(channel, 0, channelActuals.get(channel) ?? 0))
-      .filter((it) => it.actual > 0);
+    const channels = sortLabels([...new Set([...channelActuals.keys(), ...Object.keys(channelGoals)])], [])
+      .map((channel) => item(channel, channelGoals[channel] ?? 0, channelActuals.get(channel) ?? 0))
+      .filter((it) => it.goal > 0 || it.actual > 0);
 
     const weekly = weekLabels.map((label, weekIdx) => {
       const weekNum = weekIdx + 1;
@@ -691,7 +692,8 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
   const goalWarnings = validateIndustryPlanGoals(goalOverrides);
   const goalsCustomized =
     Object.keys(goalOverrides.industryGoals).length > 0 ||
-    Object.keys(goalOverrides.industryPlanGoals).length > 0;
+    Object.keys(goalOverrides.industryPlanGoals).length > 0 ||
+    Object.keys(goalOverrides.industryChannelGoals).length > 0;
 
   const latest = await prisma.erpSalesOrder.findFirst({
     where: { spreadsheetId: env.googleSheets.orderSpreadsheetId },

@@ -3,10 +3,11 @@ import { prisma } from "../db.js";
 export type DashboardGoalOverrides = {
   industryGoals: Record<string, number>;
   industryPlanGoals: Record<string, Record<string, number>>;
+  industryChannelGoals: Record<string, Record<string, number>>;
 };
 
 function emptyOverrides(): DashboardGoalOverrides {
-  return { industryGoals: {}, industryPlanGoals: {} };
+  return { industryGoals: {}, industryPlanGoals: {}, industryChannelGoals: {} };
 }
 
 function numRecord(raw: unknown): Record<string, number> {
@@ -42,6 +43,7 @@ export async function loadDashboardGoalOverrides(
   return {
     industryGoals: numRecord(row.industryGoals),
     industryPlanGoals: nestedNumRecord(row.industryPlanGoals),
+    industryChannelGoals: nestedNumRecord(row.industryChannelGoals),
   };
 }
 
@@ -52,21 +54,24 @@ export async function saveDashboardGoalOverrides(
 ): Promise<DashboardGoalOverrides> {
   const industryGoals = numRecord(data.industryGoals);
   const industryPlanGoals = nestedNumRecord(data.industryPlanGoals);
+  const industryChannelGoals = nestedNumRecord(data.industryChannelGoals);
   await prisma.erpSalesDashboardGoalSet.upsert({
     where: { month },
     create: {
       month,
       industryGoals,
       industryPlanGoals,
+      industryChannelGoals,
       updatedById,
     },
     update: {
       industryGoals,
       industryPlanGoals,
+      industryChannelGoals,
       updatedById,
     },
   });
-  return { industryGoals, industryPlanGoals };
+  return { industryGoals, industryPlanGoals, industryChannelGoals };
 }
 
 export function sumIndustryPlanGoals(
@@ -83,12 +88,17 @@ export function validateIndustryPlanGoals(data: DashboardGoalOverrides): string[
   const industries = new Set([
     ...Object.keys(data.industryGoals),
     ...Object.keys(data.industryPlanGoals),
+    ...Object.keys(data.industryChannelGoals),
   ]);
   for (const industry of industries) {
     const industryGoal = data.industryGoals[industry] ?? 0;
     const planSum = sumIndustryPlanGoals(data.industryPlanGoals, industry);
+    const channelSum = sumIndustryPlanGoals(data.industryChannelGoals, industry);
     if (planSum > 0 && industryGoal > 0 && planSum !== industryGoal) {
       warnings.push(`${industry}: 요금제 합계(${planSum}) ≠ 업종 목표(${industryGoal})`);
+    }
+    if (channelSum > 0 && industryGoal > 0 && channelSum !== industryGoal) {
+      warnings.push(`${industry}: 채널 합계(${channelSum}) ≠ 업종 목표(${industryGoal})`);
     }
   }
   return warnings;
