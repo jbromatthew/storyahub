@@ -83,9 +83,38 @@ function mapEmployee(e: {
   return erpEmployeePublic(e);
 }
 
+/** 이메일이 일치하는 유저가 있는데 아직 연결 안 된 초대 레코드를 연결한다.
+ *  (연결 누락 시 멤버 목록에 "미가입"으로 잘못 표시되는 버그를 자가 치유) */
+async function reconcileMemberAccounts(): Promise<void> {
+  const unlinked = await prisma.erpEmployee.findMany({
+    where: { userId: null, email: { not: null } },
+    select: { id: true, email: true },
+  });
+  if (!unlinked.length) return;
+  const emails = [...new Set(unlinked.map((e) => (e.email || "").toLowerCase()).filter(Boolean))];
+  const users = await prisma.user.findMany({
+    where: { email: { in: emails } },
+    select: { id: true, email: true },
+  });
+  const userByEmail = new Map(users.map((u) => [u.email.toLowerCase(), u.id]));
+  const taken = new Set(
+    (await prisma.erpEmployee.findMany({ where: { userId: { not: null } }, select: { userId: true } }))
+      .map((r) => r.userId!)
+      .filter(Boolean)
+  );
+  for (const e of unlinked) {
+    const uid = userByEmail.get((e.email || "").toLowerCase());
+    if (uid && !taken.has(uid)) {
+      await prisma.erpEmployee.update({ where: { id: e.id }, data: { userId: uid } }).catch(() => {});
+      taken.add(uid);
+    }
+  }
+}
+
 /** 멤버 초대·승인 (관리자 전용) */
 erpRouter.get("/members", async (req: AuthedRequest, res) => {
   if (!(await requireErpAdmin(req, res))) return;
+  await reconcileMemberAccounts();
   const members = await prisma.erpEmployee.findMany({
     include: { user: { select: userSelect }, department: true },
     orderBy: [{ memberStatus: "asc" }, { createdAt: "desc" }],
@@ -501,6 +530,27 @@ erpRouter.post("/departments", async (req: AuthedRequest, res) => {
     data: { name: String(name), parentId: parentId || null, sortOrder: sortOrder ?? 0 },
   });
   res.json(dept);
+});
+
+erpRouter.patch("/departments/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { name, sortOrder } = req.body ?? {};
+  const dept = await prisma.erpDepartment.update({
+    where: { id: req.params.id },
+    data: {
+      ...(name !== undefined ? { name: String(name) } : {}),
+      ...(sortOrder !== undefined ? { sortOrder: Number(sortOrder) } : {}),
+    },
+  });
+  res.json(dept);
+});
+
+erpRouter.delete("/departments/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  // 소속 멤버는 미배정으로 되돌리고 팀은 비활성화(soft delete)
+  await prisma.erpEmployee.updateMany({ where: { departmentId: req.params.id }, data: { departmentId: null } });
+  await prisma.erpDepartment.update({ where: { id: req.params.id }, data: { active: false } });
+  res.json({ ok: true });
 });
 
 erpRouter.get("/ranks", async (_req, res) => {

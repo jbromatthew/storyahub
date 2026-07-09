@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { erpIcons as I } from "./icons.jsx";
 import { APPROVAL_BOXES, LEAVE_TYPES, LEAVE_POLICY, APPROVAL_CHAINS, FORM_CHAIN_HINT, EMPLOYEE_ROLES, REFUND_TYPES, PAYMENT_METHODS, REFUND_METHODS, EMPTY_REFUND_FORM } from "./config.js";
 import { notifyError, toastSuccess } from "../toast.js";
+import { confirmAction } from "../confirm.js";
 import { StatViz, seriesColor } from "./charts.jsx";
 
 const STATUS_LABEL = {
@@ -1705,12 +1706,18 @@ const RATE_STORAGE_KEY = "erp.sales.paymentRate.v5";
 
 export function MembersView() {
   const [members, setMembers] = useState([]);
+  const [depts, setDepts] = useState([]);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [teamName, setTeamName] = useState("");
   const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState("");
 
   const load = () => {
-    api.erpMembers().then(setMembers).catch(notifyError).finally(() => setLoading(false));
+    Promise.all([api.erpMembers(), api.erpDepartments().catch(() => [])])
+      .then(([ms, ds]) => { setMembers(ms); setDepts(ds); })
+      .catch(notifyError)
+      .finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
 
@@ -1725,24 +1732,76 @@ export function MembersView() {
     } catch (e) { notifyError(e); }
   };
 
+  const createTeam = async () => {
+    const nm = teamName.trim();
+    if (!nm) return notifyError(new Error("팀 이름을 입력하세요"));
+    try {
+      await api.erpCreateDepartment({ name: nm });
+      setTeamName("");
+      toastSuccess(`'${nm}' 팀을 만들었어요`);
+      load();
+    } catch (e) { notifyError(e); }
+  };
+
+  const deleteTeam = async (d) => {
+    if (!(await confirmAction(`'${d.name}' 팀을 삭제할까요? 소속 멤버는 미배정으로 돌아갑니다.`))) return;
+    try {
+      await api.erpDeleteDepartment(d.id);
+      toastSuccess("팀을 삭제했어요");
+      load();
+    } catch (e) { notifyError(e); }
+  };
+
+  const assignTeam = async (m, deptId) => {
+    setBusyId(m.id);
+    try {
+      await api.erpUpdateEmployee(m.id, { departmentId: deptId || null });
+      setMembers((prev) => prev.map((x) => (x.id === m.id
+        ? { ...x, department: deptId ? depts.find((d) => d.id === deptId) || null : null }
+        : x)));
+    } catch (e) { notifyError(e); } finally { setBusyId(""); }
+  };
+
   const statusLabel = (s) => ({ pending: "승인 대기", approved: "승인됨", rejected: "거절" }[s] || s);
 
   if (loading) return <div className="spinner" />;
 
   const pending = members.filter((m) => m.memberStatus === "pending");
+  const teamCount = (id) => members.filter((m) => m.department?.id === id).length;
 
   return (
     <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40, maxWidth: 720 }}>
       <div className="h-eyebrow">Access</div>
       <div className="h-title">멤버 관리</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
-        슈퍼어드민 계정으로 초대·승인합니다. 승인된 멤버만 ERP를 이용할 수 있습니다.
+        슈퍼어드민 계정으로 초대·승인하고, 팀을 만들어 멤버를 배정합니다. 승인된 멤버만 ERP를 이용할 수 있습니다.
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
         <div className="field"><label>이메일 초대</label><input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" /></div>
         <div className="field"><label>이름 (선택)</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="홍길동" /></div>
         <button type="button" className="btn btn-accent" onClick={invite}>초대하기</button>
+      </div>
+
+      {/* 팀 관리 */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="h-eyebrow" style={{ marginBottom: 10 }}>팀 {depts.length}개</div>
+        <div className="row" style={{ gap: 8, marginBottom: depts.length ? 12 : 0 }}>
+          <input
+            value={teamName}
+            onChange={(e) => setTeamName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") createTeam(); }}
+            placeholder="새 팀 이름 (예: 세일즈팀)"
+            style={{ flex: 1, border: "1px solid var(--line)", borderRadius: 12, padding: "12px 14px", fontFamily: "inherit", fontSize: 14 }}
+          />
+          <button type="button" className="btn btn-accent" onClick={createTeam}>팀 만들기</button>
+        </div>
+        {depts.map((d) => (
+          <div key={d.id} className="row between" style={{ padding: "8px 2px", borderTop: "1px solid var(--line)" }}>
+            <div><span style={{ fontWeight: 700, fontSize: 14 }}>{d.name}</span> <span className="small">· {teamCount(d.id)}명</span></div>
+            <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => deleteTeam(d)}>삭제</button>
+          </div>
+        ))}
       </div>
 
       {pending.length > 0 && (
@@ -1766,9 +1825,23 @@ export function MembersView() {
       <div style={{ marginTop: 20 }}>
         <div className="h-eyebrow">전체 멤버 {members.length}명</div>
         {members.map((m) => (
-          <div key={m.id} className="list-item">
-            <div className="ttl">{m.name || m.email}</div>
-            <div className="meta">{m.email} · {statusLabel(m.memberStatus)} · {m.hasAccount ? "계정 있음" : "미가입"}</div>
+          <div key={m.id} className="list-item between" style={{ alignItems: "center", gap: 10 }}>
+            <div style={{ minWidth: 0 }}>
+              <div className="ttl">{m.name || m.email}</div>
+              <div className="meta">
+                {m.email} · {statusLabel(m.memberStatus)} · {m.hasAccount ? "계정 있음" : "미가입"}
+                {m.department ? ` · ${m.department.name}` : ""}
+              </div>
+            </div>
+            <select
+              value={m.department?.id || ""}
+              disabled={busyId === m.id}
+              onChange={(e) => assignTeam(m, e.target.value)}
+              style={{ flex: "0 0 auto", border: "1px solid var(--line)", borderRadius: 10, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff", maxWidth: 160 }}
+            >
+              <option value="">팀 미배정</option>
+              {depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
           </div>
         ))}
       </div>

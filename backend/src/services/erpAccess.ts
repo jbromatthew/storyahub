@@ -90,7 +90,19 @@ export async function resolveErpAccess(userId: string, email: string): Promise<E
     where: { email: email.toLowerCase(), userId: null },
   });
   if (invited) {
-    return { status: "pending", isOwner: false, isSuperAdmin: false, canManageMembers: false, employeeId: invited.id };
+    // self-heal: 초대 레코드에 로그인 계정을 연결한다.
+    // (연결이 안 돼 있으면 hasAccount=false → 멤버 목록에 "미가입"으로 잘못 표시됨)
+    const linked = await prisma.erpEmployee
+      .update({ where: { id: invited.id }, data: { userId } })
+      .catch(() => invited);
+    const status = (linked.memberStatus || "pending") as ErpAccessStatus;
+    return {
+      status,
+      isOwner: false,
+      isSuperAdmin: isErpSuperAdmin(email, linked.roles),
+      canManageMembers: canManageErpMembers(email, linked.roles),
+      employeeId: linked.id,
+    };
   }
 
   return { status: "none", isOwner: false, isSuperAdmin: false, canManageMembers: false };
