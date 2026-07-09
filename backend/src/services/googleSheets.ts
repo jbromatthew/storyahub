@@ -263,7 +263,10 @@ function normalizeHeaderName(
   return name;
 }
 
-/** 1행 헤더만 사용. 빈 헤더·시트 우측 요약 영역(_col_N)은 제외 */
+/** 1행 헤더만 사용. 데이터 영역([0, lastNamed]) 안의 빈 헤더 컬럼은 `_col_N`(1-based)으로
+ *  유지한다 — 일부 월 탭은 날짜가 헤더 없는 첫 컬럼에 들어있어(예: 2025.11.), 이를 버리면
+ *  isValidInquiryRow가 대부분의 행을 "날짜 없음"으로 판단해 누락시킨다(신규문의 314→3).
+ *  시트 우측 요약 영역(lastNamed 이후의 빈 헤더)은 여전히 제외된다. */
 export function buildSheetHeaders(headerRow: unknown[]): {
   names: string[];
   indices: number[];
@@ -278,8 +281,7 @@ export function buildSheetHeaders(headerRow: unknown[]): {
   const names: string[] = [];
   const indices: number[] = [];
   for (let i = 0; i <= lastNamed; i++) {
-    const name = normalizeHeaderName(headerRow[i], i, used);
-    if (!name) continue;
+    const name = normalizeHeaderName(headerRow[i], i, used) || `_col_${i + 1}`;
     names.push(name);
     indices.push(i);
   }
