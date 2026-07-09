@@ -443,9 +443,17 @@ export function kbCoverKey(article) {
 
 const KB_COLORS = ["#C2491F", "#7A6FF0", "#3F9A6A", "#C9A23A", "#5C6BC0", "#DB2777"];
 
+function stripInlineTags(val) {
+  if (!val || typeof val !== "string" || !/<[a-z]/i.test(val)) return val || "";
+  if (typeof document === "undefined") return val.replace(/<[^>]+>/g, " ");
+  const el = document.createElement("div");
+  el.innerHTML = val.replace(/<br\s*\/?>/gi, " ");
+  return el.textContent || "";
+}
+
 export function kbBlockText(b) {
-  if (b?.val) return b.val;
-  if (b?.type === "table" && b.rows) return b.rows.flat().join(" ");
+  if (b?.val) return stripInlineTags(b.val);
+  if (b?.type === "table" && b.rows) return b.rows.flat().map(stripInlineTags).join(" ");
   if (b?.name) return b.name;
   return "";
 }
@@ -453,7 +461,7 @@ export function kbBlockText(b) {
 export function kbExcerpt(article, max = 90) {
   const blocks = article?.blocks || [];
   for (const b of blocks) {
-    if (b.type === "cover") continue;
+    if (b.type === "cover" || b.type === "icon") continue;
     const t = kbBlockText(b).trim();
     if (t) return t.length > max ? `${t.slice(0, max)}…` : t;
   }

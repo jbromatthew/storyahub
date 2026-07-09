@@ -16,22 +16,46 @@ import {
   setCaretAt,
   stripLeadingBulletMarker,
 } from "../kbPaste.js";
+import {
+  applyInlineFormat,
+  hasInlineHtml,
+  readEditableHtml,
+  richToText,
+  sanitizeInline,
+  seedEditable,
+} from "../kbRich.js";
 
 export const BLOCK_TYPES = [
-  { type: "text", label: "텍스트", desc: "일반 문단", slash: "텍스트" },
-  { type: "h", label: "제목", desc: "섹션 제목", slash: "제목" },
-  { type: "todo", label: "체크리스트", desc: "할 일 목록", slash: "체크" },
-  { type: "bullet", label: "불릿 목록", desc: "순서 없는 목록", slash: "목록" },
-  { type: "quote", label: "콜아웃", desc: "강조 박스", slash: "인용" },
-  { type: "image", label: "이미지", desc: "사진 · 슬라이드", slash: "이미지" },
-  { type: "file", label: "파일", desc: "PDF · 영상", slash: "파일" },
-  { type: "table", label: "표", desc: "간단한 표", slash: "표" },
-  { type: "code", label: "코드", desc: "코드 블록", slash: "코드" },
-  { type: "divider", label: "구분선", desc: "섹션 구분", slash: "구분" },
+  { type: "text", label: "텍스트", desc: "일반 문단", slash: "텍스트", ic: "¶" },
+  { type: "h1", label: "제목 1", desc: "가장 큰 제목", slash: "제목1", ic: "H₁" },
+  { type: "h2", label: "제목 2", desc: "중간 제목", slash: "제목2", ic: "H₂" },
+  { type: "h3", label: "제목 3", desc: "작은 제목", slash: "제목3", ic: "H₃" },
+  { type: "toggle", label: "토글", desc: "접었다 펴는 블록", slash: "토글", ic: "▸" },
+  { type: "todo", label: "체크리스트", desc: "할 일 목록", slash: "체크", ic: "☑" },
+  { type: "bullet", label: "불릿 목록", desc: "순서 없는 목록", slash: "목록", ic: "•" },
+  { type: "quote", label: "콜아웃", desc: "강조 박스", slash: "인용", ic: "❝" },
+  { type: "image", label: "이미지", desc: "사진 · 슬라이드", slash: "이미지", ic: "🖼" },
+  { type: "file", label: "파일", desc: "PDF · 영상", slash: "파일", ic: "📎" },
+  { type: "table", label: "표", desc: "간단한 표", slash: "표", ic: "▦" },
+  { type: "code", label: "코드", desc: "코드 블록", slash: "코드", ic: "</>" },
+  { type: "divider", label: "구분선", desc: "섹션 구분", slash: "구분", ic: "—" },
 ];
+
+// 텍스트 입력 커서를 바로 두는 블록(입력형)
+const TEXT_INSERT_TYPES = new Set(["text", "h", "quote", "toggle", "bullet", "todo", "code"]);
 
 function defaultBlock(type) {
   switch (type) {
+    case "h1":
+      return { type: "h", level: 1, val: "" };
+    case "h2":
+      return { type: "h", level: 2, val: "" };
+    case "h3":
+      return { type: "h", level: 3, val: "" };
+    case "h":
+      return { type: "h", level: 2, val: "" };
+    case "toggle":
+      return { type: "toggle", val: "", body: "", open: true };
     case "file":
       return { type, name: "파일 추가", meta: "탭하여 업로드", kind: "pdf" };
     case "image":
@@ -46,8 +70,10 @@ function defaultBlock(type) {
 }
 
 function blockText(b) {
-  if (b.val) return b.val;
-  if (b.type === "table" && b.rows) return b.rows.flat().join(" ");
+  if (b.type === "table" && b.rows) return b.rows.flat().map(richToText).join(" ");
+  const val = richToText(b.val || "");
+  const body = b.type === "toggle" ? " " + richToText(b.body || "") : "";
+  if (val || body) return (val + body).trim();
   if (b.name) return b.name;
   return "";
 }
@@ -64,6 +90,40 @@ function fileKind(mime, name = "") {
 
 const FILE_ICONS = { image: "🖼", video: "🎬", audio: "🎧", pdf: "📕", doc: "📘", sheet: "📗", file: "📄" };
 const FILE_COLORS = { image: "#5C6BC0", video: "#5B6B8C", audio: "#7C5CB8", pdf: "#C2491F", doc: "#2563EB", sheet: "#059669", file: "#8B7355" };
+
+// 페이지 아이콘용 이모지
+const PAGE_EMOJIS = [
+  "📄", "📝", "📚", "📖", "📔", "🧠", "💡", "🎯", "🔖", "🗂",
+  "📊", "📈", "💰", "🧩", "⚙️", "🚀", "🔥", "⭐", "✅", "📌",
+  "🎤", "🎓", "🏢", "🤝", "💬", "🗓", "🔬", "🧪", "🌱", "☕",
+];
+
+function EmojiPicker({ current, onPick, onClear, onClose }) {
+  return (
+    <>
+      <div className="kbe-emoji-back" onClick={onClose} />
+      <div className="kbe-emoji-pop card">
+        <div className="kbe-emoji-grid">
+          {PAGE_EMOJIS.map((em) => (
+            <button
+              key={em}
+              type="button"
+              className={"kbe-emoji" + (current === em ? " on" : "")}
+              onClick={() => { onPick(em); onClose(); }}
+            >
+              {em}
+            </button>
+          ))}
+        </div>
+        {current && (
+          <button type="button" className="kbe-emoji-clear" onClick={() => { onClear(); onClose(); }}>
+            아이콘 제거
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
 
 function Checkbox({ on }) {
   return (
@@ -112,9 +172,7 @@ function AddBlockMenu({ onPick, onClose }) {
             onClose();
           }}
         >
-          <div className="mi-ic" style={{ fontSize: 16 }}>
-            {bt.type === "image" ? "🖼" : bt.type === "file" ? "📎" : bt.label[0]}
-          </div>
+          <div className="mi-ic" style={{ fontSize: 16 }}>{bt.ic}</div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 14 }}>{bt.label}</div>
             <div className="small">{bt.desc}</div>
@@ -177,18 +235,81 @@ function SlashMenu({ filter, onPick, onClose }) {
         <div
           key={bt.type}
           className="mi"
-          style={{ padding: "10px 14px", cursor: "pointer" }}
+          style={{ padding: "9px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 11 }}
           onMouseDown={(e) => {
             e.preventDefault();
             onPick(bt.type);
             onClose();
           }}
         >
-          <div style={{ fontWeight: 700, fontSize: 14 }}>{bt.label}</div>
-          <div className="small">/{bt.slash}</div>
+          <span className="kbe-slash-ic">{bt.ic}</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{bt.label}</div>
+            <div className="small">{bt.desc}</div>
+          </div>
         </div>
       ))}
     </div>
+  );
+}
+
+const RTB_BUTTONS = [
+  { kind: "bold", label: "B", title: "굵게", style: { fontWeight: 800 } },
+  { kind: "italic", label: "i", title: "기울임", style: { fontStyle: "italic", fontFamily: "Georgia,serif" } },
+  { kind: "underline", label: "U", title: "밑줄", style: { textDecoration: "underline" } },
+  { kind: "strike", label: "S", title: "취소선", style: { textDecoration: "line-through" } },
+  { kind: "highlight", label: "🖊", title: "형광펜" },
+  { kind: "code", label: "</>", title: "인라인 코드", style: { fontFamily: "ui-monospace,Menlo,monospace", fontSize: 12 } },
+  { kind: "link", label: "🔗", title: "링크" },
+];
+
+/** 텍스트 선택 시 위에 뜨는 인라인 서식 툴바 */
+function RichToolbar({ onApply }) {
+  const [pos, setPos] = useState(null);
+
+  useEffect(() => {
+    const update = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) { setPos(null); return; }
+      const anchor = sel.anchorNode;
+      const host = anchor && (anchor.nodeType === 1 ? anchor : anchor.parentElement);
+      const el = host?.closest?.("[data-kbrich]");
+      if (!el) { setPos(null); return; }
+      const rect = sel.getRangeAt(0).getBoundingClientRect();
+      if (!rect || (rect.width === 0 && rect.height === 0)) { setPos(null); return; }
+      setPos({ top: rect.top, left: rect.left + rect.width / 2, el, idx: Number(el.getAttribute("data-idx")) });
+    };
+    const onSel = () => window.requestAnimationFrame(update);
+    document.addEventListener("selectionchange", onSel);
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      document.removeEventListener("selectionchange", onSel);
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  if (!pos) return null;
+  const act = (kind) => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    applyInlineFormat(pos.el, kind);
+    onApply(pos.idx, readEditableHtml(pos.el));
+  };
+  return createPortal(
+    <div
+      className="kbe-rtb"
+      style={{ position: "fixed", top: Math.max(8, pos.top - 48), left: pos.left, transform: "translateX(-50%)", zIndex: 60 }}
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      {RTB_BUTTONS.map((btn) => (
+        <button key={btn.kind} type="button" className="kbe-rtb-btn" title={btn.title} style={btn.style} onMouseDown={act(btn.kind)}>
+          {btn.label}
+        </button>
+      ))}
+    </div>,
+    document.body,
   );
 }
 
@@ -210,9 +331,10 @@ function BlockRow({
 }) {
   const editableTypes = ["text", "h", "quote", "bullet", "todo", "code"];
   const isEditable = editableTypes.includes(b.type);
+  const hLevel = b.type === "h" ? b.level || 2 : 0;
   const ph =
     b.type === "h"
-      ? "소제목"
+      ? hLevel === 1 ? "제목 1" : hLevel === 3 ? "제목 3" : "제목 2"
       : b.type === "todo"
         ? "할 일"
         : b.type === "bullet"
@@ -221,33 +343,38 @@ function BlockRow({
             ? "인용구"
             : b.type === "code"
               ? "// 코드"
-              : "본문에 내용을 입력하세요.";
+              : b.type === "toggle"
+                ? "토글 제목"
+                : "내용을 입력하거나 '/' 로 블록 추가";
 
   const styleFor = () => {
-    if (b.type === "h") return { fontWeight: 700, fontSize: 22, lineHeight: 1.4, letterSpacing: "-.02em", padding: "18px 0 6px", color: "#111" };
+    if (b.type === "h") {
+      const size = hLevel === 1 ? 27 : hLevel === 3 ? 18 : 21;
+      return { fontWeight: 700, fontSize: size, lineHeight: 1.35, letterSpacing: "-.02em", padding: hLevel === 1 ? "22px 0 4px" : "16px 0 4px", color: "var(--kb-ink,#1A1A1A)" };
+    }
     if (b.type === "quote")
       return {
         fontSize: 15,
         fontWeight: 500,
         lineHeight: 1.65,
-        color: "#555",
-        borderLeft: "3px solid #DADCE0",
-        background: "#FAFAFA",
-        borderRadius: "0 8px 8px 0",
+        color: "#4A4A4A",
+        borderLeft: "3px solid var(--kb-accent,#B7975A)",
+        background: "var(--kb-callout,#F7F6F3)",
+        borderRadius: "2px 10px 10px 2px",
         padding: "14px 16px",
       };
     if (b.type === "code")
       return {
-        background: "#F4F5F7",
-        color: "#333",
+        background: "#F5F4F1",
+        color: "#37352F",
         borderRadius: 8,
         padding: 14,
         fontSize: 13,
         fontFamily: "ui-monospace,Menlo,monospace",
         whiteSpace: "pre-wrap",
-        border: "1px solid #E8EAED",
+        border: "1px solid #E7E5E0",
       };
-    return { fontSize: 16, lineHeight: 1.85, color: "#333", padding: "4px 0" };
+    return { fontSize: 16, lineHeight: 1.75, color: "var(--kb-body,#37352F)", padding: "3px 0" };
   };
 
   const editableRef = useRef(null);
@@ -260,17 +387,37 @@ function BlockRow({
     wasFocused.current = focused;
   }, [focused]);
 
-  const bindEditable = (el) => {
-    editableRef.current = el;
-    if (el && el.innerText !== (b.val || "") && document.activeElement !== el) {
-      el.innerText = b.val || "";
+  const makeBind = (field, primary) => (el) => {
+    if (primary) editableRef.current = el;
+    if (el && document.activeElement !== el) {
+      if (field === "body") { if (el.innerText !== (b[field] || "")) el.innerText = b[field] || ""; }
+      else seedEditable(el, b[field] || "");
     }
   };
+
+  const richEditable = (extraStyle, opts = {}) => (
+    <div
+      className="editable"
+      contentEditable
+      suppressContentEditableWarning
+      data-kbrich
+      data-idx={i}
+      data-field="val"
+      data-ph={ph}
+      style={{ ...styleFor(), ...extraStyle }}
+      onFocus={() => onFocus(i)}
+      onInput={(e) => onChange(i, { val: readEditableHtml(e.currentTarget) })}
+      onPaste={(e) => onPaste?.(e, i)}
+      onKeyDown={(e) => onKeyDown(e, i)}
+      ref={makeBind("val", true)}
+      {...opts}
+    />
+  );
 
   return (
     <div className="blk">
       <div>
-      {b.type === "divider" && <div style={{ height: 1, background: "var(--line)", margin: "12px 0" }} />}
+      {b.type === "divider" && <div className="kbe-divider-line" />}
 
       {b.type === "bullet" && (
         <div className="row" style={{ gap: 10, alignItems: "flex-start" }}>
@@ -279,7 +426,7 @@ function BlockRow({
             tabIndex={0}
             title="목록 해제"
             aria-label="목록 해제"
-            style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--ink)", marginTop: 10, flexShrink: 0, cursor: "pointer" }}
+            style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--kb-body,#37352F)", marginTop: 12, flexShrink: 0, cursor: "pointer" }}
             onClick={() => onUnlist?.(i)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
@@ -288,18 +435,7 @@ function BlockRow({
               }
             }}
           />
-          <div
-            className="editable"
-            contentEditable
-            suppressContentEditableWarning
-            data-ph={ph}
-            style={{ flex: 1, ...styleFor() }}
-            onFocus={() => onFocus(i)}
-            onInput={(e) => onChange(i, { val: e.currentTarget.innerText })}
-            onPaste={(e) => onPaste?.(e, i)}
-            onKeyDown={(e) => onKeyDown(e, i)}
-            ref={bindEditable}
-          />
+          {richEditable({ flex: 1 })}
         </div>
       )}
 
@@ -308,40 +444,48 @@ function BlockRow({
           <span style={{ marginTop: 2, cursor: "pointer" }} onClick={() => onToggleTodo(i)}>
             <Checkbox on={b.done} />
           </span>
-          <div
-            className="editable"
-            contentEditable
-            suppressContentEditableWarning
-            data-ph={ph}
-            style={{
-              flex: 1,
-              ...styleFor(),
-              textDecoration: b.done ? "line-through" : "none",
-              color: b.done ? "var(--muted)" : "var(--ink)",
-            }}
-            onFocus={() => onFocus(i)}
-            onInput={(e) => onChange(i, { val: e.currentTarget.innerText })}
-            onPaste={(e) => onPaste?.(e, i)}
-            onKeyDown={(e) => onKeyDown(e, i)}
-            ref={bindEditable}
-          />
+          {richEditable({
+            flex: 1,
+            textDecoration: b.done ? "line-through" : "none",
+            color: b.done ? "var(--muted)" : "var(--kb-body,#37352F)",
+          })}
         </div>
       )}
 
-      {isEditable && b.type !== "bullet" && b.type !== "todo" && (
-        <div
-          className="editable"
-          contentEditable
-          suppressContentEditableWarning
-          data-ph={ph}
-          style={styleFor()}
-          onFocus={() => onFocus(i)}
-          onInput={(e) => onChange(i, { val: e.currentTarget.innerText })}
-          onPaste={(e) => onPaste?.(e, i)}
-          onKeyDown={(e) => onKeyDown(e, i)}
-          ref={bindEditable}
-        />
+      {b.type === "toggle" && (
+        <div className="kbe-toggle">
+          <div className="row" style={{ gap: 6, alignItems: "flex-start" }}>
+            <button
+              type="button"
+              className={"kbe-toggle-caret" + (b.open ? " open" : "")}
+              aria-label={b.open ? "접기" : "펼치기"}
+              onClick={() => onChange(i, { open: !b.open })}
+            >
+              ▸
+            </button>
+            {richEditable({ flex: 1, fontWeight: 600 })}
+          </div>
+          {b.open && (
+            <div
+              className="editable kbe-toggle-body"
+              contentEditable
+              suppressContentEditableWarning
+              data-ph="토글 안 내용"
+              onFocus={() => onFocus(i)}
+              onInput={(e) => onChange(i, { body: e.currentTarget.innerText })}
+              onPaste={(e) => {
+                e.preventDefault();
+                const text = normalizePlainText(e.clipboardData?.getData("text/plain") || "");
+                insertTextAtCaret(e.currentTarget, text);
+                onChange(i, { body: e.currentTarget.innerText });
+              }}
+              ref={makeBind("body", false)}
+            />
+          )}
+        </div>
       )}
+
+      {isEditable && b.type !== "bullet" && b.type !== "todo" && richEditable()}
 
       {b.type === "table" && (
         <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden", fontSize: 13 }}>
@@ -438,20 +582,19 @@ function BlockRow({
   );
 }
 
-const BLOG_MENU = [
-  ["text", "본문"],
-  ["h", "소제목"],
-  ["image", "사진"],
-  ["file", "파일"],
-  ["quote", "인용"],
-  ["divider", "구분선"],
-];
+// 블록 삽입 팝오버 — 전체 블록 타입 노출
+const INSERT_MENU = BLOCK_TYPES;
 
 const TOOLBAR_ITEMS = [
   { type: "image", ic: "🖼", label: "사진" },
   { type: "file", ic: "📎", label: "파일" },
-  { type: "h", ic: "T", label: "소제목" },
+  { type: "h2", ic: "H", label: "제목" },
+  { type: "toggle", ic: "▸", label: "토글" },
+  { type: "todo", ic: "☑", label: "체크" },
+  { type: "bullet", ic: "•", label: "목록" },
   { type: "quote", ic: "❝", label: "인용" },
+  { type: "table", ic: "▦", label: "표" },
+  { type: "code", ic: "</>", label: "코드" },
   { type: "divider", ic: "—", label: "구분선" },
   { type: "text", ic: "¶", label: "본문" },
 ];
@@ -673,7 +816,8 @@ function BookSearchSheet({ onClose, onPick }) {
 function parseArticleBlocks(article) {
   const raw = article?.blocks || [];
   const cover = raw.find((b) => b.type === "cover");
-  const blocks = raw.filter((b) => b.type !== "cover");
+  const iconBlock = raw.find((b) => b.type === "icon");
+  const blocks = raw.filter((b) => b.type !== "cover" && b.type !== "icon");
   const section = article?.section || "knowledge";
   const defaultBlocks =
     section === "book"
@@ -689,6 +833,7 @@ function parseArticleBlocks(article) {
         : [{ type: "text", val: "" }];
   return {
     coverKey: cover?.mediaKey || article?.bookMeta?.coverKey || null,
+    icon: iconBlock?.emoji || "",
     blocks: blocks.length ? blocks : defaultBlocks,
   };
 }
@@ -939,6 +1084,10 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [imageUrls, setImageUrls] = useState({});
+  const [pageIcon, setPageIcon] = useState(initial.icon || "");
+  const [iconPickOpen, setIconPickOpen] = useState(false);
+  const [dragIdx, setDragIdx] = useState(null);
+  const [overIdx, setOverIdx] = useState(null);
 
   useEffect(() => {
     if (titleRef.current) titleRef.current.textContent = isNew ? "" : (article?.t || "");
@@ -997,15 +1146,16 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
   }, [updateBlock]);
 
   const insertAt = useCallback((idx, type) => {
+    const nb = defaultBlock(type);
     setBlocks((p) => {
-      const nb = [...p];
-      nb.splice(idx, 0, defaultBlock(type));
-      return nb;
+      const arr = [...p];
+      arr.splice(idx, 0, nb);
+      return arr;
     });
     setMenuAt(null);
-    setFocusIdx(type === "text" || type === "h" || type === "quote" ? idx : -1);
+    setFocusIdx(TEXT_INSERT_TYPES.has(nb.type) ? idx : -1);
     setSaved(false);
-    if (type === "image" || type === "file") void uploadBlockMedia(idx, type);
+    if (nb.type === "image" || nb.type === "file") void uploadBlockMedia(idx, nb.type);
   }, [uploadBlockMedia]);
 
   const deleteBlock = useCallback((i) => {
@@ -1026,8 +1176,54 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
     setSaved(false);
   }, []);
 
+  const reorderBlock = useCallback((from, to) => {
+    setBlocks((p) => {
+      if (from == null || to == null || from === to) return p;
+      const arr = [...p];
+      const [moved] = arr.splice(from, 1);
+      const target = to > from ? to - 1 : to;
+      arr.splice(target, 0, moved);
+      return arr;
+    });
+    setFocusIdx(-1);
+    setSaved(false);
+  }, []);
+
+  // 마크다운 단축 변환 (마커 + 스페이스)
+  const MD_SHORTCUTS = {
+    "#": "h1", "##": "h2", "###": "h3",
+    "-": "bullet", "*": "bullet",
+    ">": "quote", "[]": "todo", "[ ]": "todo",
+    "```": "code",
+  };
+
+  const focusBlockSoon = (idx) => {
+    setFocusIdx(idx);
+    window.requestAnimationFrame(() => {
+      const host = document.querySelector(`[data-kbrich][data-idx="${idx}"]`);
+      if (host) {
+        host.focus();
+        setCaretAt(host, 0);
+      }
+    });
+  };
+
   const handleKeyDown = (e, i) => {
     const b = blocks[i];
+    if (e.key === " " && b.type === "text") {
+      const el = e.currentTarget;
+      const marker = el.textContent || "";
+      if (MD_SHORTCUTS[marker] && getCaretOffset(el) === marker.length) {
+        e.preventDefault();
+        el.textContent = "";
+        const nb = defaultBlock(MD_SHORTCUTS[marker]);
+        setBlocks((p) => p.map((x, k) => (k === i ? nb : x)));
+        setSaved(false);
+        setSlash(null);
+        focusBlockSoon(i);
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       const nextType = b.type === "bullet" || b.type === "todo" ? b.type : "text";
@@ -1042,11 +1238,11 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
         return;
       }
     }
-    if (e.key === "Backspace" && !(b.val || "").length && blocks.length > 1) {
+    if (e.key === "Backspace" && !richToText(b.val || "") && blocks.length > 1) {
       e.preventDefault();
       deleteBlock(i);
     }
-    if (e.key === "/" && (b.val || "") === "") {
+    if (e.key === "/" && !richToText(b.val || "")) {
       setSlash({ idx: i, filter: "" });
     }
   };
@@ -1130,11 +1326,20 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
   const pickSlash = (type) => {
     if (slash == null) return;
     const i = slash.idx;
-    setBlocks((p) => p.map((b, k) => (k === i ? defaultBlock(type) : b)));
+    const nb = defaultBlock(type);
+    setBlocks((p) => p.map((b, k) => (k === i ? nb : b)));
     setSlash(null);
-    setFocusIdx(type === "text" || type === "h" || type === "quote" ? i : -1);
+    setFocusIdx(TEXT_INSERT_TYPES.has(nb.type) ? i : -1);
     setSaved(false);
-    if (type === "image" || type === "file") void uploadBlockMedia(i, type);
+    // '/필터' 로 남아있던 텍스트 제거 후 포커스
+    window.requestAnimationFrame(() => {
+      const host = document.querySelector(`[data-kbrich][data-idx="${i}"]`);
+      if (host) {
+        seedEditable(host, "");
+        if (TEXT_INSERT_TYPES.has(nb.type)) { host.focus(); setCaretAt(host, 0); }
+      }
+    });
+    if (nb.type === "image" || nb.type === "file") void uploadBlockMedia(i, nb.type);
   };
 
   const applyBookFromSearch = async (book) => {
@@ -1200,6 +1405,7 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
       const title = (titleRef.current?.textContent || "").trim() || "제목 없음";
       const payload = blocks.map(({ preview, ...rest }) => rest);
       if (coverKey) payload.unshift({ type: "cover", mediaKey: coverKey });
+      if (pageIcon) payload.unshift({ type: "icon", emoji: pageIcon });
       const meta =
         section === "book"
           ? {
@@ -1296,9 +1502,46 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
         </div>
       )}
 
+      <RichToolbar onApply={(idx, html) => updateBlock(idx, { val: html })} />
+
       <div className="kbe-scroll">
         <div className="kbe-inner">
           <div className="kbe-sheet">
+            <div className="kbe-page-head">
+              {coverKey && imageUrls[coverKey] && (
+                <div className="kbe-page-cover">
+                  <img src={imageUrls[coverKey]} alt="" />
+                  <div className="kbe-page-cover-actions">
+                    <button type="button" onClick={uploadCover}>커버 변경</button>
+                    <button type="button" onClick={() => { setCoverKey(null); setSaved(false); }}>제거</button>
+                  </div>
+                </div>
+              )}
+              <div className={"kbe-page-meta" + (coverKey && imageUrls[coverKey] ? " over" : "")}>
+                {pageIcon && (
+                  <button type="button" className="kbe-page-icon" onClick={() => setIconPickOpen((v) => !v)}>
+                    {pageIcon}
+                  </button>
+                )}
+                <div className="kbe-page-addrow">
+                  {!pageIcon && (
+                    <button type="button" className="kbe-page-add" onClick={() => setIconPickOpen((v) => !v)}>😀 아이콘</button>
+                  )}
+                  {!(coverKey && imageUrls[coverKey]) && (
+                    <button type="button" className="kbe-page-add" onClick={uploadCover}>🖼 커버</button>
+                  )}
+                </div>
+                {iconPickOpen && (
+                  <EmojiPicker
+                    current={pageIcon}
+                    onPick={(em) => { setPageIcon(em); setSaved(false); }}
+                    onClear={() => { setPageIcon(""); setSaved(false); }}
+                    onClose={() => setIconPickOpen(false)}
+                  />
+                )}
+              </div>
+            </div>
+
             {isNew && (
               <div className="seg" style={{ marginBottom: 14 }}>
                 {KB_SECTIONS.map((s) => (
@@ -1443,14 +1686,35 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
                   </div>
                   {menuAt === i && (
                     <div className="kbe-menu">
-                      {BLOG_MENU.map(([type, label]) => (
-                        <button key={type} type="button" className="kbe-mi" onClick={() => insertAt(i, type)}>{label}</button>
+                      {INSERT_MENU.map((bt) => (
+                        <button key={bt.type} type="button" className="kbe-mi" onClick={() => insertAt(i, bt.type)}>
+                          <span className="kbe-mi-ic">{bt.ic}</span>
+                          <span>{bt.label}</span>
+                        </button>
                       ))}
                     </div>
                   )}
-                  <div className="kbe-blk-wrap">
+                  <div
+                    className={"kbe-blk-wrap" + (dragIdx === i ? " dragging" : "") + (overIdx === i && dragIdx != null && dragIdx !== i ? " dropinto" : "")}
+                    onDragOver={(e) => { if (dragIdx == null) return; e.preventDefault(); if (overIdx !== i) setOverIdx(i); }}
+                    onDrop={(e) => { if (dragIdx == null) return; e.preventDefault(); reorderBlock(dragIdx, i); setDragIdx(null); setOverIdx(null); }}
+                  >
+                    <span
+                      className="kbe-drag"
+                      draggable
+                      title="드래그해서 이동"
+                      aria-label="블록 이동"
+                      onDragStart={(e) => { setDragIdx(i); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", String(i)); } catch { /* noop */ } }}
+                      onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
+                    >
+                      ⠿
+                    </span>
                     <div className="kbe-blk">
-                      <button type="button" className="del" aria-label="블록 삭제" onClick={() => deleteBlock(i)}>✕</button>
+                      <div className="kbe-blk-ctrls">
+                        <button type="button" className="kbe-ctrl" aria-label="위로" disabled={i === 0} onClick={() => moveBlock(i, -1)}>↑</button>
+                        <button type="button" className="kbe-ctrl" aria-label="아래로" disabled={i === blocks.length - 1} onClick={() => moveBlock(i, 1)}>↓</button>
+                        <button type="button" className="kbe-ctrl del" aria-label="블록 삭제" onClick={() => deleteBlock(i)}>✕</button>
+                      </div>
                       {slash?.idx === i && <SlashMenu filter={slash.filter} onPick={pickSlash} onClose={() => setSlash(null)} />}
                       <BlockRow
                         b={b}
@@ -1473,14 +1737,21 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
                 </React.Fragment>
               ))}
 
-              <div className={"kbe-insert" + (menuAt === blocks.length ? " open" : "")}>
+              <div
+                className={"kbe-insert kbe-insert-end" + (menuAt === blocks.length ? " open" : "") + (overIdx === blocks.length && dragIdx != null ? " dropinto" : "")}
+                onDragOver={(e) => { if (dragIdx == null) return; e.preventDefault(); if (overIdx !== blocks.length) setOverIdx(blocks.length); }}
+                onDrop={(e) => { if (dragIdx == null) return; e.preventDefault(); reorderBlock(dragIdx, blocks.length); setDragIdx(null); setOverIdx(null); }}
+              >
                 <div className="kbe-insert-line" />
                 <button type="button" className="kbe-insert-btn" aria-label="블록 추가" onClick={() => toggleInsertMenu(blocks.length)}>+</button>
               </div>
               {menuAt === blocks.length && (
                 <div className="kbe-menu">
-                  {BLOG_MENU.map(([type, label]) => (
-                    <button key={type} type="button" className="kbe-mi" onClick={() => insertAt(blocks.length, type)}>{label}</button>
+                  {INSERT_MENU.map((bt) => (
+                    <button key={bt.type} type="button" className="kbe-mi" onClick={() => insertAt(blocks.length, bt.type)}>
+                      <span className="kbe-mi-ic">{bt.ic}</span>
+                      <span>{bt.label}</span>
+                    </button>
                   ))}
                 </div>
               )}
@@ -1588,6 +1859,30 @@ function KbVisibilityToggle({ visibility, onChange, disabled, compact = false })
   );
 }
 
+/** rich val 렌더 — 인라인 서식(HTML)이면 sanitize 후 dangerouslySetInnerHTML, 아니면 평문 */
+function RichContent({ val, className, style, tag = "div" }) {
+  const v = val || "";
+  if (hasInlineHtml(v)) {
+    const Tag = tag;
+    return <Tag className={className} style={style} dangerouslySetInnerHTML={{ __html: sanitizeInline(v) }} />;
+  }
+  const Tag = tag;
+  return <Tag className={className} style={style}>{v}</Tag>;
+}
+
+function ToggleRead({ block }) {
+  const [open, setOpen] = useState(block.open !== false);
+  return (
+    <div className="kbr-toggle">
+      <button type="button" className={"kbr-toggle-head" + (open ? " open" : "")} onClick={() => setOpen((v) => !v)}>
+        <span className="kbr-toggle-caret">▸</span>
+        <RichContent tag="span" val={block.val} style={{ fontWeight: 600 }} />
+      </button>
+      {open && block.body && <div className="kbr-toggle-body">{block.body}</div>}
+    </div>
+  );
+}
+
 export function KbReadView({ article, back, onEdit, onShare, canEdit = true, erpMode = false, onArticleUpdated }) {
   const [imageUrls, setImageUrls] = useState({});
   const [visibility, setVisibility] = useState(article?.visibility || "private");
@@ -1595,7 +1890,8 @@ export function KbReadView({ article, back, onEdit, onShare, canEdit = true, erp
   const isOwner = !article?.shareRole || article?.shareRole === "owner";
   const rawBlocks = article?.blocks || [];
   const coverKey = kbCoverKey(article);
-  const blocks = rawBlocks.filter((b) => b.type !== "cover");
+  const pageIcon = rawBlocks.find((b) => b.type === "icon")?.emoji || "";
+  const blocks = rawBlocks.filter((b) => b.type !== "cover" && b.type !== "icon");
 
   useEffect(() => {
     setVisibility(article?.visibility || "private");
@@ -1671,6 +1967,7 @@ export function KbReadView({ article, back, onEdit, onShare, canEdit = true, erp
         </div>
       )}
       <div className="kbe-read-body">
+        {pageIcon && <div className="kbr-page-icon">{pageIcon}</div>}
         <div className="h-eyebrow">
           {kbSectionLabel(article?.section)} · {article?.c}
           {article?.isShared && article?.sharedBy ? ` · ${article.sharedBy.name || article.sharedBy.email}님과 공유` : ""}
@@ -1695,27 +1992,36 @@ export function KbReadView({ article, back, onEdit, onShare, canEdit = true, erp
         <div className="divider" style={{ margin: "20px 0" }} />
         {blocks.map((b, i) => (
           <div key={i} style={{ marginBottom: 10 }}>
-            {b.type === "h" && <div style={{ fontWeight: 800, fontSize: 20, margin: "8px 0" }}>{b.val}</div>}
-            {b.type === "text" && <div style={{ fontSize: 16, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>{b.val}</div>}
+            {b.type === "h" && (
+              <RichContent
+                val={b.val}
+                style={{
+                  fontWeight: 800,
+                  fontSize: (b.level || 2) === 1 ? 24 : (b.level || 2) === 3 ? 17 : 20,
+                  lineHeight: 1.35,
+                  margin: (b.level || 2) === 1 ? "18px 0 6px" : "12px 0 4px",
+                }}
+              />
+            )}
+            {b.type === "text" && <RichContent val={b.val} style={{ fontSize: 16, lineHeight: 1.75, whiteSpace: "pre-wrap" }} />}
+            {b.type === "toggle" && <ToggleRead block={b} />}
             {b.type === "bullet" && (
               <div className="row" style={{ gap: 10 }}>
                 <span>•</span>
-                <span>{b.val}</span>
+                <RichContent tag="span" val={b.val} />
               </div>
             )}
             {b.type === "todo" && (
               <div className="row" style={{ gap: 10 }}>
                 <Checkbox on={b.done} />
-                <span style={{ textDecoration: b.done ? "line-through" : "none", color: b.done ? "var(--muted)" : "inherit" }}>{b.val}</span>
+                <RichContent tag="span" val={b.val} style={{ textDecoration: b.done ? "line-through" : "none", color: b.done ? "var(--muted)" : "inherit" }} />
               </div>
             )}
             {b.type === "quote" && (
-              <div style={{ borderLeft: "3px solid var(--accent)", padding: "10px 14px", background: "var(--accent-soft)", borderRadius: "0 12px 12px 0", fontWeight: 600 }}>
-                {b.val}
-              </div>
+              <RichContent val={b.val} style={{ borderLeft: "3px solid var(--kb-accent,#B7975A)", padding: "10px 14px", background: "var(--kb-callout,#F7F6F3)", borderRadius: "2px 10px 10px 2px", fontWeight: 500 }} />
             )}
             {b.type === "code" && (
-              <pre style={{ background: "#23201B", color: "#EDE7DA", borderRadius: 12, padding: 14, fontSize: 12.5, overflow: "auto" }}>{b.val}</pre>
+              <pre style={{ background: "#23201B", color: "#EDE7DA", borderRadius: 12, padding: 14, fontSize: 12.5, overflow: "auto" }}>{richToText(b.val)}</pre>
             )}
             {b.type === "divider" && <hr style={{ border: "none", borderTop: "1px solid var(--line)", margin: "16px 0" }} />}
             {b.type === "image" && b.mediaKey && imageUrls[b.mediaKey] && (

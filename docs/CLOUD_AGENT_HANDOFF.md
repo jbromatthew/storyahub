@@ -4,7 +4,7 @@
 
 **마지막 동기화:** 2026-07-09  
 **브랜치:** `main`  
-**최신 커밋:** `069affa` — Enhance ERP sales dashboards with goals, weekly views, and drill-down.  
+**최신 커밋:** `bf45a3e` — Add Cloud Agent handoff doc for ERP sales continuity.  
 **원격:** `origin` = `git@github.com:jbromathew/storyahub.git`  
 **프로덕션:** https://record.storyahub.com (프론트) · https://api.storyahub.com (API)
 
