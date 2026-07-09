@@ -2939,6 +2939,37 @@ function TrendMatrixView({ title, subtitle, tabs, crossTabIds, fetchTrend, count
     return rows.slice(-12);
   }, [data, recentOnly]);
 
+  // 드래그로 칠하듯 셀 선택 (마우스). 시작 셀의 상태로 add/remove 모드 결정.
+  const dragRef = useRef(null);
+  useEffect(() => {
+    const end = () => { dragRef.current = null; };
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    return () => { window.removeEventListener("pointerup", end); window.removeEventListener("pointercancel", end); };
+  }, []);
+
+  const applyCell = useCallback((month, colKey, mode) => {
+    setSelectedCells((prev) => {
+      const key = trendCellKey(month, colKey);
+      const next = new Set(prev);
+      if (mode === "remove") next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const onCellDown = useCallback((e, month, colKey) => {
+    const mode = selectedCells.has(trendCellKey(month, colKey)) ? "remove" : "add";
+    if (e.pointerType === "mouse") {
+      e.preventDefault();
+      dragRef.current = { mode };
+    }
+    applyCell(month, colKey, mode);
+  }, [selectedCells, applyCell]);
+
+  const onCellEnter = useCallback((month, colKey) => {
+    if (dragRef.current) applyCell(month, colKey, dragRef.current.mode);
+  }, [applyCell]);
+
   const selectionStats = useMemo(() => {
     if (!selectedCells.size) return null;
     const nums = [];
@@ -3059,7 +3090,7 @@ function TrendMatrixView({ title, subtitle, tabs, crossTabIds, fetchTrend, count
       )}
 
       <div className="small trend-selection-hint">
-        칸을 클릭해 선택하세요. 월·열 헤더를 클릭하면 해당 행·열 전체를 선택할 수 있습니다.
+        칸을 클릭하거나 <strong>드래그해서 여러 칸을 한 번에 선택</strong>하세요. 선택된 칸 위로 드래그하면 해제됩니다. 월·열 헤더 클릭 시 해당 행·열 전체 선택.
       </div>
 
       {!loading && data?.rowCount === 0 && (
@@ -3084,7 +3115,7 @@ function TrendMatrixView({ title, subtitle, tabs, crossTabIds, fetchTrend, count
           }))}
           tableNode={
         <div className="trend-table-wrap">
-          <table className="trend-table">
+          <table className="trend-table" style={{ userSelect: "none" }}>
             <thead>
               <tr>
                 <th className="trend-month-hd">월</th>
@@ -3117,7 +3148,8 @@ function TrendMatrixView({ title, subtitle, tabs, crossTabIds, fetchTrend, count
                       <td
                         key={col.key}
                         className={"num trend-selectable" + (isZero ? " zero" : "") + (isSelected ? " selected" : "")}
-                        onClick={() => setSelectedCells((prev) => toggleTrendCell(prev, row.month, col.key))}
+                        onPointerDown={(e) => onCellDown(e, row.month, col.key)}
+                        onPointerEnter={() => onCellEnter(row.month, col.key)}
                       >
                         {formatTrendCell(val)}
                       </td>
