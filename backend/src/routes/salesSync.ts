@@ -20,6 +20,11 @@ import {
   computePaymentRate,
   getPaymentRateMeta,
 } from "../services/salesPaymentRate.js";
+import {
+  getTrendData,
+  listTrendTabs,
+  type TrendTabId,
+} from "../services/salesTrend.js";
 
 export const salesSyncRouter = Router();
 salesSyncRouter.use(auth, requireAccess);
@@ -121,6 +126,26 @@ salesSyncRouter.post("/payment-rate", async (req: AuthedRequest, res: Response) 
   }
   try {
     res.json(await computePaymentRate(parsed.data));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
+const TREND_TAB_IDS = new Set(listTrendTabs().map((t) => t.id));
+
+salesSyncRouter.get("/trend/tabs", async (_req: AuthedRequest, res: Response) => {
+  res.json({ tabs: listTrendTabs() });
+});
+
+salesSyncRouter.get("/trend", async (req: AuthedRequest, res: Response) => {
+  const tab = req.query.tab as TrendTabId | undefined;
+  if (!tab || !TREND_TAB_IDS.has(tab)) {
+    return res.status(400).json({ error: "tab이 필요합니다 (industry-plan, industry-channel, industry, plan)" });
+  }
+  const industry = typeof req.query.industry === "string" ? req.query.industry : undefined;
+  try {
+    res.json(await getTrendData(tab, { industry }));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: msg });

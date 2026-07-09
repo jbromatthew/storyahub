@@ -1321,6 +1321,9 @@ function monthLabel(sheetName) {
   if (/2023\.03\s*~\s*Raw/i.test(sheetName || "")) {
     return "과거 Raw (~2025.09)";
   }
+  if (/2022\.06\s*~\s*Raw/i.test(sheetName || "")) {
+    return "과거 Raw (~2025.12)";
+  }
   const m = String(sheetName || "").match(/^(\d{4})\.(\d{2})/);
   if (!m) return sheetName;
   return `${m[1]}년 ${Number(m[2])}월`;
@@ -1595,6 +1598,12 @@ export function SalesSyncView() {
           <>
             {" "}
             2025.09. 이전 과거 문의는 DB에 1회 반영되어 있으며, <strong>데이터 보기</strong>에서만 확인할 수 있습니다.
+          </>
+        )}
+        {tab === "order" && (
+          <>
+            {" "}
+            결제 주문은 <strong>2026.01.</strong>부터 월별 동기화합니다. 2025.12. 이전 과거 데이터는 DB에 1회 반영되어 있으며, <strong>데이터 보기</strong>에서만 확인할 수 있습니다.
           </>
         )}
       </div>
@@ -2127,7 +2136,6 @@ export function PaymentRateView() {
   const [industry, setIndustry] = useState("");
   const [selectedChannels, setSelectedChannels] = useState([]);
   const [selectedAssignees, setSelectedAssignees] = useState([]);
-  const [monthQ, setMonthQ] = useState("");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(true);
   const [computing, setComputing] = useState(false);
@@ -2140,10 +2148,7 @@ export function PaymentRateView() {
     return meta?.months?.includes(sheet) ? sheet : meta?.months?.[0] || "";
   }, [meta]);
 
-  const filteredMonths = useMemo(() => {
-    const q = monthQ.trim();
-    return (meta?.months || []).filter((m) => !q || m.includes(q) || monthShortLabel(m).includes(q));
-  }, [meta, monthQ]);
+  const months = meta?.months || [];
 
   useEffect(() => {
     api.erpPaymentRateMeta()
@@ -2243,26 +2248,23 @@ export function PaymentRateView() {
         비교군을 1개 이상 추가하고 월을 선택한 뒤 <strong>조회</strong>하세요.
       </div>
 
-      <div className="card rate-simple-filters">
-        <div className="rate-simple-row">
-          <div className="field" style={{ marginBottom: 0 }}>
+      <div className="card rate-filter-panel">
+        <div className="rate-filter-panel-hd">조회 조건</div>
+        <div className="rate-filter-panel-body">
+          <div className="field rate-filter-industry">
             <label>업종</label>
             <select value={industry} onChange={(e) => setIndustry(e.target.value)}>
               <option value="">전체</option>
               {(meta?.industries || []).map((ind) => <option key={ind} value={ind}>{ind}</option>)}
             </select>
           </div>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label>월 검색</label>
-            <input value={monthQ} onChange={(e) => setMonthQ(e.target.value)} placeholder="2026.07" />
-          </div>
+          <AssigneePicker
+            assignees={meta?.assignees || []}
+            selected={selectedAssignees}
+            onChange={setSelectedAssignees}
+            colorMap={meta?.assigneeColors}
+          />
         </div>
-        <AssigneePicker
-          assignees={meta?.assignees || []}
-          selected={selectedAssignees}
-          onChange={setSelectedAssignees}
-          colorMap={meta?.assigneeColors}
-        />
       </div>
 
       {meta?.channelTree && (
@@ -2273,13 +2275,19 @@ export function PaymentRateView() {
         />
       )}
 
-      <div className="sales-toolbar" style={{ marginTop: 10 }}>
-        <span className="small" style={{ fontWeight: 700 }}>비교군 {groups.length}개</span>
-        {GROUP_PRESETS.map((p) => (
-          <button key={p.id} type="button" className="btn btn-ghost btn-sm" onClick={() => addGroup(p)}>+ {p.label}</button>
-        ))}
-        <button type="button" className="btn btn-accent btn-sm" onClick={() => addGroup(null)}>+ 빈 비교군</button>
-      </div>
+      <div className="rate-groups-section">
+        <div className="rate-groups-top">
+          <div className="rate-groups-top-hd">
+            <strong>비교군 · 월 선택</strong>
+            <span className="small">{groups.length}개 비교군</span>
+          </div>
+          <div className="rate-groups-presets">
+            {GROUP_PRESETS.map((p) => (
+              <button key={p.id} type="button" className="btn btn-ghost btn-sm" onClick={() => addGroup(p)}>+ {p.label}</button>
+            ))}
+            <button type="button" className="btn btn-accent btn-sm" onClick={() => addGroup(null)}>+ 빈 비교군</button>
+          </div>
+        </div>
 
       <div className="rate-groups">
         {groups.map((g, i) => (
@@ -2305,7 +2313,7 @@ export function PaymentRateView() {
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => updateGroup(g.id, { months: [] })}>해제</button>
             </div>
             <div className="rate-month-picks">
-              {filteredMonths.map((m) => (
+              {months.map((m) => (
                 <button
                   key={m}
                   type="button"
@@ -2318,6 +2326,7 @@ export function PaymentRateView() {
             </div>
           </div>
         ))}
+      </div>
       </div>
 
       {hasEmpty && (
@@ -2433,6 +2442,166 @@ export function PaymentRateView() {
             </div>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+const TREND_TABS = [
+  { id: "industry-plan", label: "업종X요금제" },
+  { id: "industry-channel", label: "업종X채널" },
+  { id: "industry", label: "업종" },
+  { id: "plan", label: "요금제" },
+];
+
+function formatTrendCell(value) {
+  if (value == null || Number.isNaN(value)) return "-";
+  return String(value);
+}
+
+export function SalesTrendView() {
+  const [tab, setTab] = useState("industry-plan");
+  const [industry, setIndustry] = useState("");
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [hideZero, setHideZero] = useState(true);
+  const [recentOnly, setRecentOnly] = useState(false);
+
+  const isCross = tab === "industry-plan" || tab === "industry-channel";
+
+  useEffect(() => {
+    setLoading(true);
+    api.erpSalesTrend({ tab, industry: isCross ? industry || undefined : undefined })
+      .then((res) => {
+        setData(res);
+        if (isCross && res?.selectedIndustry && !industry) {
+          setIndustry(res.selectedIndustry);
+        }
+      })
+      .catch(notifyError)
+      .finally(() => setLoading(false));
+  }, [tab, industry, isCross]);
+
+  const visibleColumns = useMemo(() => {
+    if (!data?.columns?.length) return [];
+    if (!hideZero) return data.columns;
+    const keysWithData = new Set();
+    for (const row of data.rows || []) {
+      for (const col of data.columns) {
+        const v = row.values?.[col.key];
+        if (v != null && v !== 0) keysWithData.add(col.key);
+      }
+    }
+    return data.columns.filter((col) => col.kind === "total" || keysWithData.has(col.key));
+  }, [data, hideZero]);
+
+  const visibleRows = useMemo(() => {
+    const rows = data?.rows || [];
+    if (!recentOnly) return rows;
+    return rows.slice(-12);
+  }, [data, recentOnly]);
+
+  const tabLabel = TREND_TABS.find((t) => t.id === tab)?.label || "";
+  const selectedIndustry = data?.selectedIndustry || industry;
+
+  return (
+    <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">Sales</div>
+      <div className="h-title">월간 추이 데이터</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+        결제 주문 내역에서 <strong>구분 = 신규센터</strong>만 집계합니다.
+        2025.12. 이전은 Raw 아카이브, 2026.01. 이후는 월별 동기화 데이터를 사용합니다.
+        {data?.spreadsheetUrl && (
+          <>{" "}<a href={data.spreadsheetUrl} target="_blank" rel="noreferrer">결제 주문 시트</a></>
+        )}
+      </div>
+
+      <div className="sales-tabs">
+        {TREND_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={"sales-tab" + (tab === t.id ? " on" : "")}
+            onClick={() => { setTab(t.id); setIndustry(""); }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="trend-toolbar">
+        <span className="small" style={{ fontWeight: 700 }}>
+          {tabLabel} · 신규센터 {data?.rowCount ?? 0}건
+        </span>
+        {isCross && (data?.industries?.length > 0) && (
+          <select
+            value={selectedIndustry}
+            onChange={(e) => setIndustry(e.target.value)}
+            style={{ minWidth: 140 }}
+          >
+            {data.industries.map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+        )}
+        <button
+          type="button"
+          className={"btn btn-sm" + (hideZero ? " btn-accent" : " btn-ghost")}
+          onClick={() => setHideZero((v) => !v)}
+        >
+          {hideZero ? "0 숨김" : "0 표시"}
+        </button>
+        <button
+          type="button"
+          className={"btn btn-sm" + (recentOnly ? " btn-accent" : " btn-ghost")}
+          onClick={() => setRecentOnly((v) => !v)}
+        >
+          {recentOnly ? "최근 12개월" : "전체 기간"}
+        </button>
+        {data?.months?.length > 0 && (
+          <span className="small">{visibleRows.length}개월 · {visibleColumns.length}열</span>
+        )}
+      </div>
+
+      {!loading && data?.rowCount === 0 && (
+        <div className="small" style={{ marginBottom: 8, color: "#B06000", lineHeight: 1.6 }}>
+          신규센터 데이터가 없습니다. <strong>세일즈 동기화 → 결제 주문 내역</strong>에서 2026.01. 이후 월을 동기화하거나, 과거 Raw 데이터 적재가 필요합니다.
+        </div>
+      )}
+
+      {loading ? (
+        <div className="spinner" />
+      ) : !data?.rows?.length ? (
+        <div className="small" style={{ textAlign: "center", padding: 40 }}>데이터가 없습니다</div>
+      ) : (
+        <div className="trend-table-wrap">
+          <table className="trend-table">
+            <thead>
+              <tr>
+                <th className="trend-month-hd">월</th>
+                {visibleColumns.map((col) => (
+                  <th key={col.key}>{col.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.map((row) => (
+                <tr key={row.month}>
+                  <td className="trend-month">{row.month}</td>
+                  {visibleColumns.map((col) => {
+                    const val = row.values?.[col.key];
+                    const isZero = val === 0;
+                    return (
+                      <td key={col.key} className={"num" + (isZero ? " zero" : "")}>
+                        {formatTrendCell(val)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

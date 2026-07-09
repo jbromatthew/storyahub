@@ -5,8 +5,11 @@ import { env } from "../env.js";
 
 const MONTH_SHEET_RE = /^\d{4}\.\d{2}\.?$/;
 const INQUIRY_RAW_SHEET_RE = /2023\.03\s*~\s*Raw/i;
+const ORDER_RAW_SHEET_RE = /2022\.06\s*~\s*Raw/i;
 /** 2025년 10월 이전(2025.09.까지)은 Raw 시트에서 월별 분리 */
 const INQUIRY_HISTORICAL_CUTOFF_YM = 202510;
+/** 2026년 1월 이전은 결제 주문 Raw 시트에서 월별 분리 */
+export const ORDER_MONTHLY_SYNC_FROM_YM = 202601;
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly";
 
 export type SheetRow = {
@@ -90,11 +93,42 @@ export function isInquiryRawSheetName(name: string): boolean {
   return INQUIRY_RAW_SHEET_RE.test(name.trim());
 }
 
+export function isOrderRawSheetName(name: string): boolean {
+  return ORDER_RAW_SHEET_RE.test(name.trim());
+}
+
 export function isHistoricalInquiryMonth(monthKey: string): boolean {
   const m = monthKey.trim().match(/^(\d{4})\.(\d{2})/);
   if (!m) return false;
   const ym = Number(m[1]) * 100 + Number(m[2]);
   return ym < INQUIRY_HISTORICAL_CUTOFF_YM;
+}
+
+export function isHistoricalOrderMonth(monthKey: string): boolean {
+  const m = monthKey.trim().match(/^(\d{4})\.(\d{2})/);
+  if (!m) return false;
+  const ym = Number(m[1]) * 100 + Number(m[2]);
+  return ym < ORDER_MONTHLY_SYNC_FROM_YM;
+}
+
+/** 결제 주문 행의 날짜 → YYYY.MM. */
+export function parseOrderRowMonth(data: Record<string, string>): string | null {
+  const candidates = [
+    data["날짜"],
+    data["입금 날짜"],
+    data["입금일"],
+    data["결제일"],
+    data["_col_1"],
+  ];
+  for (const [key, val] of Object.entries(data)) {
+    if (/날짜/i.test(key)) candidates.push(val);
+  }
+  for (const raw of candidates.filter(Boolean)) {
+    const s = String(raw).trim();
+    const m = s.match(/^(\d{4})[-/.](\d{2})/);
+    if (m) return `${m[1]}.${m[2]}.`;
+  }
+  return null;
 }
 
 /** 문의 행의 날짜 → YYYY.MM. (문의 시간 / 날짜 컬럼 기준) */
@@ -149,7 +183,7 @@ export function isValidInquiryRow(
 
 export function normalizeMonthSheetName(name: string): string {
   const trimmed = name.trim();
-  if (isInquiryRawSheetName(trimmed)) return trimmed;
+  if (isInquiryRawSheetName(trimmed) || isOrderRawSheetName(trimmed)) return trimmed;
   if (!isValidMonthSheetName(trimmed)) {
     throw new Error(`유효하지 않은 월별 시트명입니다: ${name}`);
   }
@@ -263,6 +297,17 @@ export async function listInquiryMonthlySyncSheets(spreadsheetId: string): Promi
   return listMonthSheets(spreadsheetId);
 }
 
+/** 결제 주문: 2026.01. 이후 월별 동기화 대상 */
+export async function listOrderMonthlySyncSheets(spreadsheetId: string): Promise<string[]> {
+  const sheets = await listMonthSheets(spreadsheetId);
+  return sheets.filter((name) => {
+    const m = name.match(/^(\d{4})\.(\d{2})/);
+    if (!m) return false;
+    const ym = Number(m[1]) * 100 + Number(m[2]);
+    return ym >= ORDER_MONTHLY_SYNC_FROM_YM;
+  });
+}
+
 /** 2023.03 ~ Raw 아카이브 탭 이름 (있으면) */
 export async function findInquiryRawSheetName(spreadsheetId: string): Promise<string | null> {
   const sheets = getSheetsClient();
@@ -273,6 +318,18 @@ export async function findInquiryRawSheetName(spreadsheetId: string): Promise<st
   const titles =
     meta.data.sheets?.map((s) => s.properties?.title).filter((t): t is string => !!t) ?? [];
   return titles.find(isInquiryRawSheetName) ?? null;
+}
+
+/** 2022.06 ~ Raw 아카이브 탭 이름 (있으면) */
+export async function findOrderRawSheetName(spreadsheetId: string): Promise<string | null> {
+  const sheets = getSheetsClient();
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets.properties.title",
+  });
+  const titles =
+    meta.data.sheets?.map((s) => s.properties?.title).filter((t): t is string => !!t) ?? [];
+  return titles.find(isOrderRawSheetName) ?? null;
 }
 
 export async function fetchSheetRows(
@@ -320,4 +377,22 @@ export async function fetchSheetRows(
   }
 
   return rows;
+}
+
+/** 시트 전체 그리드 (추이 데이터 등 비표준 레이아웃용) */
+export async function fetchSheetGrid(
+  spreadsheetId: string,
+  sheetName: string
+): Promise<string[][]> {
+  const sheets = getSheetsClient();
+  const range = `${quoteSheetName(sheetName)}!A:ZZ`;
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range,
+    valueRenderOption: "FORMATTED_VALUE",
+    dateTimeRenderOption: "FORMATTED_STRING",
+  });
+  return (res.data.values ?? []).map((row) =>
+    (row ?? []).map((cell) => cellToString(cell))
+  );
 }

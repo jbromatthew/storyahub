@@ -12,7 +12,7 @@ import { userPreferences } from "../preferences.js";
 import { ERP_CSS } from "./erpStyles.js";
 import { ERP_MODULES, ERP_ADMIN_MODULES } from "./config.js";
 import { erpIcons as I } from "./icons.jsx";
-import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, MembersView } from "./modules.jsx";
+import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, MembersView } from "./modules.jsx";
 
 function NavBtn({ on, icon, label, onClick, layout = "side" }) {
   const cls = layout === "side" ? "sidenavitem" : "sidenavitem";
@@ -282,6 +282,7 @@ export default function ErpApp() {
       case "okr": return <OkrView />;
       case "sales-sync": return <SalesSyncView />;
       case "sales-rate": return <PaymentRateView />;
+      case "sales-trend": return <SalesTrendView />;
       default: return <KnowledgeFeed articles={kbArticles} section="knowledge" openWrite={openKbWrite} erpMode />;
     }
   };

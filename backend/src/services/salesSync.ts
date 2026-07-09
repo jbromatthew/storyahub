@@ -4,13 +4,17 @@ import {
   fetchSheetColumnNames,
   fetchSheetRows,
   findInquiryRawSheetName,
+  findOrderRawSheetName,
   isGoogleSheetsConfigured,
   isHistoricalInquiryMonth,
+  isHistoricalOrderMonth,
   isInquiryRawSheetName,
+  isOrderRawSheetName,
   listInquiryMonthlySyncSheets,
-  listMonthSheets,
+  listOrderMonthlySyncSheets,
   normalizeMonthSheetName,
   parseInquiryRowMonth,
+  parseOrderRowMonth,
   type SheetRow,
 } from "./googleSheets.js";
 
@@ -187,6 +191,138 @@ async function syncInquiryRawSheet(
   return result;
 }
 
+/**
+ * 2022.06 ~ Raw: 날짜 기준 YYYY.MM.으로 분리해 각 월 DB를 덮어쓴다.
+ * 2026.01. 이전만 Raw에서 처리, 이후는 월별 탭 사용.
+ */
+async function syncOrderRawSheet(
+  rawSheetName: string,
+  syncedById?: string
+): Promise<SyncResult> {
+  const spreadsheetId = spreadsheetIdFor("order");
+  const allRows = await fetchSheetRows(spreadsheetId, rawSheetName, "order");
+  const byMonth = new Map<string, SheetRow[]>();
+
+  for (const row of allRows) {
+    const month = parseOrderRowMonth(row.data);
+    if (!month || !isHistoricalOrderMonth(month)) continue;
+    const list = byMonth.get(month) ?? [];
+    list.push(row);
+    byMonth.set(month, list);
+  }
+
+  const now = new Date();
+  let added = 0;
+  let deleted = 0;
+
+  await prisma.$transaction(async (tx) => {
+    const existingMonths = await tx.erpSalesOrder.findMany({
+      where: { spreadsheetId },
+      select: { sheetName: true },
+      distinct: ["sheetName"],
+    });
+    const newMonths = new Set(byMonth.keys());
+
+    for (const { sheetName } of existingMonths) {
+      if (isHistoricalOrderMonth(sheetName) && !newMonths.has(sheetName)) {
+        const removed = await tx.erpSalesOrder.deleteMany({
+          where: { spreadsheetId, sheetName },
+        });
+        deleted += removed.count;
+      }
+    }
+
+    for (const [sheetName, rows] of byMonth) {
+      const removed = await tx.erpSalesOrder.deleteMany({
+        where: { spreadsheetId, sheetName },
+      });
+      deleted += removed.count;
+      const chunkSize = 500;
+      for (let i = 0; i < rows.length; i += chunkSize) {
+        const chunk = rows.slice(i, i + chunkSize);
+        if (!chunk.length) continue;
+        await tx.erpSalesOrder.createMany({
+          data: chunk.map((row) => ({
+            externalKey: row.externalKey,
+            sheetName,
+            spreadsheetId,
+            sheetRow: row.sheetRow,
+            data: row.data,
+            syncedAt: now,
+          })),
+        });
+        added += chunk.length;
+      }
+    }
+  }, { timeout: 120_000, maxWait: 30_000 });
+
+  const result: SyncResult = {
+    kind: "order",
+    sheetName: rawSheetName,
+    spreadsheetId,
+    added,
+    updated: 0,
+    deleted,
+    rowCount: allRows.length,
+    monthsSynced: byMonth.size,
+  };
+
+  await prisma.erpSalesSyncLog.create({
+    data: {
+      kind: "order",
+      sheetName: rawSheetName,
+      spreadsheetId,
+      status: "success",
+      added,
+      updated: 0,
+      deleted,
+      rowCount: allRows.length,
+      syncedById: syncedById ?? null,
+    },
+  });
+
+  return result;
+}
+
+/** Raw 아카이브 1회 적재 (2025.12.까지 월별 분리). 동기화 UI에서는 사용하지 않음. */
+export async function importOrderRawArchive(syncedById?: string): Promise<SyncResult> {
+  const spreadsheetId = spreadsheetIdFor("order");
+  const rawName = await findOrderRawSheetName(spreadsheetId);
+  if (!rawName) throw new Error("2022.06 ~ Raw 시트를 찾을 수 없습니다");
+  return syncOrderRawSheet(rawName, syncedById);
+}
+
+export async function hasOrderHistoricalData(): Promise<boolean> {
+  const spreadsheetId = spreadsheetIdFor("order");
+  const rawName = await findOrderRawSheetName(spreadsheetId);
+
+  const rawLog = rawName
+    ? await prisma.erpSalesSyncLog.findFirst({
+        where: {
+          kind: "order",
+          spreadsheetId,
+          sheetName: rawName,
+          status: "success",
+        },
+      })
+    : null;
+  if (rawLog) return true;
+
+  // 월별 탭 일부(2025.07 등)만 있어도 과거가 있다고 오판하지 않도록 2023년 이전 월 존재 여부 확인
+  const early = await prisma.erpSalesOrder.findFirst({
+    where: {
+      spreadsheetId,
+      OR: [
+        { sheetName: { startsWith: "2022." } },
+        { sheetName: { startsWith: "2023." } },
+        { sheetName: { startsWith: "2024." } },
+      ],
+    },
+    select: { id: true },
+  });
+  return !!early;
+}
+
 /** Raw 아카이브 1회 적재 (2025.09.까지 월별 분리). 동기화 UI에서는 사용하지 않음. */
 export async function importInquiryRawArchive(syncedById?: string): Promise<SyncResult> {
   const spreadsheetId = spreadsheetIdFor("inquiry");
@@ -217,6 +353,9 @@ export async function syncSalesSheet(
 
   const trimmed = sheetNameInput.trim();
   if (kind === "inquiry" && isInquiryRawSheetName(trimmed)) {
+    throw new Error("과거 Raw 데이터는 동기화 대상이 아닙니다. 데이터 보기에서 확인하세요.");
+  }
+  if (kind === "order" && isOrderRawSheetName(trimmed)) {
     throw new Error("과거 Raw 데이터는 동기화 대상이 아닙니다. 데이터 보기에서 확인하세요.");
   }
 
@@ -274,7 +413,7 @@ export async function listAvailableMonthSheets(kind: SalesKind): Promise<string[
   if (!isGoogleSheetsConfigured()) return [];
   const spreadsheetId = spreadsheetIdFor(kind);
   if (kind === "inquiry") return listInquiryMonthlySyncSheets(spreadsheetId);
-  return listMonthSheets(spreadsheetId);
+  return listOrderMonthlySyncSheets(spreadsheetId);
 }
 
 export async function getSalesSyncStatus() {
@@ -358,6 +497,22 @@ export async function getSalesSyncStatus() {
       for (const [sheetName, count] of Object.entries(countMap)) {
         if (entries.has(sheetName)) continue;
         if (!isHistoricalInquiryMonth(sheetName)) continue;
+        entries.set(sheetName, {
+          sheetName,
+          dbCount: count,
+          inSheet: false,
+          syncable: false,
+          isRawArchive: false,
+          isHistorical: true,
+          lastSync: formatLog(lastLog(kind, sheetName)),
+        });
+      }
+    }
+
+    if (kind === "order") {
+      for (const [sheetName, count] of Object.entries(countMap)) {
+        if (entries.has(sheetName)) continue;
+        if (!isHistoricalOrderMonth(sheetName)) continue;
         entries.set(sheetName, {
           sheetName,
           dbCount: count,

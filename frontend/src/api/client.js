@@ -304,4 +304,10 @@ export const api = {
   },
   erpPaymentRateMeta: () => req("/erp/sales/payment-rate/meta"),
   erpPaymentRate: (body) => req("/erp/sales/payment-rate", { method: "POST", body }),
+  erpSalesTrend: ({ tab, industry } = {}) => {
+    const p = new URLSearchParams();
+    if (tab) p.set("tab", tab);
+    if (industry) p.set("industry", industry);
+    return req(`/erp/sales/trend?${p}`);
+  },
 };

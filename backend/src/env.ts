@@ -118,5 +118,8 @@ export const env = {
     orderSpreadsheetId:
       process.env.GOOGLE_SHEETS_ORDER_SPREADSHEET_ID ??
       "1TWHPuMkDhb29KyJXNPmTy4xXNEF-MFiUIxzwz9bIZ58",
+    trendSpreadsheetId:
+      process.env.GOOGLE_SHEETS_TREND_SPREADSHEET_ID ??
+      "1eC5L5oU_MNlnC7yyjupyZANJe4HN49DhUPjMULWS-a8",
   },
 };

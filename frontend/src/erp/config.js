@@ -4,6 +4,7 @@ export const ERP_MODULES = [
   { id: "okr", label: "OKR", icon: "okr", group: "work" },
   { id: "sales-sync", label: "세일즈 동기화", icon: "sales", group: "sales", groupLabel: "문의/결제" },
   { id: "sales-rate", label: "당월 결제율", icon: "chart", group: "sales" },
+  { id: "sales-trend", label: "월간 추이", icon: "trend", group: "sales" },
 ];
 
 export const ERP_ADMIN_MODULES = [
