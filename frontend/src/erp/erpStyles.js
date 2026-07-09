@@ -347,18 +347,29 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .viz-block-body{min-height:40px;}
 @media(max-width:560px){.viz-switch-lbl{display:none;}.viz-switch-btn{padding:7px 9px;}}
 
-.viz-wrap{width:100%;}
+.viz-wrap{width:100%;position:relative;}
 .viz-svg{width:100%;height:auto;display:block;overflow:visible;}
 .viz-grid{stroke:var(--line);stroke-width:1;}
 .viz-axis{fill:var(--muted);font-size:10.5px;font-family:inherit;}
-.viz-bar{transition:opacity .15s;}
+.viz-bar{transition:opacity .12s;cursor:pointer;}
 .viz-bar:hover{opacity:.82;}
+.viz-donut-seg{cursor:pointer;transition:opacity .12s;}
+.viz-donut-seg:hover{opacity:.85;}
+
+/* hover 값 툴팁 */
+.viz-tip{position:absolute;z-index:20;pointer-events:none;transform:translate(-50%,calc(-100% - 12px));background:#232019;color:#F5F2EC;border-radius:9px;padding:7px 10px;box-shadow:0 6px 20px rgba(0,0,0,.28);white-space:nowrap;font-size:12px;min-width:70px;}
+.viz-tip-title{font-weight:800;font-size:11.5px;margin-bottom:4px;color:#fff;letter-spacing:-.01em;}
+.viz-tip-row{display:flex;align-items:center;gap:7px;line-height:1.5;}
+.viz-tip-dot{width:9px;height:9px;border-radius:2px;flex:0 0 auto;}
+.viz-tip-label{color:#CFC9BE;font-weight:600;}
+.viz-tip-val{margin-left:auto;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;}
 .viz-empty{padding:40px 12px;text-align:center;color:var(--muted);font-size:13px;background:var(--paper);border-radius:12px;}
 .viz-legend{display:flex;flex-wrap:wrap;gap:10px 16px;justify-content:center;margin-top:10px;}
 .viz-legend-item{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ink);}
 .viz-swatch{width:11px;height:11px;border-radius:3px;flex:0 0 auto;border:1px solid transparent;}
 
-.viz-donut-wrap{display:flex;align-items:center;gap:22px;flex-wrap:wrap;justify-content:center;padding:8px 0;}
+.viz-donut-wrap{display:flex;align-items:center;gap:22px;flex-wrap:wrap;justify-content:center;padding:8px 0;position:relative;}
+.viz-donut-legend-item{cursor:default;}
 .viz-donut{flex:0 0 auto;}
 .viz-donut-total{font-size:22px;font-weight:800;fill:var(--ink);}
 .viz-donut-sub{font-size:11px;fill:var(--muted);font-weight:700;letter-spacing:.05em;}

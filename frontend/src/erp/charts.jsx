@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 
 /** 공용 통계 시각화 — 표/막대/꺾은선/도넛 전환. 차트 라이브러리 없이 SVG 직접 렌더.
  *  데이터 형태:
@@ -27,8 +27,39 @@ function niceTicks(min, max, count = 4) {
   return Array.from({ length: count + 1 }, (_, i) => min + step * i);
 }
 
+/* 마우스 hover 값 툴팁 */
+function useTip() {
+  const wrapRef = useRef(null);
+  const [tip, setTip] = useState(null);
+  const show = (e, content) => {
+    const r = wrapRef.current?.getBoundingClientRect();
+    if (!r) return;
+    setTip({ x: e.clientX - r.left, y: e.clientY - r.top, ...content });
+  };
+  const hide = () => setTip(null);
+  return { wrapRef, tip, show, hide };
+}
+
+function VizTip({ tip }) {
+  if (!tip) return null;
+  const clampedLeft = Math.max(4, tip.x);
+  return (
+    <div className="viz-tip" style={{ left: clampedLeft, top: Math.max(0, tip.y) }}>
+      {tip.title != null && <div className="viz-tip-title">{tip.title}</div>}
+      {(tip.rows || []).map((r, i) => (
+        <div key={i} className="viz-tip-row">
+          {r.color && <span className="viz-tip-dot" style={{ background: r.color }} />}
+          <span className="viz-tip-label">{r.label}</span>
+          <span className="viz-tip-val">{r.val}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ---------------- Bar (단일/그룹) ---------------- */
 export function BarChart({ categories, series, format, height = 280 }) {
+  const { wrapRef, tip, show, hide } = useTip();
   const values = series.flatMap((s) => s.values).filter((v) => v != null);
   if (!categories.length || !values.length) return <div className="viz-empty">표시할 데이터가 없습니다</div>;
 
@@ -49,7 +80,7 @@ export function BarChart({ categories, series, format, height = 280 }) {
   const showCatLabels = categories.length <= 16;
 
   return (
-    <div className="viz-wrap">
+    <div className="viz-wrap" ref={wrapRef} onMouseLeave={hide}>
       <svg viewBox={`0 0 ${w} ${h}`} className="viz-svg" role="img" preserveAspectRatio="xMidYMid meet">
         {ticks.map((v, i) => (
           <g key={i}>
@@ -67,6 +98,7 @@ export function BarChart({ categories, series, format, height = 280 }) {
                 const x = gx + si * (barW + 2);
                 const y0 = yAt(0);
                 const y = yAt(v);
+                const color = s.color || seriesColor(si);
                 return (
                   <rect
                     key={si}
@@ -76,7 +108,9 @@ export function BarChart({ categories, series, format, height = 280 }) {
                     width={barW}
                     height={Math.max(1, Math.abs(y0 - y))}
                     rx={3}
-                    fill={s.color || seriesColor(si)}
+                    fill={color}
+                    onMouseMove={(e) => show(e, { title: cat, rows: [{ color, label: s.label, val: fmtVal(v, format) }] })}
+                    onMouseLeave={hide}
                   />
                 );
               })}
@@ -89,6 +123,7 @@ export function BarChart({ categories, series, format, height = 280 }) {
           );
         })}
       </svg>
+      <VizTip tip={tip} />
       <VizLegend series={series} />
     </div>
   );
@@ -96,6 +131,7 @@ export function BarChart({ categories, series, format, height = 280 }) {
 
 /* ---------------- Line (다중 시리즈) ---------------- */
 export function LineChart({ categories, series, format, height = 280 }) {
+  const { wrapRef, tip, show, hide } = useTip();
   const values = series.flatMap((s) => s.values).filter((v) => v != null);
   if (!categories.length || !values.length) return <div className="viz-empty">표시할 데이터가 없습니다</div>;
 
@@ -112,8 +148,14 @@ export function LineChart({ categories, series, format, height = 280 }) {
   const ticks = niceTicks(minV, maxV);
   const showCatLabels = categories.length <= 18;
 
+  const colOf = (i) => series
+    .map((s, si) => ({ color: s.color || seriesColor(si), label: s.label, v: s.values[i] }))
+    .filter((r) => r.v != null)
+    .map((r) => ({ color: r.color, label: r.label, val: fmtVal(r.v, format) }));
+  const hoverW = categories.length > 1 ? plotW / (categories.length - 1) : plotW;
+
   return (
-    <div className="viz-wrap">
+    <div className="viz-wrap" ref={wrapRef} onMouseLeave={hide}>
       <svg viewBox={`0 0 ${w} ${h}`} className="viz-svg" role="img" preserveAspectRatio="xMidYMid meet">
         {ticks.map((v, i) => (
           <g key={i}>
@@ -136,7 +178,20 @@ export function LineChart({ categories, series, format, height = 280 }) {
             </g>
           );
         })}
+        {categories.map((cat, i) => (
+          <rect
+            key={i}
+            x={xAt(i) - hoverW / 2}
+            y={pad.top}
+            width={hoverW}
+            height={plotH}
+            fill="transparent"
+            onMouseMove={(e) => show(e, { title: cat, rows: colOf(i) })}
+            onMouseLeave={hide}
+          />
+        ))}
       </svg>
+      <VizTip tip={tip} />
       <VizLegend series={series} />
     </div>
   );
@@ -144,6 +199,7 @@ export function LineChart({ categories, series, format, height = 280 }) {
 
 /* ---------------- Donut (구성비) ---------------- */
 export function DonutChart({ items, format, size = 200, centerLabel }) {
+  const { wrapRef, tip, show, hide } = useTip();
   const clean = (items || []).filter((it) => it && it.value > 0);
   const total = clean.reduce((a, b) => a + b.value, 0);
   if (!total) return <div className="viz-empty">표시할 데이터가 없습니다</div>;
@@ -159,26 +215,37 @@ export function DonutChart({ items, format, size = 200, centerLabel }) {
     return seg;
   });
 
+  const tipFor = (e, s) => show(e, { title: s.label, rows: [{ color: s.color, label: fmtVal(s.value, format), val: `${Math.round(s.pct)}%` }] });
+
   return (
-    <div className="viz-donut-wrap">
+    <div className="viz-donut-wrap" ref={wrapRef} onMouseLeave={hide}>
       <svg viewBox="0 0 200 200" className="viz-donut" width={size} height={size} role="img">
         <circle cx="100" cy="100" r={r} fill="none" stroke="var(--line)" strokeWidth={stroke} />
         {segs.map((s, i) => (
           <circle
             key={i}
+            className="viz-donut-seg"
             cx="100" cy="100" r={r} fill="none"
             stroke={s.color} strokeWidth={stroke}
             strokeDasharray={`${s.dash} ${c - s.dash}`}
             strokeDashoffset={s.offset}
             transform="rotate(-90 100 100)"
+            onMouseMove={(e) => tipFor(e, s)}
+            onMouseLeave={hide}
           />
         ))}
         <text x="100" y="96" textAnchor="middle" className="viz-donut-total">{centerLabel ?? total.toLocaleString()}</text>
         <text x="100" y="116" textAnchor="middle" className="viz-donut-sub">합계</text>
       </svg>
+      <VizTip tip={tip} />
       <div className="viz-donut-legend">
         {segs.map((s, i) => (
-          <div key={i} className="viz-donut-legend-item">
+          <div
+            key={i}
+            className="viz-donut-legend-item"
+            onMouseMove={(e) => tipFor(e, s)}
+            onMouseLeave={hide}
+          >
             <span className="viz-swatch" style={{ background: s.color }} />
             <span className="viz-donut-legend-label">{s.label}</span>
             <span className="viz-donut-legend-val">{fmtVal(s.value, format)} · {Math.round(s.pct)}%</span>
