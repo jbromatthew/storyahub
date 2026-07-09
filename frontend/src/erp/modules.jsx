@@ -2980,7 +2980,7 @@ function TrendMatrixView({ title, subtitle, tabs, crossTabIds, fetchTrend, count
       if (val != null && !Number.isNaN(val)) nums.push(val);
     }
     if (!nums.length) {
-      return { cellCount: selectedCells.size, valueCount: 0, sum: null, avg: null };
+      return { cellCount: selectedCells.size, valueCount: 0, sum: null, avg: null, min: null, max: null };
     }
     const sum = nums.reduce((acc, n) => acc + n, 0);
     return {
@@ -2988,8 +2988,12 @@ function TrendMatrixView({ title, subtitle, tabs, crossTabIds, fetchTrend, count
       valueCount: nums.length,
       sum,
       avg: sum / nums.length,
+      min: Math.min(...nums),
+      max: Math.max(...nums),
     };
   }, [selectedCells, visibleRows]);
+
+  const fmtStat = (n) => (n == null ? "-" : Number.isInteger(n) ? n.toLocaleString() : n.toFixed(1));
 
   const tabLabel = tabs.find((t) => t.id === tab)?.label || "";
   const activeIndustries = selectedIndustries.length
@@ -3077,8 +3081,11 @@ function TrendMatrixView({ title, subtitle, tabs, crossTabIds, fetchTrend, count
           <span className="trend-selection-label">선택 {selectionStats.cellCount}칸</span>
           {selectionStats.valueCount > 0 ? (
             <>
-              <span>합계 <strong>{selectionStats.sum}</strong></span>
-              <span>평균 <strong>{Number.isInteger(selectionStats.avg) ? selectionStats.avg : selectionStats.avg.toFixed(1)}</strong></span>
+              <span>합계 <strong>{fmtStat(selectionStats.sum)}</strong></span>
+              <span>평균 <strong>{fmtStat(selectionStats.avg)}</strong></span>
+              <span>최소 <strong>{fmtStat(selectionStats.min)}</strong></span>
+              <span>최대 <strong>{fmtStat(selectionStats.max)}</strong></span>
+              <span>개수 <strong>{selectionStats.valueCount}</strong></span>
               {selectionStats.valueCount < selectionStats.cellCount && (
                 <span className="small">({selectionStats.valueCount}개 숫자 기준)</span>
               )}
