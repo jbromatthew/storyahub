@@ -244,8 +244,9 @@ salesSyncRouter.get("/trend/inquiry", async (req: AuthedRequest, res: Response) 
     });
   }
   const industries = parseTrendIndustryQuery(req.query as Record<string, unknown>);
+  const all = req.query.all === "1" || req.query.all === "true";
   try {
-    res.json(await getInquiryTrendData(tab, { industries }));
+    res.json(await getInquiryTrendData(tab, { industries, all }));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: msg });

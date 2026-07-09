@@ -6,6 +6,7 @@ import type { TrendColumn, TrendRow } from "./salesTrend.js";
 /** 문의 월간 추이 — 상품문의 DB(ErpSalesInquiry, 구분=신규문의) 기준 실시간 집계 */
 
 export const INQUIRY_TREND_TABS = {
+  industry: { id: "industry", label: "업종별" },
   "industry-plan": { id: "industry-plan", label: "업종X요금제" },
   "industry-prev": { id: "industry-prev", label: "업종X직전서비스" },
   "industry-feature": { id: "industry-feature", label: "업종X문의기능" },
@@ -26,6 +27,7 @@ export type InquiryTrendData = {
   rows: TrendRow[];
   industries: string[];
   selectedIndustries: string[];
+  allIndustries: boolean;
   rowCount: number;
   syncedThrough?: string | null;
 };
@@ -114,6 +116,8 @@ async function loadInquiryRecords(): Promise<InquiryRecord[]> {
 
 function dimensionPick(tab: InquiryTrendTabId): (r: InquiryRecord) => string {
   switch (tab) {
+    case "industry":
+      return (r) => r.industry;
     case "industry-prev":
       return (r) => r.prevService;
     case "industry-feature":
@@ -126,6 +130,7 @@ function dimensionPick(tab: InquiryTrendTabId): (r: InquiryRecord) => string {
 }
 
 function preferredOrder(tab: InquiryTrendTabId): readonly string[] {
+  if (tab === "industry") return INDUSTRY_TYPES;
   return tab === "industry-plan" ? PLAN_ORDER : [];
 }
 
@@ -135,7 +140,7 @@ export function listInquiryTrendTabs() {
 
 export async function getInquiryTrendData(
   tab: InquiryTrendTabId,
-  opts?: { industries?: string[] }
+  opts?: { industries?: string[]; all?: boolean }
 ): Promise<InquiryTrendData> {
   const meta = INQUIRY_TREND_TABS[tab];
   if (!meta) throw new Error("유효하지 않은 추이 탭입니다");
@@ -146,12 +151,16 @@ export async function getInquiryTrendData(
     INDUSTRY_TYPES
   );
 
+  // 업종별 탭 또는 전체 종합: 업종 필터 없이 전 업종 집계
+  const allIndustries = tab === "industry" || !!opts?.all;
   const requested = (opts?.industries || []).filter((name) => industries.includes(name));
-  const selectedIndustries = requested.length
-    ? requested
-    : industries[0]
-      ? [industries[0]]
-      : [];
+  const selectedIndustries = allIndustries
+    ? []
+    : requested.length
+      ? requested
+      : industries[0]
+        ? [industries[0]]
+        : [];
 
   const industrySet = new Set(selectedIndustries);
   const filtered = selectedIndustries.length
@@ -216,6 +225,7 @@ export async function getInquiryTrendData(
     rows,
     industries,
     selectedIndustries,
+    allIndustries,
     rowCount: records.length,
     syncedThrough: latest?.sheetName ?? null,
   };

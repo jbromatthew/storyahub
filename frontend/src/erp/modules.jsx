@@ -2750,11 +2750,19 @@ const TREND_TABS = [
 ];
 
 const INQUIRY_TREND_TABS = [
+  { id: "industry", label: "업종별" },
   { id: "industry-plan", label: "업종X요금제" },
   { id: "industry-prev", label: "업종X직전서비스" },
   { id: "industry-feature", label: "업종X문의기능" },
   { id: "industry-channel-plan", label: "업종X문의채널X요금제" },
 ];
+
+const INQUIRY_TREND_CROSS_TABS = new Set([
+  "industry-plan",
+  "industry-prev",
+  "industry-feature",
+  "industry-channel-plan",
+]);
 
 function formatTrendCell(value) {
   if (value == null || Number.isNaN(value)) return "-";
@@ -2810,9 +2818,10 @@ function isTrendRowFullySelected(selected, month, columns) {
   return columns.every((col) => selected.has(trendCellKey(month, col.key)));
 }
 
-function TrendMatrixView({ title, subtitle, tabs, crossTabIds, fetchTrend, countLabel, sheetLinkLabel, emptyHint }) {
+function TrendMatrixView({ title, subtitle, tabs, crossTabIds, fetchTrend, countLabel, sheetLinkLabel, emptyHint, allowAll = false }) {
   const [tab, setTab] = useState(tabs[0].id);
   const [selectedIndustries, setSelectedIndustries] = useState([]);
+  const [allIndustries, setAllIndustries] = useState(false);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [hideZero, setHideZero] = useState(true);
@@ -2820,18 +2829,23 @@ function TrendMatrixView({ title, subtitle, tabs, crossTabIds, fetchTrend, count
   const [selectedCells, setSelectedCells] = useState(() => new Set());
 
   const isCross = crossTabIds ? crossTabIds.has(tab) : true;
+  const allActive = allowAll && isCross && allIndustries;
 
   useEffect(() => {
     setSelectedCells(new Set());
-  }, [tab, selectedIndustries, hideZero, recentOnly]);
+  }, [tab, selectedIndustries, hideZero, recentOnly, allIndustries]);
 
   useEffect(() => {
     setLoading(true);
-    fetchTrend({ tab, industries: isCross ? selectedIndustries : undefined })
+    fetchTrend({
+      tab,
+      industries: isCross && !allActive ? selectedIndustries : undefined,
+      all: allActive || undefined,
+    })
       .then(setData)
       .catch(notifyError)
       .finally(() => setLoading(false));
-  }, [tab, selectedIndustries, isCross, fetchTrend]);
+  }, [tab, selectedIndustries, isCross, fetchTrend, allActive]);
 
   const visibleColumns = useMemo(() => {
     if (!data?.columns?.length) return [];
@@ -2877,9 +2891,11 @@ function TrendMatrixView({ title, subtitle, tabs, crossTabIds, fetchTrend, count
   const activeIndustries = selectedIndustries.length
     ? selectedIndustries
     : (data?.selectedIndustries || []);
-  const industrySummary = activeIndustries.length > 1
-    ? `${activeIndustries.join(" · ")} (종합)`
-    : activeIndustries[0] || "";
+  const industrySummary = allActive
+    ? "전체 업종 (종합)"
+    : activeIndustries.length > 1
+      ? `${activeIndustries.join(" · ")} (종합)`
+      : activeIndustries[0] || "";
 
   return (
     <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
@@ -2911,11 +2927,20 @@ function TrendMatrixView({ title, subtitle, tabs, crossTabIds, fetchTrend, count
           {isCross && industrySummary ? ` · ${industrySummary}` : ""}
           {" · "}{countLabel} {data?.rowCount ?? 0}건
         </span>
-        {isCross && (data?.industries?.length > 0) && (
+        {allowAll && isCross && (
+          <button
+            type="button"
+            className={"btn btn-sm" + (allActive ? " btn-accent" : " btn-ghost")}
+            onClick={() => setAllIndustries((v) => !v)}
+          >
+            전체 종합
+          </button>
+        )}
+        {isCross && !allActive && (data?.industries?.length > 0) && (
           <IndustryPicker
             industries={data.industries}
             selected={selectedIndustries}
-            onChange={setSelectedIndustries}
+            onChange={(next) => { setSelectedIndustries(next); setAllIndustries(false); }}
             fallback={data?.selectedIndustries?.[0] ? `${data.selectedIndustries[0]} (기본)` : undefined}
           />
         )}
@@ -3072,7 +3097,9 @@ export function SalesInquiryTrendView() {
         </>
       }
       tabs={INQUIRY_TREND_TABS}
+      crossTabIds={INQUIRY_TREND_CROSS_TABS}
       fetchTrend={api.erpSalesInquiryTrend}
+      allowAll
       countLabel="신규문의"
       sheetLinkLabel="상품 문의 시트"
       emptyHint={

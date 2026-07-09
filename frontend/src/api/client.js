@@ -312,9 +312,10 @@ export const api = {
     }
     return req(`/erp/sales/trend?${p}`);
   },
-  erpSalesInquiryTrend: ({ tab, industries } = {}) => {
+  erpSalesInquiryTrend: ({ tab, industries, all } = {}) => {
     const p = new URLSearchParams();
     if (tab) p.set("tab", tab);
+    if (all) p.set("all", "1");
     for (const industry of industries || []) {
       if (industry) p.append("industry", industry);
     }
