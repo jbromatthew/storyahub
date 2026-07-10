@@ -329,6 +329,11 @@ export const api = {
     return req(`/erp/sales/dashboard?${p}`);
   },
   erpSalesDashboardGoals: (body) => req("/erp/sales/dashboard/goals", { method: "PUT", body }),
+  erpSalesTaxInvoices: ({ month } = {}) => {
+    const p = new URLSearchParams();
+    if (month) p.set("month", month);
+    return req(`/erp/sales/tax-invoices?${p}`);
+  },
   erpSalesDaily: ({ date, period } = {}) => {
     const p = new URLSearchParams();
     if (date) p.set("date", date);

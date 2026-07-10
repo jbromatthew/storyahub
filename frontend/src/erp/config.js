@@ -8,6 +8,7 @@ export const ERP_MODULES = [
   { id: "sales-inquiry-trend", label: "문의 월간추이", icon: "trend", group: "sales" },
   { id: "sales-trend", label: "세일즈 월간추이", icon: "trend", group: "sales" },
   { id: "sales-dashboard", label: "세일즈 계기판", icon: "gauge", group: "sales" },
+  { id: "sales-tax-invoice", label: "세금계산서 미발행", icon: "board", group: "sales" },
 ];
 
 export const ERP_ADMIN_MODULES = [

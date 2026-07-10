@@ -1704,6 +1704,123 @@ export function SalesSyncView() {
 
 const RATE_STORAGE_KEY = "erp.sales.paymentRate.v5";
 
+function formatWon(n) {
+  return "₩" + Math.round(n || 0).toLocaleString();
+}
+
+export function TaxInvoiceView() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [month, setMonth] = useState("all");
+
+  useEffect(() => {
+    setLoading(true);
+    api.erpSalesTaxInvoices()
+      .then(setData)
+      .catch(notifyError)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const items = useMemo(
+    () => (data?.items || []).filter((it) => month === "all" || it.month === month),
+    [data, month],
+  );
+  const totalAmount = useMemo(() => items.reduce((s, it) => s + (it.amount || 0), 0), [items]);
+
+  const copyList = async () => {
+    if (!items.length) return;
+    const header = ["월", "결제일", "센터명", "사업자번호", "대표자", "이메일", "연락처", "요금제", "금액", "담당자", "영수/청구", "비고"];
+    const lines = [header.join("\t")];
+    for (const it of items) {
+      lines.push([it.month, it.date || "", it.center, it.bizNo, it.rep, it.email, it.phone, it.plan, it.amount || 0, it.manager, it.receiptType, it.memo].join("\t"));
+    }
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      toastSuccess(`${items.length}건을 복사했어요 (엑셀·홈택스에 붙여넣기)`);
+    } catch {
+      notifyError(new Error("복사에 실패했습니다"));
+    }
+  };
+
+  return (
+    <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">Sales</div>
+      <div className="h-title">세금계산서 미발행</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+        결제 주문(신규센터) 중 <strong>세금계산서 “필요”</strong>인데 아직 <strong>발행(처리)되지 않은</strong> 건입니다.
+        세일즈 동기화로 결제 데이터를 갱신하면 바로 반영됩니다.
+        {data?.spreadsheetUrl && (
+          <>{" "}<a href={data.spreadsheetUrl} target="_blank" rel="noreferrer">결제 주문 시트</a></>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="spinner" />
+      ) : (
+        <>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap", margin: "16px 0 4px", alignItems: "center" }}>
+            <button type="button" className={"chip" + (month === "all" ? " on" : "")} onClick={() => setMonth("all")}>전체</button>
+            {(data?.months || []).map((m) => (
+              <button key={m} type="button" className={"chip" + (month === m ? " on" : "")} onClick={() => setMonth(m)}>{m}</button>
+            ))}
+            <span style={{ marginLeft: "auto" }} />
+            <button type="button" className="btn btn-ghost btn-sm" onClick={copyList} disabled={!items.length}>목록 복사</button>
+          </div>
+
+          <div className="trend-selection-bar" style={{ borderColor: items.length ? "#F0C4A8" : "var(--line)", background: items.length ? "#FFF7F2" : "var(--card)" }}>
+            <span className="trend-selection-label">미발행 {items.length}건</span>
+            <span>합계 <strong>{formatWon(totalAmount)}</strong></span>
+            {data?.syncedThrough && <span className="small">동기화: {data.syncedThrough}</span>}
+          </div>
+
+          {!items.length ? (
+            <div className="small" style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+              미발행 세금계산서 대상이 없습니다.
+            </div>
+          ) : (
+            <div className="dash-table-wrap">
+              <table className="dash-table">
+                <thead>
+                  <tr>
+                    <th className="label">센터명</th>
+                    <th style={{ textAlign: "left" }}>결제일</th>
+                    <th style={{ textAlign: "left" }}>사업자번호</th>
+                    <th style={{ textAlign: "left" }}>대표자</th>
+                    <th style={{ textAlign: "left" }}>이메일</th>
+                    <th style={{ textAlign: "left" }}>연락처</th>
+                    <th style={{ textAlign: "left" }}>요금제</th>
+                    <th>금액</th>
+                    <th style={{ textAlign: "left" }}>담당자</th>
+                    <th style={{ textAlign: "left" }}>영수/청구</th>
+                    <th style={{ textAlign: "left" }}>비고</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((it, i) => (
+                    <tr key={i}>
+                      <td className="label">{it.center}</td>
+                      <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{it.date || "-"}</td>
+                      <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{it.bizNo || "-"}</td>
+                      <td style={{ textAlign: "left" }}>{it.rep || "-"}</td>
+                      <td style={{ textAlign: "left" }}>{it.email || "-"}</td>
+                      <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{it.phone || "-"}</td>
+                      <td style={{ textAlign: "left" }}>{it.plan || "-"}</td>
+                      <td className="num">{it.amount ? formatWon(it.amount) : "-"}</td>
+                      <td style={{ textAlign: "left" }}>{it.manager || "-"}</td>
+                      <td style={{ textAlign: "left" }}>{it.receiptType || "-"}</td>
+                      <td style={{ textAlign: "left" }}>{it.memo || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function MembersView() {
   const [members, setMembers] = useState([]);
   const [depts, setDepts] = useState([]);

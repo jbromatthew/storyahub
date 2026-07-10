@@ -30,6 +30,7 @@ import {
   listInquiryTrendTabs,
   type InquiryTrendTabId,
 } from "../services/salesInquiryTrend.js";
+import { getUnissuedTaxInvoices } from "../services/salesTaxInvoice.js";
 import {
   getSalesDashboard,
   listDashboardMonths,
@@ -193,6 +194,16 @@ salesSyncRouter.put("/dashboard/goals", async (req: AuthedRequest, res: Response
       req.userId
     );
     res.json(await getSalesDashboard(parsed.data.month));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
+salesSyncRouter.get("/tax-invoices", async (req: AuthedRequest, res: Response) => {
+  const month = typeof req.query.month === "string" && req.query.month ? req.query.month : undefined;
+  try {
+    res.json(await getUnissuedTaxInvoices({ month }));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: msg });
