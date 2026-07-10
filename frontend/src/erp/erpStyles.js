@@ -155,7 +155,7 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .trend-selection-bar strong{font-size:15px;color:var(--accent);}
 .trend-selection-label{font-weight:700;}
 .trend-selection-hint{margin:-4px 0 10px;color:var(--muted);}
-.trend-table-wrap{overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;border:1px solid var(--line);border-radius:12px;background:#fff;max-height:none;}
+.trend-table-wrap{overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;border:1px solid var(--line);border-radius:12px;background:#fff;max-height:min(68vh,560px);}
 .trend-table{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;font-size:12px;}
 .trend-table th,.trend-table td{padding:8px 10px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);white-space:nowrap;vertical-align:top;}
 .trend-table th{position:sticky;top:0;background:#F8F9FA;z-index:2;font-weight:700;color:var(--muted);text-align:right;}
@@ -170,7 +170,7 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .trend-table th.trend-selectable.selected{color:#8A3B12;}
 .trend-table td.trend-month.trend-selectable.selected{font-weight:800;}
 @media(min-width:900px){
-.trend-table-wrap{overflow:auto;max-height:72vh;}
+.trend-table-wrap{max-height:72vh;}
 }
 .dash-summary{display:grid;grid-template-columns:1fr;gap:14px;margin:16px 0;}
 .dash-summary-card{border:1px solid var(--line);border-radius:14px;background:#fff;padding:16px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;}
