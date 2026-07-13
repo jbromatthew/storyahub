@@ -1710,13 +1710,17 @@ function formatWon(n) {
 }
 
 const CST_STATUS = {
-  before: { label: "공사 진행전", cls: "cst-badge-before" },
+  requested: { label: "견적요청", cls: "cst-badge-before" },
+  confirmed: { label: "공사 확정", cls: "cst-badge-ongoing" },
   ongoing: { label: "공사중", cls: "cst-badge-ongoing" },
-  done: { label: "공사 완료", cls: "cst-badge-done" },
-  settle_requested: { label: "정산 요청", cls: "cst-badge-settle" },
-  settled: { label: "정산 완료", cls: "cst-badge-settled" },
+  done: { label: "공사완료", cls: "cst-badge-done" },
+  billing: { label: "청구 단계", cls: "cst-badge-settle" },
+  settled: { label: "정산완료", cls: "cst-badge-settled" },
+  // 레거시 호환
+  before: { label: "견적요청", cls: "cst-badge-before" },
+  settle_requested: { label: "청구 단계", cls: "cst-badge-settle" },
 };
-const CST_FLOW = ["before", "ongoing", "done", "settle_requested", "settled"];
+const CST_FLOW = ["requested", "confirmed", "ongoing", "done", "billing", "settled"];
 const cstNum = (v) => Math.max(0, Math.round(Number(String(v).replace(/[^\d]/g, "")) || 0));
 const lineSupply = (l) => cstNum(l.unitPrice) * cstNum(l.qty);
 const lineVat = (l) => Math.round(lineSupply(l) * 0.1);
@@ -1822,7 +1826,7 @@ function printConstructionQuote(quote, apartment) {
         </tr>
       </tbody>
     </table>
-    <div class="note">적요<br/>&nbsp;* 입금 계좌 : ${esc(s.account)}${quote?.note ? `<br/>&nbsp;* ${esc(quote.note)}` : ""}</div>
+    <div class="note">적요<br/>&nbsp;* 입금 계좌 : ${esc(s.account)}${quote?.startDate ? `<br/>&nbsp;* 공사 기간 : ${esc(quote.startDate)} ~ ${esc(quote.endDate || "미정")}` : ""}${quote?.note ? `<br/>&nbsp;* ${esc(quote.note)}` : ""}</div>
     <script>window.onload=function(){setTimeout(function(){window.print();},120);};</script>
   </body></html>`;
 
@@ -1882,7 +1886,7 @@ export function ConstructionView() {
   };
 
   // ---- 견적 ----
-  const newQuote = () => { setNewApt(null); setEditing({ apartmentId: apts[0]?.id || "", title: "", lines: [], status: "before", taxInvoiceIssued: false, note: "" }); };
+  const newQuote = () => { setNewApt(null); setEditing({ apartmentId: apts[0]?.id || "", title: "", lines: [], status: "requested", taxInvoiceIssued: false, note: "", startDate: "", endDate: "" }); };
   const saveNewApt = async () => {
     if (!newApt?.name.trim()) return notifyError(new Error("단지명을 입력하세요"));
     try {
@@ -1893,7 +1897,7 @@ export function ConstructionView() {
       toastSuccess("단지를 추가했어요");
     } catch (e) { notifyError(e); }
   };
-  const editQuote = (q) => setEditing({ ...q, apartmentId: q.apartmentId || "", lines: (q.lines || []).map((l) => ({ ...l })) });
+  const editQuote = (q) => { setNewApt(null); setEditing({ ...q, apartmentId: q.apartmentId || "", startDate: q.startDate || "", endDate: q.endDate || "", lines: (q.lines || []).map((l) => ({ ...l })) }); };
   const addLineFromItem = (itemId) => {
     const it = items.find((x) => x.id === itemId);
     if (!it) return;
@@ -1905,13 +1909,25 @@ export function ConstructionView() {
 
   const saveQuote = async () => {
     setBusy(true);
+    // 단지명을 입력했지만 "추가"를 안 누른 경우 자동으로 만들어 연결 (단지 미지정 방지)
+    let apartmentId = editing.apartmentId || null;
+    if (!apartmentId && newApt?.name?.trim()) {
+      try {
+        const created = await api.erpConstructionCreateApartment({ name: newApt.name.trim(), address: (newApt.address || "").trim() });
+        setApts((prev) => [created, ...prev]);
+        setNewApt(null);
+        apartmentId = created.id;
+      } catch (e) { setBusy(false); return notifyError(e); }
+    }
     const payload = {
-      apartmentId: editing.apartmentId || null,
+      apartmentId,
       title: editing.title || null,
       lines: editing.lines.map((l) => ({ name: l.name, unitPrice: cstNum(l.unitPrice), qty: cstNum(l.qty) })).filter((l) => l.name),
       status: editing.status,
       taxInvoiceIssued: !!editing.taxInvoiceIssued,
       note: editing.note || null,
+      startDate: editing.startDate || null,
+      endDate: editing.endDate || null,
     };
     try {
       if (editing.id) await api.erpConstructionUpdateQuote(editing.id, payload);
@@ -1967,6 +1983,16 @@ export function ConstructionView() {
             <div className="field" style={{ flex: "2 1 260px", marginBottom: 0 }}>
               <label>제목 (선택)</label>
               <input value={editing.title || ""} onChange={(e) => setEditing((ed) => ({ ...ed, title: e.target.value }))} placeholder="예: 화상 출입기 설치 견적" />
+            </div>
+          </div>
+          <div className="row" style={{ gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+            <div className="field" style={{ flex: "1 1 180px", marginBottom: 0 }}>
+              <label>공사 예정 시작일</label>
+              <input type="date" value={editing.startDate || ""} onChange={(e) => setEditing((ed) => ({ ...ed, startDate: e.target.value }))} />
+            </div>
+            <div className="field" style={{ flex: "1 1 180px", marginBottom: 0 }}>
+              <label>공사 종료일 (나중에 입력 가능)</label>
+              <input type="date" value={editing.endDate || ""} onChange={(e) => setEditing((ed) => ({ ...ed, endDate: e.target.value }))} />
             </div>
           </div>
         </div>
@@ -2075,6 +2101,7 @@ export function ConstructionView() {
                   <div className="ttl">{q.apartment?.name || "(단지 미지정)"} {q.title ? <span className="small">· {q.title}</span> : null}</div>
                   <div className="meta">
                     합계 <strong>{formatWon(t.total)}</strong> · {(q.lines || []).length}개 품목 · {q.taxInvoiceIssued ? "세금계산서 발행됨" : "세금계산서 미발행"}
+                    {q.startDate ? ` · 공사 ${q.startDate}${q.endDate ? ` ~ ${q.endDate}` : " ~"}` : ""}
                   </div>
                 </div>
                 <span className={"cst-badge " + st.cls}>{st.label}</span>

@@ -713,7 +713,9 @@ model ErpConstructionQuote {
   apartment        ErpConstructionApartment? @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
   title            String?
   lines            Json                      @default("[]") // [{name, unitPrice, qty}]
-  status           String                    @default("before") // before | ongoing | done | settle_requested | settled
+  startDate        String?                   // 공사 예정 시작일 (YYYY-MM-DD)
+  endDate          String?                   // 공사 종료일 (YYYY-MM-DD)
+  status           String                    @default("requested") // requested | confirmed | ongoing | done | billing | settled
   taxInvoiceIssued Boolean                   @default(false)
   note             String?
   createdAt        DateTime                  @default(now())

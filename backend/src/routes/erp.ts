@@ -1403,7 +1403,14 @@ erpRouter.delete("/construction/apartments/:id", async (req: AuthedRequest, res)
 });
 
 // 견적/공사 건
-const CONSTRUCTION_STATUSES = ["before", "ongoing", "done", "settle_requested", "settled"];
+const CONSTRUCTION_STATUSES = [
+  "requested", "confirmed", "ongoing", "done", "billing", "settled",
+  "before", "settle_requested", // 레거시 호환
+];
+const cstDate = (v: unknown): string | null => {
+  const s = String(v ?? "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+};
 
 function sanitizeLines(raw: unknown): Array<{ name: string; unitPrice: number; qty: number }> {
   if (!Array.isArray(raw)) return [];
@@ -1427,15 +1434,17 @@ erpRouter.get("/construction/quotes", async (req: AuthedRequest, res) => {
 
 erpRouter.post("/construction/quotes", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
-  const { apartmentId, title, lines, status, taxInvoiceIssued, note } = req.body ?? {};
+  const { apartmentId, title, lines, status, taxInvoiceIssued, note, startDate, endDate } = req.body ?? {};
   const quote = await prisma.erpConstructionQuote.create({
     data: {
       apartmentId: apartmentId || null,
       title: title?.trim() || null,
       lines: sanitizeLines(lines),
-      status: CONSTRUCTION_STATUSES.includes(status) ? status : "before",
+      status: CONSTRUCTION_STATUSES.includes(status) ? status : "requested",
       taxInvoiceIssued: !!taxInvoiceIssued,
       note: note?.trim() || null,
+      startDate: cstDate(startDate),
+      endDate: cstDate(endDate),
     },
     include: { apartment: true },
   });
@@ -1444,7 +1453,7 @@ erpRouter.post("/construction/quotes", async (req: AuthedRequest, res) => {
 
 erpRouter.patch("/construction/quotes/:id", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
-  const { apartmentId, title, lines, status, taxInvoiceIssued, note } = req.body ?? {};
+  const { apartmentId, title, lines, status, taxInvoiceIssued, note, startDate, endDate } = req.body ?? {};
   const quote = await prisma.erpConstructionQuote.update({
     where: { id: req.params.id },
     data: {
@@ -1454,6 +1463,8 @@ erpRouter.patch("/construction/quotes/:id", async (req: AuthedRequest, res) => {
       ...(status !== undefined && CONSTRUCTION_STATUSES.includes(status) ? { status } : {}),
       ...(taxInvoiceIssued !== undefined ? { taxInvoiceIssued: !!taxInvoiceIssued } : {}),
       ...(note !== undefined ? { note: note?.trim() || null } : {}),
+      ...(startDate !== undefined ? { startDate: cstDate(startDate) } : {}),
+      ...(endDate !== undefined ? { endDate: cstDate(endDate) } : {}),
     },
     include: { apartment: true },
   });
