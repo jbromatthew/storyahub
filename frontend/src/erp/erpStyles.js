@@ -446,6 +446,15 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .cst-badge-done{background:#EAF6EE;color:#1E7A46;}
 .cst-badge-settle{background:#FBEDE0;color:#B96A16;}
 .cst-badge-settled{background:#E6F3EC;color:#0D7A3E;}
+.cst-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}
+.cst-sum-card{border:1px solid var(--line);border-radius:12px;background:#fff;padding:13px 15px;}
+.cst-sum-card .lbl{font-size:12px;font-weight:700;color:var(--muted);}
+.cst-sum-card .val{font-size:19px;font-weight:800;margin-top:5px;font-variant-numeric:tabular-nums;letter-spacing:-.01em;}
+.cst-sum-card.unsettled{border-color:#F0C4A8;background:#FFF7F2;}
+.cst-sum-card.unsettled .val{color:var(--accent-deep);}
+.cst-sum-card.settled{border-color:#BFE3CC;background:#EFF8F2;}
+.cst-sum-card.settled .val{color:#0D7A3E;}
+@media(max-width:560px){.cst-summary{grid-template-columns:1fr;}}
 
 ${CALENDAR_CSS}
 ${KB_CSS}

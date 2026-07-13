@@ -1870,6 +1870,9 @@ export function ConstructionView() {
   const [itemPrice, setItemPrice] = useState("");
   const [aptForm, setAptForm] = useState({ name: "", partner: "", address: "", note: "" });
   const [newApt, setNewApt] = useState(null); // 견적 화면 인라인 새 단지 입력
+  const [qStatus, setQStatus] = useState("all");
+  const [qFrom, setQFrom] = useState("");
+  const [qTo, setQTo] = useState("");
 
   const load = () => {
     Promise.all([api.erpConstructionItems(), api.erpConstructionApartments(), api.erpConstructionQuotes()])
@@ -1961,6 +1964,27 @@ export function ConstructionView() {
     if (!(await confirmAction("이 견적을 삭제할까요?"))) return;
     try { await api.erpConstructionDeleteQuote(editing.id); setEditing(null); load(); } catch (e) { notifyError(e); }
   };
+
+  // 견적 목록 필터 (상태 + 견적일 기간) & 정산/미정산 집계
+  const quoteDateKey = (q) => (q.createdAt
+    ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(q.createdAt))
+    : "");
+  const filteredQuotes = useMemo(() => quotes.filter((q) => {
+    if (qStatus !== "all" && q.status !== qStatus) return false;
+    const dk = quoteDateKey(q);
+    if (qFrom && dk && dk < qFrom) return false;
+    if (qTo && dk && dk > qTo) return false;
+    return true;
+  }), [quotes, qStatus, qFrom, qTo]);
+  const quoteSummary = useMemo(() => {
+    let total = 0, settled = 0, unsettled = 0;
+    for (const q of filteredQuotes) {
+      const amt = quoteTotals(q.lines).total;
+      total += amt;
+      if (q.status === "settled") settled += amt; else unsettled += amt;
+    }
+    return { count: filteredQuotes.length, total, settled, unsettled };
+  }, [filteredQuotes]);
 
   if (loading) return <div className="spinner" />;
 
@@ -2107,12 +2131,39 @@ export function ConstructionView() {
       {tab === "quotes" && (
         <>
           <div className="row between" style={{ margin: "16px 0 10px", alignItems: "center" }}>
-            <span className="h-eyebrow">견적 {quotes.length}건</span>
+            <span className="h-eyebrow">견적 {filteredQuotes.length}건 {filteredQuotes.length !== quotes.length ? `/ 전체 ${quotes.length}` : ""}</span>
             <button type="button" className="btn btn-accent btn-sm" onClick={newQuote}>+ 새 견적</button>
           </div>
-          {!quotes.length ? (
-            <div className="small" style={{ textAlign: "center", padding: 32, color: "var(--muted)" }}>아직 견적이 없습니다. “새 견적”으로 시작하세요.</div>
-          ) : quotes.map((q) => {
+
+          {/* 상태 필터 */}
+          <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+            <button type="button" className={"chip" + (qStatus === "all" ? " on" : "")} onClick={() => setQStatus("all")}>전체</button>
+            {CST_FLOW.map((s) => (
+              <button key={s} type="button" className={"chip" + (qStatus === s ? " on" : "")} onClick={() => setQStatus(s)}>{CST_STATUS[s].label}</button>
+            ))}
+          </div>
+
+          {/* 기간 필터 (견적일) */}
+          <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
+            <span className="small" style={{ fontWeight: 700 }}>기간(견적일)</span>
+            <input type="date" value={qFrom} onChange={(e) => setQFrom(e.target.value)} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "7px 9px", fontFamily: "inherit", fontSize: 13 }} />
+            <span className="small">~</span>
+            <input type="date" value={qTo} onChange={(e) => setQTo(e.target.value)} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "7px 9px", fontFamily: "inherit", fontSize: 13 }} />
+            {(qFrom || qTo || qStatus !== "all") && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setQFrom(""); setQTo(""); setQStatus("all"); }}>초기화</button>
+            )}
+          </div>
+
+          {/* 정산/미정산 요약 */}
+          <div className="cst-summary">
+            <div className="cst-sum-card"><div className="lbl">총 {quoteSummary.count}건 합계</div><div className="val">{formatWon(quoteSummary.total)}</div></div>
+            <div className="cst-sum-card unsettled"><div className="lbl">미정산 금액</div><div className="val">{formatWon(quoteSummary.unsettled)}</div></div>
+            <div className="cst-sum-card settled"><div className="lbl">정산 완료 금액</div><div className="val">{formatWon(quoteSummary.settled)}</div></div>
+          </div>
+
+          {!filteredQuotes.length ? (
+            <div className="small" style={{ textAlign: "center", padding: 32, color: "var(--muted)" }}>{quotes.length ? "조건에 맞는 견적이 없습니다." : "아직 견적이 없습니다. “새 견적”으로 시작하세요."}</div>
+          ) : filteredQuotes.map((q) => {
             const t = quoteTotals(q.lines);
             const st = CST_STATUS[q.status] || CST_STATUS.before;
             return (
