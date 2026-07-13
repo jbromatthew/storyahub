@@ -1736,6 +1736,7 @@ export function ConstructionView() {
   const [itemName, setItemName] = useState("");
   const [itemPrice, setItemPrice] = useState("");
   const [aptForm, setAptForm] = useState({ name: "", partner: "", address: "", note: "" });
+  const [newApt, setNewApt] = useState(null); // 견적 화면 인라인 새 단지 입력
 
   const load = () => {
     Promise.all([api.erpConstructionItems(), api.erpConstructionApartments(), api.erpConstructionQuotes()])
@@ -1772,7 +1773,17 @@ export function ConstructionView() {
   };
 
   // ---- 견적 ----
-  const newQuote = () => setEditing({ apartmentId: apts[0]?.id || "", title: "", lines: [], status: "before", taxInvoiceIssued: false, note: "" });
+  const newQuote = () => { setNewApt(null); setEditing({ apartmentId: apts[0]?.id || "", title: "", lines: [], status: "before", taxInvoiceIssued: false, note: "" }); };
+  const saveNewApt = async () => {
+    if (!newApt?.name.trim()) return notifyError(new Error("단지명을 입력하세요"));
+    try {
+      const created = await api.erpConstructionCreateApartment({ name: newApt.name.trim(), address: (newApt.address || "").trim() });
+      setApts((prev) => [created, ...prev]);
+      setEditing((ed) => ({ ...ed, apartmentId: created.id }));
+      setNewApt(null);
+      toastSuccess("단지를 추가했어요");
+    } catch (e) { notifyError(e); }
+  };
   const editQuote = (q) => setEditing({ ...q, apartmentId: q.apartmentId || "", lines: (q.lines || []).map((l) => ({ ...l })) });
   const addLineFromItem = (itemId) => {
     const it = items.find((x) => x.id === itemId);
@@ -1824,12 +1835,24 @@ export function ConstructionView() {
 
         <div className="card" style={{ marginTop: 14 }}>
           <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-            <div className="field" style={{ flex: "1 1 220px", marginBottom: 0 }}>
+            <div className="field" style={{ flex: "1 1 240px", marginBottom: 0 }}>
               <label>아파트 단지</label>
-              <select value={editing.apartmentId} onChange={(e) => setEditing((ed) => ({ ...ed, apartmentId: e.target.value }))}>
-                <option value="">(미지정)</option>
-                {apts.map((a) => <option key={a.id} value={a.id}>{a.name}{a.partner ? ` · ${a.partner}` : ""}</option>)}
-              </select>
+              {newApt ? (
+                <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                  <input autoFocus value={newApt.name} onChange={(e) => setNewApt((n) => ({ ...n, name: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") saveNewApt(); }} placeholder="단지명 *" style={{ flex: "1 1 120px", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", fontFamily: "inherit", fontSize: 14 }} />
+                  <input value={newApt.address} onChange={(e) => setNewApt((n) => ({ ...n, address: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") saveNewApt(); }} placeholder="주소 (선택)" style={{ flex: "1 1 140px", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", fontFamily: "inherit", fontSize: 14 }} />
+                  <button type="button" className="btn btn-accent btn-sm" onClick={saveNewApt}>추가</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setNewApt(null)}>취소</button>
+                </div>
+              ) : (
+                <div className="row" style={{ gap: 6 }}>
+                  <select style={{ flex: 1 }} value={editing.apartmentId} onChange={(e) => setEditing((ed) => ({ ...ed, apartmentId: e.target.value }))}>
+                    <option value="">(미지정)</option>
+                    {apts.map((a) => <option key={a.id} value={a.id}>{a.name}{a.partner ? ` · ${a.partner}` : ""}</option>)}
+                  </select>
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ flex: "0 0 auto", whiteSpace: "nowrap" }} onClick={() => setNewApt({ name: "", address: "" })}>+ 새 단지</button>
+                </div>
+              )}
             </div>
             <div className="field" style={{ flex: "2 1 260px", marginBottom: 0 }}>
               <label>제목 (선택)</label>
