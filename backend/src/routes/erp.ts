@@ -1528,3 +1528,73 @@ erpRouter.delete("/construction/quotes/:id", async (req: AuthedRequest, res) => 
   await prisma.erpConstructionQuote.delete({ where: { id: req.params.id } });
   res.json({ ok: true });
 });
+
+/* ===================== 재고 관리 (아파트너 공사) — 소유자 전용 ===================== */
+
+const cstStockDate = (v: unknown): string => {
+  const s = String(v ?? "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : new Date().toISOString().slice(0, 10);
+};
+
+erpRouter.get("/construction/stocks", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const stocks = await prisma.erpConstructionStock.findMany({
+    where: { active: true },
+    include: { moves: { orderBy: { date: "desc" } } },
+    orderBy: { createdAt: "desc" },
+  });
+  const out = stocks.map((s) => {
+    let balance = 0, purchaseSupply = 0, purchaseVat = 0;
+    for (const m of s.moves) {
+      balance += m.kind === "out" ? -m.qty : m.qty;
+      if (m.kind === "in" && m.unitPrice) {
+        const supply = m.unitPrice * m.qty;
+        purchaseSupply += supply;
+        purchaseVat += m.vatSeparate ? Math.round(supply * 0.1) : 0;
+      }
+    }
+    return { ...s, balance, purchaseSupply, purchaseVat, purchaseTotal: purchaseSupply + purchaseVat };
+  });
+  res.json(out);
+});
+
+erpRouter.post("/construction/stocks", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const { name, unit, note } = req.body ?? {};
+  if (!name?.trim()) return res.status(400).json({ error: "품목명을 입력하세요" });
+  const stock = await prisma.erpConstructionStock.create({
+    data: { name: String(name).trim(), unit: unit?.trim() || "개", note: note?.trim() || null },
+    include: { moves: true },
+  });
+  res.json(stock);
+});
+
+erpRouter.delete("/construction/stocks/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  await prisma.erpConstructionStock.update({ where: { id: req.params.id }, data: { active: false } });
+  res.json({ ok: true });
+});
+
+// 입출고 기록
+erpRouter.post("/construction/stocks/:id/moves", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const { date, kind, qty, unitPrice, vatSeparate, memo } = req.body ?? {};
+  const move = await prisma.erpConstructionStockMove.create({
+    data: {
+      stockId: req.params.id,
+      date: cstStockDate(date),
+      kind: kind === "out" ? "out" : "in",
+      qty: Math.max(0, Math.round(Number(qty) || 0)),
+      unitPrice: unitPrice != null && unitPrice !== "" ? Math.max(0, Math.round(Number(unitPrice))) : null,
+      vatSeparate: vatSeparate === undefined ? true : !!vatSeparate,
+      memo: memo?.trim() || null,
+    },
+  });
+  res.json(move);
+});
+
+erpRouter.delete("/construction/stock-moves/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  await prisma.erpConstructionStockMove.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});

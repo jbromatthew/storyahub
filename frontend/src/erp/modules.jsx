@@ -1863,6 +1863,10 @@ export function ConstructionView() {
   const [apts, setApts] = useState([]);
   const [quotes, setQuotes] = useState([]);
   const [teams, setTeams] = useState([]);
+  const [stocks, setStocks] = useState([]);
+  const [stockForm, setStockForm] = useState({ name: "", unit: "개" });
+  const [moveFor, setMoveFor] = useState(null); // {stockId, kind} 입출고 입력 대상
+  const [moveForm, setMoveForm] = useState({ date: "", qty: "", unitPrice: "", vatSeparate: true, memo: "" });
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // null=목록, {…}=편집중 견적
   const [busy, setBusy] = useState(false);
@@ -1877,10 +1881,39 @@ export function ConstructionView() {
   const [qTo, setQTo] = useState("");
 
   const load = () => {
-    Promise.all([api.erpConstructionItems(), api.erpConstructionApartments(), api.erpConstructionQuotes(), api.erpConstructionTeams().catch(() => [])])
-      .then(([i, a, q, tm]) => { setItems(i); setApts(a); setQuotes(q); setTeams(tm); })
+    Promise.all([api.erpConstructionItems(), api.erpConstructionApartments(), api.erpConstructionQuotes(), api.erpConstructionTeams().catch(() => []), api.erpConstructionStocks().catch(() => [])])
+      .then(([i, a, q, tm, st]) => { setItems(i); setApts(a); setQuotes(q); setTeams(tm); setStocks(st); })
       .catch(notifyError)
       .finally(() => setLoading(false));
+  };
+
+  // ---- 재고 ----
+  const addStock = async () => {
+    if (!stockForm.name.trim()) return notifyError(new Error("품목명을 입력하세요"));
+    try { await api.erpConstructionCreateStock({ name: stockForm.name.trim(), unit: stockForm.unit.trim() || "개" }); setStockForm({ name: "", unit: "개" }); load(); } catch (e) { notifyError(e); }
+  };
+  const deleteStock = async (s) => {
+    if (!(await confirmAction(`'${s.name}' 재고 품목을 삭제할까요? 입출고 기록도 함께 삭제됩니다.`))) return;
+    try { await api.erpConstructionDeleteStock(s.id); load(); } catch (e) { notifyError(e); }
+  };
+  const openMove = (stockId, kind) => {
+    setMoveFor({ stockId, kind });
+    setMoveForm({ date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date()), qty: "", unitPrice: "", vatSeparate: true, memo: "" });
+  };
+  const submitMove = async () => {
+    if (!moveFor) return;
+    if (!cstNum(moveForm.qty)) return notifyError(new Error("수량을 입력하세요"));
+    try {
+      await api.erpConstructionAddStockMove(moveFor.stockId, {
+        date: moveForm.date, kind: moveFor.kind, qty: cstNum(moveForm.qty),
+        unitPrice: moveFor.kind === "in" ? cstNum(moveForm.unitPrice) : undefined,
+        vatSeparate: moveForm.vatSeparate, memo: moveForm.memo,
+      });
+      setMoveFor(null); load();
+    } catch (e) { notifyError(e); }
+  };
+  const deleteMove = async (id) => {
+    try { await api.erpConstructionDeleteStockMove(id); load(); } catch (e) { notifyError(e); }
   };
 
   // ---- 협력업체(공사팀) ----
@@ -2186,13 +2219,13 @@ export function ConstructionView() {
   return (
     <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40, maxWidth: 900 }}>
       <div className="h-eyebrow">Owner</div>
-      <div className="h-title">공사 견적 관리</div>
+      <div className="h-title">아파트너 공사관리</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
-        아파트너 공사 수주 건을 견적·진행·정산까지 관리합니다. <strong>나(소유자)만 볼 수 있습니다.</strong>
+        아파트너 공사 수주 건을 견적·진행·정산·재고까지 관리합니다. <strong>나(소유자)만 볼 수 있습니다.</strong> (공사팀 풀은 다른 공사에도 공유)
       </div>
 
       <div className="sales-tabs" style={{ marginTop: 14 }}>
-        {[["quotes", "견적"], ["teams", "공사팀 정산"], ["apartments", "아파트 단지"], ["items", "품목 단가"]].map(([id, label]) => (
+        {[["quotes", "견적"], ["teams", "공사팀 정산"], ["stock", "재고"], ["apartments", "아파트 단지"], ["items", "품목 단가"]].map(([id, label]) => (
           <button key={id} type="button" className={"sales-tab" + (tab === id ? " on" : "")} onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
@@ -2288,6 +2321,76 @@ export function ConstructionView() {
             <div key={tm.id} className="list-item between" style={{ alignItems: "center" }}>
               <div><div className="ttl">{tm.name}</div>{tm.contact ? <div className="meta">{tm.contact}</div> : null}</div>
               <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => deleteTeam(tm)}>삭제</button>
+            </div>
+          ))}
+        </>
+      )}
+
+      {tab === "stock" && (
+        <>
+          <div className="card" style={{ marginTop: 16 }}>
+            <div className="kbe-meta-h" style={{ marginTop: 0 }}>재고 품목 등록</div>
+            <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+              <input style={{ flex: "1 1 160px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }} value={stockForm.name} onChange={(e) => setStockForm({ ...stockForm, name: e.target.value })} placeholder="품목명 * (예: 엘리베이터 모듈)" />
+              <input style={{ flex: "0 0 90px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }} value={stockForm.unit} onChange={(e) => setStockForm({ ...stockForm, unit: e.target.value })} placeholder="단위" />
+              <button type="button" className="btn btn-accent" onClick={addStock}>품목 추가</button>
+            </div>
+          </div>
+
+          <div className="cst-summary" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            <div className="cst-sum-card"><div className="lbl">품목 수</div><div className="val">{stocks.length}</div></div>
+            <div className="cst-sum-card settled"><div className="lbl">총 매입액 (VAT포함)</div><div className="val">{formatWon(stocks.reduce((a, s) => a + (s.purchaseTotal || 0), 0))}</div></div>
+          </div>
+
+          {!stocks.length ? (
+            <div className="small" style={{ color: "var(--muted)", padding: "10px 0" }}>등록된 재고 품목이 없습니다.</div>
+          ) : stocks.map((s) => (
+            <div key={s.id} className="card" style={{ marginTop: 12 }}>
+              <div className="row between" style={{ alignItems: "flex-start" }}>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 15 }}>{s.name} <span className="small" style={{ color: (s.balance || 0) > 0 ? "#0D7A3E" : "var(--accent-deep)" }}>· 재고 {(s.balance || 0).toLocaleString()}{s.unit}</span></div>
+                  <div className="meta small" style={{ marginTop: 3 }}>매입 {formatWon(s.purchaseSupply || 0)} + VAT {formatWon(s.purchaseVat || 0)} = <strong>{formatWon(s.purchaseTotal || 0)}</strong></div>
+                </div>
+                <div className="row" style={{ gap: 6 }}>
+                  <button type="button" className="btn btn-accent btn-sm" onClick={() => openMove(s.id, "in")}>입고</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => openMove(s.id, "out")}>출고</button>
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => deleteStock(s)}>삭제</button>
+                </div>
+              </div>
+
+              {moveFor?.stockId === s.id && (
+                <div className="card" style={{ marginTop: 10, background: "var(--paper)" }}>
+                  <div className="kbe-meta-h" style={{ marginTop: 0 }}>{moveFor.kind === "in" ? "입고(매입)" : "출고(사용)"} 입력</div>
+                  <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <input type="date" value={moveForm.date} onChange={(e) => setMoveForm({ ...moveForm, date: e.target.value })} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13 }} />
+                    <input inputMode="numeric" value={moveForm.qty} onChange={(e) => setMoveForm({ ...moveForm, qty: e.target.value })} placeholder="수량" style={{ flex: "0 0 80px", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, textAlign: "right" }} />
+                    {moveFor.kind === "in" && (
+                      <>
+                        <input inputMode="numeric" value={moveForm.unitPrice} onChange={(e) => setMoveForm({ ...moveForm, unitPrice: e.target.value })} placeholder="단가" style={{ flex: "0 0 100px", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, textAlign: "right" }} />
+                        <label className="row small" style={{ gap: 4, alignItems: "center" }}><input type="checkbox" checked={moveForm.vatSeparate} onChange={(e) => setMoveForm({ ...moveForm, vatSeparate: e.target.checked })} /> 부가세 별도</label>
+                      </>
+                    )}
+                    <button type="button" className="btn btn-accent btn-sm" onClick={submitMove}>저장</button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMoveFor(null)}>취소</button>
+                  </div>
+                  {moveFor.kind === "in" && cstNum(moveForm.qty) > 0 && cstNum(moveForm.unitPrice) > 0 && (
+                    <div className="small" style={{ marginTop: 8, fontWeight: 700 }}>
+                      공급가 {formatWon(cstNum(moveForm.qty) * cstNum(moveForm.unitPrice))}{moveForm.vatSeparate ? ` + VAT ${formatWon(Math.round(cstNum(moveForm.qty) * cstNum(moveForm.unitPrice) * 0.1))} = ${formatWon(Math.round(cstNum(moveForm.qty) * cstNum(moveForm.unitPrice) * 1.1))}` : ""}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(s.moves || []).length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  {s.moves.map((m) => (
+                    <div key={m.id} className="row between" style={{ padding: "7px 2px", borderTop: "1px solid var(--line-soft,#F3EFE9)", fontSize: 13 }}>
+                      <span>{m.date} · <strong style={{ color: m.kind === "in" ? "#0D7A3E" : "var(--accent-deep)" }}>{m.kind === "in" ? "입고" : "출고"} {m.qty.toLocaleString()}{s.unit}</strong>{m.unitPrice ? ` · 단가 ${m.unitPrice.toLocaleString()}${m.vatSeparate ? " (VAT별도)" : ""}` : ""}</span>
+                      <button type="button" className="cst-x" onClick={() => deleteMove(m.id)}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </>

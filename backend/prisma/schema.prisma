@@ -734,3 +734,28 @@ model ErpConstructionTeam {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 }
+
+model ErpConstructionStock {
+  id        String                     @id @default(cuid())
+  name      String
+  unit      String                     @default("개")
+  note      String?
+  active    Boolean                    @default(true)
+  createdAt DateTime                   @default(now())
+  moves     ErpConstructionStockMove[]
+}
+
+model ErpConstructionStockMove {
+  id           String               @id @default(cuid())
+  stockId      String
+  stock        ErpConstructionStock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  date         String               // YYYY-MM-DD
+  kind         String               @default("in") // in(입고/매입) | out(출고/사용)
+  qty          Int                  @default(0)
+  unitPrice    Int?                 // 매입 단가 (입고)
+  vatSeparate  Boolean              @default(true) // 부가세 별도 여부
+  memo         String?
+  createdAt    DateTime             @default(now())
+
+  @@index([stockId])
+}
