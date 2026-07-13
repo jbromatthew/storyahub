@@ -1862,6 +1862,7 @@ export function ConstructionView() {
   const [items, setItems] = useState([]);
   const [apts, setApts] = useState([]);
   const [quotes, setQuotes] = useState([]);
+  const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // null=목록, {…}=편집중 견적
   const [busy, setBusy] = useState(false);
@@ -1869,17 +1870,42 @@ export function ConstructionView() {
   const [itemName, setItemName] = useState("");
   const [itemPrice, setItemPrice] = useState("");
   const [aptForm, setAptForm] = useState({ name: "", partner: "", address: "", note: "" });
+  const [teamForm, setTeamForm] = useState({ name: "", contact: "", note: "" });
   const [newApt, setNewApt] = useState(null); // 견적 화면 인라인 새 단지 입력
   const [qStatus, setQStatus] = useState("all");
   const [qFrom, setQFrom] = useState("");
   const [qTo, setQTo] = useState("");
 
   const load = () => {
-    Promise.all([api.erpConstructionItems(), api.erpConstructionApartments(), api.erpConstructionQuotes()])
-      .then(([i, a, q]) => { setItems(i); setApts(a); setQuotes(q); })
+    Promise.all([api.erpConstructionItems(), api.erpConstructionApartments(), api.erpConstructionQuotes(), api.erpConstructionTeams().catch(() => [])])
+      .then(([i, a, q, tm]) => { setItems(i); setApts(a); setQuotes(q); setTeams(tm); })
       .catch(notifyError)
       .finally(() => setLoading(false));
   };
+
+  // ---- 협력업체(공사팀) ----
+  const addTeam = async () => {
+    if (!teamForm.name.trim()) return notifyError(new Error("팀명을 입력하세요"));
+    try { await api.erpConstructionCreateTeam(teamForm); setTeamForm({ name: "", contact: "", note: "" }); load(); } catch (e) { notifyError(e); }
+  };
+  const deleteTeam = async (tm) => {
+    if (!(await confirmAction(`'${tm.name}' 팀을 삭제할까요?`))) return;
+    try { await api.erpConstructionDeleteTeam(tm.id); load(); } catch (e) { notifyError(e); }
+  };
+  // 팀별 재정산 집계 (전체 견적의 payouts)
+  const teamPayoutSummary = useMemo(() => {
+    const map = new Map();
+    for (const q of quotes) {
+      for (const p of (q.payouts || [])) {
+        const key = p.teamId || p.teamName;
+        const cur = map.get(key) || { name: p.teamName || "(이름없음)", total: 0, paid: 0, unpaid: 0 };
+        cur.total += p.amount || 0;
+        if (p.paid) cur.paid += p.amount || 0; else cur.unpaid += p.amount || 0;
+        map.set(key, cur);
+      }
+    }
+    return [...map.values()].sort((a, b) => b.unpaid - a.unpaid);
+  }, [quotes]);
   useEffect(() => { load(); }, []);
 
   // ---- 품목 단가 ----
@@ -1909,7 +1935,7 @@ export function ConstructionView() {
   };
 
   // ---- 견적 ----
-  const newQuote = () => { setNewApt(null); setEditing({ apartmentId: apts[0]?.id || "", title: "", lines: [], status: "requested", taxInvoiceIssued: false, note: "", startDate: "", endDate: "" }); };
+  const newQuote = () => { setNewApt(null); setEditing({ apartmentId: apts[0]?.id || "", title: "", lines: [], payouts: [], status: "requested", taxInvoiceIssued: false, note: "", startDate: "", endDate: "" }); };
   const saveNewApt = async () => {
     if (!newApt?.name.trim()) return notifyError(new Error("단지명을 입력하세요"));
     try {
@@ -1920,7 +1946,7 @@ export function ConstructionView() {
       toastSuccess("단지를 추가했어요");
     } catch (e) { notifyError(e); }
   };
-  const editQuote = (q) => { setNewApt(null); setEditing({ ...q, apartmentId: q.apartmentId || "", startDate: q.startDate || "", endDate: q.endDate || "", lines: (q.lines || []).map((l) => ({ ...l })) }); };
+  const editQuote = (q) => { setNewApt(null); setEditing({ ...q, apartmentId: q.apartmentId || "", startDate: q.startDate || "", endDate: q.endDate || "", lines: (q.lines || []).map((l) => ({ ...l })), payouts: (q.payouts || []).map((p) => ({ ...p })) }); };
   const addLineFromItem = (itemId) => {
     const it = items.find((x) => x.id === itemId);
     if (!it) return;
@@ -1929,6 +1955,9 @@ export function ConstructionView() {
   const addBlankLine = () => setEditing((e) => ({ ...e, lines: [...e.lines, { name: "", unitPrice: 0, qty: 1 }] }));
   const patchLine = (i, patch) => setEditing((e) => ({ ...e, lines: e.lines.map((l, k) => k === i ? { ...l, ...patch } : l) }));
   const removeLine = (i) => setEditing((e) => ({ ...e, lines: e.lines.filter((_, k) => k !== i) }));
+  const addPayout = () => setEditing((e) => ({ ...e, payouts: [...(e.payouts || []), { teamId: "", teamName: "", amount: 0, paid: false, memo: "" }] }));
+  const setPayout = (i, patch) => setEditing((e) => ({ ...e, payouts: (e.payouts || []).map((p, k) => k === i ? { ...p, ...patch } : p) }));
+  const removePayout = (i) => setEditing((e) => ({ ...e, payouts: (e.payouts || []).filter((_, k) => k !== i) }));
 
   const saveQuote = async () => {
     setBusy(true);
@@ -1951,6 +1980,7 @@ export function ConstructionView() {
       note: editing.note || null,
       startDate: editing.startDate || null,
       endDate: editing.endDate || null,
+      payouts: (editing.payouts || []).map((p) => ({ teamId: p.teamId || null, teamName: p.teamName || "", amount: cstNum(p.amount), paid: !!p.paid, memo: p.memo || null })).filter((p) => p.teamName || p.amount > 0),
     };
     try {
       if (editing.id) await api.erpConstructionUpdateQuote(editing.id, payload);
@@ -2109,6 +2139,45 @@ export function ConstructionView() {
             <textarea value={editing.note || ""} onChange={(e) => setEditing((ed) => ({ ...ed, note: e.target.value }))} placeholder="정산 요청일, 특이사항 등" style={{ minHeight: 70 }} />
           </div>
         </div>
+
+        {/* 협력업체 재정산 (공사팀 지급) */}
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="row between" style={{ alignItems: "center" }}>
+            <div className="kbe-meta-h" style={{ margin: 0 }}>협력업체 재정산 (공사팀 지급)</div>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={addPayout}>+ 팀 지급 추가</button>
+          </div>
+          <div className="small" style={{ color: "var(--muted)", margin: "6px 0 12px" }}>이 공사를 맡긴 공사팀에게 줄 금액을 팀별로 기록하세요. 지급 완료는 체크.</div>
+          {!(editing.payouts || []).length ? (
+            <div className="small" style={{ color: "var(--muted)" }}>아직 지급 항목이 없습니다. “팀 지급 추가”로 넣으세요.</div>
+          ) : (
+            <>
+              {editing.payouts.map((p, i) => (
+                <div key={i} className="row" style={{ gap: 6, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <select value={p.teamId || ""} onChange={(e) => setPayout(i, { teamId: e.target.value, teamName: teams.find((t) => t.id === e.target.value)?.name || "" })} style={{ flex: "1 1 130px", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff" }}>
+                    <option value="">팀 선택</option>
+                    {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                  <input inputMode="numeric" value={p.amount ? p.amount.toLocaleString() : ""} onChange={(e) => setPayout(i, { amount: cstNum(e.target.value) })} placeholder="지급액" style={{ flex: "1 1 100px", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, textAlign: "right" }} />
+                  <label className="row" style={{ gap: 4, alignItems: "center", flex: "0 0 auto" }}>
+                    <input type="checkbox" checked={!!p.paid} onChange={(e) => setPayout(i, { paid: e.target.checked })} />
+                    <span className="small">지급완료</span>
+                  </label>
+                  <button type="button" className="cst-x" onClick={() => removePayout(i)}>✕</button>
+                </div>
+              ))}
+              {(() => {
+                const sum = editing.payouts.reduce((a, p) => a + cstNum(p.amount), 0);
+                const unpaid = editing.payouts.reduce((a, p) => a + (p.paid ? 0 : cstNum(p.amount)), 0);
+                const margin = quoteTotals(editing.lines).total - sum;
+                return (
+                  <div className="small" style={{ marginTop: 8, fontWeight: 700 }}>
+                    지급 합계 <strong>{formatWon(sum)}</strong> · 미지급 <strong style={{ color: "var(--accent-deep)" }}>{formatWon(unpaid)}</strong> · 견적가 대비 마진 <strong style={{ color: margin >= 0 ? "#0D7A3E" : "#C5221F" }}>{formatWon(margin)}</strong>
+                  </div>
+                );
+              })()}
+            </>
+          )}
+        </div>
       </div>
     );
   }
@@ -2123,7 +2192,7 @@ export function ConstructionView() {
       </div>
 
       <div className="sales-tabs" style={{ marginTop: 14 }}>
-        {[["quotes", "견적"], ["apartments", "아파트 단지"], ["items", "품목 단가"]].map(([id, label]) => (
+        {[["quotes", "견적"], ["teams", "공사팀 정산"], ["apartments", "아파트 단지"], ["items", "품목 단가"]].map(([id, label]) => (
           <button key={id} type="button" className={"sales-tab" + (tab === id ? " on" : "")} onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
@@ -2179,6 +2248,48 @@ export function ConstructionView() {
               </div>
             );
           })}
+        </>
+      )}
+
+      {tab === "teams" && (
+        <>
+          <div className="card" style={{ marginTop: 16 }}>
+            <div className="kbe-meta-h" style={{ marginTop: 0 }}>공사팀(협력업체) 등록</div>
+            <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+              <input style={{ flex: "1 1 140px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }} value={teamForm.name} onChange={(e) => setTeamForm({ ...teamForm, name: e.target.value })} placeholder="팀명 * (예: A설치팀)" />
+              <input style={{ flex: "1 1 130px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }} value={teamForm.contact} onChange={(e) => setTeamForm({ ...teamForm, contact: e.target.value })} placeholder="연락처/계좌 (선택)" />
+              <button type="button" className="btn btn-accent" onClick={addTeam}>팀 추가</button>
+            </div>
+          </div>
+
+          <div className="cst-summary" style={{ gridTemplateColumns: "repeat(2,1fr)" }}>
+            <div className="cst-sum-card unsettled"><div className="lbl">팀에 줄 미지급 총액</div><div className="val">{formatWon(teamPayoutSummary.reduce((a, t) => a + t.unpaid, 0))}</div></div>
+            <div className="cst-sum-card settled"><div className="lbl">지급 완료 총액</div><div className="val">{formatWon(teamPayoutSummary.reduce((a, t) => a + t.paid, 0))}</div></div>
+          </div>
+
+          {teamPayoutSummary.length > 0 && (
+            <>
+              <div className="h-eyebrow" style={{ marginTop: 18 }}>팀별 지급 현황</div>
+              {teamPayoutSummary.map((t, i) => (
+                <div key={i} className="list-item between" style={{ alignItems: "center" }}>
+                  <div><div className="ttl">{t.name}</div><div className="meta">총 {formatWon(t.total)} · 지급완료 {formatWon(t.paid)}</div></div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontWeight: 800, color: t.unpaid > 0 ? "var(--accent-deep)" : "#0D7A3E" }}>{t.unpaid > 0 ? `미지급 ${formatWon(t.unpaid)}` : "완료"}</div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          <div className="h-eyebrow" style={{ marginTop: 18 }}>등록된 공사팀 {teams.length}팀</div>
+          {!teams.length ? (
+            <div className="small" style={{ color: "var(--muted)", padding: "10px 0" }}>아직 등록된 팀이 없습니다.</div>
+          ) : teams.map((tm) => (
+            <div key={tm.id} className="list-item between" style={{ alignItems: "center" }}>
+              <div><div className="ttl">{tm.name}</div>{tm.contact ? <div className="meta">{tm.contact}</div> : null}</div>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => deleteTeam(tm)}>삭제</button>
+            </div>
+          ))}
         </>
       )}
 

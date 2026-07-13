@@ -1423,6 +1423,56 @@ function sanitizeLines(raw: unknown): Array<{ name: string; unitPrice: number; q
     .filter((l) => l.name);
 }
 
+function sanitizePayouts(raw: unknown) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((p: any) => ({
+      teamId: p?.teamId ? String(p.teamId) : null,
+      teamName: String(p?.teamName ?? "").trim(),
+      amount: Math.max(0, Math.round(Number(p?.amount) || 0)),
+      paid: !!p?.paid,
+      memo: String(p?.memo ?? "").trim() || null,
+    }))
+    .filter((p) => p.teamName || p.amount > 0);
+}
+
+// 협력업체(공사팀) 풀
+erpRouter.get("/construction/teams", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const teams = await prisma.erpConstructionTeam.findMany({ where: { active: true }, orderBy: { createdAt: "desc" } });
+  res.json(teams);
+});
+
+erpRouter.post("/construction/teams", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const { name, contact, note } = req.body ?? {};
+  if (!name?.trim()) return res.status(400).json({ error: "팀명을 입력하세요" });
+  const team = await prisma.erpConstructionTeam.create({
+    data: { name: String(name).trim(), contact: contact?.trim() || null, note: note?.trim() || null },
+  });
+  res.json(team);
+});
+
+erpRouter.patch("/construction/teams/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const { name, contact, note } = req.body ?? {};
+  const team = await prisma.erpConstructionTeam.update({
+    where: { id: req.params.id },
+    data: {
+      ...(name !== undefined ? { name: String(name).trim() } : {}),
+      ...(contact !== undefined ? { contact: contact?.trim() || null } : {}),
+      ...(note !== undefined ? { note: note?.trim() || null } : {}),
+    },
+  });
+  res.json(team);
+});
+
+erpRouter.delete("/construction/teams/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  await prisma.erpConstructionTeam.update({ where: { id: req.params.id }, data: { active: false } });
+  res.json({ ok: true });
+});
+
 erpRouter.get("/construction/quotes", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
   const quotes = await prisma.erpConstructionQuote.findMany({
@@ -1434,12 +1484,13 @@ erpRouter.get("/construction/quotes", async (req: AuthedRequest, res) => {
 
 erpRouter.post("/construction/quotes", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
-  const { apartmentId, title, lines, status, taxInvoiceIssued, note, startDate, endDate } = req.body ?? {};
+  const { apartmentId, title, lines, status, taxInvoiceIssued, note, startDate, endDate, payouts } = req.body ?? {};
   const quote = await prisma.erpConstructionQuote.create({
     data: {
       apartmentId: apartmentId || null,
       title: title?.trim() || null,
       lines: sanitizeLines(lines),
+      payouts: sanitizePayouts(payouts),
       status: CONSTRUCTION_STATUSES.includes(status) ? status : "requested",
       taxInvoiceIssued: !!taxInvoiceIssued,
       note: note?.trim() || null,
@@ -1453,13 +1504,14 @@ erpRouter.post("/construction/quotes", async (req: AuthedRequest, res) => {
 
 erpRouter.patch("/construction/quotes/:id", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
-  const { apartmentId, title, lines, status, taxInvoiceIssued, note, startDate, endDate } = req.body ?? {};
+  const { apartmentId, title, lines, status, taxInvoiceIssued, note, startDate, endDate, payouts } = req.body ?? {};
   const quote = await prisma.erpConstructionQuote.update({
     where: { id: req.params.id },
     data: {
       ...(apartmentId !== undefined ? { apartmentId: apartmentId || null } : {}),
       ...(title !== undefined ? { title: title?.trim() || null } : {}),
       ...(lines !== undefined ? { lines: sanitizeLines(lines) } : {}),
+      ...(payouts !== undefined ? { payouts: sanitizePayouts(payouts) } : {}),
       ...(status !== undefined && CONSTRUCTION_STATUSES.includes(status) ? { status } : {}),
       ...(taxInvoiceIssued !== undefined ? { taxInvoiceIssued: !!taxInvoiceIssued } : {}),
       ...(note !== undefined ? { note: note?.trim() || null } : {}),

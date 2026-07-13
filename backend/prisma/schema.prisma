@@ -717,9 +717,20 @@ model ErpConstructionQuote {
   endDate          String?                   // 공사 종료일 (YYYY-MM-DD)
   status           String                    @default("requested") // requested | confirmed | ongoing | done | billing | settled
   taxInvoiceIssued Boolean                   @default(false)
+  payouts          Json                      @default("[]") // 협력업체 재정산: [{teamId, teamName, amount, paid, memo}]
   note             String?
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
 
   @@index([status])
+}
+
+
+model ErpConstructionTeam {
+  id        String   @id @default(cuid())
+  name      String
+  contact   String?
+  note      String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
 }
