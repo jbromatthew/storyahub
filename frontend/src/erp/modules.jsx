@@ -1829,6 +1829,9 @@ export function MembersView() {
   const [teamName, setTeamName] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
+  const [editId, setEditId] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
 
   const load = () => {
     Promise.all([api.erpMembers(), api.erpDepartments().catch(() => [])])
@@ -1876,6 +1879,24 @@ export function MembersView() {
       setMembers((prev) => prev.map((x) => (x.id === m.id
         ? { ...x, department: deptId ? depts.find((d) => d.id === deptId) || null : null }
         : x)));
+    } catch (e) { notifyError(e); } finally { setBusyId(""); }
+  };
+
+  const startEdit = (m) => {
+    setEditId(m.id);
+    setEditName(m.name || "");
+    setEditEmail(m.email || "");
+  };
+  const cancelEdit = () => { setEditId(""); setEditName(""); setEditEmail(""); };
+  const saveEdit = async (m) => {
+    const em = editEmail.trim().toLowerCase();
+    if (!em || !em.includes("@")) return notifyError(new Error("올바른 이메일을 입력하세요"));
+    setBusyId(m.id);
+    try {
+      await api.erpUpdateEmployee(m.id, { name: editName.trim() || m.name, email: em });
+      toastSuccess("멤버 정보를 수정했어요");
+      cancelEdit();
+      load();
     } catch (e) { notifyError(e); } finally { setBusyId(""); }
   };
 
@@ -1942,24 +1963,51 @@ export function MembersView() {
       <div style={{ marginTop: 20 }}>
         <div className="h-eyebrow">전체 멤버 {members.length}명</div>
         {members.map((m) => (
-          <div key={m.id} className="list-item between" style={{ alignItems: "center", gap: 10 }}>
-            <div style={{ minWidth: 0 }}>
-              <div className="ttl">{m.name || m.email}</div>
-              <div className="meta">
-                {m.email} · {statusLabel(m.memberStatus)} · {m.hasAccount ? "계정 있음" : "미가입"}
-                {m.department ? ` · ${m.department.name}` : ""}
+          editId === m.id ? (
+            <div key={m.id} className="list-item" style={{ display: "block" }}>
+              <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="이름"
+                  style={{ flex: "1 1 120px", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14 }}
+                />
+                <input
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveEdit(m); }}
+                  placeholder="name@broj.company"
+                  style={{ flex: "2 1 200px", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14 }}
+                />
+              </div>
+              <div className="row" style={{ gap: 6, justifyContent: "flex-end" }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={cancelEdit} disabled={busyId === m.id}>취소</button>
+                <button type="button" className="btn btn-accent btn-sm" onClick={() => saveEdit(m)} disabled={busyId === m.id}>{busyId === m.id ? "저장 중…" : "저장"}</button>
               </div>
             </div>
-            <select
-              value={m.department?.id || ""}
-              disabled={busyId === m.id}
-              onChange={(e) => assignTeam(m, e.target.value)}
-              style={{ flex: "0 0 auto", border: "1px solid var(--line)", borderRadius: 10, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff", maxWidth: 160 }}
-            >
-              <option value="">팀 미배정</option>
-              {depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
-          </div>
+          ) : (
+            <div key={m.id} className="list-item between" style={{ alignItems: "center", gap: 10 }}>
+              <div style={{ minWidth: 0 }}>
+                <div className="ttl">{m.name || m.email}</div>
+                <div className="meta">
+                  {m.email} · {statusLabel(m.memberStatus)} · {m.hasAccount ? "계정 있음" : "미가입"}
+                  {m.department ? ` · ${m.department.name}` : ""}
+                </div>
+              </div>
+              <div className="row" style={{ gap: 6, flex: "0 0 auto" }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => startEdit(m)}>수정</button>
+                <select
+                  value={m.department?.id || ""}
+                  disabled={busyId === m.id}
+                  onChange={(e) => assignTeam(m, e.target.value)}
+                  style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff", maxWidth: 130 }}
+                >
+                  <option value="">팀 미배정</option>
+                  {depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </div>
+            </div>
+          )
         ))}
       </div>
     </div>
