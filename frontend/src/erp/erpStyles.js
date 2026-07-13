@@ -456,6 +456,34 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .cst-sum-card.settled .val{color:#0D7A3E;}
 @media(max-width:560px){.cst-summary{grid-template-columns:1fr;}}
 
+/* ── 공용 리스트 테이블 ── */
+.erp-tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:16px;background:var(--card);margin-top:14px;box-shadow:0 1px 2px rgba(20,16,12,.03);}
+.erp-tbl{width:100%;border-collapse:collapse;font-size:13.5px;min-width:520px;}
+.erp-tbl thead th{position:sticky;top:0;background:#FBFAF7;color:var(--muted);font-weight:700;font-size:11px;letter-spacing:.04em;text-transform:uppercase;text-align:left;padding:11px 16px;border-bottom:1px solid var(--line);white-space:nowrap;z-index:1;}
+.erp-tbl tbody td{padding:13px 16px;border-bottom:1px solid var(--line);vertical-align:middle;color:var(--ink);line-height:1.4;}
+.erp-tbl tbody tr:last-child td{border-bottom:none;}
+.erp-tbl tbody tr.clickable{cursor:pointer;transition:background .12s;}
+.erp-tbl tbody tr.clickable:hover td{background:#FBF7F3;}
+.erp-tbl th.num,.erp-tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.erp-tbl th.ctr,.erp-tbl td.ctr{text-align:center;}
+.erp-tbl th.shrink,.erp-tbl td.shrink{width:1%;white-space:nowrap;}
+.erp-tbl .cell-ttl{font-weight:700;color:var(--ink);}
+.erp-tbl .cell-sub{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.35;}
+.erp-tbl .cell-sub.clip{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;max-width:420px;}
+.erp-tbl .row-actions{display:flex;gap:6px;justify-content:flex-end;white-space:nowrap;}
+.erp-tbl-empty{text-align:center;padding:46px 16px;color:var(--muted);font-size:13px;line-height:1.6;}
+.erp-tbl-cap{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:18px 0 0;}
+.erp-tbl-cap .cnt{font-size:12.5px;font-weight:700;color:var(--muted);}
+.erp-badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;background:#F1EDE5;color:#6B665C;white-space:nowrap;line-height:1.5;}
+.erp-badge.green{background:#E7F5EC;color:#1B7A43;}
+.erp-badge.blue{background:#E7F0FB;color:#1560C0;}
+.erp-badge.orange{background:var(--accent-soft);color:var(--accent-deep);}
+.erp-badge.gray{background:#F1EDE5;color:#8C857A;}
+.erp-tag-chip{display:inline-block;font-size:11px;color:var(--muted);background:#F5F1EA;border-radius:6px;padding:2px 7px;margin-right:4px;white-space:nowrap;}
+.erp-btn-x{border:1px solid var(--line);background:#fff;color:#C0392B;border-radius:8px;width:28px;height:28px;font:inherit;font-size:13px;cursor:pointer;line-height:1;}
+.erp-btn-x:hover{background:#FDECEA;border-color:#F3B8AE;}
+@media(max-width:560px){.erp-tbl{font-size:13px;}.erp-tbl thead th,.erp-tbl tbody td{padding:10px 12px;}}
+
 ${CALENDAR_CSS}
 ${KB_CSS}
 `;

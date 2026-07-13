@@ -167,6 +167,33 @@ function KbVisibilityBadge({ article, erpMode }) {
   );
 }
 
+function KbArticleRow({ article, onOpen }) {
+  const isFormal = article.status === "formal" || article.status === "formal_pending";
+  const isPublic = article.visibility === "company";
+  const authorHint = article.isShared && article.sharedBy
+    ? (article.sharedBy.name || article.sharedBy.email?.split("@")[0] || "팀원")
+    : null;
+  const tags = article.tags || [];
+  const files = kbFileCount(article);
+  return (
+    <tr className="clickable" onClick={() => onOpen(article)}>
+      <td>
+        <div className="cell-ttl" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {isFormal && <span className="erp-badge green">정식</span>}
+          <span>{article.t}</span>
+        </div>
+        <div className="cell-sub clip">{kbExcerpt(article) || "내용 미리보기가 없습니다."}</div>
+      </td>
+      <td className="shrink"><span className="erp-badge">{article.c}</span></td>
+      <td className="shrink">
+        {tags.length ? tags.slice(0, 3).map((t) => <span key={t} className="erp-tag-chip">#{t}</span>) : <span style={{ color: "var(--muted)" }}>—</span>}
+      </td>
+      <td className="shrink ctr"><span className={"erp-badge " + (isPublic ? "blue" : "gray")}>{isPublic ? "팀공개" : "비공개"}</span></td>
+      <td className="shrink num"><span className="cell-sub" style={{ margin: 0 }}>{article.d}<br />{authorHint ? `${authorHint} · ` : ""}{kbReadMinutes(article)}분{files > 0 ? ` · 📎${files}` : ""}</span></td>
+    </tr>
+  );
+}
+
 function KbArticleCard({ article, onOpen, pinned, erpMode = false }) {
   const isFormal = article.status === "formal" || article.status === "formal_pending";
   const isPublic = article.visibility === "company";
@@ -312,11 +339,34 @@ export default function KnowledgeFeed({ articles, openWrite, section = "knowledg
         )}
 
         {gridItems.length > 0 && <div className="kbh-sech">{erpMode ? "지식 목록" : `${kbSectionLabel(section)} 목록`}</div>}
-        <div className={`kbh-list ${listClass}${erpMode ? " kbh-compact-list" : ""}`}>
-          {gridItems.map((a, i) => (
-            <KbArticleCard key={a.id} article={a} onOpen={openWrite} pinned={!erpMode && viewMode === "list" && i === 0 && !!feat} erpMode={erpMode} />
-          ))}
-        </div>
+        {erpMode ? (
+          gridItems.length > 0 && (
+            <div className="erp-tbl-wrap">
+              <table className="erp-tbl">
+                <thead>
+                  <tr>
+                    <th>제목</th>
+                    <th className="shrink">카테고리</th>
+                    <th className="shrink">태그</th>
+                    <th className="shrink ctr">공개</th>
+                    <th className="shrink num">작성</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gridItems.map((a) => (
+                    <KbArticleRow key={a.id} article={a} onOpen={openWrite} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : (
+          <div className={`kbh-list ${listClass}`}>
+            {gridItems.map((a, i) => (
+              <KbArticleCard key={a.id} article={a} onOpen={openWrite} pinned={viewMode === "list" && i === 0 && !!feat} erpMode={erpMode} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

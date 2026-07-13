@@ -1241,19 +1241,32 @@ export function MeetingNotesView() {
         <div><div className="h-eyebrow">M5</div><div className="h-title">회의록</div></div>
         <button type="button" className="btn btn-accent btn-sm" onClick={openCreate}>작성</button>
       </div>
-      {notes.map((n) => (
-        <div key={n.id} className="list-item" role="button" tabIndex={0} onClick={() => openView(n)} onKeyDown={(e) => { if (e.key === "Enter") openView(n); }} style={{ cursor: "pointer" }}>
-          <div style={{ flex: 1 }}>
-            <div className="ttl">{n.title}</div>
-            <div className="meta">
-              {new Date(n.startsAt).toLocaleString("ko-KR")}
-              {n.place ? ` · ${n.place}` : ""}
-            </div>
-          </div>
-          {I.chevron({})}
-        </div>
-      ))}
-      {!notes.length && <div className="small" style={{ textAlign: "center", padding: 40 }}>회의록이 없습니다</div>}
+      {notes.length > 0 && (
+        <div className="erp-tbl-cap"><span className="cnt">회의록 {notes.length}개</span></div>
+      )}
+      <div className="erp-tbl-wrap">
+        <table className="erp-tbl">
+          <thead>
+            <tr>
+              <th>제목</th>
+              <th className="shrink">일시</th>
+              <th className="shrink">장소</th>
+              <th className="shrink"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {notes.map((n) => (
+              <tr key={n.id} className="clickable" onClick={() => openView(n)}>
+                <td><div className="cell-ttl">{n.title}</div></td>
+                <td className="shrink"><span className="cell-sub" style={{ margin: 0 }}>{new Date(n.startsAt).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" })}</span></td>
+                <td className="shrink">{n.place || <span style={{ color: "var(--muted)" }}>—</span>}</td>
+                <td className="shrink ctr">{I.chevron({})}</td>
+              </tr>
+            ))}
+            {!notes.length && <tr><td colSpan={4} className="erp-tbl-empty">회의록이 없습니다</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -2406,14 +2419,23 @@ export function ConstructionView() {
               <button type="button" className="btn btn-accent" onClick={addApt}>추가</button>
             </div>
           </div>
-          <div style={{ marginTop: 14 }}>
-            {!apts.length ? <div className="small" style={{ textAlign: "center", padding: 24, color: "var(--muted)" }}>등록된 단지가 없습니다.</div> :
-              apts.map((a) => (
-                <div key={a.id} className="list-item between" style={{ alignItems: "center" }}>
-                  <div><div className="ttl">{a.name}</div><div className="meta">{[a.partner, a.address].filter(Boolean).join(" · ") || "—"}</div></div>
-                  <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => deleteApt(a)}>삭제</button>
-                </div>
-              ))}
+          <div className="erp-tbl-wrap">
+            <table className="erp-tbl">
+              <thead>
+                <tr><th>단지명</th><th className="shrink">아파트너</th><th>주소</th><th className="shrink ctr"></th></tr>
+              </thead>
+              <tbody>
+                {apts.map((a) => (
+                  <tr key={a.id}>
+                    <td><div className="cell-ttl">{a.name}</div></td>
+                    <td className="shrink">{a.partner || <span style={{ color: "var(--muted)" }}>—</span>}</td>
+                    <td><span className="cell-sub" style={{ margin: 0 }}>{a.address || "—"}</span></td>
+                    <td className="shrink ctr"><button type="button" className="erp-btn-x" title="삭제" onClick={() => deleteApt(a)}>✕</button></td>
+                  </tr>
+                ))}
+                {!apts.length && <tr><td colSpan={4} className="erp-tbl-empty">등록된 단지가 없습니다.</td></tr>}
+              </tbody>
+            </table>
           </div>
         </>
       )}
@@ -2648,7 +2670,7 @@ export function MembersView() {
   const teamCount = (id) => members.filter((m) => m.department?.id === id).length;
 
   return (
-    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40, maxWidth: 720 }}>
+    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40, maxWidth: 900 }}>
       <div className="h-eyebrow">Access</div>
       <div className="h-title">멤버 관리</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
@@ -2685,70 +2707,100 @@ export function MembersView() {
       {pending.length > 0 && (
         <div style={{ marginTop: 20 }}>
           <div className="h-eyebrow">승인 대기 {pending.length}명</div>
-          {pending.map((m) => (
-            <div key={m.id} className="list-item between" style={{ alignItems: "center" }}>
-              <div>
-                <div className="ttl">{m.name || m.email}</div>
-                <div className="meta">{m.email}{m.hasAccount ? " · 가입 완료" : " · 가입 전"}</div>
-              </div>
-              <div className="row" style={{ gap: 6 }}>
-                <button type="button" className="btn btn-accent btn-sm" onClick={() => api.erpApproveMember(m.id).then(load).catch(notifyError)}>승인</button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => api.erpRejectMember(m.id).then(load).catch(notifyError)}>거절</button>
-              </div>
-            </div>
-          ))}
+          <div className="erp-tbl-wrap">
+            <table className="erp-tbl">
+              <thead>
+                <tr><th>멤버</th><th className="shrink ctr">가입</th><th className="shrink"></th></tr>
+              </thead>
+              <tbody>
+                {pending.map((m) => (
+                  <tr key={m.id}>
+                    <td><div className="cell-ttl">{m.name || m.email}</div><div className="cell-sub">{m.email}</div></td>
+                    <td className="shrink ctr"><span className={"erp-badge " + (m.hasAccount ? "green" : "gray")}>{m.hasAccount ? "가입 완료" : "가입 전"}</span></td>
+                    <td className="shrink">
+                      <div className="row-actions">
+                        <button type="button" className="btn btn-accent btn-sm" onClick={() => api.erpApproveMember(m.id).then(load).catch(notifyError)}>승인</button>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => api.erpRejectMember(m.id).then(load).catch(notifyError)}>거절</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       <div style={{ marginTop: 20 }}>
         <div className="h-eyebrow">전체 멤버 {members.length}명</div>
-        {members.map((m) => (
-          editId === m.id ? (
-            <div key={m.id} className="list-item" style={{ display: "block" }}>
-              <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                <input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  placeholder="이름"
-                  style={{ flex: "1 1 120px", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14 }}
-                />
-                <input
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") saveEdit(m); }}
-                  placeholder="name@broj.company"
-                  style={{ flex: "2 1 200px", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14 }}
-                />
-              </div>
-              <div className="row" style={{ gap: 6, justifyContent: "flex-end" }}>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={cancelEdit} disabled={busyId === m.id}>취소</button>
-                <button type="button" className="btn btn-accent btn-sm" onClick={() => saveEdit(m)} disabled={busyId === m.id}>{busyId === m.id ? "저장 중…" : "저장"}</button>
-              </div>
-            </div>
-          ) : (
-            <div key={m.id} className="list-item between" style={{ alignItems: "center", gap: 10 }}>
-              <div style={{ minWidth: 0 }}>
-                <div className="ttl">{m.name || m.email}</div>
-                <div className="meta">
-                  {m.email} · {statusLabel(m.memberStatus)} · {m.hasAccount ? "계정 있음" : "미가입"}
-                  {m.department ? ` · ${m.department.name}` : ""}
-                </div>
-              </div>
-              <div className="row" style={{ gap: 6, flex: "0 0 auto" }}>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => startEdit(m)}>수정</button>
-                <select
-                  value={m.department?.id || ""}
-                  disabled={busyId === m.id}
-                  onChange={(e) => assignTeam(m, e.target.value)}
-                  style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff", maxWidth: 130 }}
-                >
-                  <option value="">팀 미배정</option>
-                  {depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-              </div>
-            </div>
-          )
-        ))}
+        <div className="erp-tbl-wrap">
+          <table className="erp-tbl">
+            <thead>
+              <tr>
+                <th>멤버</th>
+                <th className="shrink ctr">상태</th>
+                <th className="shrink ctr">계정</th>
+                <th className="shrink">팀</th>
+                <th className="shrink"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((m) => (
+                editId === m.id ? (
+                  <tr key={m.id}>
+                    <td colSpan={5}>
+                      <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                        <input
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          placeholder="이름"
+                          style={{ flex: "1 1 120px", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14 }}
+                        />
+                        <input
+                          value={editEmail}
+                          onChange={(e) => setEditEmail(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") saveEdit(m); }}
+                          placeholder="name@broj.company"
+                          style={{ flex: "2 1 200px", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14 }}
+                        />
+                        <div className="row" style={{ gap: 6 }}>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={cancelEdit} disabled={busyId === m.id}>취소</button>
+                          <button type="button" className="btn btn-accent btn-sm" onClick={() => saveEdit(m)} disabled={busyId === m.id}>{busyId === m.id ? "저장 중…" : "저장"}</button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={m.id}>
+                    <td>
+                      <div className="cell-ttl">{m.name || m.email}</div>
+                      <div className="cell-sub">{m.email}</div>
+                    </td>
+                    <td className="shrink ctr"><span className="erp-badge">{statusLabel(m.memberStatus)}</span></td>
+                    <td className="shrink ctr"><span className={"erp-badge " + (m.hasAccount ? "green" : "orange")}>{m.hasAccount ? "계정 있음" : "미가입"}</span></td>
+                    <td className="shrink">
+                      <select
+                        value={m.department?.id || ""}
+                        disabled={busyId === m.id}
+                        onChange={(e) => assignTeam(m, e.target.value)}
+                        style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff", maxWidth: 140 }}
+                      >
+                        <option value="">팀 미배정</option>
+                        {depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      </select>
+                    </td>
+                    <td className="shrink">
+                      <div className="row-actions">
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => startEdit(m)}>수정</button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              ))}
+              {!members.length && <tr><td colSpan={5} className="erp-tbl-empty">멤버가 없습니다</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
