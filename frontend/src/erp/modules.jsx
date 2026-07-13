@@ -5,6 +5,7 @@ import { APPROVAL_BOXES, LEAVE_TYPES, LEAVE_POLICY, APPROVAL_CHAINS, FORM_CHAIN_
 import { notifyError, toastSuccess } from "../toast.js";
 import { confirmAction } from "../confirm.js";
 import { StatViz, seriesColor } from "./charts.jsx";
+import { BROJ_SEAL } from "./brojSeal.js";
 
 const STATUS_LABEL = {
   draft: "임시저장", submitted: "상신", in_progress: "진행중",
@@ -1724,6 +1725,114 @@ const quoteTotals = (lines) => (lines || []).reduce(
   { supply: 0, vat: 0, total: 0 },
 );
 
+const QUOTE_SUPPLIER = {
+  bizNo: "456-81-02350",
+  company: "브로제이",
+  ceo: "조민규",
+  address: "서울 금천구 가산디지털 2로 166 424호",
+  manager: "조민규",
+  phone: "010-4807-5864",
+  account: "우리은행 1005-704-322242 (주)브로제이",
+};
+
+function quoteDateStr(quote) {
+  const d = quote?.createdAt ? new Date(quote.createdAt) : new Date();
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(d).replace(/-/g, ".");
+}
+
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function printConstructionQuote(quote, apartment) {
+  const lines = quote?.lines || [];
+  const t = quoteTotals(lines);
+  const s = QUOTE_SUPPLIER;
+  const rowsHtml = lines.map((l, i) => {
+    const supply = lineSupply(l), vat = lineVat(l);
+    return `<tr>
+      <td class="c">${i + 1}</td>
+      <td class="l">${esc(l.name)}</td>
+      <td class="c">${cstNum(l.qty).toLocaleString()}</td>
+      <td class="r">${cstNum(l.unitPrice).toLocaleString()}</td>
+      <td class="r">${supply.toLocaleString()}</td>
+      <td class="r">${vat.toLocaleString()}</td>
+      <td class="r b">${(supply + vat).toLocaleString()}</td>
+    </tr>`;
+  }).join("");
+
+  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>견적서 - ${esc(apartment?.name || "")}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif;color:#1a1a1a;padding:28px 32px;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    .title{text-align:center;font-size:30px;font-weight:800;letter-spacing:18px;padding-left:18px;margin-bottom:6px;}
+    .apt{text-align:center;font-size:15px;color:#444;margin-bottom:18px;}
+    .top{display:flex;justify-content:flex-end;margin-bottom:10px;}
+    .sup{position:relative;border:1.5px solid #333;min-width:340px;}
+    .sup .h{display:flex;}
+    .sup .h .lbl{writing-mode:vertical-rl;text-orientation:upright;background:#F2F2F2;border-right:1px solid #999;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;padding:6px 2px;letter-spacing:2px;}
+    .sup table{border-collapse:collapse;flex:1;}
+    .sup td{border-bottom:1px solid #ccc;border-left:1px solid #ccc;padding:6px 9px;font-size:12.5px;}
+    .sup td.k{background:#F7F7F7;font-weight:700;width:78px;white-space:nowrap;}
+    .sup tr:last-child td{border-bottom:none;}
+    .seal{position:absolute;right:8px;top:34px;width:74px;height:74px;opacity:.92;}
+    .date{text-align:right;font-size:12.5px;color:#333;margin:2px 0 12px;}
+    table.items{width:100%;border-collapse:collapse;}
+    table.items th,table.items td{border:1px solid #888;padding:8px 9px;font-size:12.5px;}
+    table.items th{background:#EDEDED;font-weight:800;text-align:center;}
+    table.items td.c{text-align:center;}
+    table.items td.l{text-align:left;}
+    table.items td.r{text-align:right;font-variant-numeric:tabular-nums;}
+    table.items td.b{font-weight:800;}
+    .sum td{background:#FBF3EC;font-weight:800;font-size:14px;}
+    .note{margin-top:16px;font-size:12.5px;color:#333;line-height:1.7;}
+    @media print{ body{padding:12mm;} @page{size:A4;margin:0;} }
+  </style></head><body>
+    <div class="title">견 적 서</div>
+    <div class="apt">${esc(apartment?.name || quote?.title || "")}</div>
+    <div class="top">
+      <div class="sup">
+        <div class="h">
+          <div class="lbl">공급자</div>
+          <table>
+            <tr><td class="k">사업자번호</td><td>${esc(s.bizNo)}</td></tr>
+            <tr><td class="k">상호</td><td>${esc(s.company)}</td></tr>
+            <tr><td class="k">대표자</td><td>${esc(s.ceo)}</td></tr>
+            <tr><td class="k">소재지</td><td>${esc(s.address)}</td></tr>
+            <tr><td class="k">담당자</td><td>${esc(s.manager)}</td></tr>
+            <tr><td class="k">전화번호</td><td>${esc(s.phone)}</td></tr>
+          </table>
+        </div>
+        <img class="seal" src="${BROJ_SEAL}" alt="직인" />
+      </div>
+    </div>
+    <div class="date">견적일 : ${quoteDateStr(quote)}</div>
+    <table class="items">
+      <thead><tr>
+        <th style="width:44px">순번</th><th>품명</th><th style="width:60px">개수</th>
+        <th style="width:96px">1개에 대하여</th><th style="width:110px">총 공급가</th>
+        <th style="width:96px">부가세</th><th style="width:118px">금액(VAT포함)</th>
+      </tr></thead>
+      <tbody>
+        ${rowsHtml || `<tr><td colspan="7" class="c" style="color:#999;padding:20px">품목이 없습니다</td></tr>`}
+        <tr class="sum">
+          <td colspan="4" class="r">합계 (VAT포함)</td>
+          <td class="r">${t.supply.toLocaleString()}</td>
+          <td class="r">${t.vat.toLocaleString()}</td>
+          <td class="r">${t.total.toLocaleString()}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note">적요<br/>&nbsp;* 입금 계좌 : ${esc(s.account)}${quote?.note ? `<br/>&nbsp;* ${esc(quote.note)}` : ""}</div>
+    <script>window.onload=function(){setTimeout(function(){window.print();},120);};</script>
+  </body></html>`;
+
+  const w = window.open("", "_blank", "width=900,height=1100");
+  if (!w) { notifyError(new Error("팝업이 차단되었습니다. 브라우저에서 팝업을 허용해 주세요.")); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
+
 export function ConstructionView() {
   const [tab, setTab] = useState("quotes");
   const [items, setItems] = useState([]);
@@ -1828,6 +1937,7 @@ export function ConstructionView() {
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>← 견적 목록</button>
           <div className="row" style={{ gap: 6 }}>
             {editing.id && <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={deleteQuote}>삭제</button>}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => printConstructionQuote(editing, apts.find((a) => a.id === editing.apartmentId))}>PDF / 인쇄</button>
             <button type="button" className="btn btn-accent btn-sm" onClick={saveQuote} disabled={busy}>{busy ? "저장 중…" : "저장"}</button>
           </div>
         </div>
