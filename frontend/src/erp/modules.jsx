@@ -5,7 +5,7 @@ import { APPROVAL_BOXES, LEAVE_TYPES, LEAVE_POLICY, APPROVAL_CHAINS, FORM_CHAIN_
 import { notifyError, toastSuccess } from "../toast.js";
 import { confirmAction } from "../confirm.js";
 import { StatViz, seriesColor } from "./charts.jsx";
-import { BROJ_SEAL } from "./brojSeal.js";
+import { BROJ_SEAL, BROJ_LOGO } from "./brojSeal.js";
 
 const STATUS_LABEL = {
   draft: "임시저장", submitted: "상신", in_progress: "진행중",
@@ -1764,70 +1764,90 @@ function printConstructionQuote(quote, apartment) {
     </tr>`;
   }).join("");
 
+  const period = quote?.startDate ? `${esc(quote.startDate)} ~ ${esc(quote.endDate || "미정")}` : "";
   const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>견적서 - ${esc(apartment?.name || "")}</title>
   <style>
+    :root{ --ink:#141414; --muted:#8a8a8a; --line:#E6E4E0; --accent:#F26522; --soft:#FBF4EE; }
     *{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif;color:#1a1a1a;padding:28px 32px;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    .title{text-align:center;font-size:30px;font-weight:800;letter-spacing:18px;padding-left:18px;margin-bottom:6px;}
-    .apt{text-align:center;font-size:15px;color:#444;margin-bottom:18px;}
-    .top{display:flex;justify-content:flex-end;margin-bottom:10px;}
-    .sup{position:relative;border:1.5px solid #333;min-width:340px;}
-    .sup .h{display:flex;}
-    .sup .h .lbl{writing-mode:vertical-rl;text-orientation:upright;background:#F2F2F2;border-right:1px solid #999;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;padding:6px 2px;letter-spacing:2px;}
-    .sup table{border-collapse:collapse;flex:1;}
-    .sup td{border-bottom:1px solid #ccc;border-left:1px solid #ccc;padding:6px 9px;font-size:12.5px;}
-    .sup td.k{background:#F7F7F7;font-weight:700;width:78px;white-space:nowrap;}
-    .sup tr:last-child td{border-bottom:none;}
-    .seal{position:absolute;right:8px;top:34px;width:74px;height:74px;opacity:.92;}
-    .date{text-align:right;font-size:12.5px;color:#333;margin:2px 0 12px;}
-    table.items{width:100%;border-collapse:collapse;}
-    table.items th,table.items td{border:1px solid #888;padding:8px 9px;font-size:12.5px;}
-    table.items th{background:#EDEDED;font-weight:800;text-align:center;}
-    table.items td.c{text-align:center;}
-    table.items td.l{text-align:left;}
+    body{font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif;color:var(--ink);padding:40px 44px;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-size:13px;line-height:1.5;}
+    .hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2.5px solid var(--ink);padding-bottom:16px;}
+    .hd .logo{height:34px;display:block;}
+    .hd .rt{text-align:right;}
+    .hd .rt .t{font-size:30px;font-weight:800;letter-spacing:14px;line-height:1;padding-left:14px;}
+    .hd .rt .d{font-size:12px;color:var(--muted);margin-top:8px;letter-spacing:.02em;}
+    .apt{display:flex;align-items:center;gap:12px;margin:24px 0 20px;}
+    .apt .bar{width:5px;height:26px;background:var(--accent);border-radius:3px;}
+    .apt .nm{font-size:19px;font-weight:800;letter-spacing:-.01em;}
+    .apt .lb{font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-left:auto;}
+    .sup{position:relative;display:grid;grid-template-columns:auto auto;gap:0 0;border:1px solid var(--line);border-radius:10px;overflow:hidden;width:fit-content;margin-left:auto;}
+    .sup .cell{display:flex;border-top:1px solid var(--line);}
+    .sup .cell:nth-child(-n+2){border-top:none;}
+    .sup .k{background:#FAF9F7;font-weight:700;color:#555;padding:8px 12px;font-size:12px;min-width:78px;border-right:1px solid var(--line);}
+    .sup .v{padding:8px 14px;font-size:12.5px;min-width:150px;}
+    .seal{position:absolute;right:10px;bottom:10px;width:66px;height:66px;opacity:.9;}
+    table.items{width:100%;border-collapse:collapse;margin-top:6px;}
+    table.items th{background:var(--ink);color:#fff;font-weight:700;font-size:12px;padding:11px 10px;text-align:center;letter-spacing:.01em;}
+    table.items td{border-bottom:1px solid var(--line);padding:11px 10px;font-size:12.5px;}
+    table.items td.c{text-align:center;color:var(--muted);}
+    table.items td.l{text-align:left;font-weight:600;}
     table.items td.r{text-align:right;font-variant-numeric:tabular-nums;}
     table.items td.b{font-weight:800;}
-    .sum td{background:#FBF3EC;font-weight:800;font-size:14px;}
-    .note{margin-top:16px;font-size:12.5px;color:#333;line-height:1.7;}
-    @media print{ body{padding:12mm;} @page{size:A4;margin:0;} }
+    table.items tbody tr:nth-child(even) td{background:#FCFBFA;}
+    .sum td{background:var(--soft)!important;font-weight:800;font-size:13.5px;border-top:2px solid var(--accent);border-bottom:none;}
+    .sum td.big{color:var(--accent);font-size:16px;font-weight:900;}
+    .foot{margin-top:22px;display:flex;justify-content:space-between;gap:24px;align-items:flex-start;}
+    .note{font-size:12px;color:#444;line-height:1.8;flex:1;}
+    .note .h{font-weight:800;color:var(--ink);margin-bottom:4px;letter-spacing:.04em;}
+    .stamp-name{text-align:right;font-size:12px;color:var(--muted);}
+    .stamp-name b{color:var(--ink);font-size:14px;}
+    @media print{ body{padding:14mm;} @page{size:A4;margin:0;} }
   </style></head><body>
-    <div class="title">견 적 서</div>
-    <div class="apt">${esc(apartment?.name || quote?.title || "")}</div>
-    <div class="top">
-      <div class="sup">
-        <div class="h">
-          <div class="lbl">공급자</div>
-          <table>
-            <tr><td class="k">사업자번호</td><td>${esc(s.bizNo)}</td></tr>
-            <tr><td class="k">상호</td><td>${esc(s.company)}</td></tr>
-            <tr><td class="k">대표자</td><td>${esc(s.ceo)}</td></tr>
-            <tr><td class="k">소재지</td><td>${esc(s.address)}</td></tr>
-            <tr><td class="k">담당자</td><td>${esc(s.manager)}</td></tr>
-            <tr><td class="k">전화번호</td><td>${esc(s.phone)}</td></tr>
-          </table>
-        </div>
-        <img class="seal" src="${BROJ_SEAL}" alt="직인" />
-      </div>
+    <div class="hd">
+      <img class="logo" src="${BROJ_LOGO}" alt="BROJ" />
+      <div class="rt"><div class="t">견 적 서</div><div class="d">견적일 ${quoteDateStr(quote)}</div></div>
     </div>
-    <div class="date">견적일 : ${quoteDateStr(quote)}</div>
+
+    <div class="apt">
+      <span class="bar"></span>
+      <span class="nm">${esc(apartment?.name || quote?.title || "무제 견적")}</span>
+      <span class="lb">Quotation</span>
+    </div>
+
+    <div class="sup">
+      <div class="cell"><div class="k">사업자번호</div><div class="v">${esc(s.bizNo)}</div></div>
+      <div class="cell"><div class="k">상호</div><div class="v">${esc(s.company)}</div></div>
+      <div class="cell"><div class="k">대표자</div><div class="v">${esc(s.ceo)}</div></div>
+      <div class="cell"><div class="k">담당자</div><div class="v">${esc(s.manager)}</div></div>
+      <div class="cell"><div class="k">소재지</div><div class="v" style="min-width:220px">${esc(s.address)}</div></div>
+      <div class="cell"><div class="k">전화번호</div><div class="v">${esc(s.phone)}</div></div>
+      <img class="seal" src="${BROJ_SEAL}" alt="직인" />
+    </div>
+
     <table class="items">
       <thead><tr>
-        <th style="width:44px">순번</th><th>품명</th><th style="width:60px">개수</th>
-        <th style="width:96px">1개에 대하여</th><th style="width:110px">총 공급가</th>
-        <th style="width:96px">부가세</th><th style="width:118px">금액(VAT포함)</th>
+        <th style="width:42px">순번</th><th>품명</th><th style="width:56px">개수</th>
+        <th style="width:96px">단가</th><th style="width:110px">공급가</th>
+        <th style="width:92px">부가세</th><th style="width:120px">금액(VAT포함)</th>
       </tr></thead>
       <tbody>
-        ${rowsHtml || `<tr><td colspan="7" class="c" style="color:#999;padding:20px">품목이 없습니다</td></tr>`}
+        ${rowsHtml || `<tr><td colspan="7" class="c" style="padding:22px">품목이 없습니다</td></tr>`}
         <tr class="sum">
           <td colspan="4" class="r">합계 (VAT포함)</td>
           <td class="r">${t.supply.toLocaleString()}</td>
           <td class="r">${t.vat.toLocaleString()}</td>
-          <td class="r">${t.total.toLocaleString()}</td>
+          <td class="r big">${t.total.toLocaleString()}</td>
         </tr>
       </tbody>
     </table>
-    <div class="note">적요<br/>&nbsp;* 입금 계좌 : ${esc(s.account)}${quote?.startDate ? `<br/>&nbsp;* 공사 기간 : ${esc(quote.startDate)} ~ ${esc(quote.endDate || "미정")}` : ""}${quote?.note ? `<br/>&nbsp;* ${esc(quote.note)}` : ""}</div>
-    <script>window.onload=function(){setTimeout(function(){window.print();},120);};</script>
+
+    <div class="foot">
+      <div class="note">
+        <div class="h">적요</div>
+        입금 계좌 : ${esc(s.account)}${period ? `<br/>공사 기간 : ${period}` : ""}${quote?.note ? `<br/>${esc(quote.note)}` : ""}
+      </div>
+      <div class="stamp-name">위와 같이 견적합니다.<br/><b>${esc(s.company)}</b> (인)</div>
+    </div>
+    <script>window.onload=function(){setTimeout(function(){window.print();},150);};</script>
   </body></html>`;
 
   const w = window.open("", "_blank", "width=900,height=1100");
