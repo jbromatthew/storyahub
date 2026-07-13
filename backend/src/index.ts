@@ -101,7 +101,8 @@ app.listen(env.port, () => {
     .$connect()
     .then(() => {
       console.log("PostgreSQL (RDS) connected");
-      if (!env.erpMode) startPurgeScheduler();
+      // 결제 없는 배포에서는 만료 데이터 삭제(purge)를 절대 돌리지 않는다.
+      if (!env.erpMode && !env.billingDisabled) startPurgeScheduler();
     })
     .catch((e) => console.warn("PostgreSQL unreachable — check DATABASE_URL / RDS security group:", (e as Error).message));
 });

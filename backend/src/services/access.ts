@@ -62,7 +62,7 @@ function purgeAt(user: User, now = new Date()): Date | null {
 }
 
 export function getAccessStatus(user: User, now = new Date()): AccessStatus {
-  if (env.erpMode) {
+  if (env.erpMode || env.billingDisabled) {
     return {
       hasAccess: true,
       reason: "lifetime",

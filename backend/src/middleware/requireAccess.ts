@@ -37,8 +37,8 @@ async function loadAccess(req: AccessRequest, res: Response, next: NextFunction)
 /** 읽기는 유예(7일) 중 허용, 쓰기는 체험·유료 활성 시에만.
  *  단 ERP 배포(erpMode)에는 결제/유예/삭제 게이팅을 적용하지 않는다. */
 export async function requireAccess(req: AccessRequest, res: Response, next: NextFunction) {
-  // ERP 팀 제품에는 체험/구독 만료·유예 개념이 없으므로 통과시킨다.
-  if (env.erpMode) return next();
+  // 결제 없는 배포(ERP/billingDisabled)에는 체험·구독 만료·유예 개념이 없으므로 통과시킨다.
+  if (env.erpMode || env.billingDisabled) return next();
 
   await loadAccess(req, res, () => {
     if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
