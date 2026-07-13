@@ -67,9 +67,9 @@ export const env = {
   trustProxy: parseBool("TRUST_PROXY", isProduction),
   allowDemoAuth: parseBool("ALLOW_DEMO_AUTH", isDevelopment),
   allowTestSubscribe: parseBool("ALLOW_TEST_SUBSCRIBE", isDevelopment),
-  erpMode: parseBool("ERP_MODE", false),
-  // 이 제품은 결제 없는 팀 배포이므로 프로덕션에선 결제/체험/유예/데이터삭제(purge)를 끈다.
-  // (멤버십 게이팅과는 무관 — requireErpMember는 erpMode에만 좌우됨)
+  // ERP 전용 팀 배포. 프로덕션 기본값 = 승인된 멤버만 접근 + 초대받은 이메일만 가입.
+  // (소유자 ERP_OWNER_EMAIL은 항상 통과. 결제/체험/유예/purge는 billingDisabled로 별도 비활성.)
+  erpMode: parseBool("ERP_MODE", isProduction),
   billingDisabled: parseBool("BILLING_DISABLED", isProduction),
   erpOwnerEmail: (process.env.ERP_OWNER_EMAIL ?? "matthew@broj.company").trim().toLowerCase(),
   cookieDomain: process.env.COOKIE_DOMAIN || (isProduction ? ".storyahub.com" : undefined),
