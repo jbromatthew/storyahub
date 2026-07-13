@@ -329,6 +329,19 @@ export const api = {
     return req(`/erp/sales/dashboard?${p}`);
   },
   erpSalesDashboardGoals: (body) => req("/erp/sales/dashboard/goals", { method: "PUT", body }),
+  // 공사(견적) 관리 — 소유자 전용
+  erpConstructionItems: () => req("/erp/construction/items"),
+  erpConstructionCreateItem: (data) => req("/erp/construction/items", { method: "POST", body: data }),
+  erpConstructionUpdateItem: (id, data) => req(`/erp/construction/items/${id}`, { method: "PATCH", body: data }),
+  erpConstructionDeleteItem: (id) => req(`/erp/construction/items/${id}`, { method: "DELETE" }),
+  erpConstructionApartments: () => req("/erp/construction/apartments"),
+  erpConstructionCreateApartment: (data) => req("/erp/construction/apartments", { method: "POST", body: data }),
+  erpConstructionUpdateApartment: (id, data) => req(`/erp/construction/apartments/${id}`, { method: "PATCH", body: data }),
+  erpConstructionDeleteApartment: (id) => req(`/erp/construction/apartments/${id}`, { method: "DELETE" }),
+  erpConstructionQuotes: () => req("/erp/construction/quotes"),
+  erpConstructionCreateQuote: (data) => req("/erp/construction/quotes", { method: "POST", body: data }),
+  erpConstructionUpdateQuote: (id, data) => req(`/erp/construction/quotes/${id}`, { method: "PATCH", body: data }),
+  erpConstructionDeleteQuote: (id) => req(`/erp/construction/quotes/${id}`, { method: "DELETE" }),
   erpSalesTaxInvoices: ({ month } = {}) => {
     const p = new URLSearchParams();
     if (month) p.set("month", month);

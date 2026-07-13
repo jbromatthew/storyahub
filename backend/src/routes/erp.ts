@@ -29,6 +29,7 @@ import {
   planApprovalSteps,
   userCanApproveStep,
 } from "../services/approvalWorkflow.js";
+import { isErpOwner } from "../services/erpAccess.js";
 
 export const erpRouter = Router();
 erpRouter.use(auth, requireAccess);
@@ -1297,3 +1298,170 @@ function currentQuarter() {
   const q = Math.floor(d.getMonth() / 3) + 1;
   return `${d.getFullYear()}-Q${q}`;
 }
+
+/* ===================== 공사(견적) 관리 — 소유자 전용 ===================== */
+
+async function requireOwner(req: AuthedRequest, res: Response): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: req.userId! }, select: { email: true } });
+  if (isErpOwner(user?.email)) return true;
+  res.status(403).json({ error: "소유자 전용 기능입니다" });
+  return false;
+}
+
+const DEFAULT_CONSTRUCTION_ITEMS = [
+  { name: "화상출입기 설치비", unitPrice: 300000 },
+  { name: "엘리베이터 송신 모듈", unitPrice: 10000 },
+  { name: "엘리베이터 연동설치비", unitPrice: 10000 },
+];
+
+// 품목 단가
+erpRouter.get("/construction/items", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  let items = await prisma.erpConstructionItem.findMany({
+    where: { active: true },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+  if (!items.length) {
+    await prisma.erpConstructionItem.createMany({
+      data: DEFAULT_CONSTRUCTION_ITEMS.map((it, i) => ({ ...it, sortOrder: i })),
+    });
+    items = await prisma.erpConstructionItem.findMany({
+      where: { active: true },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    });
+  }
+  res.json(items);
+});
+
+erpRouter.post("/construction/items", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const { name, unitPrice, sortOrder } = req.body ?? {};
+  if (!name?.trim()) return res.status(400).json({ error: "품명을 입력하세요" });
+  const item = await prisma.erpConstructionItem.create({
+    data: { name: String(name).trim(), unitPrice: Math.max(0, Math.round(Number(unitPrice) || 0)), sortOrder: Number(sortOrder) || 0 },
+  });
+  res.json(item);
+});
+
+erpRouter.patch("/construction/items/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const { name, unitPrice, sortOrder, active } = req.body ?? {};
+  const item = await prisma.erpConstructionItem.update({
+    where: { id: req.params.id },
+    data: {
+      ...(name !== undefined ? { name: String(name).trim() } : {}),
+      ...(unitPrice !== undefined ? { unitPrice: Math.max(0, Math.round(Number(unitPrice) || 0)) } : {}),
+      ...(sortOrder !== undefined ? { sortOrder: Number(sortOrder) || 0 } : {}),
+      ...(active !== undefined ? { active: !!active } : {}),
+    },
+  });
+  res.json(item);
+});
+
+erpRouter.delete("/construction/items/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  await prisma.erpConstructionItem.update({ where: { id: req.params.id }, data: { active: false } });
+  res.json({ ok: true });
+});
+
+// 아파트 단지
+erpRouter.get("/construction/apartments", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const apts = await prisma.erpConstructionApartment.findMany({ orderBy: { createdAt: "desc" } });
+  res.json(apts);
+});
+
+erpRouter.post("/construction/apartments", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const { name, address, partner, note } = req.body ?? {};
+  if (!name?.trim()) return res.status(400).json({ error: "아파트명을 입력하세요" });
+  const apt = await prisma.erpConstructionApartment.create({
+    data: { name: String(name).trim(), address: address?.trim() || null, partner: partner?.trim() || null, note: note?.trim() || null },
+  });
+  res.json(apt);
+});
+
+erpRouter.patch("/construction/apartments/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const { name, address, partner, note } = req.body ?? {};
+  const apt = await prisma.erpConstructionApartment.update({
+    where: { id: req.params.id },
+    data: {
+      ...(name !== undefined ? { name: String(name).trim() } : {}),
+      ...(address !== undefined ? { address: address?.trim() || null } : {}),
+      ...(partner !== undefined ? { partner: partner?.trim() || null } : {}),
+      ...(note !== undefined ? { note: note?.trim() || null } : {}),
+    },
+  });
+  res.json(apt);
+});
+
+erpRouter.delete("/construction/apartments/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  await prisma.erpConstructionApartment.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
+// 견적/공사 건
+const CONSTRUCTION_STATUSES = ["before", "ongoing", "done", "settle_requested", "settled"];
+
+function sanitizeLines(raw: unknown): Array<{ name: string; unitPrice: number; qty: number }> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((l: any) => ({
+      name: String(l?.name ?? "").trim(),
+      unitPrice: Math.max(0, Math.round(Number(l?.unitPrice) || 0)),
+      qty: Math.max(0, Math.round(Number(l?.qty) || 0)),
+    }))
+    .filter((l) => l.name);
+}
+
+erpRouter.get("/construction/quotes", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const quotes = await prisma.erpConstructionQuote.findMany({
+    include: { apartment: true },
+    orderBy: { createdAt: "desc" },
+  });
+  res.json(quotes);
+});
+
+erpRouter.post("/construction/quotes", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const { apartmentId, title, lines, status, taxInvoiceIssued, note } = req.body ?? {};
+  const quote = await prisma.erpConstructionQuote.create({
+    data: {
+      apartmentId: apartmentId || null,
+      title: title?.trim() || null,
+      lines: sanitizeLines(lines),
+      status: CONSTRUCTION_STATUSES.includes(status) ? status : "before",
+      taxInvoiceIssued: !!taxInvoiceIssued,
+      note: note?.trim() || null,
+    },
+    include: { apartment: true },
+  });
+  res.json(quote);
+});
+
+erpRouter.patch("/construction/quotes/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const { apartmentId, title, lines, status, taxInvoiceIssued, note } = req.body ?? {};
+  const quote = await prisma.erpConstructionQuote.update({
+    where: { id: req.params.id },
+    data: {
+      ...(apartmentId !== undefined ? { apartmentId: apartmentId || null } : {}),
+      ...(title !== undefined ? { title: title?.trim() || null } : {}),
+      ...(lines !== undefined ? { lines: sanitizeLines(lines) } : {}),
+      ...(status !== undefined && CONSTRUCTION_STATUSES.includes(status) ? { status } : {}),
+      ...(taxInvoiceIssued !== undefined ? { taxInvoiceIssued: !!taxInvoiceIssued } : {}),
+      ...(note !== undefined ? { note: note?.trim() || null } : {}),
+    },
+    include: { apartment: true },
+  });
+  res.json(quote);
+});
+
+erpRouter.delete("/construction/quotes/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  await prisma.erpConstructionQuote.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});

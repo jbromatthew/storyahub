@@ -425,6 +425,28 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .daily-drill-count{flex:0 0 auto;font-weight:800;font-variant-numeric:tabular-nums;min-width:28px;text-align:right;}
 @media(min-width:640px){.daily-drill-back{align-items:center;}.daily-drill{border-radius:20px;}}
 
+/* ===== 공사 견적 관리 ===== */
+.cst-table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:#fff;-webkit-overflow-scrolling:touch;}
+.cst-quote-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;min-width:640px;}
+.cst-quote-table th,.cst-quote-table td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:center;vertical-align:middle;white-space:nowrap;}
+.cst-quote-table th{background:#F8F9FA;font-weight:800;color:var(--muted);font-size:12px;}
+.cst-quote-table td.cst-num{font-variant-numeric:tabular-nums;text-align:right;}
+.cst-quote-table tr:last-child td{border-bottom:none;}
+.cst-total-row td{background:#FFF8F0;}
+.cst-inp{width:100%;border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-family:inherit;font-size:13px;background:#fff;}
+.cst-inp-num{text-align:right;font-variant-numeric:tabular-nums;}
+.cst-x{border:none;background:transparent;color:#B0ABA1;cursor:pointer;font-size:13px;width:26px;height:26px;border-radius:6px;}
+.cst-x:hover{background:#FBECEC;color:#C0392B;}
+.cst-flow{display:flex;gap:6px;flex-wrap:wrap;}
+.cst-flow-btn{border:1px solid var(--line);background:#fff;border-radius:20px;padding:8px 14px;font:inherit;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;}
+.cst-flow-btn.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+.cst-badge{display:inline-flex;align-items:center;font-size:11.5px;font-weight:800;padding:5px 10px;border-radius:20px;white-space:nowrap;flex:0 0 auto;}
+.cst-badge-before{background:#F1F1EF;color:#6B665C;}
+.cst-badge-ongoing{background:#E7F1F9;color:#1F6FB2;}
+.cst-badge-done{background:#EAF6EE;color:#1E7A46;}
+.cst-badge-settle{background:#FBEDE0;color:#B96A16;}
+.cst-badge-settled{background:#E6F3EC;color:#0D7A3E;}
+
 ${CALENDAR_CSS}
 ${KB_CSS}
 `;

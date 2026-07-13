@@ -685,3 +685,39 @@ model ErpSalesDashboardGoalSet {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 }
+
+/// 공사(견적) 관리 — 소유자 전용
+model ErpConstructionItem {
+  id        String   @id @default(cuid())
+  name      String
+  unitPrice Int      @default(0)
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model ErpConstructionApartment {
+  id        String                 @id @default(cuid())
+  name      String
+  address   String?
+  partner   String?
+  note      String?
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+  quotes    ErpConstructionQuote[]
+}
+
+model ErpConstructionQuote {
+  id               String                    @id @default(cuid())
+  apartmentId      String?
+  apartment        ErpConstructionApartment? @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
+  title            String?
+  lines            Json                      @default("[]") // [{name, unitPrice, qty}]
+  status           String                    @default("before") // before | ongoing | done | settle_requested | settled
+  taxInvoiceIssued Boolean                   @default(false)
+  note             String?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  @@index([status])
+}

@@ -1708,6 +1708,301 @@ function formatWon(n) {
   return "₩" + Math.round(n || 0).toLocaleString();
 }
 
+const CST_STATUS = {
+  before: { label: "공사 진행전", cls: "cst-badge-before" },
+  ongoing: { label: "공사중", cls: "cst-badge-ongoing" },
+  done: { label: "공사 완료", cls: "cst-badge-done" },
+  settle_requested: { label: "정산 요청", cls: "cst-badge-settle" },
+  settled: { label: "정산 완료", cls: "cst-badge-settled" },
+};
+const CST_FLOW = ["before", "ongoing", "done", "settle_requested", "settled"];
+const cstNum = (v) => Math.max(0, Math.round(Number(String(v).replace(/[^\d]/g, "")) || 0));
+const lineSupply = (l) => cstNum(l.unitPrice) * cstNum(l.qty);
+const lineVat = (l) => Math.round(lineSupply(l) * 0.1);
+const quoteTotals = (lines) => (lines || []).reduce(
+  (a, l) => { const s = lineSupply(l); const v = lineVat(l); return { supply: a.supply + s, vat: a.vat + v, total: a.total + s + v }; },
+  { supply: 0, vat: 0, total: 0 },
+);
+
+export function ConstructionView() {
+  const [tab, setTab] = useState("quotes");
+  const [items, setItems] = useState([]);
+  const [apts, setApts] = useState([]);
+  const [quotes, setQuotes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // null=목록, {…}=편집중 견적
+  const [busy, setBusy] = useState(false);
+  // 폼 입력값
+  const [itemName, setItemName] = useState("");
+  const [itemPrice, setItemPrice] = useState("");
+  const [aptForm, setAptForm] = useState({ name: "", partner: "", address: "", note: "" });
+
+  const load = () => {
+    Promise.all([api.erpConstructionItems(), api.erpConstructionApartments(), api.erpConstructionQuotes()])
+      .then(([i, a, q]) => { setItems(i); setApts(a); setQuotes(q); })
+      .catch(notifyError)
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+
+  // ---- 품목 단가 ----
+  const addItem = async () => {
+    if (!itemName.trim()) return notifyError(new Error("품명을 입력하세요"));
+    try {
+      await api.erpConstructionCreateItem({ name: itemName.trim(), unitPrice: cstNum(itemPrice), sortOrder: items.length });
+      setItemName(""); setItemPrice(""); load();
+    } catch (e) { notifyError(e); }
+  };
+  const updateItemPrice = async (it, price) => {
+    try { await api.erpConstructionUpdateItem(it.id, { unitPrice: cstNum(price) }); setItems((p) => p.map((x) => x.id === it.id ? { ...x, unitPrice: cstNum(price) } : x)); } catch (e) { notifyError(e); }
+  };
+  const deleteItem = async (it) => {
+    if (!(await confirmAction(`'${it.name}' 품목을 삭제할까요?`))) return;
+    try { await api.erpConstructionDeleteItem(it.id); load(); } catch (e) { notifyError(e); }
+  };
+
+  // ---- 아파트 단지 ----
+  const addApt = async () => {
+    if (!aptForm.name.trim()) return notifyError(new Error("아파트명을 입력하세요"));
+    try { await api.erpConstructionCreateApartment(aptForm); setAptForm({ name: "", partner: "", address: "", note: "" }); load(); } catch (e) { notifyError(e); }
+  };
+  const deleteApt = async (a) => {
+    if (!(await confirmAction(`'${a.name}' 단지를 삭제할까요? 연결된 견적의 단지 표시가 사라집니다.`))) return;
+    try { await api.erpConstructionDeleteApartment(a.id); load(); } catch (e) { notifyError(e); }
+  };
+
+  // ---- 견적 ----
+  const newQuote = () => setEditing({ apartmentId: apts[0]?.id || "", title: "", lines: [], status: "before", taxInvoiceIssued: false, note: "" });
+  const editQuote = (q) => setEditing({ ...q, apartmentId: q.apartmentId || "", lines: (q.lines || []).map((l) => ({ ...l })) });
+  const addLineFromItem = (itemId) => {
+    const it = items.find((x) => x.id === itemId);
+    if (!it) return;
+    setEditing((e) => ({ ...e, lines: [...e.lines, { name: it.name, unitPrice: it.unitPrice, qty: 1 }] }));
+  };
+  const addBlankLine = () => setEditing((e) => ({ ...e, lines: [...e.lines, { name: "", unitPrice: 0, qty: 1 }] }));
+  const patchLine = (i, patch) => setEditing((e) => ({ ...e, lines: e.lines.map((l, k) => k === i ? { ...l, ...patch } : l) }));
+  const removeLine = (i) => setEditing((e) => ({ ...e, lines: e.lines.filter((_, k) => k !== i) }));
+
+  const saveQuote = async () => {
+    setBusy(true);
+    const payload = {
+      apartmentId: editing.apartmentId || null,
+      title: editing.title || null,
+      lines: editing.lines.map((l) => ({ name: l.name, unitPrice: cstNum(l.unitPrice), qty: cstNum(l.qty) })).filter((l) => l.name),
+      status: editing.status,
+      taxInvoiceIssued: !!editing.taxInvoiceIssued,
+      note: editing.note || null,
+    };
+    try {
+      if (editing.id) await api.erpConstructionUpdateQuote(editing.id, payload);
+      else await api.erpConstructionCreateQuote(payload);
+      toastSuccess("저장했어요");
+      setEditing(null); load();
+    } catch (e) { notifyError(e); } finally { setBusy(false); }
+  };
+  const deleteQuote = async () => {
+    if (!editing?.id) { setEditing(null); return; }
+    if (!(await confirmAction("이 견적을 삭제할까요?"))) return;
+    try { await api.erpConstructionDeleteQuote(editing.id); setEditing(null); load(); } catch (e) { notifyError(e); }
+  };
+
+  if (loading) return <div className="spinner" />;
+
+  // ===== 견적 편집 화면 =====
+  if (editing) {
+    const totals = quoteTotals(editing.lines);
+    return (
+      <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40, maxWidth: 900 }}>
+        <div className="row between" style={{ alignItems: "center", marginBottom: 4 }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>← 견적 목록</button>
+          <div className="row" style={{ gap: 6 }}>
+            {editing.id && <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={deleteQuote}>삭제</button>}
+            <button type="button" className="btn btn-accent btn-sm" onClick={saveQuote} disabled={busy}>{busy ? "저장 중…" : "저장"}</button>
+          </div>
+        </div>
+        <div className="h-title" style={{ fontSize: 20 }}>{editing.id ? "견적 수정" : "새 견적"}</div>
+
+        <div className="card" style={{ marginTop: 14 }}>
+          <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+            <div className="field" style={{ flex: "1 1 220px", marginBottom: 0 }}>
+              <label>아파트 단지</label>
+              <select value={editing.apartmentId} onChange={(e) => setEditing((ed) => ({ ...ed, apartmentId: e.target.value }))}>
+                <option value="">(미지정)</option>
+                {apts.map((a) => <option key={a.id} value={a.id}>{a.name}{a.partner ? ` · ${a.partner}` : ""}</option>)}
+              </select>
+            </div>
+            <div className="field" style={{ flex: "2 1 260px", marginBottom: 0 }}>
+              <label>제목 (선택)</label>
+              <input value={editing.title || ""} onChange={(e) => setEditing((ed) => ({ ...ed, title: e.target.value }))} placeholder="예: 화상 출입기 설치 견적" />
+            </div>
+          </div>
+        </div>
+
+        {/* 품목 라인 */}
+        <div className="cst-table-wrap" style={{ marginTop: 14 }}>
+          <table className="cst-quote-table">
+            <thead>
+              <tr>
+                <th style={{ width: 44 }}>순번</th>
+                <th style={{ textAlign: "left" }}>품명</th>
+                <th style={{ width: 70 }}>개수</th>
+                <th style={{ width: 120 }}>1개 단가</th>
+                <th style={{ width: 120 }}>총 공급가</th>
+                <th style={{ width: 100 }}>부가세</th>
+                <th style={{ width: 130 }}>금액(VAT포함)</th>
+                <th style={{ width: 40 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {editing.lines.map((l, i) => (
+                <tr key={i}>
+                  <td className="cst-num">{i + 1}</td>
+                  <td><input className="cst-inp" value={l.name} onChange={(e) => patchLine(i, { name: e.target.value })} placeholder="품명" /></td>
+                  <td><input className="cst-inp cst-inp-num" value={l.qty} onChange={(e) => patchLine(i, { qty: cstNum(e.target.value) })} inputMode="numeric" /></td>
+                  <td><input className="cst-inp cst-inp-num" value={Number(l.unitPrice).toLocaleString()} onChange={(e) => patchLine(i, { unitPrice: cstNum(e.target.value) })} inputMode="numeric" /></td>
+                  <td className="cst-num">{lineSupply(l).toLocaleString()}</td>
+                  <td className="cst-num">{lineVat(l).toLocaleString()}</td>
+                  <td className="cst-num" style={{ fontWeight: 700 }}>{(lineSupply(l) + lineVat(l)).toLocaleString()}</td>
+                  <td><button type="button" className="cst-x" onClick={() => removeLine(i)}>✕</button></td>
+                </tr>
+              ))}
+              {!editing.lines.length && (
+                <tr><td colSpan={8} style={{ textAlign: "center", color: "var(--muted)", padding: 18 }}>아래에서 품목을 추가하세요</td></tr>
+              )}
+              <tr className="cst-total-row">
+                <td className="cst-num" colSpan={4} style={{ textAlign: "right", fontWeight: 800 }}>합계</td>
+                <td className="cst-num" style={{ fontWeight: 800 }}>{totals.supply.toLocaleString()}</td>
+                <td className="cst-num" style={{ fontWeight: 800 }}>{totals.vat.toLocaleString()}</td>
+                <td className="cst-num" style={{ fontWeight: 900, color: "var(--accent-deep)" }}>{totals.total.toLocaleString()}</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+          <select className="cst-inp" style={{ maxWidth: 240 }} value="" onChange={(e) => { if (e.target.value) addLineFromItem(e.target.value); e.target.value = ""; }}>
+            <option value="">+ 품목 단가에서 추가…</option>
+            {items.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.unitPrice.toLocaleString()})</option>)}
+          </select>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={addBlankLine}>+ 직접 입력</button>
+        </div>
+
+        {/* 상태 / 세금계산서 */}
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="kbe-meta-h" style={{ marginTop: 0 }}>진행 상태</div>
+          <div className="cst-flow">
+            {CST_FLOW.map((s) => (
+              <button key={s} type="button" className={"cst-flow-btn" + (editing.status === s ? " on" : "")} onClick={() => setEditing((ed) => ({ ...ed, status: s }))}>
+                {CST_STATUS[s].label}
+              </button>
+            ))}
+          </div>
+          <label className="row" style={{ gap: 8, marginTop: 14, cursor: "pointer", alignItems: "center" }}>
+            <input type="checkbox" checked={!!editing.taxInvoiceIssued} onChange={(e) => setEditing((ed) => ({ ...ed, taxInvoiceIssued: e.target.checked }))} />
+            <span style={{ fontWeight: 700 }}>세금계산서 발행 완료</span>
+          </label>
+          <div className="field" style={{ marginTop: 14, marginBottom: 0 }}>
+            <label>메모</label>
+            <textarea value={editing.note || ""} onChange={(e) => setEditing((ed) => ({ ...ed, note: e.target.value }))} placeholder="정산 요청일, 특이사항 등" style={{ minHeight: 70 }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== 목록 화면 (탭) =====
+  return (
+    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40, maxWidth: 900 }}>
+      <div className="h-eyebrow">Owner</div>
+      <div className="h-title">공사 견적 관리</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+        아파트너 공사 수주 건을 견적·진행·정산까지 관리합니다. <strong>나(소유자)만 볼 수 있습니다.</strong>
+      </div>
+
+      <div className="sales-tabs" style={{ marginTop: 14 }}>
+        {[["quotes", "견적"], ["apartments", "아파트 단지"], ["items", "품목 단가"]].map(([id, label]) => (
+          <button key={id} type="button" className={"sales-tab" + (tab === id ? " on" : "")} onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </div>
+
+      {tab === "quotes" && (
+        <>
+          <div className="row between" style={{ margin: "16px 0 10px", alignItems: "center" }}>
+            <span className="h-eyebrow">견적 {quotes.length}건</span>
+            <button type="button" className="btn btn-accent btn-sm" onClick={newQuote}>+ 새 견적</button>
+          </div>
+          {!quotes.length ? (
+            <div className="small" style={{ textAlign: "center", padding: 32, color: "var(--muted)" }}>아직 견적이 없습니다. “새 견적”으로 시작하세요.</div>
+          ) : quotes.map((q) => {
+            const t = quoteTotals(q.lines);
+            const st = CST_STATUS[q.status] || CST_STATUS.before;
+            return (
+              <div key={q.id} className="list-item between" style={{ alignItems: "center", cursor: "pointer" }} onClick={() => editQuote(q)}>
+                <div style={{ minWidth: 0 }}>
+                  <div className="ttl">{q.apartment?.name || "(단지 미지정)"} {q.title ? <span className="small">· {q.title}</span> : null}</div>
+                  <div className="meta">
+                    합계 <strong>{formatWon(t.total)}</strong> · {(q.lines || []).length}개 품목 · {q.taxInvoiceIssued ? "세금계산서 발행됨" : "세금계산서 미발행"}
+                  </div>
+                </div>
+                <span className={"cst-badge " + st.cls}>{st.label}</span>
+              </div>
+            );
+          })}
+        </>
+      )}
+
+      {tab === "apartments" && (
+        <>
+          <div className="card" style={{ marginTop: 16 }}>
+            <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+              <input style={{ flex: "1 1 160px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }} value={aptForm.name} onChange={(e) => setAptForm({ ...aptForm, name: e.target.value })} placeholder="아파트명 *" />
+              <input style={{ flex: "1 1 140px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }} value={aptForm.partner} onChange={(e) => setAptForm({ ...aptForm, partner: e.target.value })} placeholder="아파트너 (수주처)" />
+              <input style={{ flex: "2 1 200px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }} value={aptForm.address} onChange={(e) => setAptForm({ ...aptForm, address: e.target.value })} placeholder="주소 (선택)" />
+              <button type="button" className="btn btn-accent" onClick={addApt}>추가</button>
+            </div>
+          </div>
+          <div style={{ marginTop: 14 }}>
+            {!apts.length ? <div className="small" style={{ textAlign: "center", padding: 24, color: "var(--muted)" }}>등록된 단지가 없습니다.</div> :
+              apts.map((a) => (
+                <div key={a.id} className="list-item between" style={{ alignItems: "center" }}>
+                  <div><div className="ttl">{a.name}</div><div className="meta">{[a.partner, a.address].filter(Boolean).join(" · ") || "—"}</div></div>
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => deleteApt(a)}>삭제</button>
+                </div>
+              ))}
+          </div>
+        </>
+      )}
+
+      {tab === "items" && (
+        <>
+          <div className="card" style={{ marginTop: 16 }}>
+            <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+              <input style={{ flex: "2 1 200px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }} value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="품명 (예: 화상출입기 설치비)" />
+              <input style={{ flex: "1 1 120px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14, textAlign: "right" }} value={itemPrice} onChange={(e) => setItemPrice(e.target.value)} placeholder="단가" inputMode="numeric" />
+              <button type="button" className="btn btn-accent" onClick={addItem}>추가</button>
+            </div>
+          </div>
+          <div className="cst-table-wrap" style={{ marginTop: 14 }}>
+            <table className="cst-quote-table">
+              <thead><tr><th style={{ textAlign: "left" }}>품명</th><th style={{ width: 160 }}>단가</th><th style={{ width: 50 }}></th></tr></thead>
+              <tbody>
+                {items.map((it) => (
+                  <tr key={it.id}>
+                    <td style={{ textAlign: "left", fontWeight: 600 }}>{it.name}</td>
+                    <td><input className="cst-inp cst-inp-num" defaultValue={it.unitPrice.toLocaleString()} onBlur={(e) => updateItemPrice(it, e.target.value)} inputMode="numeric" /></td>
+                    <td><button type="button" className="cst-x" onClick={() => deleteItem(it)}>✕</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="small" style={{ marginTop: 8, color: "var(--muted)" }}>단가는 칸을 클릭해 수정 후 다른 곳을 누르면 저장됩니다.</div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function TaxInvoiceView() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

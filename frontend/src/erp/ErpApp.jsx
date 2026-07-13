@@ -12,7 +12,7 @@ import { userPreferences } from "../preferences.js";
 import { ERP_CSS } from "./erpStyles.js";
 import { ERP_MODULES, ERP_ADMIN_MODULES } from "./config.js";
 import { erpIcons as I } from "./icons.jsx";
-import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesDashboardView, SalesDailyView, TaxInvoiceView, MembersView } from "./modules.jsx";
+import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesDashboardView, SalesDailyView, TaxInvoiceView, ConstructionView, MembersView } from "./modules.jsx";
 
 function NavBtn({ on, icon, label, onClick, layout = "side" }) {
   const cls = layout === "side" ? "sidenavitem" : "sidenavitem";
@@ -41,8 +41,8 @@ function ErpNav({ tab, kbView, onSelect, onLogout, user }) {
   return (
     <>
       <div className="sidenav-top">
-        {ERP_MODULES.map((m, i) => {
-          const prev = ERP_MODULES[i - 1];
+        {ERP_MODULES.filter((m) => !m.ownerOnly || user?.erpAccess?.isOwner).map((m, i, arr) => {
+          const prev = arr[i - 1];
           const showGroup = m.groupLabel && m.groupLabel !== prev?.groupLabel;
           return (
             <React.Fragment key={m.id}>
@@ -286,6 +286,7 @@ export default function ErpApp() {
       case "sales-inquiry-trend": return <SalesInquiryTrendView />;
       case "sales-dashboard": return <SalesDashboardView />;
       case "sales-tax-invoice": return <TaxInvoiceView />;
+      case "construction": return <ConstructionView />;
       case "sales-daily": return <SalesDailyView />;
       default: return <KnowledgeFeed articles={kbArticles} section="knowledge" openWrite={openKbWrite} erpMode />;
     }
