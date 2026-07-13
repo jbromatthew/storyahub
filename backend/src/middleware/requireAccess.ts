@@ -34,13 +34,17 @@ async function loadAccess(req: AccessRequest, res: Response, next: NextFunction)
   next();
 }
 
-/** 읽기는 유예(7일) 중 허용, 쓰기는 체험·유료 활성 시에만 */
+/** 읽기는 유예(7일) 중 허용, 쓰기는 체험·유료 활성 시에만.
+ *  단 ERP 배포(erpMode)에는 결제/유예/삭제 게이팅을 적용하지 않는다. */
 export async function requireAccess(req: AccessRequest, res: Response, next: NextFunction) {
+  // ERP 팀 제품에는 체험/구독 만료·유예 개념이 없으므로 통과시킨다.
+  if (env.erpMode) return next();
+
   await loadAccess(req, res, () => {
     if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
     if (!req.access?.hasAccess) {
       return res.status(402).json({
-        error: "결제 유예 기간입니다. 새 기록·수정은 불가하고, 데이터는 곧 삭제됩니다.",
+        error: "이용 기간이 만료되었습니다. 요금제를 선택해 주세요.",
         purgeAt: req.access?.purgeAt,
       });
     }
