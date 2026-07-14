@@ -1972,7 +1972,7 @@ export function ConstructionView() {
   };
 
   // ---- 견적 ----
-  const newQuote = () => { setNewApt(null); setEditing({ apartmentId: apts[0]?.id || "", title: "", lines: [], payouts: [], status: "requested", taxInvoiceIssued: false, note: "", startDate: "", endDate: "" }); };
+  const newQuote = () => { setNewApt(null); setEditing({ apartmentId: apts[0]?.id || "", title: "", lines: [], payouts: [], materials: [], status: "requested", taxInvoiceIssued: false, note: "", startDate: "", endDate: "" }); };
   const saveNewApt = async () => {
     if (!newApt?.name.trim()) return notifyError(new Error("단지명을 입력하세요"));
     try {
@@ -1983,7 +1983,7 @@ export function ConstructionView() {
       toastSuccess("단지를 추가했어요");
     } catch (e) { notifyError(e); }
   };
-  const editQuote = (q) => { setNewApt(null); setEditing({ ...q, apartmentId: q.apartmentId || "", startDate: q.startDate || "", endDate: q.endDate || "", lines: (q.lines || []).map((l) => ({ ...l })), payouts: (q.payouts || []).map((p) => ({ ...p })) }); };
+  const editQuote = (q) => { setNewApt(null); setEditing({ ...q, apartmentId: q.apartmentId || "", startDate: q.startDate || "", endDate: q.endDate || "", lines: (q.lines || []).map((l) => ({ ...l })), payouts: (q.payouts || []).map((p) => ({ ...p })), materials: (q.materials || []).map((m) => ({ ...m })) }); };
   const addLineFromItem = (itemId) => {
     const it = items.find((x) => x.id === itemId);
     if (!it) return;
@@ -1995,6 +1995,15 @@ export function ConstructionView() {
   const addPayout = () => setEditing((e) => ({ ...e, payouts: [...(e.payouts || []), { teamId: "", teamName: "", amount: 0, paid: false, memo: "" }] }));
   const setPayout = (i, patch) => setEditing((e) => ({ ...e, payouts: (e.payouts || []).map((p, k) => k === i ? { ...p, ...patch } : p) }));
   const removePayout = (i) => setEditing((e) => ({ ...e, payouts: (e.payouts || []).filter((_, k) => k !== i) }));
+  // ---- 투입 부품/자재 (원가) ----
+  const addMaterialFromStock = (stockId) => {
+    const s = stocks.find((x) => x.id === stockId);
+    if (!s) return;
+    setEditing((e) => ({ ...e, materials: [...(e.materials || []), { stockId: s.id, name: s.name, qty: 1, unitCost: s.avgCost || 0 }] }));
+  };
+  const addBlankMaterial = () => setEditing((e) => ({ ...e, materials: [...(e.materials || []), { stockId: null, name: "", qty: 1, unitCost: 0 }] }));
+  const setMaterial = (i, patch) => setEditing((e) => ({ ...e, materials: (e.materials || []).map((m, k) => k === i ? { ...m, ...patch } : m) }));
+  const removeMaterial = (i) => setEditing((e) => ({ ...e, materials: (e.materials || []).filter((_, k) => k !== i) }));
 
   const saveQuote = async () => {
     setBusy(true);
@@ -2018,6 +2027,7 @@ export function ConstructionView() {
       startDate: editing.startDate || null,
       endDate: editing.endDate || null,
       payouts: (editing.payouts || []).map((p) => ({ teamId: p.teamId || null, teamName: p.teamName || "", amount: cstNum(p.amount), paid: !!p.paid, memo: p.memo || null })).filter((p) => p.teamName || p.amount > 0),
+      materials: (editing.materials || []).map((m) => ({ stockId: m.stockId || null, name: m.name || "", qty: cstNum(m.qty), unitCost: cstNum(m.unitCost) })).filter((m) => m.name || m.qty > 0),
     };
     try {
       if (editing.id) await api.erpConstructionUpdateQuote(editing.id, payload);
@@ -2205,16 +2215,78 @@ export function ConstructionView() {
               {(() => {
                 const sum = editing.payouts.reduce((a, p) => a + cstNum(p.amount), 0);
                 const unpaid = editing.payouts.reduce((a, p) => a + (p.paid ? 0 : cstNum(p.amount)), 0);
-                const margin = quoteTotals(editing.lines).total - sum;
                 return (
                   <div className="small" style={{ marginTop: 8, fontWeight: 700 }}>
-                    지급 합계 <strong>{formatWon(sum)}</strong> · 미지급 <strong style={{ color: "var(--accent-deep)" }}>{formatWon(unpaid)}</strong> · 견적가 대비 마진 <strong style={{ color: margin >= 0 ? "#0D7A3E" : "#C5221F" }}>{formatWon(margin)}</strong>
+                    지급 합계 <strong>{formatWon(sum)}</strong> · 미지급 <strong style={{ color: "var(--accent-deep)" }}>{formatWon(unpaid)}</strong>
                   </div>
                 );
               })()}
             </>
           )}
         </div>
+
+        {/* 투입 부품/자재 (원가) */}
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="row between" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <div className="kbe-meta-h" style={{ margin: 0 }}>투입 부품/자재 (원가)</div>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+              <select value="" onChange={(e) => { if (e.target.value) addMaterialFromStock(e.target.value); e.target.value = ""; }} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff" }}>
+                <option value="">+ 재고에서 선택</option>
+                {stocks.map((s) => <option key={s.id} value={s.id}>{s.name}{s.avgCost ? ` (평균 ${s.avgCost.toLocaleString()})` : ""}</option>)}
+              </select>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={addBlankMaterial}>직접 입력</button>
+            </div>
+          </div>
+          <div className="small" style={{ color: "var(--muted)", margin: "6px 0 12px" }}>이 공사에 들어간 부품을 재고에서 선택하면 매입 평균단가로 원가가 채워집니다. 마진 계산에 반영됩니다.</div>
+          {!(editing.materials || []).length ? (
+            <div className="small" style={{ color: "var(--muted)" }}>투입 부품이 없습니다. 위에서 추가하세요.</div>
+          ) : (
+            <>
+              {editing.materials.map((m, i) => (
+                <div key={i} className="row" style={{ gap: 6, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  {m.stockId ? (
+                    <span style={{ flex: "1 1 130px", fontWeight: 700, fontSize: 13 }}>{m.name}</span>
+                  ) : (
+                    <input value={m.name} onChange={(e) => setMaterial(i, { name: e.target.value })} placeholder="부품명" style={{ flex: "1 1 130px", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13 }} />
+                  )}
+                  <input inputMode="numeric" value={m.qty ? cstNum(m.qty).toLocaleString() : ""} onChange={(e) => setMaterial(i, { qty: cstNum(e.target.value) })} placeholder="수량" style={{ flex: "0 0 70px", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, textAlign: "right" }} />
+                  <span className="small" style={{ color: "var(--muted)" }}>×</span>
+                  <input inputMode="numeric" value={m.unitCost ? cstNum(m.unitCost).toLocaleString() : ""} onChange={(e) => setMaterial(i, { unitCost: cstNum(e.target.value) })} placeholder="매입단가" style={{ flex: "0 0 100px", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, textAlign: "right" }} />
+                  <span className="small" style={{ flex: "0 0 auto", fontWeight: 700 }}>= {formatWon(cstNum(m.qty) * cstNum(m.unitCost))}</span>
+                  <button type="button" className="cst-x" onClick={() => removeMaterial(i)}>✕</button>
+                </div>
+              ))}
+              <div className="small" style={{ marginTop: 8, fontWeight: 700 }}>
+                부품 원가 합계 <strong>{formatWon(editing.materials.reduce((a, m) => a + cstNum(m.qty) * cstNum(m.unitCost), 0))}</strong>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* 수익(마진) 요약 */}
+        {(() => {
+          const revenue = quoteTotals(editing.lines).supply;
+          const payoutSum = (editing.payouts || []).reduce((a, p) => a + cstNum(p.amount), 0);
+          const materialCost = (editing.materials || []).reduce((a, m) => a + cstNum(m.qty) * cstNum(m.unitCost), 0);
+          const margin = revenue - payoutSum - materialCost;
+          const rate = revenue > 0 ? (margin / revenue) * 100 : 0;
+          return (
+            <div className="card" style={{ marginTop: 16 }}>
+              <div className="kbe-meta-h" style={{ marginTop: 0 }}>수익(마진) 요약 <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>· 부가세 제외 기준</span></div>
+              <table className="erp-tbl" style={{ minWidth: 0 }}>
+                <tbody>
+                  <tr><td>견적 공급가 (매출)</td><td className="num" style={{ fontWeight: 700 }}>{formatWon(revenue)}</td></tr>
+                  <tr><td style={{ color: "var(--muted)" }}>− 공사팀 정산</td><td className="num" style={{ color: "var(--accent-deep)" }}>−{formatWon(payoutSum)}</td></tr>
+                  <tr><td style={{ color: "var(--muted)" }}>− 부품/자재 원가</td><td className="num" style={{ color: "var(--accent-deep)" }}>−{formatWon(materialCost)}</td></tr>
+                  <tr style={{ borderTop: "2px solid var(--line)" }}>
+                    <td style={{ fontWeight: 800 }}>= 마진</td>
+                    <td className="num" style={{ fontWeight: 800, color: margin >= 0 ? "#0D7A3E" : "#C5221F" }}>{formatWon(margin)} <span className="small" style={{ fontWeight: 700 }}>({rate.toFixed(1)}%)</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
       </div>
     );
   }

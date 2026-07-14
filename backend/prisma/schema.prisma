@@ -718,6 +718,7 @@ model ErpConstructionQuote {
   status           String                    @default("requested") // requested | confirmed | ongoing | done | billing | settled
   taxInvoiceIssued Boolean                   @default(false)
   payouts          Json                      @default("[]") // 협력업체 재정산: [{teamId, teamName, amount, paid, memo}]
+  materials        Json                      @default("[]") // 투입 부품/자재 원가: [{stockId, name, qty, unitCost}]
   note             String?
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt

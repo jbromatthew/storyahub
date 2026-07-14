@@ -1436,6 +1436,18 @@ function sanitizePayouts(raw: unknown) {
     .filter((p) => p.teamName || p.amount > 0);
 }
 
+function sanitizeMaterials(raw: unknown) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((m: any) => ({
+      stockId: m?.stockId ? String(m.stockId) : null,
+      name: String(m?.name ?? "").trim(),
+      qty: Math.max(0, Math.round(Number(m?.qty) || 0)),
+      unitCost: Math.max(0, Math.round(Number(m?.unitCost) || 0)),
+    }))
+    .filter((m) => m.name || m.qty > 0);
+}
+
 function sanitizeEmployees(raw: unknown): Array<{ name: string; title: string | null; phone: string | null; note: string | null }> {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -1502,13 +1514,14 @@ erpRouter.get("/construction/quotes", async (req: AuthedRequest, res) => {
 
 erpRouter.post("/construction/quotes", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
-  const { apartmentId, title, lines, status, taxInvoiceIssued, note, startDate, endDate, payouts } = req.body ?? {};
+  const { apartmentId, title, lines, status, taxInvoiceIssued, note, startDate, endDate, payouts, materials } = req.body ?? {};
   const quote = await prisma.erpConstructionQuote.create({
     data: {
       apartmentId: apartmentId || null,
       title: title?.trim() || null,
       lines: sanitizeLines(lines),
       payouts: sanitizePayouts(payouts),
+      materials: sanitizeMaterials(materials),
       status: CONSTRUCTION_STATUSES.includes(status) ? status : "requested",
       taxInvoiceIssued: !!taxInvoiceIssued,
       note: note?.trim() || null,
@@ -1522,7 +1535,7 @@ erpRouter.post("/construction/quotes", async (req: AuthedRequest, res) => {
 
 erpRouter.patch("/construction/quotes/:id", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
-  const { apartmentId, title, lines, status, taxInvoiceIssued, note, startDate, endDate, payouts } = req.body ?? {};
+  const { apartmentId, title, lines, status, taxInvoiceIssued, note, startDate, endDate, payouts, materials } = req.body ?? {};
   const quote = await prisma.erpConstructionQuote.update({
     where: { id: req.params.id },
     data: {
@@ -1530,6 +1543,7 @@ erpRouter.patch("/construction/quotes/:id", async (req: AuthedRequest, res) => {
       ...(title !== undefined ? { title: title?.trim() || null } : {}),
       ...(lines !== undefined ? { lines: sanitizeLines(lines) } : {}),
       ...(payouts !== undefined ? { payouts: sanitizePayouts(payouts) } : {}),
+      ...(materials !== undefined ? { materials: sanitizeMaterials(materials) } : {}),
       ...(status !== undefined && CONSTRUCTION_STATUSES.includes(status) ? { status } : {}),
       ...(taxInvoiceIssued !== undefined ? { taxInvoiceIssued: !!taxInvoiceIssued } : {}),
       ...(note !== undefined ? { note: note?.trim() || null } : {}),
@@ -1562,16 +1576,18 @@ erpRouter.get("/construction/stocks", async (req: AuthedRequest, res) => {
     orderBy: { createdAt: "desc" },
   });
   const out = stocks.map((s) => {
-    let balance = 0, purchaseSupply = 0, purchaseVat = 0;
+    let balance = 0, purchaseSupply = 0, purchaseVat = 0, inQty = 0;
     for (const m of s.moves) {
       balance += m.kind === "out" ? -m.qty : m.qty;
       if (m.kind === "in" && m.unitPrice) {
         const supply = m.unitPrice * m.qty;
         purchaseSupply += supply;
         purchaseVat += m.vatSeparate ? Math.round(supply * 0.1) : 0;
+        inQty += m.qty;
       }
     }
-    return { ...s, balance, purchaseSupply, purchaseVat, purchaseTotal: purchaseSupply + purchaseVat };
+    const avgCost = inQty > 0 ? Math.round(purchaseSupply / inQty) : 0;
+    return { ...s, balance, inQty, avgCost, purchaseSupply, purchaseVat, purchaseTotal: purchaseSupply + purchaseVat };
   });
   res.json(out);
 });
