@@ -306,7 +306,6 @@ export const api = {
   },
   erpPaymentRateMeta: () => req("/erp/sales/payment-rate/meta"),
   erpPaymentRate: (body) => req("/erp/sales/payment-rate", { method: "POST", body }),
-  erpPaymentRateMonthlyCompare: (body) => req("/erp/sales/payment-rate/monthly-compare", { method: "POST", body }),
   erpSalesTrend: ({ tab, industries } = {}) => {
     const p = new URLSearchParams();
     if (tab) p.set("tab", tab);
