@@ -11,7 +11,8 @@ export const ERP_MODULES = [
   { id: "sales-dashboard", label: "세일즈 계기판", icon: "gauge", group: "sales" },
   { id: "sales-tax-invoice", label: "세금계산서 미발행", icon: "board", group: "sales" },
   { id: "construction", label: "아파트너 공사관리", icon: "board", group: "construction", groupLabel: "공사 관리 (나만)", ownerOnly: true },
-  { id: "construction-broj", label: "브로제이 공사관리", icon: "board", group: "construction", ownerOnly: true },
+  // 브로제이 공사는 플로우가 달라 별도 관리 예정 — 잠시 메뉴에서 숨김 (라우트·orderType는 그대로 유지)
+  // { id: "construction-broj", label: "브로제이 공사관리", icon: "board", group: "construction", ownerOnly: true },
   { id: "vendors", label: "업체 관리", icon: "admin", group: "construction", ownerOnly: true },
 ];
 
