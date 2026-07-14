@@ -1870,7 +1870,7 @@ function printConstructionQuote(quote, apartment) {
   w.document.close();
 }
 
-export function ConstructionView() {
+export function ConstructionView({ orderType = "아파트너" } = {}) {
   const [tab, setTab] = useState("quotes");
   const [items, setItems] = useState([]);
   const [apts, setApts] = useState([]);
@@ -1930,9 +1930,10 @@ export function ConstructionView() {
 
   // ---- 협력업체(공사팀) ----
   // 팀별 재정산 집계 (전체 견적의 payouts)
+  const typedQuotes = useMemo(() => quotes.filter((q) => (q.orderType || "아파트너") === orderType), [quotes, orderType]);
   const teamPayoutSummary = useMemo(() => {
     const map = new Map();
-    for (const q of quotes) {
+    for (const q of typedQuotes) {
       for (const p of (q.payouts || [])) {
         const key = p.teamId || p.teamName;
         const cur = map.get(key) || { name: p.teamName || "(이름없음)", total: 0, paid: 0, unpaid: 0 };
@@ -1942,7 +1943,7 @@ export function ConstructionView() {
       }
     }
     return [...map.values()].sort((a, b) => b.unpaid - a.unpaid);
-  }, [quotes]);
+  }, [typedQuotes]);
   useEffect(() => { load(); }, []);
 
   // ---- 품목 단가 ----
@@ -1972,7 +1973,7 @@ export function ConstructionView() {
   };
 
   // ---- 견적 ----
-  const newQuote = () => { setNewApt(null); setEditing({ apartmentId: apts[0]?.id || "", title: "", lines: [], payouts: [], materials: [], status: "requested", taxInvoiceIssued: false, note: "", startDate: "", endDate: "" }); };
+  const newQuote = () => { setNewApt(null); setEditing({ apartmentId: apts[0]?.id || "", title: "", orderType, lines: [], payouts: [], materials: [], complaints: [], status: "requested", taxInvoiceIssued: false, note: "", startDate: "", endDate: "" }); };
   const saveNewApt = async () => {
     if (!newApt?.name.trim()) return notifyError(new Error("단지명을 입력하세요"));
     try {
@@ -1983,7 +1984,10 @@ export function ConstructionView() {
       toastSuccess("단지를 추가했어요");
     } catch (e) { notifyError(e); }
   };
-  const editQuote = (q) => { setNewApt(null); setEditing({ ...q, apartmentId: q.apartmentId || "", startDate: q.startDate || "", endDate: q.endDate || "", lines: (q.lines || []).map((l) => ({ ...l })), payouts: (q.payouts || []).map((p) => ({ ...p })), materials: (q.materials || []).map((m) => ({ ...m })) }); };
+  const editQuote = (q) => { setNewApt(null); setEditing({ ...q, apartmentId: q.apartmentId || "", orderType: q.orderType || orderType, startDate: q.startDate || "", endDate: q.endDate || "", lines: (q.lines || []).map((l) => ({ ...l })), payouts: (q.payouts || []).map((p) => ({ ...p })), materials: (q.materials || []).map((m) => ({ ...m })), complaints: (q.complaints || []).map((c) => ({ ...c })) }); };
+  const addComplaint = () => setEditing((e) => ({ ...e, complaints: [...(e.complaints || []), { date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date()), content: "", status: "접수", resolution: "" }] }));
+  const setComplaint = (i, patch) => setEditing((e) => ({ ...e, complaints: (e.complaints || []).map((c, k) => k === i ? { ...c, ...patch } : c) }));
+  const removeComplaint = (i) => setEditing((e) => ({ ...e, complaints: (e.complaints || []).filter((_, k) => k !== i) }));
   const addLineFromItem = (itemId) => {
     const it = items.find((x) => x.id === itemId);
     if (!it) return;
@@ -2020,6 +2024,7 @@ export function ConstructionView() {
     const payload = {
       apartmentId,
       title: editing.title || null,
+      orderType: editing.orderType || orderType,
       lines: editing.lines.map((l) => ({ name: l.name, unitPrice: cstNum(l.unitPrice), qty: cstNum(l.qty) })).filter((l) => l.name),
       status: editing.status,
       taxInvoiceIssued: !!editing.taxInvoiceIssued,
@@ -2028,6 +2033,7 @@ export function ConstructionView() {
       endDate: editing.endDate || null,
       payouts: (editing.payouts || []).map((p) => ({ teamId: p.teamId || null, teamName: p.teamName || "", amount: cstNum(p.amount), paid: !!p.paid, memo: p.memo || null })).filter((p) => p.teamName || p.amount > 0),
       materials: (editing.materials || []).map((m) => ({ stockId: m.stockId || null, name: m.name || "", qty: cstNum(m.qty), unitCost: cstNum(m.unitCost) })).filter((m) => m.name || m.qty > 0),
+      complaints: (editing.complaints || []).map((c) => ({ date: c.date || "", content: c.content || "", status: c.status || "접수", resolution: c.resolution || "" })).filter((c) => c.content),
     };
     try {
       if (editing.id) await api.erpConstructionUpdateQuote(editing.id, payload);
@@ -2046,13 +2052,13 @@ export function ConstructionView() {
   const quoteDateKey = (q) => (q.createdAt
     ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(q.createdAt))
     : "");
-  const filteredQuotes = useMemo(() => quotes.filter((q) => {
+  const filteredQuotes = useMemo(() => typedQuotes.filter((q) => {
     if (qStatus !== "all" && q.status !== qStatus) return false;
     const dk = quoteDateKey(q);
     if (qFrom && dk && dk < qFrom) return false;
     if (qTo && dk && dk > qTo) return false;
     return true;
-  }), [quotes, qStatus, qFrom, qTo]);
+  }), [typedQuotes, qStatus, qFrom, qTo]);
   const quoteSummary = useMemo(() => {
     let total = 0, settled = 0, unsettled = 0;
     for (const q of filteredQuotes) {
@@ -2287,6 +2293,31 @@ export function ConstructionView() {
             </div>
           );
         })()}
+
+        {/* 민원 관리 */}
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="row between" style={{ alignItems: "center" }}>
+            <div className="kbe-meta-h" style={{ margin: 0 }}>민원 관리 {(editing.complaints || []).length ? <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>· {editing.complaints.length}건 / 미해결 {editing.complaints.filter((c) => c.status !== "완료").length}건</span> : null}</div>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={addComplaint}>+ 민원 추가</button>
+          </div>
+          <div className="small" style={{ color: "var(--muted)", margin: "6px 0 12px" }}>이 공사 현장에서 발생한 민원과 처리 상태를 기록하세요.</div>
+          {!(editing.complaints || []).length ? (
+            <div className="small" style={{ color: "var(--muted)" }}>등록된 민원이 없습니다.</div>
+          ) : editing.complaints.map((c, i) => (
+            <div key={i} className="card" style={{ marginBottom: 8, background: "var(--paper)", padding: 12 }}>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+                <input type="date" value={c.date || ""} onChange={(e) => setComplaint(i, { date: e.target.value })} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "7px 9px", fontFamily: "inherit", fontSize: 13 }} />
+                <select value={c.status || "접수"} onChange={(e) => setComplaint(i, { status: e.target.value })} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff" }}>
+                  {["접수", "처리중", "완료"].map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <span className={"erp-badge " + (c.status === "완료" ? "green" : c.status === "처리중" ? "blue" : "orange")}>{c.status || "접수"}</span>
+                <button type="button" className="cst-x" style={{ marginLeft: "auto" }} onClick={() => removeComplaint(i)}>✕</button>
+              </div>
+              <input value={c.content || ""} onChange={(e) => setComplaint(i, { content: e.target.value })} placeholder="민원 내용 *" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 8, padding: "9px 11px", fontFamily: "inherit", fontSize: 13, marginBottom: 6 }} />
+              <input value={c.resolution || ""} onChange={(e) => setComplaint(i, { resolution: e.target.value })} placeholder="처리 결과 / 조치 내용" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 8, padding: "9px 11px", fontFamily: "inherit", fontSize: 13 }} />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -2295,9 +2326,9 @@ export function ConstructionView() {
   return (
     <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40, maxWidth: 900 }}>
       <div className="h-eyebrow">Owner</div>
-      <div className="h-title">아파트너 공사관리</div>
+      <div className="h-title">{orderType} 공사관리</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
-        아파트너 공사 수주 건을 견적·진행·정산·재고까지 관리합니다. <strong>나(소유자)만 볼 수 있습니다.</strong> (공사팀 풀은 다른 공사에도 공유)
+        {orderType} 공사 수주 건을 견적·진행·정산·재고·민원까지 관리합니다. <strong>나(소유자)만 볼 수 있습니다.</strong> (업체 풀·재고는 아파트너/브로제이 공사에서 공유)
       </div>
 
       <div className="sales-tabs" style={{ marginTop: 14 }}>
@@ -2309,7 +2340,7 @@ export function ConstructionView() {
       {tab === "quotes" && (
         <>
           <div className="row between" style={{ margin: "16px 0 10px", alignItems: "center" }}>
-            <span className="h-eyebrow">견적 {filteredQuotes.length}건 {filteredQuotes.length !== quotes.length ? `/ 전체 ${quotes.length}` : ""}</span>
+            <span className="h-eyebrow">공사 {filteredQuotes.length}건 {filteredQuotes.length !== typedQuotes.length ? `/ 전체 ${typedQuotes.length}` : ""}</span>
             <button type="button" className="btn btn-accent btn-sm" onClick={newQuote}>+ 새 견적</button>
           </div>
 
@@ -2339,24 +2370,42 @@ export function ConstructionView() {
             <div className="cst-sum-card settled"><div className="lbl">정산 완료 금액</div><div className="val">{formatWon(quoteSummary.settled)}</div></div>
           </div>
 
-          {!filteredQuotes.length ? (
-            <div className="small" style={{ textAlign: "center", padding: 32, color: "var(--muted)" }}>{quotes.length ? "조건에 맞는 견적이 없습니다." : "아직 견적이 없습니다. “새 견적”으로 시작하세요."}</div>
-          ) : filteredQuotes.map((q) => {
-            const t = quoteTotals(q.lines);
-            const st = CST_STATUS[q.status] || CST_STATUS.before;
-            return (
-              <div key={q.id} className="list-item between" style={{ alignItems: "center", cursor: "pointer" }} onClick={() => editQuote(q)}>
-                <div style={{ minWidth: 0 }}>
-                  <div className="ttl">{q.apartment?.name || "(단지 미지정)"} {q.title ? <span className="small">· {q.title}</span> : null}</div>
-                  <div className="meta">
-                    합계 <strong>{formatWon(t.total)}</strong> · {(q.lines || []).length}개 품목 · {q.taxInvoiceIssued ? "세금계산서 발행됨" : "세금계산서 미발행"}
-                    {q.startDate ? ` · 공사 ${q.startDate}${q.endDate ? ` ~ ${q.endDate}` : " ~"}` : ""}
-                  </div>
-                </div>
-                <span className={"cst-badge " + st.cls}>{st.label}</span>
-              </div>
-            );
-          })}
+          <div className="erp-tbl-wrap">
+            <table className="erp-tbl">
+              <thead>
+                <tr>
+                  <th>현장 / 공사</th>
+                  <th className="shrink ctr">상태</th>
+                  <th className="shrink">공사기간</th>
+                  <th className="shrink num">합계</th>
+                  <th className="shrink ctr">민원</th>
+                  <th className="shrink ctr">세금계산서</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredQuotes.map((q) => {
+                  const t = quoteTotals(q.lines);
+                  const st = CST_STATUS[q.status] || CST_STATUS.before;
+                  const comps = q.complaints || [];
+                  const openComp = comps.filter((c) => c.status !== "완료").length;
+                  return (
+                    <tr key={q.id} className="clickable" onClick={() => editQuote(q)}>
+                      <td>
+                        <div className="cell-ttl">{q.apartment?.name || "(현장 미지정)"}</div>
+                        <div className="cell-sub">{q.title || "—"} · {(q.lines || []).length}개 품목</div>
+                      </td>
+                      <td className="shrink ctr"><span className={"cst-badge " + st.cls}>{st.label}</span></td>
+                      <td className="shrink"><span className="cell-sub" style={{ margin: 0 }}>{q.startDate ? `${q.startDate}${q.endDate ? ` ~ ${q.endDate}` : " ~"}` : "—"}</span></td>
+                      <td className="shrink num" style={{ fontWeight: 700 }}>{formatWon(t.total)}</td>
+                      <td className="shrink ctr">{comps.length ? <span className={"erp-badge " + (openComp ? "orange" : "green")}>{comps.length}건{openComp ? ` · 미해결 ${openComp}` : ""}</span> : <span style={{ color: "var(--muted)" }}>—</span>}</td>
+                      <td className="shrink ctr"><span className={"erp-badge " + (q.taxInvoiceIssued ? "green" : "gray")}>{q.taxInvoiceIssued ? "발행" : "미발행"}</span></td>
+                    </tr>
+                  );
+                })}
+                {!filteredQuotes.length && <tr><td colSpan={6} className="erp-tbl-empty">{typedQuotes.length ? "조건에 맞는 공사가 없습니다." : "아직 공사 건이 없습니다. “새 견적”으로 시작하세요."}</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
 
@@ -2614,6 +2663,7 @@ export function VendorsView() {
               <th className="shrink">사업자번호</th>
               <th className="shrink">대표자</th>
               <th className="shrink">연락처</th>
+              <th className="shrink ctr">공사 건수</th>
               <th className="shrink ctr">직원</th>
               <th className="shrink"></th>
             </tr>
@@ -2629,6 +2679,11 @@ export function VendorsView() {
                   <td className="shrink">{v.bizRegNo || <span style={{ color: "var(--muted)" }}>—</span>}</td>
                   <td className="shrink">{v.ceoName ? `${v.ceoName}${v.ceoTitle ? ` ${v.ceoTitle}` : ""}` : <span style={{ color: "var(--muted)" }}>—</span>}</td>
                   <td className="shrink">{v.ceoPhone || v.contact || <span style={{ color: "var(--muted)" }}>—</span>}</td>
+                  <td className="shrink ctr">
+                    {v.jobCount ? (
+                      <span className="erp-badge blue" title={Object.entries(v.jobCountByType || {}).map(([k, n]) => `${k} ${n}건`).join(", ")}>{v.jobCount}건</span>
+                    ) : <span style={{ color: "var(--muted)" }}>0건</span>}
+                  </td>
                   <td className="shrink ctr"><span className="erp-badge">{(v.employees || []).length}명</span></td>
                   <td className="shrink">
                     <div className="row-actions">
@@ -2639,7 +2694,7 @@ export function VendorsView() {
                 </tr>
                 {editId === v.id && (
                   <tr>
-                    <td colSpan={6} style={{ background: "var(--paper)" }}>
+                    <td colSpan={7} style={{ background: "var(--paper)" }}>
                       <div className="kbe-meta-h" style={{ marginTop: 0 }}>사업자등록증 정보</div>
                       <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
                         {VENDOR_FIELDS.map(([key, label, ph, flex]) => (
@@ -2688,7 +2743,7 @@ export function VendorsView() {
                 )}
               </React.Fragment>
             ))}
-            {!vendors.length && <tr><td colSpan={6} className="erp-tbl-empty">등록된 업체가 없습니다. 위에서 업체를 추가하세요.</td></tr>}
+            {!vendors.length && <tr><td colSpan={7} className="erp-tbl-empty">등록된 업체가 없습니다. 위에서 업체를 추가하세요.</td></tr>}
           </tbody>
         </table>
       </div>

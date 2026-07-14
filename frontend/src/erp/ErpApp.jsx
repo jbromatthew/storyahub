@@ -286,7 +286,8 @@ export default function ErpApp() {
       case "sales-inquiry-trend": return <SalesInquiryTrendView />;
       case "sales-dashboard": return <SalesDashboardView />;
       case "sales-tax-invoice": return <TaxInvoiceView />;
-      case "construction": return <ConstructionView />;
+      case "construction": return <ConstructionView orderType="아파트너" />;
+      case "construction-broj": return <ConstructionView orderType="브로제이" />;
       case "vendors": return <VendorsView />;
       case "sales-daily": return <SalesDailyView />;
       default: return <KnowledgeFeed articles={kbArticles} section="knowledge" openWrite={openKbWrite} erpMode />;

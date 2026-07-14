@@ -1448,6 +1448,19 @@ function sanitizeMaterials(raw: unknown) {
     .filter((m) => m.name || m.qty > 0);
 }
 
+const COMPLAINT_STATUSES = ["접수", "처리중", "완료"];
+function sanitizeComplaints(raw: unknown) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((c: any) => ({
+      date: cstDate(c?.date),
+      content: String(c?.content ?? "").trim(),
+      status: COMPLAINT_STATUSES.includes(c?.status) ? c.status : "접수",
+      resolution: String(c?.resolution ?? "").trim() || null,
+    }))
+    .filter((c) => c.content);
+}
+
 function sanitizeEmployees(raw: unknown): Array<{ name: string; title: string | null; phone: string | null; note: string | null }> {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -1471,8 +1484,26 @@ function teamOut(t: any) {
 // 협력업체(공사팀) 풀
 erpRouter.get("/construction/teams", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
-  const teams = await prisma.erpConstructionTeam.findMany({ where: { active: true }, orderBy: { createdAt: "desc" } });
-  res.json(teams.map(teamOut));
+  const [teams, quotes] = await Promise.all([
+    prisma.erpConstructionTeam.findMany({ where: { active: true }, orderBy: { createdAt: "desc" } }),
+    prisma.erpConstructionQuote.findMany({ select: { payouts: true, orderType: true } }),
+  ]);
+  // 각 팀이 참여한 공사 건수 (payouts의 teamId 기준) — 구분별로도 집계
+  const jobCounts = new Map<string, { total: number; byType: Record<string, number> }>();
+  for (const q of quotes) {
+    const type = (q as any).orderType || "아파트너";
+    const seen = new Set<string>();
+    for (const p of (Array.isArray(q.payouts) ? q.payouts : []) as any[]) {
+      const tid = p?.teamId ? String(p.teamId) : null;
+      if (!tid || seen.has(tid)) continue;
+      seen.add(tid);
+      const cur = jobCounts.get(tid) || { total: 0, byType: {} };
+      cur.total += 1;
+      cur.byType[type] = (cur.byType[type] || 0) + 1;
+      jobCounts.set(tid, cur);
+    }
+  }
+  res.json(teams.map((t) => ({ ...teamOut(t), jobCount: jobCounts.get(t.id)?.total || 0, jobCountByType: jobCounts.get(t.id)?.byType || {} })));
 });
 
 erpRouter.post("/construction/teams", async (req: AuthedRequest, res) => {
@@ -1514,14 +1545,16 @@ erpRouter.get("/construction/quotes", async (req: AuthedRequest, res) => {
 
 erpRouter.post("/construction/quotes", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
-  const { apartmentId, title, lines, status, taxInvoiceIssued, note, startDate, endDate, payouts, materials } = req.body ?? {};
+  const { apartmentId, title, orderType, lines, status, taxInvoiceIssued, note, startDate, endDate, payouts, materials, complaints } = req.body ?? {};
   const quote = await prisma.erpConstructionQuote.create({
     data: {
       apartmentId: apartmentId || null,
       title: title?.trim() || null,
+      orderType: orderType?.trim() || "아파트너",
       lines: sanitizeLines(lines),
       payouts: sanitizePayouts(payouts),
       materials: sanitizeMaterials(materials),
+      complaints: sanitizeComplaints(complaints),
       status: CONSTRUCTION_STATUSES.includes(status) ? status : "requested",
       taxInvoiceIssued: !!taxInvoiceIssued,
       note: note?.trim() || null,
@@ -1535,15 +1568,17 @@ erpRouter.post("/construction/quotes", async (req: AuthedRequest, res) => {
 
 erpRouter.patch("/construction/quotes/:id", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
-  const { apartmentId, title, lines, status, taxInvoiceIssued, note, startDate, endDate, payouts, materials } = req.body ?? {};
+  const { apartmentId, title, orderType, lines, status, taxInvoiceIssued, note, startDate, endDate, payouts, materials, complaints } = req.body ?? {};
   const quote = await prisma.erpConstructionQuote.update({
     where: { id: req.params.id },
     data: {
       ...(apartmentId !== undefined ? { apartmentId: apartmentId || null } : {}),
       ...(title !== undefined ? { title: title?.trim() || null } : {}),
+      ...(orderType !== undefined ? { orderType: orderType?.trim() || "아파트너" } : {}),
       ...(lines !== undefined ? { lines: sanitizeLines(lines) } : {}),
       ...(payouts !== undefined ? { payouts: sanitizePayouts(payouts) } : {}),
       ...(materials !== undefined ? { materials: sanitizeMaterials(materials) } : {}),
+      ...(complaints !== undefined ? { complaints: sanitizeComplaints(complaints) } : {}),
       ...(status !== undefined && CONSTRUCTION_STATUSES.includes(status) ? { status } : {}),
       ...(taxInvoiceIssued !== undefined ? { taxInvoiceIssued: !!taxInvoiceIssued } : {}),
       ...(note !== undefined ? { note: note?.trim() || null } : {}),

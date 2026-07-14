@@ -712,6 +712,7 @@ model ErpConstructionQuote {
   apartmentId      String?
   apartment        ErpConstructionApartment? @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
   title            String?
+  orderType        String                    @default("아파트너") // 공사 구분: 아파트너 | 브로제이
   lines            Json                      @default("[]") // [{name, unitPrice, qty}]
   startDate        String?                   // 공사 예정 시작일 (YYYY-MM-DD)
   endDate          String?                   // 공사 종료일 (YYYY-MM-DD)
@@ -719,6 +720,7 @@ model ErpConstructionQuote {
   taxInvoiceIssued Boolean                   @default(false)
   payouts          Json                      @default("[]") // 협력업체 재정산: [{teamId, teamName, amount, paid, memo}]
   materials        Json                      @default("[]") // 투입 부품/자재 원가: [{stockId, name, qty, unitCost}]
+  complaints       Json                      @default("[]") // 민원: [{date, content, status, resolution}]
   note             String?
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
