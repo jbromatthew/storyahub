@@ -1877,7 +1877,7 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
   const [quotes, setQuotes] = useState([]);
   const [teams, setTeams] = useState([]);
   const [stocks, setStocks] = useState([]);
-  const [stockForm, setStockForm] = useState({ name: "", unit: "개" });
+  const [stockForm, setStockForm] = useState({ name: "", unit: "개", date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date()), qty: "", unitPrice: "", vatSeparate: true });
   const [moveFor, setMoveFor] = useState(null); // {stockId, kind} 입출고 입력 대상
   const [moveForm, setMoveForm] = useState({ date: "", qty: "", unitPrice: "", vatSeparate: true, memo: "" });
   const [loading, setLoading] = useState(true);
@@ -1902,7 +1902,18 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
   // ---- 재고 ----
   const addStock = async () => {
     if (!stockForm.name.trim()) return notifyError(new Error("품목명을 입력하세요"));
-    try { await api.erpConstructionCreateStock({ name: stockForm.name.trim(), unit: stockForm.unit.trim() || "개" }); setStockForm({ name: "", unit: "개" }); load(); } catch (e) { notifyError(e); }
+    try {
+      const created = await api.erpConstructionCreateStock({ name: stockForm.name.trim(), unit: stockForm.unit.trim() || "개" });
+      // 매입단가/수량을 입력했으면 최초 입고(구매)까지 한 번에 기록
+      if (created?.id && cstNum(stockForm.qty) > 0) {
+        await api.erpConstructionAddStockMove(created.id, {
+          date: stockForm.date, kind: "in", qty: cstNum(stockForm.qty),
+          unitPrice: cstNum(stockForm.unitPrice), vatSeparate: stockForm.vatSeparate,
+        });
+      }
+      setStockForm({ name: "", unit: "개", date: stockForm.date, qty: "", unitPrice: "", vatSeparate: true });
+      load();
+    } catch (e) { notifyError(e); }
   };
   const deleteStock = async (s) => {
     if (!(await confirmAction(`'${s.name}' 재고 품목을 삭제할까요? 입출고 기록도 함께 삭제됩니다.`))) return;
@@ -2445,11 +2456,23 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
       {tab === "stock" && (
         <>
           <div className="card" style={{ marginTop: 16 }}>
-            <div className="kbe-meta-h" style={{ marginTop: 0 }}>재고 품목 등록</div>
-            <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+            <div className="kbe-meta-h" style={{ marginTop: 0 }}>재고 품목 등록 + 매입 입력</div>
+            <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
               <input style={{ flex: "1 1 160px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }} value={stockForm.name} onChange={(e) => setStockForm({ ...stockForm, name: e.target.value })} placeholder="품목명 * (예: 엘리베이터 모듈)" />
-              <input style={{ flex: "0 0 90px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }} value={stockForm.unit} onChange={(e) => setStockForm({ ...stockForm, unit: e.target.value })} placeholder="단위" />
+              <input style={{ flex: "0 0 70px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }} value={stockForm.unit} onChange={(e) => setStockForm({ ...stockForm, unit: e.target.value })} placeholder="단위" />
+              <input type="date" style={{ flex: "0 0 150px", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", fontFamily: "inherit", fontSize: 14 }} value={stockForm.date} onChange={(e) => setStockForm({ ...stockForm, date: e.target.value })} />
+              <input inputMode="numeric" style={{ flex: "0 0 80px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14, textAlign: "right" }} value={stockForm.qty} onChange={(e) => setStockForm({ ...stockForm, qty: e.target.value })} placeholder="수량" />
+              <span className="small" style={{ color: "var(--muted)" }}>×</span>
+              <input inputMode="numeric" style={{ flex: "0 0 110px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14, textAlign: "right" }} value={stockForm.unitPrice} onChange={(e) => setStockForm({ ...stockForm, unitPrice: e.target.value })} placeholder="매입단가" />
+              <label className="row small" style={{ gap: 4, alignItems: "center" }}><input type="checkbox" checked={stockForm.vatSeparate} onChange={(e) => setStockForm({ ...stockForm, vatSeparate: e.target.checked })} /> 부가세 별도</label>
               <button type="button" className="btn btn-accent" onClick={addStock}>품목 추가</button>
+            </div>
+            <div className="small" style={{ color: "var(--muted)", marginTop: 8 }}>
+              {cstNum(stockForm.qty) > 0 && cstNum(stockForm.unitPrice) > 0 ? (
+                <>이대로 추가하면 <strong>{cstNum(stockForm.qty).toLocaleString()}{stockForm.unit || "개"} × {cstNum(stockForm.unitPrice).toLocaleString()}원</strong> = 공급가 {formatWon(cstNum(stockForm.qty) * cstNum(stockForm.unitPrice))}{stockForm.vatSeparate ? ` + VAT ${formatWon(Math.round(cstNum(stockForm.qty) * cstNum(stockForm.unitPrice) * 0.1))}` : ""} 매입으로 기록됩니다.</>
+              ) : (
+                "수량·매입단가를 넣으면 품목 등록과 동시에 첫 매입(입고)이 기록됩니다. 단가만 관리할 땐 비워두고 추가하세요."
+              )}
             </div>
           </div>
 
