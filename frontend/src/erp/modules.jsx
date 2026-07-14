@@ -1887,7 +1887,6 @@ export function ConstructionView() {
   const [itemName, setItemName] = useState("");
   const [itemPrice, setItemPrice] = useState("");
   const [aptForm, setAptForm] = useState({ name: "", partner: "", address: "", note: "" });
-  const [teamForm, setTeamForm] = useState({ name: "", contact: "", note: "" });
   const [newApt, setNewApt] = useState(null); // 견적 화면 인라인 새 단지 입력
   const [qStatus, setQStatus] = useState("all");
   const [qFrom, setQFrom] = useState("");
@@ -1930,14 +1929,6 @@ export function ConstructionView() {
   };
 
   // ---- 협력업체(공사팀) ----
-  const addTeam = async () => {
-    if (!teamForm.name.trim()) return notifyError(new Error("팀명을 입력하세요"));
-    try { await api.erpConstructionCreateTeam(teamForm); setTeamForm({ name: "", contact: "", note: "" }); load(); } catch (e) { notifyError(e); }
-  };
-  const deleteTeam = async (tm) => {
-    if (!(await confirmAction(`'${tm.name}' 팀을 삭제할까요?`))) return;
-    try { await api.erpConstructionDeleteTeam(tm.id); load(); } catch (e) { notifyError(e); }
-  };
   // 팀별 재정산 집계 (전체 견적의 payouts)
   const teamPayoutSummary = useMemo(() => {
     const map = new Map();
@@ -2299,13 +2290,8 @@ export function ConstructionView() {
 
       {tab === "teams" && (
         <>
-          <div className="card" style={{ marginTop: 16 }}>
-            <div className="kbe-meta-h" style={{ marginTop: 0 }}>공사팀(협력업체) 등록</div>
-            <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-              <input style={{ flex: "1 1 140px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }} value={teamForm.name} onChange={(e) => setTeamForm({ ...teamForm, name: e.target.value })} placeholder="팀명 * (예: A설치팀)" />
-              <input style={{ flex: "1 1 130px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }} value={teamForm.contact} onChange={(e) => setTeamForm({ ...teamForm, contact: e.target.value })} placeholder="연락처/계좌 (선택)" />
-              <button type="button" className="btn btn-accent" onClick={addTeam}>팀 추가</button>
-            </div>
+          <div className="small" style={{ color: "var(--muted)", margin: "14px 0 4px", lineHeight: 1.5 }}>
+            아파트너 공사 정산에서 각 공사팀에 지급할 금액을 집계합니다. 업체(공사팀) 등록·사업자 정보·직원은 왼쪽 메뉴 <strong>업체 관리</strong>에서 관리하세요.
           </div>
 
           <div className="cst-summary" style={{ gridTemplateColumns: "repeat(2,1fr)" }}>
@@ -2313,29 +2299,25 @@ export function ConstructionView() {
             <div className="cst-sum-card settled"><div className="lbl">지급 완료 총액</div><div className="val">{formatWon(teamPayoutSummary.reduce((a, t) => a + t.paid, 0))}</div></div>
           </div>
 
-          {teamPayoutSummary.length > 0 && (
-            <>
-              <div className="h-eyebrow" style={{ marginTop: 18 }}>팀별 지급 현황</div>
-              {teamPayoutSummary.map((t, i) => (
-                <div key={i} className="list-item between" style={{ alignItems: "center" }}>
-                  <div><div className="ttl">{t.name}</div><div className="meta">총 {formatWon(t.total)} · 지급완료 {formatWon(t.paid)}</div></div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontWeight: 800, color: t.unpaid > 0 ? "var(--accent-deep)" : "#0D7A3E" }}>{t.unpaid > 0 ? `미지급 ${formatWon(t.unpaid)}` : "완료"}</div>
-                  </div>
-                </div>
-              ))}
-            </>
-          )}
-
-          <div className="h-eyebrow" style={{ marginTop: 18 }}>등록된 공사팀 {teams.length}팀</div>
-          {!teams.length ? (
-            <div className="small" style={{ color: "var(--muted)", padding: "10px 0" }}>아직 등록된 팀이 없습니다.</div>
-          ) : teams.map((tm) => (
-            <div key={tm.id} className="list-item between" style={{ alignItems: "center" }}>
-              <div><div className="ttl">{tm.name}</div>{tm.contact ? <div className="meta">{tm.contact}</div> : null}</div>
-              <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => deleteTeam(tm)}>삭제</button>
-            </div>
-          ))}
+          <div className="erp-tbl-cap"><span className="cnt">팀별 지급 현황</span></div>
+          <div className="erp-tbl-wrap">
+            <table className="erp-tbl">
+              <thead>
+                <tr><th>공사팀</th><th className="shrink num">총 정산액</th><th className="shrink num">지급 완료</th><th className="shrink num">미지급</th></tr>
+              </thead>
+              <tbody>
+                {teamPayoutSummary.map((t, i) => (
+                  <tr key={i}>
+                    <td><div className="cell-ttl">{t.name}</div></td>
+                    <td className="shrink num">{formatWon(t.total)}</td>
+                    <td className="shrink num" style={{ color: "#0D7A3E" }}>{formatWon(t.paid)}</td>
+                    <td className="shrink num" style={{ fontWeight: 800, color: t.unpaid > 0 ? "var(--accent-deep)" : "#0D7A3E" }}>{t.unpaid > 0 ? formatWon(t.unpaid) : "완료"}</td>
+                  </tr>
+                ))}
+                {!teamPayoutSummary.length && <tr><td colSpan={4} className="erp-tbl-empty">정산할 공사팀 지급 내역이 없습니다. 견적의 팀 정산에서 배분하면 여기에 집계됩니다.</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
 
@@ -2466,6 +2448,178 @@ export function ConstructionView() {
           <div className="small" style={{ marginTop: 8, color: "var(--muted)" }}>단가는 칸을 클릭해 수정 후 다른 곳을 누르면 저장됩니다.</div>
         </>
       )}
+    </div>
+  );
+}
+
+const EMPTY_VENDOR = {
+  name: "", bizRegNo: "", ceoName: "", ceoTitle: "", ceoPhone: "",
+  address: "", bizType: "", bizItem: "", taxEmail: "", bankAccount: "", contact: "", note: "",
+};
+const VENDOR_FIELDS = [
+  ["name", "상호(업체명) *", "예: 브로제이 설치", "1 1 220px"],
+  ["bizRegNo", "사업자등록번호", "000-00-00000", "1 1 180px"],
+  ["ceoName", "대표자 이름", "홍길동", "1 1 140px"],
+  ["ceoTitle", "대표자 직급", "대표이사", "1 1 120px"],
+  ["ceoPhone", "대표자 연락처", "010-0000-0000", "1 1 160px"],
+  ["taxEmail", "세금계산서 이메일", "tax@company.com", "1 1 200px"],
+  ["bizType", "업태", "예: 건설업", "1 1 140px"],
+  ["bizItem", "종목", "예: 전기공사", "1 1 140px"],
+  ["address", "사업장 주소", "서울시 ...", "2 1 300px"],
+  ["bankAccount", "정산 계좌", "은행 / 계좌번호 / 예금주", "2 1 300px"],
+];
+
+export function VendorsView() {
+  const [vendors, setVendors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newName, setNewName] = useState("");
+  const [editId, setEditId] = useState(null);
+  const [form, setForm] = useState(EMPTY_VENDOR);
+  const [employees, setEmployees] = useState([]);
+  const [emp, setEmp] = useState({ name: "", title: "", phone: "" });
+  const [saving, setSaving] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    api.erpConstructionTeams().then(setVendors).catch(notifyError).finally(() => setLoading(false));
+  };
+  useEffect(load, []);
+
+  const addVendor = async () => {
+    if (!newName.trim()) return notifyError(new Error("업체명을 입력하세요"));
+    try { const v = await api.erpConstructionCreateTeam({ name: newName.trim() }); setNewName(""); load(); openEdit(v); } catch (e) { notifyError(e); }
+  };
+  const openEdit = (v) => {
+    setEditId(v.id);
+    setForm({ ...EMPTY_VENDOR, ...Object.fromEntries(Object.keys(EMPTY_VENDOR).map((k) => [k, v[k] || ""])) });
+    setEmployees(v.employees || []);
+    setEmp({ name: "", title: "", phone: "" });
+  };
+  const cancelEdit = () => { setEditId(null); setEmp({ name: "", title: "", phone: "" }); };
+  const addEmp = () => {
+    if (!emp.name.trim()) return;
+    setEmployees((prev) => [...prev, { name: emp.name.trim(), title: emp.title.trim(), phone: emp.phone.trim() }]);
+    setEmp({ name: "", title: "", phone: "" });
+  };
+  const removeEmp = (i) => setEmployees((prev) => prev.filter((_, idx) => idx !== i));
+  const saveVendor = async () => {
+    if (!form.name.trim()) return notifyError(new Error("업체명을 입력하세요"));
+    setSaving(true);
+    try { await api.erpConstructionUpdateTeam(editId, { ...form, employees }); cancelEdit(); load(); } catch (e) { notifyError(e); } finally { setSaving(false); }
+  };
+  const deleteVendor = async (v) => {
+    if (!(await confirmAction(`'${v.name}' 업체를 삭제할까요?`))) return;
+    try { await api.erpConstructionDeleteTeam(v.id); if (editId === v.id) cancelEdit(); load(); } catch (e) { notifyError(e); }
+  };
+
+  if (loading) return <div className="spinner" />;
+
+  return (
+    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40, maxWidth: 960 }}>
+      <div className="h-eyebrow">공사 관리</div>
+      <div className="h-title">업체 관리</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+        협력업체(공사팀) 풀을 사업자등록증 정보·세금계산서 발행정보·대표자·직원까지 관리합니다. 이 업체 풀은 아파트너 공사 정산 등 여러 공사 관리에서 공유됩니다.
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+          <input
+            style={{ flex: "1 1 220px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }}
+            value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addVendor(); }}
+            placeholder="새 업체명 (상호) *"
+          />
+          <button type="button" className="btn btn-accent" onClick={addVendor}>업체 추가</button>
+        </div>
+      </div>
+
+      <div className="erp-tbl-cap"><span className="cnt">등록 업체 {vendors.length}개</span></div>
+      <div className="erp-tbl-wrap">
+        <table className="erp-tbl">
+          <thead>
+            <tr>
+              <th>업체명</th>
+              <th className="shrink">사업자번호</th>
+              <th className="shrink">대표자</th>
+              <th className="shrink">연락처</th>
+              <th className="shrink ctr">직원</th>
+              <th className="shrink"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {vendors.map((v) => (
+              <React.Fragment key={v.id}>
+                <tr>
+                  <td>
+                    <div className="cell-ttl">{v.name}</div>
+                    {(v.bizType || v.bizItem) && <div className="cell-sub">{[v.bizType, v.bizItem].filter(Boolean).join(" · ")}</div>}
+                  </td>
+                  <td className="shrink">{v.bizRegNo || <span style={{ color: "var(--muted)" }}>—</span>}</td>
+                  <td className="shrink">{v.ceoName ? `${v.ceoName}${v.ceoTitle ? ` ${v.ceoTitle}` : ""}` : <span style={{ color: "var(--muted)" }}>—</span>}</td>
+                  <td className="shrink">{v.ceoPhone || v.contact || <span style={{ color: "var(--muted)" }}>—</span>}</td>
+                  <td className="shrink ctr"><span className="erp-badge">{(v.employees || []).length}명</span></td>
+                  <td className="shrink">
+                    <div className="row-actions">
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => (editId === v.id ? cancelEdit() : openEdit(v))}>{editId === v.id ? "닫기" : "수정"}</button>
+                      <button type="button" className="erp-btn-x" title="삭제" onClick={() => deleteVendor(v)}>✕</button>
+                    </div>
+                  </td>
+                </tr>
+                {editId === v.id && (
+                  <tr>
+                    <td colSpan={6} style={{ background: "var(--paper)" }}>
+                      <div className="kbe-meta-h" style={{ marginTop: 0 }}>사업자등록증 정보</div>
+                      <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                        {VENDOR_FIELDS.map(([key, label, ph, flex]) => (
+                          <label key={key} style={{ flex, display: "flex", flexDirection: "column", gap: 4 }}>
+                            <span className="filter-pick-label">{label}</span>
+                            <input
+                              value={form[key]} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                              placeholder={ph}
+                              style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", fontFamily: "inherit", fontSize: 14 }}
+                            />
+                          </label>
+                        ))}
+                      </div>
+
+                      <div className="kbe-meta-h">직원</div>
+                      {employees.length > 0 && (
+                        <div className="erp-tbl-wrap" style={{ marginTop: 0, marginBottom: 10 }}>
+                          <table className="erp-tbl" style={{ minWidth: 360 }}>
+                            <thead><tr><th>이름</th><th className="shrink">직급</th><th className="shrink">연락처</th><th className="shrink ctr"></th></tr></thead>
+                            <tbody>
+                              {employees.map((e, i) => (
+                                <tr key={i}>
+                                  <td><div className="cell-ttl">{e.name}</div></td>
+                                  <td className="shrink">{e.title || <span style={{ color: "var(--muted)" }}>—</span>}</td>
+                                  <td className="shrink">{e.phone || <span style={{ color: "var(--muted)" }}>—</span>}</td>
+                                  <td className="shrink ctr"><button type="button" className="erp-btn-x" onClick={() => removeEmp(i)}>✕</button></td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                        <input value={emp.name} onChange={(e) => setEmp({ ...emp, name: e.target.value })} placeholder="이름" style={{ flex: "1 1 120px", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14 }} />
+                        <input value={emp.title} onChange={(e) => setEmp({ ...emp, title: e.target.value })} placeholder="직급" style={{ flex: "0 1 110px", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14 }} />
+                        <input value={emp.phone} onChange={(e) => setEmp({ ...emp, phone: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") addEmp(); }} placeholder="연락처" style={{ flex: "1 1 140px", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14 }} />
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={addEmp}>직원 추가</button>
+                      </div>
+
+                      <div className="row" style={{ gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={cancelEdit} disabled={saving}>취소</button>
+                        <button type="button" className="btn btn-accent btn-sm" onClick={saveVendor} disabled={saving}>{saving ? "저장 중…" : "저장"}</button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            ))}
+            {!vendors.length && <tr><td colSpan={6} className="erp-tbl-empty">등록된 업체가 없습니다. 위에서 업체를 추가하세요.</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

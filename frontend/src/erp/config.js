@@ -10,7 +10,8 @@ export const ERP_MODULES = [
   { id: "sales-trend", label: "세일즈 월간추이", icon: "trend", group: "sales" },
   { id: "sales-dashboard", label: "세일즈 계기판", icon: "gauge", group: "sales" },
   { id: "sales-tax-invoice", label: "세금계산서 미발행", icon: "board", group: "sales" },
-  { id: "construction", label: "아파트너 공사관리", icon: "board", group: "construction", groupLabel: "아파트너 공사 (나만)", ownerOnly: true },
+  { id: "construction", label: "아파트너 공사관리", icon: "board", group: "construction", groupLabel: "공사 관리 (나만)", ownerOnly: true },
+  { id: "vendors", label: "업체 관리", icon: "admin", group: "construction", ownerOnly: true },
 ];
 
 export const ERP_ADMIN_MODULES = [

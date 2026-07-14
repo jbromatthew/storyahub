@@ -1436,35 +1436,53 @@ function sanitizePayouts(raw: unknown) {
     .filter((p) => p.teamName || p.amount > 0);
 }
 
+function sanitizeEmployees(raw: unknown): Array<{ name: string; title: string | null; phone: string | null; note: string | null }> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((e: any) => ({
+      name: String(e?.name ?? "").trim(),
+      title: String(e?.title ?? "").trim() || null,
+      phone: String(e?.phone ?? "").trim() || null,
+      note: String(e?.note ?? "").trim() || null,
+    }))
+    .filter((e) => e.name);
+}
+
+const CST_TEAM_TEXT = ["contact", "note", "bizRegNo", "ceoName", "ceoTitle", "ceoPhone", "address", "bizType", "bizItem", "taxEmail", "bankAccount"] as const;
+
+function teamOut(t: any) {
+  let employees: unknown = [];
+  try { employees = JSON.parse(t.employees || "[]"); } catch { employees = []; }
+  return { ...t, employees: Array.isArray(employees) ? employees : [] };
+}
+
 // 협력업체(공사팀) 풀
 erpRouter.get("/construction/teams", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
   const teams = await prisma.erpConstructionTeam.findMany({ where: { active: true }, orderBy: { createdAt: "desc" } });
-  res.json(teams);
+  res.json(teams.map(teamOut));
 });
 
 erpRouter.post("/construction/teams", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
-  const { name, contact, note } = req.body ?? {};
-  if (!name?.trim()) return res.status(400).json({ error: "팀명을 입력하세요" });
-  const team = await prisma.erpConstructionTeam.create({
-    data: { name: String(name).trim(), contact: contact?.trim() || null, note: note?.trim() || null },
-  });
-  res.json(team);
+  const body = req.body ?? {};
+  if (!body.name?.trim()) return res.status(400).json({ error: "업체명을 입력하세요" });
+  const data: Record<string, unknown> = { name: String(body.name).trim() };
+  for (const k of CST_TEAM_TEXT) if (body[k] !== undefined) data[k] = String(body[k] ?? "").trim() || null;
+  if (body.employees !== undefined) data.employees = JSON.stringify(sanitizeEmployees(body.employees));
+  const team = await prisma.erpConstructionTeam.create({ data: data as any });
+  res.json(teamOut(team));
 });
 
 erpRouter.patch("/construction/teams/:id", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
-  const { name, contact, note } = req.body ?? {};
-  const team = await prisma.erpConstructionTeam.update({
-    where: { id: req.params.id },
-    data: {
-      ...(name !== undefined ? { name: String(name).trim() } : {}),
-      ...(contact !== undefined ? { contact: contact?.trim() || null } : {}),
-      ...(note !== undefined ? { note: note?.trim() || null } : {}),
-    },
-  });
-  res.json(team);
+  const body = req.body ?? {};
+  const data: Record<string, unknown> = {};
+  if (body.name !== undefined) data.name = String(body.name).trim();
+  for (const k of CST_TEAM_TEXT) if (body[k] !== undefined) data[k] = String(body[k] ?? "").trim() || null;
+  if (body.employees !== undefined) data.employees = JSON.stringify(sanitizeEmployees(body.employees));
+  const team = await prisma.erpConstructionTeam.update({ where: { id: req.params.id }, data: data as any });
+  res.json(teamOut(team));
 });
 
 erpRouter.delete("/construction/teams/:id", async (req: AuthedRequest, res) => {

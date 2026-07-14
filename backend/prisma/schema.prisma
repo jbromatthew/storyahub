@@ -727,12 +727,22 @@ model ErpConstructionQuote {
 
 
 model ErpConstructionTeam {
-  id        String   @id @default(cuid())
-  name      String
-  contact   String?
-  note      String?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  name        String
+  contact     String?
+  note        String?
+  bizRegNo    String?
+  ceoName     String?
+  ceoTitle    String?
+  ceoPhone    String?
+  address     String?
+  bizType     String?
+  bizItem     String?
+  taxEmail    String?
+  bankAccount String?
+  employees   String   @default("[]")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
 }
 
 model ErpConstructionStock {
