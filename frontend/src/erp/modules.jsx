@@ -3734,6 +3734,22 @@ export function PaymentRateView() {
   const [showAssignees, setShowAssignees] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [statsMetric, setStatsMetric] = useState("monthlyRate");
+  const [mc, setMc] = useState(null);
+  const [mcLoading, setMcLoading] = useState(true);
+  const [mcMetric, setMcMetric] = useState("monthlyRate"); // monthlyRate | actualRate
+
+  const loadMonthlyCompare = useCallback((inds, asgn) => {
+    const industries = inds ?? selectedIndustries;
+    const assignees = asgn ?? selectedAssignees;
+    setMcLoading(true);
+    api.erpPaymentRateMonthlyCompare({
+      industries: industries.length ? industries : undefined,
+      assignees: assignees.length ? assignees : undefined,
+    })
+      .then(setMc)
+      .catch(notifyError)
+      .finally(() => setMcLoading(false));
+  }, [selectedIndustries, selectedAssignees]);
 
   const currentMonthSheet = useMemo(() => {
     const now = new Date();
@@ -3768,7 +3784,10 @@ export function PaymentRateView() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => { if (meta) loadMonthlyCompare(); /* eslint-disable-next-line */ }, [meta]);
+
   const runCompute = useCallback(() => {
+    loadMonthlyCompare();
     const valid = groups.filter((g) => g.months.length > 0);
     if (!valid.length) return notifyError(new Error("비교군에 월을 1개 이상 선택하세요"));
     setComputing(true);
@@ -3874,6 +3893,69 @@ export function PaymentRateView() {
           onChange={setSelectedChannels}
         />
       )}
+
+      {/* 당월 결제율 비교 (직전월 · 최근 3개월 · 최근 1년 × 전체/오가닉/비오가닉) */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="row between" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <div className="kbe-meta-h" style={{ margin: 0 }}>당월 결제율 비교{mc?.month ? <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}> · 당월 {mc.month}</span> : null}</div>
+          <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div className="seg" style={{ width: 220 }}>
+              <button type="button" className={mcMetric === "monthlyRate" ? "on" : ""} onClick={() => setMcMetric("monthlyRate")} style={{ padding: "6px 0", fontSize: 12.5 }}>당월 결제전환율</button>
+              <button type="button" className={mcMetric === "actualRate" ? "on" : ""} onClick={() => setMcMetric("actualRate")} style={{ padding: "6px 0", fontSize: 12.5 }}>실 결제전환율</button>
+            </div>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => loadMonthlyCompare()}>조회조건 반영</button>
+          </div>
+        </div>
+        <div className="small" style={{ color: "var(--muted)", margin: "6px 0 4px", lineHeight: 1.5 }}>
+          당월 결제율을 <strong>직전월 · 최근 3개월 · 최근 1년</strong>(각 baseline은 당월 제외 평균)과 <strong>전체 · 오가닉 · 비오가닉</strong>으로 나눠 비교합니다. 위 업종·담당자 조건이 반영됩니다. 괄호는 당월과의 차이(%p).
+        </div>
+        {mcLoading ? (
+          <div className="spinner" />
+        ) : !mc?.segments?.length ? (
+          <div className="erp-tbl-empty">표시할 데이터가 없습니다.</div>
+        ) : (() => {
+          const mVal = (m) => (mcMetric === "monthlyRate" ? m?.monthlyRate : m?.actualRate);
+          const mNum = (m) => (mcMetric === "monthlyRate" ? m?.monthlyPayment : m?.actualPayment);
+          const fmtPct = (v) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
+          return (
+            <div className="erp-tbl-wrap">
+              <table className="erp-tbl">
+                <thead>
+                  <tr>
+                    <th>구분</th>
+                    {mc.periods.map((p) => (
+                      <th key={p.key} className="num">{p.label}{p.key !== "current" && p.monthCount ? <><br /><span className="cell-sub" style={{ fontWeight: 500 }}>{p.months[p.months.length - 1]}~{p.months[0]}</span></> : null}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {mc.segments.map((seg) => {
+                    const cur = mVal(seg.byPeriod.current);
+                    return (
+                      <tr key={seg.key}>
+                        <td className="cell-ttl">{seg.label}</td>
+                        {mc.periods.map((p) => {
+                          const m = seg.byPeriod[p.key];
+                          const v = mVal(m);
+                          const isCur = p.key === "current";
+                          const delta = (!isCur && v != null && cur != null) ? (cur - v) * 100 : null;
+                          return (
+                            <td key={p.key} className="num">
+                              <div style={{ fontWeight: isCur ? 800 : 700, color: isCur ? "var(--accent-deep)" : "var(--ink)" }}>{fmtPct(v)}</div>
+                              <div className="cell-sub" style={{ margin: 0 }}>{(mNum(m) || 0).toLocaleString()}/{(m?.consulting || 0).toLocaleString()}</div>
+                              {delta != null && <div className="small" style={{ fontWeight: 700, color: delta >= 0 ? "#0D7A3E" : "#C5221F" }}>({delta >= 0 ? "+" : ""}{delta.toFixed(1)}%p)</div>}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
+      </div>
 
       <div className="rate-groups-section">
         <div className="rate-groups-top">

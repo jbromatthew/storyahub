@@ -240,6 +240,107 @@ export async function getPaymentRateMeta() {
   };
 }
 
+const RATE_SEGMENTS = [
+  { key: "all", label: "전체" },
+  { key: "organic", label: "오가닉" },
+  { key: "nonOrganic", label: "비오가닉" },
+] as const;
+
+export type MonthlyRateCompareQuery = {
+  industries?: string[];
+  assignees?: string[];
+  month?: string;
+};
+
+/** 당월 결제율을 직전월 / 최근 3개월 / 최근 1년(각각 당월 제외 baseline)과, 전체·오가닉·비오가닉으로 나눠 비교 */
+export async function computeMonthlyRateCompare(query: MonthlyRateCompareQuery) {
+  const spreadsheetId = env.googleSheets.inquirySpreadsheetId;
+  const industryList = (query.industries?.length ? query.industries : [])
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const industryFilter = industryList.length ? new Set(industryList) : null;
+  const assigneeFilter = query.assignees?.length ? new Set(query.assignees) : null;
+
+  const monthRows = await prisma.erpSalesInquiry.findMany({
+    where: { spreadsheetId },
+    select: { sheetName: true },
+  });
+  const allMonths = [...new Set(monthRows.map((r) => r.sheetName))].sort((a, b) => b.localeCompare(a));
+  if (!allMonths.length) {
+    return { month: null, industries: industryList, periods: [], segments: [] };
+  }
+
+  const now = new Date();
+  const curCalendar = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.`;
+  const requested = query.month ? normalizeMonthSheet(query.month) : null;
+  const current = requested && allMonths.includes(requested)
+    ? requested
+    : allMonths.includes(curCalendar)
+      ? curCalendar
+      : allMonths[0];
+
+  const idx = allMonths.indexOf(current);
+  const trailing = idx >= 0 ? allMonths.slice(idx + 1) : allMonths.filter((m) => m < current);
+
+  const periods = [
+    { key: "current", label: "당월", months: [current] },
+    { key: "prev", label: "직전월", months: trailing.slice(0, 1) },
+    { key: "m3", label: "최근 3개월", months: trailing.slice(0, 3) },
+    { key: "y1", label: "최근 1년", months: trailing.slice(0, 12) },
+  ];
+
+  const monthsNeeded = [...new Set([current, ...trailing.slice(0, 12)])];
+  const dbRows = await prisma.erpSalesInquiry.findMany({
+    where: { spreadsheetId, sheetName: { in: monthsNeeded } },
+    select: { sheetName: true, data: true },
+  });
+
+  const perMonth = new Map<string, Record<string, Counts>>();
+  for (const m of monthsNeeded) {
+    perMonth.set(m, { all: emptyCounts(), organic: emptyCounts(), nonOrganic: emptyCounts() });
+  }
+
+  for (const row of dbRows) {
+    const data = row.data as Record<string, string>;
+    if (data["구분"] !== "신규문의") continue;
+    if (industryFilter && !industryFilter.has((data["업종"] || "").trim())) continue;
+    if (assigneeFilter && !assigneeFilter.has(assigneeName(data))) continue;
+    const bucket = perMonth.get(row.sheetName);
+    if (!bucket) continue;
+    addToCounts(bucket.all, data);
+    if (matchesLegacyChannel("organic", data)) addToCounts(bucket.organic, data);
+    else if (matchesLegacyChannel("non-organic", data)) addToCounts(bucket.nonOrganic, data);
+  }
+
+  const sumMonths = (months: string[], segKey: string): PaymentRateMetrics => {
+    const c = emptyCounts();
+    for (const m of months) {
+      const b = perMonth.get(m)?.[segKey];
+      if (!b) continue;
+      c.inquiries += b.inquiries;
+      c.consulting += b.consulting;
+      c.openBefore += b.openBefore;
+      c.absences += b.absences;
+      c.monthlyPayment += b.monthlyPayment;
+      c.actualPayment += b.actualPayment;
+    }
+    return withRates(c);
+  };
+
+  const segments = RATE_SEGMENTS.map((seg) => ({
+    key: seg.key,
+    label: seg.label,
+    byPeriod: Object.fromEntries(periods.map((p) => [p.key, sumMonths(p.months, seg.key)])),
+  }));
+
+  return {
+    month: current,
+    industries: industryList,
+    periods: periods.map((p) => ({ key: p.key, label: p.label, months: p.months, monthCount: p.months.length })),
+    segments,
+  };
+}
+
 function buildPresets(months: string[]) {
   const now = new Date();
   const current = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.`;

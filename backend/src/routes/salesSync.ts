@@ -18,6 +18,7 @@ import {
 } from "../services/salesJobs.js";
 import {
   computePaymentRate,
+  computeMonthlyRateCompare,
   getPaymentRateMeta,
 } from "../services/salesPaymentRate.js";
 import {
@@ -139,6 +140,20 @@ salesSyncRouter.post("/payment-rate", async (req: AuthedRequest, res: Response) 
   }
   try {
     res.json(await computePaymentRate(parsed.data));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
+salesSyncRouter.post("/payment-rate/monthly-compare", async (req: AuthedRequest, res: Response) => {
+  try {
+    const body = req.body ?? {};
+    res.json(await computeMonthlyRateCompare({
+      industries: Array.isArray(body.industries) ? body.industries : undefined,
+      assignees: Array.isArray(body.assignees) ? body.assignees : undefined,
+      month: typeof body.month === "string" ? body.month : undefined,
+    }));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: msg });
