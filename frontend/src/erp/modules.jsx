@@ -3802,6 +3802,21 @@ export function PaymentRateView() {
     ]);
   };
 
+  const applyMonthlyCompareGroups = () => {
+    const ms = meta?.months || [];
+    const cur = currentMonthSheet;
+    const idx = ms.indexOf(cur);
+    const trailing = idx >= 0 ? ms.slice(idx + 1) : ms.filter((m) => m < cur);
+    const gs = [
+      { id: newGroupId(), label: "당월", months: cur ? [cur] : [] },
+      { id: newGroupId(), label: "직전월", months: trailing.slice(0, 1) },
+      { id: newGroupId(), label: "최근 3개월", months: trailing.slice(0, 3) },
+      { id: newGroupId(), label: "최근 1년", months: trailing.slice(0, 12) },
+    ].filter((g) => g.months.length);
+    if (!gs.length) return notifyError(new Error("선택 가능한 월이 없습니다"));
+    setGroups(gs);
+  };
+
   const removeGroup = (id) => {
     setGroups((prev) => (prev.length <= 1 ? prev : prev.filter((g) => g.id !== id)));
   };
@@ -3883,10 +3898,11 @@ export function PaymentRateView() {
             <span className="small">{groups.length}개 비교군</span>
           </div>
           <div className="rate-groups-presets">
+            <button type="button" className="btn btn-accent btn-sm" onClick={applyMonthlyCompareGroups} title="당월 · 직전월 · 최근 3개월 · 최근 1년 비교군을 한 번에 구성">⚡ 당월·직전월·3개월·1년</button>
             {GROUP_PRESETS.map((p) => (
               <button key={p.id} type="button" className="btn btn-ghost btn-sm" onClick={() => addGroup(p)}>+ {p.label}</button>
             ))}
-            <button type="button" className="btn btn-accent btn-sm" onClick={() => addGroup(null)}>+ 빈 비교군</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => addGroup(null)}>+ 빈 비교군</button>
           </div>
         </div>
 
