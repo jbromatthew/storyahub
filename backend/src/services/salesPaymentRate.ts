@@ -167,6 +167,14 @@ function emptyCounts(): Counts {
   return { inquiries: 0, consulting: 0, openBefore: 0, absences: 0, monthlyPayment: 0, actualPayment: 0 };
 }
 
+type SegCounts = { all: Counts; organic: Counts; nonOrganic: Counts };
+function emptySegCounts(): SegCounts {
+  return { all: emptyCounts(), organic: emptyCounts(), nonOrganic: emptyCounts() };
+}
+function segMetrics(b: SegCounts) {
+  return { all: withRates(b.all), organic: withRates(b.organic), nonOrganic: withRates(b.nonOrganic) };
+}
+
 function withRates(counts: Counts): PaymentRateMetrics {
   return {
     ...counts,
@@ -306,23 +314,30 @@ export async function computePaymentRate(query: PaymentRateQuery) {
     const overall = emptyCounts();
     const overallOrganic = emptyCounts();
     const overallNonOrganic = emptyCounts();
-    const byPlan = new Map<string, Counts>();
-    const byAssignee = new Map<string, Counts>();
+    const byPlan = new Map<string, SegCounts>();
+    const byAssignee = new Map<string, SegCounts>();
 
     for (const rawMonth of group.months) {
       const month = normalizeMonthSheet(rawMonth);
       for (const data of byMonth.get(month) ?? []) {
         const assignee = assigneeName(data);
         if (assigneeFilter && !assigneeFilter.has(assignee)) continue;
+        const seg: "organic" | "nonOrganic" | null = matchesLegacyChannel("organic", data)
+          ? "organic"
+          : matchesLegacyChannel("non-organic", data)
+            ? "nonOrganic"
+            : null;
         addToCounts(overall, data);
-        if (matchesLegacyChannel("organic", data)) addToCounts(overallOrganic, data);
-        else if (matchesLegacyChannel("non-organic", data)) addToCounts(overallNonOrganic, data);
+        if (seg === "organic") addToCounts(overallOrganic, data);
+        else if (seg === "nonOrganic") addToCounts(overallNonOrganic, data);
         const plan = planName(data);
-        const planBucket = byPlan.get(plan) ?? emptyCounts();
-        addToCounts(planBucket, data);
+        const planBucket = byPlan.get(plan) ?? emptySegCounts();
+        addToCounts(planBucket.all, data);
+        if (seg) addToCounts(planBucket[seg], data);
         byPlan.set(plan, planBucket);
-        const assigneeBucket = byAssignee.get(assignee) ?? emptyCounts();
-        addToCounts(assigneeBucket, data);
+        const assigneeBucket = byAssignee.get(assignee) ?? emptySegCounts();
+        addToCounts(assigneeBucket.all, data);
+        if (seg) addToCounts(assigneeBucket[seg], data);
         byAssignee.set(assignee, assigneeBucket);
       }
     }
@@ -347,14 +362,14 @@ export async function computePaymentRate(query: PaymentRateQuery) {
         nonOrganic: withRates(overallNonOrganic),
       },
       byMonth: monthSeries,
-      byPlan: plans.map((plan) => ({
-        plan,
-        metrics: withRates(byPlan.get(plan) ?? emptyCounts()),
-      })),
-      byAssignee: assignees.map((name) => ({
-        assignee: name,
-        metrics: withRates(byAssignee.get(name) ?? emptyCounts()),
-      })),
+      byPlan: plans.map((plan) => {
+        const b = byPlan.get(plan) ?? emptySegCounts();
+        return { plan, metrics: withRates(b.all), metricsBySegment: segMetrics(b) };
+      }),
+      byAssignee: assignees.map((name) => {
+        const b = byAssignee.get(name) ?? emptySegCounts();
+        return { assignee: name, metrics: withRates(b.all), metricsBySegment: segMetrics(b) };
+      }),
     };
   });
 

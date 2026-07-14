@@ -3369,6 +3369,7 @@ function buildPlanCompareRows(planTables) {
   return planOrder.map((plan) => ({
     plan,
     byGroup: planTables.map((block) => block.plans?.find((p) => p.plan === plan)?.metrics ?? null),
+    byGroupSegments: planTables.map((block) => block.plans?.find((p) => p.plan === plan)?.metricsBySegment ?? null),
   }));
 }
 
@@ -3378,14 +3379,16 @@ function buildAssigneeCompareRows(assigneeTables, names, onlyWithData = true) {
     .map((assignee) => ({
       assignee,
       byGroup: assigneeTables.map((block) => block.assignees?.find((a) => a.assignee === assignee)?.metrics ?? null),
+      byGroupSegments: assigneeTables.map((block) => block.assignees?.find((a) => a.assignee === assignee)?.metricsBySegment ?? null),
     }))
     .filter((row) => !onlyWithData || row.byGroup.some((m) => (m?.inquiries ?? 0) > 0));
 }
 
-function PlanMetricsCell({ metrics }) {
-  if (!metrics) return <td className="num rate-plan-cell empty">-</td>;
+function PlanMetricsCell({ metrics, firstOfGroup }) {
+  const style = firstOfGroup ? { borderLeft: "2px solid var(--line)" } : undefined;
+  if (!metrics) return <td className="num rate-plan-cell empty" style={style}>-</td>;
   return (
-    <td className="rate-plan-cell">
+    <td className="rate-plan-cell" style={style}>
       {PLAN_CELL_METRICS.map((m) => (
         <div key={m.key} className={m.format === "percent" ? "pct" : ""}>
           <span className="lbl">{m.label}</span>
@@ -3394,6 +3397,51 @@ function PlanMetricsCell({ metrics }) {
       ))}
     </td>
   );
+}
+
+// 담당자별/요금제별 비교표: 오가닉 분리 시 각 비교군을 전체/오가닉/비오가닉 3열로
+function SegCompareHead({ firstLabel, groupLabels, split }) {
+  if (!split) {
+    return (
+      <thead>
+        <tr>
+          <th className="plan-col">{firstLabel}</th>
+          {groupLabels.map((label) => <th key={label}>{label}</th>)}
+        </tr>
+      </thead>
+    );
+  }
+  return (
+    <thead>
+      <tr>
+        <th className="plan-col" rowSpan={2}>{firstLabel}</th>
+        {groupLabels.map((label) => <th key={label} colSpan={3} style={{ borderLeft: "2px solid var(--line)" }}>{label}</th>)}
+      </tr>
+      <tr>
+        {groupLabels.map((label) => (
+          <React.Fragment key={label}>
+            <th style={{ borderLeft: "2px solid var(--line)", fontWeight: 800 }}>전체</th>
+            <th>오가닉</th>
+            <th>비오가닉</th>
+          </React.Fragment>
+        ))}
+      </tr>
+    </thead>
+  );
+}
+
+function SegCompareCells({ byGroup, byGroupSegments, split }) {
+  if (!split) return byGroup.map((m, i) => <PlanMetricsCell key={i} metrics={m} />);
+  return byGroup.map((_, i) => {
+    const seg = byGroupSegments?.[i];
+    return (
+      <React.Fragment key={i}>
+        <PlanMetricsCell metrics={seg?.all ?? null} firstOfGroup />
+        <PlanMetricsCell metrics={seg?.organic ?? null} />
+        <PlanMetricsCell metrics={seg?.nonOrganic ?? null} />
+      </React.Fragment>
+    );
+  });
 }
 
 function newGroupId() {
@@ -4089,19 +4137,12 @@ export function PaymentRateView() {
               ) : (
               <div className="rate-table-wrap rate-table-scroll">
                 <table className="rate-table rate-plan-compare">
-                  <thead>
-                    <tr>
-                      <th className="plan-col">담당자</th>
-                      {groupLabels.map((label) => <th key={label}>{label}</th>)}
-                    </tr>
-                  </thead>
+                  <SegCompareHead firstLabel="담당자" groupLabels={groupLabels} split={splitSegments} />
                   <tbody>
                     {assigneeCompareRows.map((row) => (
                       <tr key={row.assignee}>
                         <td className="plan-col"><AssigneeBadge name={row.assignee} colorMap={meta?.assigneeColors} /></td>
-                        {row.byGroup.map((metrics, i) => (
-                          <PlanMetricsCell key={i} metrics={metrics} />
-                        ))}
+                        <SegCompareCells byGroup={row.byGroup} byGroupSegments={row.byGroupSegments} split={splitSegments} />
                       </tr>
                     ))}
                   </tbody>
@@ -4116,19 +4157,12 @@ export function PaymentRateView() {
               <div className="rate-plan-title">요금제별 비교</div>
               <div className="rate-table-wrap rate-table-scroll">
                 <table className="rate-table rate-plan-compare">
-                  <thead>
-                    <tr>
-                      <th className="plan-col">요금제</th>
-                      {groupLabels.map((label) => <th key={label}>{label}</th>)}
-                    </tr>
-                  </thead>
+                  <SegCompareHead firstLabel="요금제" groupLabels={groupLabels} split={splitSegments} />
                   <tbody>
                     {planCompareRows.map((row) => (
                       <tr key={row.plan}>
                         <td className="plan-col">{row.plan}</td>
-                        {row.byGroup.map((metrics, i) => (
-                          <PlanMetricsCell key={i} metrics={metrics} />
-                        ))}
+                        <SegCompareCells byGroup={row.byGroup} byGroupSegments={row.byGroupSegments} split={splitSegments} />
                       </tr>
                     ))}
                   </tbody>

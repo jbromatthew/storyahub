@@ -246,6 +246,8 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .rate-filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0;}
 .rate-filters select,.rate-filters input{min-width:140px;}
 .rate-page{max-width:100%;}
+/* 결제율 분석은 표가 넓어 기본 .pad 840px 제한을 풀어 남는 폭을 씀 (반응형: 넘칠 때만 가로 스크롤) */
+.pad.rate-page{max-width:1280px;}
 .rate-filter-panel{padding:0;overflow:visible;margin:14px 0;}
 .rate-filter-panel-hd{padding:12px 14px;font-size:12px;font-weight:800;color:var(--muted);border-bottom:1px solid var(--line);background:#FAFAF8;border-radius:16px 16px 0 0;}
 .rate-filter-panel-body{padding:14px;display:grid;gap:14px;overflow:visible;position:relative;}
