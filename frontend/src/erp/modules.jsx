@@ -3402,12 +3402,15 @@ function newGroupId() {
 
 function defaultGroups(months, currentMonth) {
   const cur = currentMonth || months[0];
-  const g1 = { id: newGroupId(), label: "당월", months: cur ? [cur] : [] };
-  const last3 = months.filter((m) => m !== cur).slice(0, 3);
-  if (last3.length > 0) {
-    return [g1, { id: newGroupId(), label: "직전 3개월", months: last3 }];
-  }
-  return [g1];
+  const idx = months.indexOf(cur);
+  const trailing = idx >= 0 ? months.slice(idx + 1) : months.filter((m) => m !== cur);
+  const gs = [
+    { id: newGroupId(), label: "당월", months: cur ? [cur] : [] },
+    { id: newGroupId(), label: "직전월", months: trailing.slice(0, 1) },
+    { id: newGroupId(), label: "최근 3개월", months: trailing.slice(0, 3) },
+    { id: newGroupId(), label: "최근 1년", months: trailing.slice(0, 12) },
+  ].filter((g) => g.months.length);
+  return gs.length ? gs : [{ id: newGroupId(), label: "당월", months: cur ? [cur] : [] }];
 }
 
 function loadSavedGroups(months, currentMonth) {
