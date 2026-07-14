@@ -877,8 +877,12 @@ export function AdminView() {
   };
 
   const resetPassword = async (emp) => {
+    const input = window.prompt(`${emp.name || emp.email} 새 비밀번호를 입력하세요 (6자 이상).\n비워두면 임시 비밀번호가 자동 생성됩니다.`, "");
+    if (input === null) return; // 취소
+    const pw = input.trim();
+    if (pw && pw.length < 6) return notifyError(new Error("비밀번호는 6자 이상이어야 합니다"));
     try {
-      const res = await api.erpResetPassword(emp.id);
+      const res = await api.erpResetPassword(emp.id, pw || undefined);
       setIssuedPw({ name: emp.name, email: emp.email, password: res.tempPassword });
       toastSuccess("비밀번호를 재설정했습니다");
     } catch (e) { notifyError(e); }
