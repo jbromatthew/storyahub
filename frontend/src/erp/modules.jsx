@@ -3048,7 +3048,9 @@ export function VendorsView() {
 export function TaxInvoiceView() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [month, setMonth] = useState("all");
+  const [allMonths, setAllMonths] = useState(false);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
 
   useEffect(() => {
     setLoading(true);
@@ -3058,9 +3060,31 @@ export function TaxInvoiceView() {
       .finally(() => setLoading(false));
   }, []);
 
+  const sortedMonths = useMemo(() => [...(data?.months || [])].sort(), [data]);
+  useEffect(() => {
+    if (sortedMonths.length && !from && !to) {
+      const last = sortedMonths[sortedMonths.length - 1];
+      setFrom(last); setTo(last);
+    }
+  }, [sortedMonths]); // eslint-disable-line
+
+  const pickMonths = (nf, nt) => { setAllMonths(false); setFrom(nf); setTo(nt); };
+  const shiftWindow = (dir) => {
+    const fi = sortedMonths.indexOf(from), ti = sortedMonths.indexOf(to);
+    if (fi < 0 || ti < 0) return;
+    const nf = fi + dir, nt = ti + dir;
+    if (nf < 0 || nt >= sortedMonths.length) return;
+    pickMonths(sortedMonths[nf], sortedMonths[nt]);
+  };
+
   const items = useMemo(
-    () => (data?.items || []).filter((it) => month === "all" || it.month === month),
-    [data, month],
+    () => (data?.items || []).filter((it) => {
+      if (allMonths) return true;
+      if (from && it.month < from) return false;
+      if (to && it.month > to) return false;
+      return true;
+    }),
+    [data, allMonths, from, to],
   );
   const totalAmount = useMemo(() => items.reduce((s, it) => s + (it.amount || 0), 0), [items]);
 
@@ -3096,10 +3120,16 @@ export function TaxInvoiceView() {
       ) : (
         <>
           <div className="row" style={{ gap: 8, flexWrap: "wrap", margin: "16px 0 4px", alignItems: "center" }}>
-            <button type="button" className={"chip" + (month === "all" ? " on" : "")} onClick={() => setMonth("all")}>전체</button>
-            {(data?.months || []).map((m) => (
-              <button key={m} type="button" className={"chip" + (month === m ? " on" : "")} onClick={() => setMonth(m)}>{m}</button>
-            ))}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => shiftWindow(-1)} disabled={allMonths || !from || sortedMonths.indexOf(from) <= 0}>‹ 이전달</button>
+            <select value={from} onChange={(e) => { const v = e.target.value; pickMonths(v, to && v > to ? v : to); }} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff", opacity: allMonths ? 0.5 : 1 }}>
+              {sortedMonths.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+            <span className="small">~</span>
+            <select value={to} onChange={(e) => { const v = e.target.value; pickMonths(from && v < from ? v : from, v); }} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff", opacity: allMonths ? 0.5 : 1 }}>
+              {sortedMonths.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => shiftWindow(1)} disabled={allMonths || !to || sortedMonths.indexOf(to) >= sortedMonths.length - 1}>다음달 ›</button>
+            <button type="button" className={"chip" + (allMonths ? " on" : "")} onClick={() => setAllMonths(true)}>전체</button>
             <span style={{ marginLeft: "auto" }} />
             <button type="button" className="btn btn-ghost btn-sm" onClick={copyList} disabled={!items.length}>목록 복사</button>
           </div>

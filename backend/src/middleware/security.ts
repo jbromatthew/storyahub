@@ -36,7 +36,7 @@ export function applySecurityMiddleware(app: Express): void {
       },
       credentials: true,
       methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization", "X-Admin-Secret", "X-Filename"],
+      allowedHeaders: ["Content-Type", "Authorization", "X-Admin-Secret", "X-Filename", "X-Pin", "X-Site", "X-Kind", "X-Uploader"],
       maxAge: 86400,
     })
   );
