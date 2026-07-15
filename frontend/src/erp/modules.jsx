@@ -3647,6 +3647,13 @@ function formatRateValue(value, format) {
   return String(value);
 }
 
+// 여러 달 선택 시 건수 지표에 월평균(합계÷월수) 부기 (% 지표는 이미 기간 집계율이라 제외)
+function AvgSub({ value, format, monthN }) {
+  if (format !== "number" || !monthN || monthN <= 1 || value == null || Number.isNaN(value)) return null;
+  const avg = value / monthN;
+  return <div className="rate-avg-sub">월평균 {(Math.round(avg * 10) / 10).toLocaleString()}</div>;
+}
+
 const PLAN_CELL_METRICS = [
   { key: "inquiries", label: "문의", format: "number" },
   { key: "consulting", label: "상담", format: "number" },
@@ -4065,7 +4072,7 @@ function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange }) {
                 <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
                   <td className="metric-label">{row.label}</td>
                   {row.values.map((val, i) => (
-                    <td key={i} className="num">{formatRateValue(val, row.format)}</td>
+                    <td key={i} className="num">{formatRateValue(val, row.format)}<AvgSub value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
                   ))}
                 </tr>
               ))}
@@ -4382,9 +4389,9 @@ export function PaymentRateView() {
                       <td className="metric-label">{row.label}</td>
                       {result.groups.map((g) => (
                         <React.Fragment key={g.id}>
-                          <td className="num" style={{ borderLeft: "2px solid var(--line)", fontWeight: 700 }}>{formatRateValue(g.bySegment.all[row.key], row.format)}</td>
-                          <td className="num">{formatRateValue(g.bySegment.organic[row.key], row.format)}</td>
-                          <td className="num">{formatRateValue(g.bySegment.nonOrganic[row.key], row.format)}</td>
+                          <td className="num" style={{ borderLeft: "2px solid var(--line)", fontWeight: 700 }}>{formatRateValue(g.bySegment.all[row.key], row.format)}<AvgSub value={g.bySegment.all[row.key]} format={row.format} monthN={g.months?.length} /></td>
+                          <td className="num">{formatRateValue(g.bySegment.organic[row.key], row.format)}<AvgSub value={g.bySegment.organic[row.key]} format={row.format} monthN={g.months?.length} /></td>
+                          <td className="num">{formatRateValue(g.bySegment.nonOrganic[row.key], row.format)}<AvgSub value={g.bySegment.nonOrganic[row.key]} format={row.format} monthN={g.months?.length} /></td>
                         </React.Fragment>
                       ))}
                     </tr>
@@ -4406,7 +4413,7 @@ export function PaymentRateView() {
                   <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
                     <td className="metric-label">{row.label}</td>
                     {row.values.map((val, i) => (
-                      <td key={i} className="num">{formatRateValue(val, row.format)}</td>
+                      <td key={i} className="num">{formatRateValue(val, row.format)}<AvgSub value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
                     ))}
                   </tr>
                 ))}

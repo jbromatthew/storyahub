@@ -273,6 +273,7 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .rate-table td.metric-label{background:#FFF3E8;font-weight:800;text-align:left;min-width:160px;position:sticky;left:0;z-index:1;}
 .rate-table tr.metric-pct td.metric-label{background:#FFE8D6;}
 .rate-table td.num{font-variant-numeric:tabular-nums;}
+.rate-table td.num .rate-avg-sub{font-size:11px;font-weight:500;color:var(--muted);margin-top:2px;white-space:nowrap;}
 .rate-plan-block{margin-top:20px;}
 .rate-plan-title{font-size:14px;font-weight:800;margin:0 0 8px;color:var(--accent-deep);}
 .rate-plan-compare th.plan-col,.rate-plan-compare td.plan-col{text-align:left;font-weight:800;min-width:120px;position:sticky;left:0;background:#FFF3E8;z-index:2;}
