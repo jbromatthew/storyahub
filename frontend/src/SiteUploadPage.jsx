@@ -34,6 +34,17 @@ async function uploadPhoto(token, pin, siteName, kind, uploader, file) {
   return j;
 }
 
+async function renameSiteApi(token, pin, oldName, newName) {
+  const r = await fetch(`${API}/public/construction/site-upload/${token}/rename`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin, oldName, newName }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `이름 수정 실패 (${r.status})`);
+}
+async function deleteSiteApi(token, pin, name) {
+  const r = await fetch(`${API}/public/construction/site-upload/${token}/delete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin, name }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `삭제 실패 (${r.status})`);
+}
+
 const box = { maxWidth: 560, margin: "0 auto", padding: "22px 16px 70px" };
 const inp = { width: "100%", border: "1px solid #E3DED4", borderRadius: 12, padding: "13px 14px", fontSize: 16, fontFamily: "inherit", boxSizing: "border-box" };
 const btn = (bg, fg = "#fff") => ({ border: "none", borderRadius: 12, padding: "12px", fontSize: 14, fontWeight: 800, background: bg, color: fg, cursor: "pointer", fontFamily: "inherit", width: "100%" });
@@ -47,6 +58,7 @@ export default function SiteUploadPage({ token }) {
   const [err, setErr] = useState("");
   const [ver, setVer] = useState(0); // 썸네일 캐시버스터
   const [preview, setPreview] = useState(null); // 확대보기 url
+  const [search, setSearch] = useState("");
   const fileRef = useRef(null);
   const pendingRef = useRef({ name: "", kind: "before" });
   const idRef = useRef(1);
@@ -91,7 +103,29 @@ export default function SiteUploadPage({ token }) {
 
   const addLocalSite = () => setLocalSites((prev) => [...prev, { id: idRef.current++, name: "" }]);
   const setLocalName = (id, name) => setLocalSites((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
-  const removeLocal = (id) => setLocalSites((prev) => prev.filter((s) => s.id !== id));
+  const removeLocal = (id, name) => {
+    if (name && name.trim() && !window.confirm(`'${name.trim()}' 개소를 삭제할까요?`)) return;
+    setLocalSites((prev) => prev.filter((s) => s.id !== id));
+  };
+  const renameServer = async (oldName) => {
+    const v = window.prompt("새 개소 이름", oldName);
+    if (v == null) return;
+    const nn = v.trim();
+    if (!nn || nn === oldName) return;
+    setErr("");
+    try { await renameSiteApi(token, pin.trim(), oldName, nn); await refresh(); }
+    catch (e) { setErr(e.message); }
+  };
+  const deleteServer = async (name) => {
+    if (!window.confirm(`'${name}' 개소를 삭제할까요? 올린 사진도 함께 삭제됩니다.`)) return;
+    setErr("");
+    try { await deleteSiteApi(token, pin.trim(), name); await refresh(); }
+    catch (e) { setErr(e.message); }
+  };
+
+  const q = search.trim().toLowerCase();
+  const serverRows = [...(info?.sites || [])].filter((s) => !q || s.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  const localRows = localSites.filter((s) => !q || (s.name || "").toLowerCase().includes(q));
 
   if (!info) {
     return (
@@ -123,17 +157,35 @@ export default function SiteUploadPage({ token }) {
         <button type="button" style={{ ...btn("#1B1A17"), width: "auto", padding: "8px 14px" }} onClick={addLocalSite}>+ 개소 추가</button>
       </div>
 
+      {(info.sites || []).length > 3 && (
+        <input style={{ ...inp, marginTop: 10, padding: "10px 12px" }} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="🔍 개소 이름 검색" />
+      )}
+
       <div style={{ marginTop: 10 }}>
-        {(info.sites || []).map((s) => (
-          <SiteRow key={s.name} name={s.name} fixed hasBefore={s.hasBefore} hasAfter={s.hasAfter}
-            busy={busy} viewUrl={viewUrl} onPreview={setPreview} onUpload={trigger} />
+        {serverRows.map((s) => (
+          <div key={s.name} style={{ background: "#fff", border: "1px solid #ECE7DD", borderRadius: 14, padding: 12, marginBottom: 10 }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 10 }}>
+              <div style={{ fontWeight: 800, fontSize: 15, flex: 1, wordBreak: "break-all" }}>{s.name}</div>
+              <button type="button" onClick={() => renameServer(s.name)} style={{ border: "1px solid #E3DED4", background: "#fff", color: "#1B1A17", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>이름수정</button>
+              <button type="button" onClick={() => deleteServer(s.name)} style={{ border: "1px solid #F0C4A8", background: "#fff", color: "#C0392B", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>삭제</button>
+            </div>
+            <Slots name={s.name} hasBefore={s.hasBefore} hasAfter={s.hasAfter} busy={busy} viewUrl={viewUrl} onPreview={setPreview} onUpload={trigger} />
+          </div>
         ))}
-        {localSites.map((s) => (
-          <SiteRow key={s.id} name={s.name} onName={(v) => setLocalName(s.id, v)} onRemove={() => removeLocal(s.id)}
-            busy={busy} viewUrl={viewUrl} onPreview={setPreview} onUpload={trigger} />
+        {localRows.map((s) => (
+          <div key={s.id} style={{ background: "#fff", border: "1px solid #ECE7DD", borderRadius: 14, padding: 12, marginBottom: 10 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+              <input value={s.name} onChange={(e) => setLocalName(s.id, e.target.value)} placeholder="개소 이름 (예: 1층 현관)" style={{ ...inp, flex: 1, fontSize: 15, padding: "10px 12px" }} />
+              <button type="button" onClick={() => removeLocal(s.id, s.name)} style={{ border: "1px solid #E3DED4", background: "#fff", color: "#C0392B", borderRadius: 8, width: 34, height: 40, cursor: "pointer", fontSize: 15 }}>✕</button>
+            </div>
+            <Slots name={s.name} busy={busy} viewUrl={viewUrl} onPreview={setPreview} onUpload={trigger} />
+          </div>
         ))}
         {(info.sites || []).length + localSites.length === 0 && (
           <div style={{ color: "#8C857A", fontSize: 14, padding: "14px 0" }}>“+ 개소 추가”로 개소를 만들고 사진을 올리세요.</div>
+        )}
+        {q && serverRows.length === 0 && localRows.length === 0 && (
+          <div style={{ color: "#8C857A", fontSize: 14, padding: "14px 0" }}>“{search}” 검색 결과가 없습니다.</div>
         )}
       </div>
 
@@ -182,21 +234,11 @@ function Slot({ label, name, kind, has, busy, viewUrl, onPreview, onUpload }) {
   );
 }
 
-function SiteRow({ name, fixed, onName, onRemove, hasBefore, hasAfter, busy, viewUrl, onPreview, onUpload }) {
+function Slots({ name, hasBefore, hasAfter, busy, viewUrl, onPreview, onUpload }) {
   return (
-    <div style={{ background: "#fff", border: "1px solid #ECE7DD", borderRadius: 14, padding: 12, marginBottom: 10 }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
-        {fixed ? (
-          <div style={{ fontWeight: 800, fontSize: 15, flex: 1 }}>{name}</div>
-        ) : (
-          <input value={name} onChange={(e) => onName(e.target.value)} placeholder="개소 이름 (예: 1층 현관)" style={{ ...inp, flex: 1, fontSize: 15, padding: "10px 12px" }} />
-        )}
-        {!fixed && <button type="button" onClick={onRemove} style={{ border: "1px solid #E3DED4", background: "#fff", color: "#C0392B", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 14 }}>✕</button>}
-      </div>
-      <div style={{ display: "flex", gap: 10 }}>
-        <Slot label="공사 전" name={name} kind="before" has={hasBefore} busy={busy} viewUrl={viewUrl} onPreview={onPreview} onUpload={onUpload} />
-        <Slot label="공사 후" name={name} kind="after" has={hasAfter} busy={busy} viewUrl={viewUrl} onPreview={onPreview} onUpload={onUpload} />
-      </div>
+    <div style={{ display: "flex", gap: 10 }}>
+      <Slot label="공사 전" name={name} kind="before" has={hasBefore} busy={busy} viewUrl={viewUrl} onPreview={onPreview} onUpload={onUpload} />
+      <Slot label="공사 후" name={name} kind="after" has={hasAfter} busy={busy} viewUrl={viewUrl} onPreview={onPreview} onUpload={onUpload} />
     </div>
   );
 }

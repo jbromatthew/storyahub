@@ -2164,7 +2164,11 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
   const [photoBusy, setPhotoBusy] = useState(null); // `${index}-before` 등 업로드 중 표시
   const addSite = () => setEditing((e) => ({ ...e, sitePhotos: [...(e.sitePhotos || []), { name: "", beforeKey: null, afterKey: null }] }));
   const setSite = (i, patch) => setEditing((e) => ({ ...e, sitePhotos: (e.sitePhotos || []).map((s, k) => k === i ? { ...s, ...patch } : s) }));
-  const removeSite = (i) => setEditing((e) => ({ ...e, sitePhotos: (e.sitePhotos || []).filter((_, k) => k !== i) }));
+  const removeSite = async (i) => {
+    const s = (editing?.sitePhotos || [])[i];
+    if ((s?.name || s?.beforeKey || s?.afterKey) && !(await confirmAction(`'${s?.name || "이름 없는"}' 개소를 삭제할까요? 사진도 함께 삭제됩니다.`))) return;
+    setEditing((e) => ({ ...e, sitePhotos: (e.sitePhotos || []).filter((_, k) => k !== i) }));
+  };
   const uploadSitePhoto = async (i, which) => {
     try {
       const file = await pickImageFile(true);

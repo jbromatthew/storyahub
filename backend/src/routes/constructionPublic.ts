@@ -40,6 +40,36 @@ constructionPublicRouter.post("/site-upload/:token/info", async (req: Request, r
   });
 });
 
+// 개소 이름 수정
+constructionPublicRouter.post("/site-upload/:token/rename", async (req: Request, res: Response) => {
+  const quote = await resolveShare(req.params.token, String(req.body?.pin ?? ""));
+  if (!quote) return res.status(403).json({ error: "링크 또는 PIN이 올바르지 않거나 만료되었습니다" });
+  const oldName = String(req.body?.oldName ?? "").trim();
+  const newName = String(req.body?.newName ?? "").trim();
+  if (!oldName || !newName) return res.status(400).json({ error: "개소 이름을 입력하세요" });
+  const fresh = await prisma.erpConstructionQuote.findUnique({ where: { id: quote.id }, select: { sitePhotos: true } });
+  const sites = (Array.isArray(fresh?.sitePhotos) ? fresh!.sitePhotos : []) as SitePhoto[];
+  const site = sites.find((s) => String(s.name).trim() === oldName);
+  if (!site) return res.status(404).json({ error: "개소를 찾을 수 없습니다" });
+  if (sites.some((s) => s !== site && String(s.name).trim() === newName)) return res.status(409).json({ error: "같은 이름의 개소가 이미 있습니다" });
+  site.name = newName;
+  await prisma.erpConstructionQuote.update({ where: { id: quote.id }, data: { sitePhotos: sites as unknown as object } });
+  res.json({ ok: true });
+});
+
+// 개소 삭제
+constructionPublicRouter.post("/site-upload/:token/delete", async (req: Request, res: Response) => {
+  const quote = await resolveShare(req.params.token, String(req.body?.pin ?? ""));
+  if (!quote) return res.status(403).json({ error: "링크 또는 PIN이 올바르지 않거나 만료되었습니다" });
+  const name = String(req.body?.name ?? "").trim();
+  if (!name) return res.status(400).json({ error: "개소 이름이 필요합니다" });
+  const fresh = await prisma.erpConstructionQuote.findUnique({ where: { id: quote.id }, select: { sitePhotos: true } });
+  const sites = (Array.isArray(fresh?.sitePhotos) ? fresh!.sitePhotos : []) as SitePhoto[];
+  const next = sites.filter((s) => String(s.name).trim() !== name);
+  await prisma.erpConstructionQuote.update({ where: { id: quote.id }, data: { sitePhotos: next as unknown as object } });
+  res.json({ ok: true });
+});
+
 // 업로드한 사진 열람 (썸네일/미리보기) — token+PIN 검증 후 해당 견적의 개소 사진만 스트리밍
 constructionPublicRouter.get("/site-upload/:token/view", async (req: Request, res: Response) => {
   try {
