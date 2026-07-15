@@ -6,7 +6,7 @@ import { notifyError, toastSuccess } from "../toast.js";
 import { confirmAction } from "../confirm.js";
 import { StatViz, seriesColor } from "./charts.jsx";
 import { BROJ_SEAL, BROJ_LOGO } from "./brojSeal.js";
-import { pickImageFile, uploadFile, mediaUrl, isPickCancelled } from "../api/upload.js";
+import { pickImageFile, uploadFile, mediaUrl, isPickCancelled, compressImageToJpeg } from "../api/upload.js";
 
 const STATUS_LABEL = {
   draft: "임시저장", submitted: "상신", in_progress: "진행중",
@@ -2169,7 +2169,7 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
     try {
       const file = await pickImageFile(true);
       setPhotoBusy(`${i}-${which}`);
-      const key = await uploadFile(file);
+      const key = await uploadFile(await compressImageToJpeg(file));
       setSite(i, { [which === "before" ? "beforeKey" : "afterKey"]: key });
     } catch (e) { if (!isPickCancelled(e)) notifyError(e); }
     finally { setPhotoBusy(null); }

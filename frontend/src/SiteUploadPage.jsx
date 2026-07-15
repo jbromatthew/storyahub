@@ -1,5 +1,6 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { getApiBase } from "./api/client.js";
+import { compressImageToJpeg } from "./api/upload.js";
 
 const API = getApiBase();
 
@@ -81,7 +82,8 @@ export default function SiteUploadPage({ token }) {
     const { name, kind } = pendingRef.current;
     setBusy(`${name}|${kind}`); setErr("");
     try {
-      await uploadPhoto(token, pin.trim(), name, kind, uploader, file);
+      const jpeg = await compressImageToJpeg(file);
+      await uploadPhoto(token, pin.trim(), name, kind, uploader, jpeg);
       await refresh();
     } catch (e2) { setErr(e2.message); }
     finally { setBusy(""); }
@@ -157,20 +159,23 @@ function Shell({ children }) {
 
 function Slot({ label, name, kind, has, busy, viewUrl, onPreview, onUpload }) {
   const loading = busy === `${name.trim()}|${kind}`;
+  const src = has && name.trim() ? viewUrl(name, kind) : null;
+  const [broken, setBroken] = useState(false);
+  useEffect(() => { setBroken(false); }, [src]);
   return (
     <div style={{ flex: "1 1 0" }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: "#8C857A", marginBottom: 4 }}>{label}</div>
-      {has ? (
+      {src && !broken ? (
         <div style={{ position: "relative" }}>
-          <img src={viewUrl(name, kind)} alt={label} onClick={() => onPreview(viewUrl(name, kind))}
+          <img src={src} alt={label} onClick={() => onPreview(src)} onError={() => setBroken(true)}
             style={{ width: "100%", height: 110, objectFit: "cover", borderRadius: 10, border: "1px solid #E3DED4", display: "block", cursor: "zoom-in" }} />
           <button type="button" onClick={() => onUpload(name, kind)} disabled={loading}
             style={{ position: "absolute", bottom: 6, right: 6, border: "none", background: "rgba(27,26,23,.72)", color: "#fff", borderRadius: 8, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{loading ? "…" : "다시"}</button>
         </div>
       ) : (
         <button type="button" onClick={() => onUpload(name, kind)} disabled={loading}
-          style={{ width: "100%", height: 110, borderRadius: 10, border: "1px dashed #D8D1C5", background: "#fff", color: "#8C857A", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 700 }}>
-          {loading ? "올리는 중…" : `📷 ${label}`}
+          style={{ width: "100%", height: 110, borderRadius: 10, border: broken ? "1px solid #F0C4A8" : "1px dashed #D8D1C5", background: broken ? "#FFF7F2" : "#fff", color: broken ? "#B96A16" : "#8C857A", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 700, lineHeight: 1.4 }}>
+          {loading ? "올리는 중…" : broken ? "⚠ 미리보기 불가\n다시 올리기" : `📷 ${label}`}
         </button>
       )}
     </div>

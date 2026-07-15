@@ -67,6 +67,40 @@ export function normalizeAudioMime(file) {
   return { name, type };
 }
 
+/** 사진을 JPEG로 변환 + 축소 (HEIC 등 브라우저가 못 여는 포맷 방지, 용량 축소). 실패 시 원본 반환 */
+export async function compressImageToJpeg(file, { maxDim = 1600, quality = 0.85 } = {}) {
+  try {
+    if (!file || !/^image\//i.test(file.type || "")) {
+      // 확장자로 이미지 추정 (일부 HEIC는 type이 빈 문자열)
+      if (!/\.(jpe?g|png|webp|heic|heif|gif|bmp)$/i.test(file?.name || "")) return file;
+    }
+    const dataUrl = await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result);
+      fr.onerror = () => reject(new Error("read fail"));
+      fr.readAsDataURL(file);
+    });
+    const img = await new Promise((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = () => reject(new Error("decode fail"));
+      im.src = dataUrl;
+    });
+    const scale = Math.min(1, maxDim / Math.max(img.width || 1, img.height || 1));
+    const w = Math.max(1, Math.round((img.width || 1) * scale));
+    const h = Math.max(1, Math.round((img.height || 1) * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    if (!blob) return file;
+    const base = (file.name || "photo").replace(/\.\w+$/, "");
+    return new File([blob], `${base}.jpg`, { type: "image/jpeg" });
+  } catch {
+    return file; // 변환 실패 시 원본 업로드
+  }
+}
+
 export async function uploadFile(file, { audio = false } = {}) {
   if (audio) {
     const { name, type } = normalizeAudioMime(file);
