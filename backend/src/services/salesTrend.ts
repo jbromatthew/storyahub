@@ -1,6 +1,6 @@
 import { prisma } from "../db.js";
 import { env } from "../env.js";
-import { parseOrderRowMonth } from "./googleSheets.js";
+import { parseOrderRowMonth, isValidMonthSheetName } from "./googleSheets.js";
 import { INDUSTRY_TYPES } from "./industryTypes.js";
 
 export const TREND_TABS = {
@@ -144,7 +144,8 @@ async function loadNewCenterRecords(): Promise<TrendRecord[]> {
   for (const row of rows) {
     const data = row.data as Record<string, string>;
     if (!isNewCenter(data)) continue;
-    const monthKey = parseOrderRowMonth(data);
+    // 날짜 열 머리글이 이상해도(예: '날짜'가 아니라 'G') 월별 탭이면 탭 이름으로 월을 채움
+    const monthKey = parseOrderRowMonth(data) || (isValidMonthSheetName(row.sheetName) ? row.sheetName : null);
     if (!monthKey) continue;
     records.push({
       month: normalizeMonthLabel(monthKey),
