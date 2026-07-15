@@ -8,40 +8,47 @@ async function postInfo(token, pin) {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin }),
   });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || "확인 실패");
+  if (!r.ok) throw new Error(j.error || `확인 실패 (${r.status})`);
   return j;
 }
 async function uploadPhoto(token, pin, siteName, kind, uploader, file) {
-  const r = await fetch(`${API}/public/construction/site-upload/${token}/photo`, {
-    method: "POST",
-    headers: {
-      "Content-Type": file.type || "image/jpeg",
-      "X-Pin": pin,
-      "X-Site": encodeURIComponent(siteName),
-      "X-Kind": kind,
-      "X-Uploader": encodeURIComponent(uploader || ""),
-    },
-    body: file,
-  });
+  let r;
+  try {
+    r = await fetch(`${API}/public/construction/site-upload/${token}/photo`, {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type || "image/jpeg",
+        "X-Pin": pin,
+        "X-Site": encodeURIComponent(siteName),
+        "X-Kind": kind,
+        "X-Uploader": encodeURIComponent(uploader || ""),
+      },
+      body: file,
+    });
+  } catch {
+    throw new Error("네트워크 오류로 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.");
+  }
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || "업로드 실패");
+  if (!r.ok) throw new Error(j.error || `업로드 실패 (${r.status})`);
   return j;
 }
 
-const box = { maxWidth: 480, margin: "0 auto", padding: "24px 18px 60px" };
+const box = { maxWidth: 560, margin: "0 auto", padding: "22px 16px 70px" };
 const inp = { width: "100%", border: "1px solid #E3DED4", borderRadius: 12, padding: "13px 14px", fontSize: 16, fontFamily: "inherit", boxSizing: "border-box" };
-const btn = (bg, fg = "#fff") => ({ width: "100%", border: "none", borderRadius: 12, padding: "14px", fontSize: 15, fontWeight: 800, background: bg, color: fg, cursor: "pointer", fontFamily: "inherit" });
+const btn = (bg, fg = "#fff") => ({ border: "none", borderRadius: 12, padding: "12px", fontSize: 14, fontWeight: 800, background: bg, color: fg, cursor: "pointer", fontFamily: "inherit", width: "100%" });
 
 export default function SiteUploadPage({ token }) {
   const [pin, setPin] = useState("");
   const [info, setInfo] = useState(null);
   const [uploader, setUploader] = useState("");
-  const [siteName, setSiteName] = useState("");
-  const [busy, setBusy] = useState("");
+  const [localSites, setLocalSites] = useState([]); // 새로 추가 중인 개소 [{id, name}]
+  const [busy, setBusy] = useState(""); // `${name}|${kind}`
   const [err, setErr] = useState("");
-  const [msg, setMsg] = useState("");
+  const [ver, setVer] = useState(0); // 썸네일 캐시버스터
+  const [preview, setPreview] = useState(null); // 확대보기 url
   const fileRef = useRef(null);
-  const kindRef = useRef("before");
+  const pendingRef = useRef({ name: "", kind: "before" });
+  const idRef = useRef(1);
 
   const verify = async () => {
     setErr(""); setBusy("verify");
@@ -49,83 +56,141 @@ export default function SiteUploadPage({ token }) {
     catch (e) { setErr(e.message); }
     finally { setBusy(""); }
   };
-  const refresh = async () => { try { setInfo(await postInfo(token, pin.trim())); } catch { /* keep */ } };
+  const refresh = async () => {
+    try {
+      const fresh = await postInfo(token, pin.trim());
+      setInfo(fresh);
+      const existing = new Set((fresh.sites || []).map((s) => s.name.trim()));
+      setLocalSites((prev) => prev.filter((s) => !existing.has(s.name.trim())));
+      setVer((v) => v + 1);
+    } catch { /* keep */ }
+  };
 
-  const trigger = (kind) => {
-    setErr(""); setMsg("");
-    if (!siteName.trim()) { setErr("개소 이름을 먼저 입력하세요"); return; }
-    kindRef.current = kind;
+  const viewUrl = (name, kind) => `${API}/public/construction/site-upload/${token}/view?pin=${encodeURIComponent(pin.trim())}&site=${encodeURIComponent(name)}&kind=${kind}&v=${ver}`;
+
+  const trigger = (name, kind) => {
+    setErr("");
+    if (!name.trim()) { setErr("개소 이름을 먼저 입력하세요"); return; }
+    pendingRef.current = { name: name.trim(), kind };
     fileRef.current?.click();
   };
   const onFile = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    setBusy(kindRef.current); setErr(""); setMsg("");
+    const { name, kind } = pendingRef.current;
+    setBusy(`${name}|${kind}`); setErr("");
     try {
-      await uploadPhoto(token, pin.trim(), siteName.trim(), kindRef.current, uploader, file);
-      setMsg(`'${siteName.trim()}' ${kindRef.current === "after" ? "공사 후" : "공사 전"} 사진을 올렸습니다.`);
+      await uploadPhoto(token, pin.trim(), name, kind, uploader, file);
       await refresh();
     } catch (e2) { setErr(e2.message); }
     finally { setBusy(""); }
   };
 
+  const addLocalSite = () => setLocalSites((prev) => [...prev, { id: idRef.current++, name: "" }]);
+  const setLocalName = (id, name) => setLocalSites((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
+  const removeLocal = (id) => setLocalSites((prev) => prev.filter((s) => s.id !== id));
+
   if (!info) {
     return (
-      <div style={{ minHeight: "100dvh", background: "#F7F4EE", fontFamily: "Pretendard, system-ui, sans-serif", color: "#1B1A17" }}>
-        <div style={box}>
-          <div style={{ fontSize: 22, fontWeight: 800, marginTop: 24 }}>현장 사진 업로드</div>
-          <div style={{ color: "#8C857A", marginTop: 8, lineHeight: 1.5, fontSize: 14 }}>담당자에게 받은 PIN을 입력하세요.</div>
-          <input style={{ ...inp, marginTop: 20, textAlign: "center", letterSpacing: 6, fontSize: 22, fontWeight: 800 }} value={pin} onChange={(e) => setPin(e.target.value.replace(/[^\d]/g, ""))} inputMode="numeric" placeholder="PIN" onKeyDown={(e) => { if (e.key === "Enter") verify(); }} />
-          {err && <div style={{ color: "#C5221F", marginTop: 12, fontSize: 14 }}>{err}</div>}
-          <button style={{ ...btn("#DD5E39"), marginTop: 16 }} disabled={busy === "verify" || pin.length < 4} onClick={verify}>{busy === "verify" ? "확인 중…" : "확인"}</button>
-        </div>
-      </div>
+      <Shell>
+        <div style={{ fontSize: 22, fontWeight: 800, marginTop: 20 }}>현장 사진 업로드</div>
+        <div style={{ color: "#8C857A", marginTop: 8, lineHeight: 1.5, fontSize: 14 }}>담당자에게 받은 PIN을 입력하세요.</div>
+        <input style={{ ...inp, marginTop: 20, textAlign: "center", letterSpacing: 6, fontSize: 22, fontWeight: 800 }} value={pin} onChange={(e) => setPin(e.target.value.replace(/[^\d]/g, ""))} inputMode="numeric" placeholder="PIN" onKeyDown={(e) => { if (e.key === "Enter") verify(); }} />
+        {err && <div style={{ color: "#C5221F", marginTop: 12, fontSize: 14 }}>{err}</div>}
+        <button style={{ ...btn("#DD5E39"), marginTop: 16 }} disabled={busy === "verify" || pin.length < 4} onClick={verify}>{busy === "verify" ? "확인 중…" : "확인"}</button>
+      </Shell>
     );
   }
 
   return (
+    <Shell>
+      <div style={{ fontSize: 13, color: "#8C857A", fontWeight: 700, marginTop: 10 }}>현장 사진 업로드</div>
+      <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{info.apartmentName}</div>
+      {info.title && <div style={{ color: "#8C857A", marginTop: 2 }}>{info.title}</div>}
+
+      <div style={{ marginTop: 20 }}>
+        <label style={{ fontSize: 13, fontWeight: 700, color: "#8C857A" }}>올리는 사람 (이름/팀)</label>
+        <input style={{ ...inp, marginTop: 6 }} value={uploader} onChange={(e) => setUploader(e.target.value)} placeholder="예: A설치팀 이기사" />
+      </div>
+
+      {err && <div style={{ color: "#C5221F", marginTop: 14, fontSize: 14 }}>{err}</div>}
+
+      <div style={{ marginTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontSize: 14, fontWeight: 800 }}>개소 {(info.sites || []).length + localSites.length}곳</div>
+        <button type="button" style={{ ...btn("#1B1A17"), width: "auto", padding: "8px 14px" }} onClick={addLocalSite}>+ 개소 추가</button>
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        {(info.sites || []).map((s) => (
+          <SiteRow key={s.name} name={s.name} fixed hasBefore={s.hasBefore} hasAfter={s.hasAfter}
+            busy={busy} viewUrl={viewUrl} onPreview={setPreview} onUpload={trigger} />
+        ))}
+        {localSites.map((s) => (
+          <SiteRow key={s.id} name={s.name} onName={(v) => setLocalName(s.id, v)} onRemove={() => removeLocal(s.id)}
+            busy={busy} viewUrl={viewUrl} onPreview={setPreview} onUpload={trigger} />
+        ))}
+        {(info.sites || []).length + localSites.length === 0 && (
+          <div style={{ color: "#8C857A", fontSize: 14, padding: "14px 0" }}>“+ 개소 추가”로 개소를 만들고 사진을 올리세요.</div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 24, fontSize: 12, color: "#B7B0A4", lineHeight: 1.5 }}>이 링크는 사진 업로드·확인 전용입니다. 다른 정보는 보이지 않습니다.</div>
+
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={onFile} />
+      {preview && (
+        <div onClick={() => setPreview(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.88)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
+          <img src={preview} alt="미리보기" style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 8 }} />
+        </div>
+      )}
+    </Shell>
+  );
+}
+
+function Shell({ children }) {
+  return (
     <div style={{ minHeight: "100dvh", background: "#F7F4EE", fontFamily: "Pretendard, system-ui, sans-serif", color: "#1B1A17" }}>
-      <div style={box}>
-        <div style={{ fontSize: 13, color: "#8C857A", fontWeight: 700, marginTop: 12 }}>현장 사진 업로드</div>
-        <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{info.apartmentName}</div>
-        {info.title && <div style={{ color: "#8C857A", marginTop: 2 }}>{info.title}</div>}
+      <div style={box}>{children}</div>
+    </div>
+  );
+}
 
-        <div style={{ marginTop: 22 }}>
-          <label style={{ fontSize: 13, fontWeight: 700, color: "#8C857A" }}>올리는 사람 (이름/팀)</label>
-          <input style={{ ...inp, marginTop: 6 }} value={uploader} onChange={(e) => setUploader(e.target.value)} placeholder="예: A설치팀 이기사" />
+function Slot({ label, name, kind, has, busy, viewUrl, onPreview, onUpload }) {
+  const loading = busy === `${name.trim()}|${kind}`;
+  return (
+    <div style={{ flex: "1 1 0" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "#8C857A", marginBottom: 4 }}>{label}</div>
+      {has ? (
+        <div style={{ position: "relative" }}>
+          <img src={viewUrl(name, kind)} alt={label} onClick={() => onPreview(viewUrl(name, kind))}
+            style={{ width: "100%", height: 110, objectFit: "cover", borderRadius: 10, border: "1px solid #E3DED4", display: "block", cursor: "zoom-in" }} />
+          <button type="button" onClick={() => onUpload(name, kind)} disabled={loading}
+            style={{ position: "absolute", bottom: 6, right: 6, border: "none", background: "rgba(27,26,23,.72)", color: "#fff", borderRadius: 8, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{loading ? "…" : "다시"}</button>
         </div>
+      ) : (
+        <button type="button" onClick={() => onUpload(name, kind)} disabled={loading}
+          style={{ width: "100%", height: 110, borderRadius: 10, border: "1px dashed #D8D1C5", background: "#fff", color: "#8C857A", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 700 }}>
+          {loading ? "올리는 중…" : `📷 ${label}`}
+        </button>
+      )}
+    </div>
+  );
+}
 
-        <div style={{ marginTop: 16 }}>
-          <label style={{ fontSize: 13, fontWeight: 700, color: "#8C857A" }}>개소 이름</label>
-          <input style={{ ...inp, marginTop: 6 }} value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder="예: 1층 현관, 3번 출입구" list="site-names" />
-          <datalist id="site-names">{(info.sites || []).map((s) => <option key={s.name} value={s.name} />)}</datalist>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 16 }}>
-          <button style={btn("#1B1A17")} disabled={!!busy} onClick={() => trigger("before")}>{busy === "before" ? "올리는 중…" : "📷 공사 전"}</button>
-          <button style={btn("#0D7A3E")} disabled={!!busy} onClick={() => trigger("after")}>{busy === "after" ? "올리는 중…" : "📷 공사 후"}</button>
-        </div>
-        <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={onFile} />
-
-        {msg && <div style={{ color: "#0D7A3E", marginTop: 14, fontSize: 14, fontWeight: 700 }}>{msg}</div>}
-        {err && <div style={{ color: "#C5221F", marginTop: 14, fontSize: 14 }}>{err}</div>}
-
-        <div style={{ marginTop: 26, fontSize: 13, fontWeight: 700, color: "#8C857A" }}>등록된 개소 {(info.sites || []).length}곳</div>
-        <div style={{ marginTop: 8 }}>
-          {(info.sites || []).length === 0 ? (
-            <div style={{ color: "#8C857A", fontSize: 14 }}>아직 없습니다. 위에서 개소 이름을 적고 사진을 올리세요.</div>
-          ) : info.sites.map((s) => (
-            <div key={s.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderTop: "1px solid #ECE7DD" }}>
-              <span style={{ fontWeight: 700 }}>{s.name}</span>
-              <span style={{ fontSize: 13 }}>
-                <span style={{ color: s.hasBefore ? "#0D7A3E" : "#C5C0B6" }}>{s.hasBefore ? "✓ 전" : "· 전"}</span>
-                <span style={{ margin: "0 8px", color: s.hasAfter ? "#0D7A3E" : "#C5C0B6" }}>{s.hasAfter ? "✓ 후" : "· 후"}</span>
-              </span>
-            </div>
-          ))}
-        </div>
-        <div style={{ marginTop: 28, fontSize: 12, color: "#B7B0A4", lineHeight: 1.5 }}>이 링크는 사진 업로드 전용입니다. 다른 정보는 보이지 않습니다.</div>
+function SiteRow({ name, fixed, onName, onRemove, hasBefore, hasAfter, busy, viewUrl, onPreview, onUpload }) {
+  return (
+    <div style={{ background: "#fff", border: "1px solid #ECE7DD", borderRadius: 14, padding: 12, marginBottom: 10 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+        {fixed ? (
+          <div style={{ fontWeight: 800, fontSize: 15, flex: 1 }}>{name}</div>
+        ) : (
+          <input value={name} onChange={(e) => onName(e.target.value)} placeholder="개소 이름 (예: 1층 현관)" style={{ ...inp, flex: 1, fontSize: 15, padding: "10px 12px" }} />
+        )}
+        {!fixed && <button type="button" onClick={onRemove} style={{ border: "1px solid #E3DED4", background: "#fff", color: "#C0392B", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 14 }}>✕</button>}
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        <Slot label="공사 전" name={name} kind="before" has={hasBefore} busy={busy} viewUrl={viewUrl} onPreview={onPreview} onUpload={onUpload} />
+        <Slot label="공사 후" name={name} kind="after" has={hasAfter} busy={busy} viewUrl={viewUrl} onPreview={onPreview} onUpload={onUpload} />
       </div>
     </div>
   );
