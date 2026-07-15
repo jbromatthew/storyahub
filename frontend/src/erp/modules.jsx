@@ -6,6 +6,7 @@ import { notifyError, toastSuccess } from "../toast.js";
 import { confirmAction } from "../confirm.js";
 import { StatViz, seriesColor } from "./charts.jsx";
 import { BROJ_SEAL, BROJ_LOGO } from "./brojSeal.js";
+import { pickImageFile, uploadFile, mediaUrl, isPickCancelled } from "../api/upload.js";
 
 const STATUS_LABEL = {
   draft: "임시저장", submitted: "상신", in_progress: "진행중",
@@ -1874,6 +1875,95 @@ function printConstructionQuote(quote, apartment) {
   w.document.close();
 }
 
+// 현장 사진 한 칸 (공사전/공사후) — 업로드/썸네일/삭제
+function SitePhotoSlot({ label, mediaKey, onUpload, onRemove, busy }) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    if (mediaKey) mediaUrl(mediaKey).then((u) => { if (alive) setUrl(u); }).catch(() => {});
+    else setUrl(null);
+    return () => { alive = false; };
+  }, [mediaKey]);
+  return (
+    <div style={{ flex: "1 1 140px" }}>
+      <div className="small" style={{ fontWeight: 700, marginBottom: 4, color: "var(--muted)" }}>{label}</div>
+      {mediaKey ? (
+        <div style={{ position: "relative" }}>
+          {url
+            ? <img src={url} alt={label} style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 10, border: "1px solid var(--line)", display: "block" }} />
+            : <div style={{ width: "100%", height: 120, borderRadius: 10, border: "1px solid var(--line)", background: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 12 }}>불러오는 중…</div>}
+          <button type="button" className="erp-btn-x" style={{ position: "absolute", top: 6, right: 6 }} onClick={onRemove}>✕</button>
+        </div>
+      ) : (
+        <button type="button" onClick={onUpload} disabled={busy} style={{ width: "100%", height: 120, borderRadius: 10, border: "1px dashed var(--line)", background: "#fff", color: "var(--muted)", cursor: busy ? "default" : "pointer", fontFamily: "inherit", fontSize: 13 }}>
+          {busy ? "업로드 중…" : "📷 사진 촬영·업로드"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// 미디어 키 → data URI (인쇄 문서 내 이미지 임베드용)
+async function mediaKeyToDataUri(key) {
+  if (!key) return null;
+  try {
+    const url = await mediaUrl(key);
+    if (!url) return null;
+    const blob = await fetch(url).then((r) => r.blob());
+    return await new Promise((resolve) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(typeof fr.result === "string" ? fr.result : null);
+      fr.onerror = () => resolve(null);
+      fr.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
+// 개소별 현장 사진(공사 전·후) 문서 인쇄/PDF
+async function printSitePhotos(quote, apartment) {
+  const sites = (quote?.sitePhotos || []).filter((s) => s.name || s.beforeKey || s.afterKey);
+  if (!sites.length) return;
+  const w = window.open("", "_blank", "width=960,height=1200");
+  if (!w) { notifyError(new Error("팝업이 차단되었습니다. 브라우저에서 팝업을 허용해 주세요.")); return; }
+  w.document.write("<!doctype html><meta charset='utf-8'><body style='font-family:Pretendard,system-ui,sans-serif;padding:48px;color:#555'>현장 사진 문서 생성 중…</body>");
+  const esc = (v) => String(v ?? "").replace(/[&<>\"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const blocks = await Promise.all(sites.map(async (s, i) => {
+    const [b, a] = await Promise.all([mediaKeyToDataUri(s.beforeKey), mediaKeyToDataUri(s.afterKey)]);
+    const cell = (src) => src ? `<img src="${src}"/>` : '<div class="noimg">사진 없음</div>';
+    return `<div class="site">
+      <div class="site-h">${i + 1}. ${esc(s.name) || "개소"}</div>
+      <div class="pair">
+        <div class="ph"><div class="lbl">공사 전</div>${cell(b)}</div>
+        <div class="ph"><div class="lbl">공사 후</div>${cell(a)}</div>
+      </div>
+    </div>`;
+  }));
+  const title = `${apartment?.name || "(현장 미지정)"}${quote.title ? ` · ${quote.title}` : ""}`;
+  const period = quote.startDate ? `${quote.startDate}${quote.endDate ? ` ~ ${quote.endDate}` : ""}` : "";
+  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"/><title>${esc(title)} 현장 사진</title>
+  <style>
+    *{box-sizing:border-box;} body{font-family:Pretendard,system-ui,'Apple SD Gothic Neo',sans-serif;color:#1B1A17;margin:0;padding:28px 32px;}
+    .doc-h{border-bottom:2px solid #1B1A17;padding-bottom:12px;margin-bottom:20px;}
+    .doc-h .t{font-size:22px;font-weight:800;}
+    .doc-h .s{font-size:13px;color:#8C857A;margin-top:6px;}
+    .site{margin-bottom:22px;page-break-inside:avoid;}
+    .site-h{font-size:15px;font-weight:800;background:#F4EFE7;border-radius:8px;padding:8px 12px;margin-bottom:8px;}
+    .pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+    .ph{border:1px solid #ECE7DD;border-radius:10px;overflow:hidden;}
+    .ph .lbl{font-size:12px;font-weight:700;color:#8C857A;padding:6px 10px;border-bottom:1px solid #ECE7DD;background:#FBFAF7;}
+    .ph img{width:100%;height:320px;object-fit:cover;display:block;}
+    .noimg{height:320px;display:flex;align-items:center;justify-content:center;color:#B7B0A4;font-size:13px;background:#FBFAF7;}
+    @media print{body{padding:0;}}
+  </style></head><body>
+    <div class="doc-h"><div class="t">${esc(title)}</div><div class="s">공사 현장 사진 (공사 전·후)${period ? ` · 공사기간 ${esc(period)}` : ""} · 총 ${sites.length}개소</div></div>
+    ${blocks.join("")}
+    <script>window.onload=function(){setTimeout(function(){window.print();},350);};</script>
+  </body></html>`;
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
+
 // 카카오맵 장소검색 자동완성 (명칭·주소) — 백엔드 /places/search 프록시 사용
 function KakaoPlacePicker({ onPick, placeholder = "카카오맵에서 아파트 검색 (명칭·주소)", flex = "1 1 260px" }) {
   const [q, setQ] = useState("");
@@ -2055,7 +2145,7 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
   };
 
   // ---- 견적 ----
-  const newQuote = () => { setNewApt(null); setEditing({ apartmentId: apts[0]?.id || "", title: "", orderType, lines: [], payouts: [], materials: [], complaints: [], status: "requested", taxInvoiceIssued: false, note: "", startDate: "", endDate: "" }); };
+  const newQuote = () => { setNewApt(null); setEditing({ apartmentId: apts[0]?.id || "", title: "", orderType, lines: [], payouts: [], materials: [], complaints: [], sitePhotos: [], status: "requested", taxInvoiceIssued: false, note: "", startDate: "", endDate: "" }); };
   const saveNewApt = async () => {
     if (!newApt?.name.trim()) return notifyError(new Error("단지명을 입력하세요"));
     try {
@@ -2066,10 +2156,24 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
       toastSuccess("단지를 추가했어요");
     } catch (e) { notifyError(e); }
   };
-  const editQuote = (q) => { setNewApt(null); setEditing({ ...q, apartmentId: q.apartmentId || "", orderType: q.orderType || orderType, startDate: q.startDate || "", endDate: q.endDate || "", lines: (q.lines || []).map((l) => ({ ...l })), payouts: (q.payouts || []).map((p) => ({ ...p })), materials: (q.materials || []).map((m) => ({ ...m })), complaints: (q.complaints || []).map((c) => ({ ...c })) }); };
+  const editQuote = (q) => { setNewApt(null); setEditing({ ...q, apartmentId: q.apartmentId || "", orderType: q.orderType || orderType, startDate: q.startDate || "", endDate: q.endDate || "", lines: (q.lines || []).map((l) => ({ ...l })), payouts: (q.payouts || []).map((p) => ({ ...p })), materials: (q.materials || []).map((m) => ({ ...m })), complaints: (q.complaints || []).map((c) => ({ ...c })), sitePhotos: (q.sitePhotos || []).map((s) => ({ ...s })) }); };
   const addComplaint = () => setEditing((e) => ({ ...e, complaints: [...(e.complaints || []), { date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date()), content: "", status: "접수", resolution: "" }] }));
   const setComplaint = (i, patch) => setEditing((e) => ({ ...e, complaints: (e.complaints || []).map((c, k) => k === i ? { ...c, ...patch } : c) }));
   const removeComplaint = (i) => setEditing((e) => ({ ...e, complaints: (e.complaints || []).filter((_, k) => k !== i) }));
+  // ---- 개소별 현장 사진 ----
+  const [photoBusy, setPhotoBusy] = useState(null); // `${index}-before` 등 업로드 중 표시
+  const addSite = () => setEditing((e) => ({ ...e, sitePhotos: [...(e.sitePhotos || []), { name: "", beforeKey: null, afterKey: null }] }));
+  const setSite = (i, patch) => setEditing((e) => ({ ...e, sitePhotos: (e.sitePhotos || []).map((s, k) => k === i ? { ...s, ...patch } : s) }));
+  const removeSite = (i) => setEditing((e) => ({ ...e, sitePhotos: (e.sitePhotos || []).filter((_, k) => k !== i) }));
+  const uploadSitePhoto = async (i, which) => {
+    try {
+      const file = await pickImageFile(true);
+      setPhotoBusy(`${i}-${which}`);
+      const key = await uploadFile(file);
+      setSite(i, { [which === "before" ? "beforeKey" : "afterKey"]: key });
+    } catch (e) { if (!isPickCancelled(e)) notifyError(e); }
+    finally { setPhotoBusy(null); }
+  };
   const addLineFromItem = (itemId) => {
     const it = items.find((x) => x.id === itemId);
     if (!it) return;
@@ -2116,6 +2220,7 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
       payouts: (editing.payouts || []).map((p) => ({ teamId: p.teamId || null, teamName: p.teamName || "", amount: cstNum(p.amount), paid: !!p.paid, memo: p.memo || null })).filter((p) => p.teamName || p.amount > 0),
       materials: (editing.materials || []).map((m) => ({ stockId: m.stockId || null, name: m.name || "", qty: cstNum(m.qty), unitCost: cstNum(m.unitCost) })).filter((m) => m.name || m.qty > 0),
       complaints: (editing.complaints || []).map((c) => ({ date: c.date || "", content: c.content || "", status: c.status || "접수", resolution: c.resolution || "" })).filter((c) => c.content),
+      sitePhotos: (editing.sitePhotos || []).map((s) => ({ name: s.name || "", beforeKey: s.beforeKey || null, afterKey: s.afterKey || null })).filter((s) => s.name || s.beforeKey || s.afterKey),
     };
     try {
       if (editing.id) await api.erpConstructionUpdateQuote(editing.id, payload);
@@ -2398,6 +2503,32 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
               </div>
               <input value={c.content || ""} onChange={(e) => setComplaint(i, { content: e.target.value })} placeholder="민원 내용 *" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 8, padding: "9px 11px", fontFamily: "inherit", fontSize: 13, marginBottom: 6 }} />
               <input value={c.resolution || ""} onChange={(e) => setComplaint(i, { resolution: e.target.value })} placeholder="처리 결과 / 조치 내용" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 8, padding: "9px 11px", fontFamily: "inherit", fontSize: 13 }} />
+            </div>
+          ))}
+        </div>
+
+        {/* 개소별 현장 사진 (공사 전·후) */}
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="row between" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <div className="kbe-meta-h" style={{ margin: 0 }}>현장 사진 (개소별) {(editing.sitePhotos || []).length ? <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>· {editing.sitePhotos.length}개소</span> : null}</div>
+            <div className="row" style={{ gap: 6 }}>
+              <button type="button" className="btn btn-ghost btn-sm" disabled={!(editing.sitePhotos || []).some((s) => s.beforeKey || s.afterKey)} onClick={() => printSitePhotos(editing, apts.find((a) => a.id === editing.apartmentId))}>📄 사진 문서 출력</button>
+              <button type="button" className="btn btn-accent btn-sm" onClick={addSite}>+ 개소 추가</button>
+            </div>
+          </div>
+          <div className="small" style={{ color: "var(--muted)", margin: "6px 0 12px" }}>개소마다 이름을 적고 공사 전·후 사진을 촬영해 기록하세요. “사진 문서 출력”으로 보고서를 뽑을 수 있습니다.</div>
+          {!(editing.sitePhotos || []).length ? (
+            <div className="small" style={{ color: "var(--muted)" }}>등록된 개소가 없습니다. “개소 추가”로 시작하세요.</div>
+          ) : editing.sitePhotos.map((s, i) => (
+            <div key={i} className="card" style={{ marginBottom: 10, background: "var(--paper)", padding: 12 }}>
+              <div className="row between" style={{ alignItems: "center", marginBottom: 8, gap: 8 }}>
+                <input value={s.name} onChange={(e) => setSite(i, { name: e.target.value })} placeholder={`개소 이름 (예: 1층 현관, ${i + 1}번 출입구)`} style={{ flex: 1, border: "1px solid var(--line)", borderRadius: 8, padding: "9px 11px", fontFamily: "inherit", fontSize: 14 }} />
+                <button type="button" className="cst-x" onClick={() => removeSite(i)}>✕</button>
+              </div>
+              <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                <SitePhotoSlot label="공사 전" mediaKey={s.beforeKey} busy={photoBusy === `${i}-before`} onUpload={() => uploadSitePhoto(i, "before")} onRemove={() => setSite(i, { beforeKey: null })} />
+                <SitePhotoSlot label="공사 후" mediaKey={s.afterKey} busy={photoBusy === `${i}-after`} onUpload={() => uploadSitePhoto(i, "after")} onRemove={() => setSite(i, { afterKey: null })} />
+              </div>
             </div>
           ))}
         </div>

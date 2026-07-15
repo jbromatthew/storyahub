@@ -1448,6 +1448,17 @@ function sanitizeMaterials(raw: unknown) {
     .filter((m) => m.name || m.qty > 0);
 }
 
+function sanitizeSitePhotos(raw: unknown) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((p: any) => ({
+      name: String(p?.name ?? "").trim(),
+      beforeKey: p?.beforeKey ? String(p.beforeKey) : null,
+      afterKey: p?.afterKey ? String(p.afterKey) : null,
+    }))
+    .filter((p) => p.name || p.beforeKey || p.afterKey);
+}
+
 const COMPLAINT_STATUSES = ["접수", "처리중", "완료"];
 function sanitizeComplaints(raw: unknown) {
   if (!Array.isArray(raw)) return [];
@@ -1555,6 +1566,7 @@ erpRouter.post("/construction/quotes", async (req: AuthedRequest, res) => {
       payouts: sanitizePayouts(payouts),
       materials: sanitizeMaterials(materials),
       complaints: sanitizeComplaints(complaints),
+      sitePhotos: sanitizeSitePhotos(req.body?.sitePhotos),
       status: CONSTRUCTION_STATUSES.includes(status) ? status : "requested",
       taxInvoiceIssued: !!taxInvoiceIssued,
       note: note?.trim() || null,
@@ -1579,6 +1591,7 @@ erpRouter.patch("/construction/quotes/:id", async (req: AuthedRequest, res) => {
       ...(payouts !== undefined ? { payouts: sanitizePayouts(payouts) } : {}),
       ...(materials !== undefined ? { materials: sanitizeMaterials(materials) } : {}),
       ...(complaints !== undefined ? { complaints: sanitizeComplaints(complaints) } : {}),
+      ...(req.body?.sitePhotos !== undefined ? { sitePhotos: sanitizeSitePhotos(req.body.sitePhotos) } : {}),
       ...(status !== undefined && CONSTRUCTION_STATUSES.includes(status) ? { status } : {}),
       ...(taxInvoiceIssued !== undefined ? { taxInvoiceIssued: !!taxInvoiceIssued } : {}),
       ...(note !== undefined ? { note: note?.trim() || null } : {}),

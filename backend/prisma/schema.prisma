@@ -721,6 +721,7 @@ model ErpConstructionQuote {
   payouts          Json                      @default("[]") // 협력업체 재정산: [{teamId, teamName, amount, paid, memo}]
   materials        Json                      @default("[]") // 투입 부품/자재 원가: [{stockId, name, qty, unitCost}]
   complaints       Json                      @default("[]") // 민원: [{date, content, status, resolution}]
+  sitePhotos       Json                      @default("[]") // 개소별 현장 사진: [{name, beforeKey, afterKey}]
   note             String?
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
