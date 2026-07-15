@@ -52,7 +52,6 @@ const btn = (bg, fg = "#fff") => ({ border: "none", borderRadius: 12, padding: "
 export default function SiteUploadPage({ token }) {
   const [pin, setPin] = useState("");
   const [info, setInfo] = useState(null);
-  const [uploader, setUploader] = useState("");
   const [localSites, setLocalSites] = useState([]); // 새로 추가 중인 개소 [{id, name}]
   const [busy, setBusy] = useState(""); // `${name}|${kind}`
   const [err, setErr] = useState("");
@@ -95,7 +94,7 @@ export default function SiteUploadPage({ token }) {
     setBusy(`${name}|${kind}`); setErr("");
     try {
       const jpeg = await compressImageToJpeg(file);
-      await uploadPhoto(token, pin.trim(), name, kind, uploader, jpeg);
+      await uploadPhoto(token, pin.trim(), name, kind, "", jpeg);
       await refresh();
     } catch (e2) { setErr(e2.message); }
     finally { setBusy(""); }
@@ -144,11 +143,6 @@ export default function SiteUploadPage({ token }) {
       <div style={{ fontSize: 13, color: "#8C857A", fontWeight: 700, marginTop: 10 }}>현장 사진 업로드</div>
       <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{info.apartmentName}</div>
       {info.title && <div style={{ color: "#8C857A", marginTop: 2 }}>{info.title}</div>}
-
-      <div style={{ marginTop: 20 }}>
-        <label style={{ fontSize: 13, fontWeight: 700, color: "#8C857A" }}>올리는 사람 (이름/팀)</label>
-        <input style={{ ...inp, marginTop: 6 }} value={uploader} onChange={(e) => setUploader(e.target.value)} placeholder="예: A설치팀 이기사" />
-      </div>
 
       {err && <div style={{ color: "#C5221F", marginTop: 14, fontSize: 14 }}>{err}</div>}
 
