@@ -48,6 +48,8 @@ async function deleteSiteApi(token, pin, name) {
 const box = { maxWidth: 560, margin: "0 auto", padding: "22px 16px 70px" };
 const inp = { width: "100%", border: "1px solid #E3DED4", borderRadius: 12, padding: "13px 14px", fontSize: 16, fontFamily: "inherit", boxSizing: "border-box" };
 const btn = (bg, fg = "#fff") => ({ border: "none", borderRadius: 12, padding: "12px", fontSize: 14, fontWeight: 800, background: bg, color: fg, cursor: "pointer", fontFamily: "inherit", width: "100%" });
+const pickBtn = { border: "1px solid #E3DED4", background: "#fff", color: "#5A544A", borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
+const reBtn = { border: "none", background: "rgba(27,26,23,.72)", color: "#fff", borderRadius: 8, padding: "4px 8px", fontSize: 12, fontWeight: 700, cursor: "pointer" };
 
 export default function SiteUploadPage({ token }) {
   const [pin, setPin] = useState("");
@@ -80,11 +82,14 @@ export default function SiteUploadPage({ token }) {
 
   const viewUrl = (name, kind) => `${API}/public/construction/site-upload/${token}/view?pin=${encodeURIComponent(pin.trim())}&site=${encodeURIComponent(name)}&kind=${kind}&v=${ver}`;
 
-  const trigger = (name, kind) => {
+  const trigger = (name, kind, source = "cam") => {
     setErr("");
     if (!name.trim()) { setErr("개소 이름을 먼저 입력하세요"); return; }
     pendingRef.current = { name: name.trim(), kind };
-    fileRef.current?.click();
+    const el = fileRef.current;
+    if (!el) return;
+    if (source === "cam") el.setAttribute("capture", "environment"); else el.removeAttribute("capture");
+    el.click();
   };
   const onFile = async (e) => {
     const file = e.target.files?.[0];
@@ -185,7 +190,7 @@ export default function SiteUploadPage({ token }) {
 
       <div style={{ marginTop: 24, fontSize: 12, color: "#B7B0A4", lineHeight: 1.5 }}>이 링크는 사진 업로드·확인 전용입니다. 다른 정보는 보이지 않습니다.</div>
 
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={onFile} />
+      <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onFile} />
       {preview && (
         <div onClick={() => setPreview(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.88)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
           <img src={preview} alt="미리보기" style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 8 }} />
@@ -215,14 +220,17 @@ function Slot({ label, name, kind, has, busy, viewUrl, onPreview, onUpload }) {
         <div style={{ position: "relative" }}>
           <img src={src} alt={label} onClick={() => onPreview(src)} onError={() => setBroken(true)}
             style={{ width: "100%", height: 110, objectFit: "cover", borderRadius: 10, border: "1px solid #E3DED4", display: "block", cursor: "zoom-in" }} />
-          <button type="button" onClick={() => onUpload(name, kind)} disabled={loading}
-            style={{ position: "absolute", bottom: 6, right: 6, border: "none", background: "rgba(27,26,23,.72)", color: "#fff", borderRadius: 8, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{loading ? "…" : "다시"}</button>
+          <div style={{ position: "absolute", bottom: 6, right: 6, display: "flex", gap: 4 }}>
+            <button type="button" onClick={() => onUpload(name, kind, "cam")} disabled={loading} style={reBtn}>{loading ? "…" : "📷"}</button>
+            <button type="button" onClick={() => onUpload(name, kind, "alb")} disabled={loading} style={reBtn}>🖼</button>
+          </div>
         </div>
       ) : (
-        <button type="button" onClick={() => onUpload(name, kind)} disabled={loading}
-          style={{ width: "100%", height: 110, borderRadius: 10, border: broken ? "1px solid #F0C4A8" : "1px dashed #D8D1C5", background: broken ? "#FFF7F2" : "#fff", color: broken ? "#B96A16" : "#8C857A", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 700, lineHeight: 1.4 }}>
-          {loading ? "올리는 중…" : broken ? "⚠ 미리보기 불가\n다시 올리기" : `📷 ${label}`}
-        </button>
+        <div style={{ height: 110, borderRadius: 10, border: broken ? "1px solid #F0C4A8" : "1px dashed #D8D1C5", background: broken ? "#FFF7F2" : "#fff", display: "flex", flexDirection: "column", gap: 6, padding: 10, justifyContent: "center" }}>
+          {broken && <div style={{ fontSize: 11, fontWeight: 700, color: "#B96A16", textAlign: "center" }}>⚠ 미리보기 불가</div>}
+          <button type="button" onClick={() => onUpload(name, kind, "cam")} disabled={loading} style={pickBtn}>{loading ? "올리는 중…" : "📷 촬영"}</button>
+          <button type="button" onClick={() => onUpload(name, kind, "alb")} disabled={loading} style={pickBtn}>🖼 앨범</button>
+        </div>
       )}
     </div>
   );
