@@ -1949,6 +1949,7 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
   const [itemName, setItemName] = useState("");
   const [itemPrice, setItemPrice] = useState("");
   const [aptForm, setAptForm] = useState({ name: "", partner: "", address: "", note: "" });
+  const [aptEdit, setAptEdit] = useState(null); // 기존 단지 수정 {id, name, partner, address}
   const [newApt, setNewApt] = useState(null); // 견적 화면 인라인 새 단지 입력
   const [qStatus, setQStatus] = useState("all");
   const [qFrom, setQFrom] = useState("");
@@ -2043,6 +2044,14 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
   const deleteApt = async (a) => {
     if (!(await confirmAction(`'${a.name}' 단지를 삭제할까요? 연결된 견적의 단지 표시가 사라집니다.`))) return;
     try { await api.erpConstructionDeleteApartment(a.id); load(); } catch (e) { notifyError(e); }
+  };
+  const startAptEdit = (a) => setAptEdit({ id: a.id, name: a.name || "", partner: a.partner || "", address: a.address || "" });
+  const saveAptEdit = async () => {
+    if (!aptEdit?.name.trim()) return notifyError(new Error("단지명을 입력하세요"));
+    try {
+      await api.erpConstructionUpdateApartment(aptEdit.id, { name: aptEdit.name.trim(), partner: aptEdit.partner, address: aptEdit.address });
+      setAptEdit(null); load();
+    } catch (e) { notifyError(e); }
   };
 
   // ---- 견적 ----
@@ -2619,12 +2628,36 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
               </thead>
               <tbody>
                 {apts.map((a) => (
-                  <tr key={a.id}>
-                    <td><div className="cell-ttl">{a.name}</div></td>
-                    <td className="shrink">{a.partner || <span style={{ color: "var(--muted)" }}>—</span>}</td>
-                    <td><span className="cell-sub" style={{ margin: 0 }}>{a.address || "—"}</span></td>
-                    <td className="shrink ctr"><button type="button" className="erp-btn-x" title="삭제" onClick={() => deleteApt(a)}>✕</button></td>
-                  </tr>
+                  <React.Fragment key={a.id}>
+                    <tr>
+                      <td><div className="cell-ttl">{a.name}</div></td>
+                      <td className="shrink">{a.partner || <span style={{ color: "var(--muted)" }}>—</span>}</td>
+                      <td><span className="cell-sub" style={{ margin: 0 }}>{a.address || "—"}</span></td>
+                      <td className="shrink">
+                        <div className="row-actions">
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => (aptEdit?.id === a.id ? setAptEdit(null) : startAptEdit(a))}>{aptEdit?.id === a.id ? "닫기" : "수정"}</button>
+                          <button type="button" className="erp-btn-x" title="삭제" onClick={() => deleteApt(a)}>✕</button>
+                        </div>
+                      </td>
+                    </tr>
+                    {aptEdit?.id === a.id && (
+                      <tr>
+                        <td colSpan={4} style={{ background: "var(--paper)" }}>
+                          <div className="kbe-meta-h" style={{ marginTop: 0 }}>단지 수정</div>
+                          <div className="row" style={{ gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+                            <KakaoPlacePicker flex="1 1 100%" onPick={({ name, address }) => setAptEdit((n) => ({ ...n, name, address }))} />
+                          </div>
+                          <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                            <input style={{ flex: "1 1 160px", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", fontFamily: "inherit", fontSize: 14 }} value={aptEdit.name} onChange={(e) => setAptEdit({ ...aptEdit, name: e.target.value })} placeholder="아파트명 *" />
+                            <input style={{ flex: "1 1 140px", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", fontFamily: "inherit", fontSize: 14 }} value={aptEdit.partner} onChange={(e) => setAptEdit({ ...aptEdit, partner: e.target.value })} placeholder="아파트너 (수주처)" />
+                            <input style={{ flex: "2 1 220px", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", fontFamily: "inherit", fontSize: 14 }} value={aptEdit.address} onChange={(e) => setAptEdit({ ...aptEdit, address: e.target.value })} placeholder="주소" />
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAptEdit(null)}>취소</button>
+                            <button type="button" className="btn btn-accent btn-sm" onClick={saveAptEdit}>저장</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))}
                 {!apts.length && <tr><td colSpan={4} className="erp-tbl-empty">등록된 단지가 없습니다.</td></tr>}
               </tbody>
