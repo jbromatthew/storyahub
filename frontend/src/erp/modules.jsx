@@ -1874,6 +1874,64 @@ function printConstructionQuote(quote, apartment) {
   w.document.close();
 }
 
+// 카카오맵 장소검색 자동완성 (명칭·주소) — 백엔드 /places/search 프록시 사용
+function KakaoPlacePicker({ onPick, placeholder = "카카오맵에서 아파트 검색 (명칭·주소)", flex = "1 1 260px" }) {
+  const [q, setQ] = useState("");
+  const [items, setItems] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const boxRef = useRef(null);
+
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) { setItems([]); setLoading(false); return undefined; }
+    let alive = true;
+    setLoading(true);
+    const t = setTimeout(() => {
+      api.searchPlaces({ q: term })
+        .then((res) => { if (alive) { setItems(res.items || []); setOpen(true); } })
+        .catch(() => { if (alive) setItems([]); })
+        .finally(() => { if (alive) setLoading(false); });
+    }, 300);
+    return () => { alive = false; clearTimeout(t); };
+  }, [q]);
+
+  useEffect(() => {
+    const onDoc = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const pick = (it) => {
+    onPick({ name: it.name, address: it.roadAddress || it.address || "" });
+    setQ(""); setItems([]); setOpen(false);
+  };
+
+  return (
+    <div ref={boxRef} style={{ position: "relative", flex }}>
+      <input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        onFocus={() => items.length && setOpen(true)}
+        placeholder={placeholder}
+        style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }}
+      />
+      {open && (loading || items.length > 0) && (
+        <div className="kakao-pop">
+          {loading && !items.length ? (
+            <div className="small" style={{ padding: "12px 14px", color: "var(--muted)" }}>검색 중…</div>
+          ) : items.map((it, i) => (
+            <button type="button" key={it.id || it.kakaoPlaceId || `${it.name}-${i}`} onClick={() => pick(it)}>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{it.name}</div>
+              <div className="small" style={{ color: "var(--muted)" }}>{it.roadAddress || it.address || "주소 없음"}</div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ConstructionView({ orderType = "아파트너" } = {}) {
   const [tab, setTab] = useState("quotes");
   const [items, setItems] = useState([]);
@@ -2107,6 +2165,7 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
               <label>아파트 단지</label>
               {newApt ? (
                 <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                  <KakaoPlacePicker flex="1 1 100%" onPick={({ name, address }) => setNewApt((n) => ({ ...n, name, address }))} />
                   <input autoFocus value={newApt.name} onChange={(e) => setNewApt((n) => ({ ...n, name: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") saveNewApt(); }} placeholder="단지명 *" style={{ flex: "1 1 120px", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", fontFamily: "inherit", fontSize: 14 }} />
                   <input value={newApt.address} onChange={(e) => setNewApt((n) => ({ ...n, address: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") saveNewApt(); }} placeholder="주소 (선택)" style={{ flex: "1 1 140px", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", fontFamily: "inherit", fontSize: 14 }} />
                   <button type="button" className="btn btn-accent btn-sm" onClick={saveNewApt}>추가</button>
@@ -2542,6 +2601,10 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
       {tab === "apartments" && (
         <>
           <div className="card" style={{ marginTop: 16 }}>
+            <div className="row" style={{ gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+              <KakaoPlacePicker flex="1 1 100%" onPick={({ name, address }) => setAptForm((f) => ({ ...f, name, address }))} />
+            </div>
+            <div className="small" style={{ color: "var(--muted)", margin: "-2px 0 10px" }}>카카오맵에서 아파트를 검색해 선택하면 단지명·주소가 자동으로 채워집니다. 직접 입력도 가능합니다.</div>
             <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
               <input style={{ flex: "1 1 160px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }} value={aptForm.name} onChange={(e) => setAptForm({ ...aptForm, name: e.target.value })} placeholder="아파트명 *" />
               <input style={{ flex: "1 1 140px", border: "1px solid var(--line)", borderRadius: 10, padding: "11px 12px", fontFamily: "inherit", fontSize: 14 }} value={aptForm.partner} onChange={(e) => setAptForm({ ...aptForm, partner: e.target.value })} placeholder="아파트너 (수주처)" />

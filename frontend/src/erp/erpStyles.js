@@ -486,6 +486,12 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .erp-btn-x:hover{background:#FDECEA;border-color:#F3B8AE;}
 @media(max-width:560px){.erp-tbl{font-size:13px;}.erp-tbl thead th,.erp-tbl tbody td{padding:10px 12px;}}
 
+/* 카카오맵 장소검색 드롭다운 */
+.kakao-pop{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:30;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px -14px rgba(20,16,12,.4);max-height:300px;overflow-y:auto;}
+.kakao-pop button{display:block;width:100%;text-align:left;border:none;background:none;padding:10px 14px;cursor:pointer;font-family:inherit;border-bottom:1px solid var(--line-soft,#F3EFE9);}
+.kakao-pop button:last-child{border-bottom:none;}
+.kakao-pop button:hover{background:var(--paper);}
+
 ${CALENDAR_CSS}
 ${KB_CSS}
 `;
