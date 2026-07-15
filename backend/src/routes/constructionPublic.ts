@@ -84,6 +84,8 @@ constructionPublicRouter.get("/site-upload/:token/view", async (req: Request, re
     const buf = await getObjectBytes(key);
     res.setHeader("Content-Type", mimeFromKey(key));
     res.setHeader("Cache-Control", "private, max-age=600");
+    // 교차출처 <img> 로드 허용 (Helmet 기본 same-origin이 record→api 이미지 로드를 막음). PIN으로 이미 보호됨.
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     res.send(buf);
   } catch (e) {
     console.error("site-view", e);
