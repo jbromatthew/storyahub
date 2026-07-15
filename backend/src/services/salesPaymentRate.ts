@@ -153,8 +153,19 @@ function isAbsenceRow(data: Record<string, string>): boolean {
   return ABSENCE_STATUSES.has(status);
 }
 
+/** 문의 날짜 원본값 — 헤더 오타(예: '날짜f1')에도 견디도록 '날짜'로 시작하는 열까지 탐색 */
+function inquiryDateRaw(data: Record<string, string>): string | undefined {
+  if (data["날짜"]) return data["날짜"];
+  if (data["문의 시간"]) return data["문의 시간"];
+  if (data["문의시간"]) return data["문의시간"];
+  for (const [k, v] of Object.entries(data)) {
+    if (v && /^날짜/.test(k.trim())) return v;
+  }
+  return undefined;
+}
+
 function isMonthlyPaymentRow(data: Record<string, string>): boolean {
-  const inquiryMonth = monthKeyFromDate(data["날짜"] || data["문의 시간"] || data["문의시간"]);
+  const inquiryMonth = monthKeyFromDate(inquiryDateRaw(data));
   const paymentMonth = monthKeyFromDate(data["결제일"]);
   return !!(inquiryMonth && paymentMonth && inquiryMonth === paymentMonth);
 }
