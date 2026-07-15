@@ -1,0 +1,76 @@
+import { Router, type Request, type Response } from "express";
+import express from "express";
+import { randomBytes } from "crypto";
+import { prisma } from "../db.js";
+import { env } from "../env.js";
+import { buildUserMediaKey, putObjectBytes, r2Configured } from "../services/r2.js";
+
+export const constructionPublicRouter = Router();
+
+type SitePhoto = { name: string; beforeKey: string | null; afterKey: string | null; beforeBy?: string | null; afterBy?: string | null };
+
+async function resolveShare(token: string, pin: string) {
+  if (!token) return null;
+  const quote = await prisma.erpConstructionQuote.findUnique({
+    where: { shareToken: token },
+    include: { apartment: true },
+  });
+  if (!quote || !quote.shareEnabled) return null;
+  if (quote.shareExpiresAt && quote.shareExpiresAt.getTime() < Date.now()) return null;
+  if (!quote.sharePin || String(pin).trim() !== quote.sharePin) return null;
+  return quote;
+}
+
+// PIN 확인 + 현장 정보 (기존 개소 목록)
+constructionPublicRouter.post("/site-upload/:token/info", async (req: Request, res: Response) => {
+  const quote = await resolveShare(req.params.token, String(req.body?.pin ?? ""));
+  if (!quote) return res.status(403).json({ error: "링크 또는 PIN이 올바르지 않거나 만료되었습니다" });
+  const sites = (Array.isArray(quote.sitePhotos) ? quote.sitePhotos : []) as SitePhoto[];
+  res.json({
+    ok: true,
+    apartmentName: quote.apartment?.name ?? "(현장)",
+    title: quote.title ?? null,
+    expiresAt: quote.shareExpiresAt,
+    sites: sites.map((s) => ({ name: s.name, hasBefore: !!s.beforeKey, hasAfter: !!s.afterKey })),
+  });
+});
+
+// 사진 업로드 (무계정) — 이미지 바이트 body + 헤더로 메타 전달
+constructionPublicRouter.post(
+  "/site-upload/:token/photo",
+  express.raw({ type: () => true, limit: "40mb" }),
+  async (req: Request, res: Response) => {
+    const pin = String(req.header("X-Pin") ?? "");
+    const siteName = decodeURIComponent(req.header("X-Site") ?? "").trim();
+    const kind = req.header("X-Kind") === "after" ? "after" : "before";
+    const uploader = decodeURIComponent(req.header("X-Uploader") ?? "").trim().slice(0, 40);
+    const quote = await resolveShare(req.params.token, pin);
+    if (!quote) return res.status(403).json({ error: "링크 또는 PIN이 올바르지 않거나 만료되었습니다" });
+    if (!siteName) return res.status(400).json({ error: "개소 이름을 입력하세요" });
+    if (!r2Configured()) return res.status(500).json({ error: "저장소가 설정되지 않았습니다" });
+
+    const buf = req.body as Buffer;
+    const ct = req.header("Content-Type") || "image/jpeg";
+    if (!Buffer.isBuffer(buf) || !buf.length) return res.status(400).json({ error: "이미지가 없습니다" });
+    if (!/^image\//.test(ct)) return res.status(400).json({ error: "이미지 파일만 업로드할 수 있습니다" });
+    if (buf.length > 30 * 1024 * 1024) return res.status(413).json({ error: "파일이 너무 큽니다 (최대 30MB)" });
+
+    const owner = await prisma.user.findUnique({ where: { email: env.erpOwnerEmail } });
+    if (!owner) return res.status(500).json({ error: "소유자 계정을 찾을 수 없습니다" });
+
+    const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : ct.includes("heic") ? "heic" : "jpg";
+    const key = buildUserMediaKey(owner.id, `construction/${quote.id}/${randomBytes(8).toString("hex")}.${ext}`);
+    await putObjectBytes(key, buf, ct);
+
+    // 최신 상태로 다시 읽어 병합 (동시 업로드 clobber 최소화)
+    const fresh = await prisma.erpConstructionQuote.findUnique({ where: { id: quote.id }, select: { sitePhotos: true } });
+    const sites = (Array.isArray(fresh?.sitePhotos) ? fresh!.sitePhotos : []) as SitePhoto[];
+    let site = sites.find((s) => String(s.name).trim() === siteName);
+    if (!site) { site = { name: siteName, beforeKey: null, afterKey: null, beforeBy: null, afterBy: null }; sites.push(site); }
+    if (kind === "after") { site.afterKey = key; site.afterBy = uploader || null; }
+    else { site.beforeKey = key; site.beforeBy = uploader || null; }
+    await prisma.erpConstructionQuote.update({ where: { id: quote.id }, data: { sitePhotos: sites as unknown as object } });
+
+    res.json({ ok: true });
+  }
+);

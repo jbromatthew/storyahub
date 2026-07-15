@@ -32,6 +32,7 @@ import { friendsRouter } from "./routes/friends.js";
 import { sharesRouter } from "./routes/shares.js";
 import { erpRouter } from "./routes/erp.js";
 import { salesSyncRouter } from "./routes/salesSync.js";
+import { constructionPublicRouter } from "./routes/constructionPublic.js";
 import { startPurgeScheduler } from "./services/purge.js";
 
 const app = express();
@@ -74,6 +75,8 @@ app.use("/friends", friendsRouter);
 app.use("/shares", sharesRouter);
 app.use("/erp", erpRouter);
 app.use("/erp/sales", salesSyncRouter);
+// 무계정 공개 라우트 (현장 사진 업로드) — PIN + 토큰으로 보호
+app.use("/public/construction", shareLimiter, constructionPublicRouter);
 
 app.use((err: Error, _req: Request, res: Response, next: NextFunction) => {
   if (err.message === "CORS blocked") {

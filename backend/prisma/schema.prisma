@@ -721,7 +721,11 @@ model ErpConstructionQuote {
   payouts          Json                      @default("[]") // 협력업체 재정산: [{teamId, teamName, amount, paid, memo}]
   materials        Json                      @default("[]") // 투입 부품/자재 원가: [{stockId, name, qty, unitCost}]
   complaints       Json                      @default("[]") // 민원: [{date, content, status, resolution}]
-  sitePhotos       Json                      @default("[]") // 개소별 현장 사진: [{name, beforeKey, afterKey}]
+  sitePhotos       Json                      @default("[]") // 개소별 현장 사진: [{name, beforeKey, afterKey, beforeBy, afterBy}]
+  shareToken       String?                   @unique // 현장 업로드 공유 링크 토큰
+  sharePin         String?                   // 공유 링크 PIN (4자리)
+  shareEnabled     Boolean                   @default(false)
+  shareExpiresAt   DateTime?
   note             String?
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt

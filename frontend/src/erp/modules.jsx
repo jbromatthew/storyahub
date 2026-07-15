@@ -2174,6 +2174,21 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
     } catch (e) { if (!isPickCancelled(e)) notifyError(e); }
     finally { setPhotoBusy(null); }
   };
+  // ---- 무계정 현장 업로드 공유 링크 ----
+  const genShareLink = async () => {
+    if (!editing?.id) return notifyError(new Error("먼저 견적을 저장한 뒤 공유하세요"));
+    try {
+      const res = await api.erpConstructionShareQuote(editing.id);
+      setEditing((e) => ({ ...e, shareToken: res.token, sharePin: res.pin, shareEnabled: res.enabled, shareExpiresAt: res.expiresAt }));
+      toastSuccess("현장 업로드 링크를 만들었습니다");
+    } catch (e) { notifyError(e); }
+  };
+  const disableShareLink = async () => {
+    if (!editing?.id) return;
+    if (!(await confirmAction("업로드 링크를 비활성화할까요? 기존 링크로는 더 이상 업로드할 수 없습니다."))) return;
+    try { await api.erpConstructionDisableShare(editing.id); setEditing((e) => ({ ...e, shareEnabled: false })); toastSuccess("링크를 비활성화했습니다"); } catch (e) { notifyError(e); }
+  };
+  const copyText = async (t) => { try { await navigator.clipboard.writeText(t); toastSuccess("복사했습니다"); } catch { notifyError(new Error("복사 실패 — 직접 선택해 복사하세요")); } };
   const addLineFromItem = (itemId) => {
     const it = items.find((x) => x.id === itemId);
     if (!it) return;
@@ -2511,12 +2526,37 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
         <div className="card" style={{ marginTop: 16 }}>
           <div className="row between" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <div className="kbe-meta-h" style={{ margin: 0 }}>현장 사진 (개소별) {(editing.sitePhotos || []).length ? <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>· {editing.sitePhotos.length}개소</span> : null}</div>
-            <div className="row" style={{ gap: 6 }}>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={editing.shareEnabled && editing.shareToken ? undefined : genShareLink} disabled={!editing.id}>{editing.shareEnabled && editing.shareToken ? "🔗 링크 있음" : "🔗 업로드 링크 공유"}</button>
               <button type="button" className="btn btn-ghost btn-sm" disabled={!(editing.sitePhotos || []).some((s) => s.beforeKey || s.afterKey)} onClick={() => printSitePhotos(editing, apts.find((a) => a.id === editing.apartmentId))}>📄 사진 문서 출력</button>
               <button type="button" className="btn btn-accent btn-sm" onClick={addSite}>+ 개소 추가</button>
             </div>
           </div>
-          <div className="small" style={{ color: "var(--muted)", margin: "6px 0 12px" }}>개소마다 이름을 적고 공사 전·후 사진을 촬영해 기록하세요. “사진 문서 출력”으로 보고서를 뽑을 수 있습니다.</div>
+          <div className="small" style={{ color: "var(--muted)", margin: "6px 0 12px" }}>개소마다 이름을 적고 공사 전·후 사진을 촬영해 기록하세요. “사진 문서 출력”으로 보고서를 뽑을 수 있습니다. 공사팀에게는 “업로드 링크 공유”로 계정 없이 사진만 올리게 할 수 있어요.</div>
+
+          {editing.shareEnabled && editing.shareToken && (
+            <div className="card" style={{ background: "var(--paper)", marginBottom: 12, padding: 12 }}>
+              <div className="kbe-meta-h" style={{ marginTop: 0 }}>현장 업로드 링크 (계정 없이 사진 업로드)</div>
+              {(() => {
+                const url = `${window.location.origin}/?upload=${editing.shareToken}`;
+                return (
+                  <>
+                    <div className="row" style={{ gap: 6, alignItems: "center", marginBottom: 6 }}>
+                      <input readOnly value={url} onFocus={(e) => e.target.select()} style={{ flex: 1, border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 12.5, background: "#fff" }} />
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => copyText(url)}>링크 복사</button>
+                    </div>
+                    <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <span className="small">PIN <strong style={{ fontSize: 16, color: "var(--accent-deep)", letterSpacing: 2 }}>{editing.sharePin}</strong></span>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => copyText(editing.sharePin)}>PIN 복사</button>
+                      {editing.shareExpiresAt && <span className="small" style={{ color: "var(--muted)" }}>· 만료 {new Date(editing.shareExpiresAt).toLocaleDateString("ko-KR")}</span>}
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B", marginLeft: "auto" }} onClick={disableShareLink}>링크 비활성화</button>
+                    </div>
+                    <div className="small" style={{ color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>링크와 PIN을 공사팀에 전달하세요. 받은 사람은 로그인 없이 이 현장에만 개소·사진을 올릴 수 있습니다.</div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
           {!(editing.sitePhotos || []).length ? (
             <div className="small" style={{ color: "var(--muted)" }}>등록된 개소가 없습니다. “개소 추가”로 시작하세요.</div>
           ) : editing.sitePhotos.map((s, i) => (

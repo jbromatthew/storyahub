@@ -1,5 +1,6 @@
 import { Router, type Response } from "express";
 import bcrypt from "bcryptjs";
+import { randomBytes, randomInt as cryptoRandomInt } from "crypto";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess } from "../middleware/requireAccess.js";
@@ -1455,6 +1456,8 @@ function sanitizeSitePhotos(raw: unknown) {
       name: String(p?.name ?? "").trim(),
       beforeKey: p?.beforeKey ? String(p.beforeKey) : null,
       afterKey: p?.afterKey ? String(p.afterKey) : null,
+      beforeBy: p?.beforeBy ? String(p.beforeBy).trim().slice(0, 40) : null,
+      afterBy: p?.afterBy ? String(p.afterBy).trim().slice(0, 40) : null,
     }))
     .filter((p) => p.name || p.beforeKey || p.afterKey);
 }
@@ -1607,6 +1610,28 @@ erpRouter.delete("/construction/quotes/:id", async (req: AuthedRequest, res) => 
   if (!(await requireOwner(req, res))) return;
   await prisma.erpConstructionQuote.delete({ where: { id: req.params.id } });
   res.json({ ok: true });
+});
+
+// 현장 업로드 공유 링크 발급/갱신 (무계정 + PIN)
+erpRouter.post("/construction/quotes/:id/share", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const existing = await prisma.erpConstructionQuote.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: "견적을 찾을 수 없습니다" });
+  const token = existing.shareToken || randomBytes(18).toString("base64url");
+  const pin = existing.sharePin || String(cryptoRandomInt(1000, 10000));
+  const days = Number(req.body?.days) > 0 ? Math.min(365, Number(req.body.days)) : 30;
+  const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  const q = await prisma.erpConstructionQuote.update({
+    where: { id: req.params.id },
+    data: { shareToken: token, sharePin: pin, shareEnabled: true, shareExpiresAt: expiresAt },
+  });
+  res.json({ token: q.shareToken, pin: q.sharePin, enabled: q.shareEnabled, expiresAt: q.shareExpiresAt });
+});
+
+erpRouter.post("/construction/quotes/:id/share/disable", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  await prisma.erpConstructionQuote.update({ where: { id: req.params.id }, data: { shareEnabled: false } });
+  res.json({ enabled: false });
 });
 
 /* ===================== 재고 관리 (아파트너 공사) — 소유자 전용 ===================== */
