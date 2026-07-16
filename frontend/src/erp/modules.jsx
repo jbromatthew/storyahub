@@ -3647,6 +3647,20 @@ function formatRateValue(value, format) {
   return String(value);
 }
 
+// 비교군 중 결제율이 뒤처진(가장 나쁜) 그룹 셀 인덱스 — % 지표만, 부재율은 높을수록 나쁨
+function worstRateIdxs(values, format, rowKey) {
+  if (format !== "percent") return EMPTY_SET;
+  const nums = values.map((v) => (v == null || Number.isNaN(v) ? null : Number(v)));
+  const valid = nums.filter((v) => v != null);
+  if (valid.length < 2) return EMPTY_SET;
+  const higherIsWorse = rowKey === "absenceRate";
+  const worst = higherIsWorse ? Math.max(...valid) : Math.min(...valid);
+  const best = higherIsWorse ? Math.min(...valid) : Math.max(...valid);
+  if (worst === best) return EMPTY_SET; // 모두 동률이면 표시 안 함
+  return new Set(nums.map((v, i) => (v === worst ? i : -1)).filter((i) => i >= 0));
+}
+const EMPTY_SET = new Set();
+
 // 여러 달 선택 시 건수 지표에 월평균(합계÷월수) 부기 (% 지표는 이미 기간 집계율이라 제외)
 function AvgSub({ value, format, monthN }) {
   if (format !== "number" || !monthN || monthN <= 1 || value == null || Number.isNaN(value)) return null;
@@ -4071,9 +4085,9 @@ function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange }) {
               {(result?.rows || []).map((row) => (
                 <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
                   <td className="metric-label">{row.label}</td>
-                  {row.values.map((val, i) => (
-                    <td key={i} className="num">{formatRateValue(val, row.format)}<AvgSub value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
-                  ))}
+                  {(() => { const worst = worstRateIdxs(row.values, row.format, row.key); return row.values.map((val, i) => (
+                    <td key={i} className={"num" + (worst.has(i) ? " rate-worse" : "")}>{formatRateValue(val, row.format)}<AvgSub value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
+                  )); })()}
                 </tr>
               ))}
             </tbody>
@@ -4384,18 +4398,24 @@ export function PaymentRateView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(result.rows || []).map((row) => (
+                  {(result.rows || []).map((row) => {
+                    // 같은 세그먼트끼리(전체/오가닉/비오가닉) 비교군 간 비교해 뒤처진 셀 표시
+                    const wAll = worstRateIdxs(result.groups.map((g) => g.bySegment.all[row.key]), row.format, row.key);
+                    const wOrg = worstRateIdxs(result.groups.map((g) => g.bySegment.organic[row.key]), row.format, row.key);
+                    const wNon = worstRateIdxs(result.groups.map((g) => g.bySegment.nonOrganic[row.key]), row.format, row.key);
+                    return (
                     <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
                       <td className="metric-label">{row.label}</td>
-                      {result.groups.map((g) => (
+                      {result.groups.map((g, gi) => (
                         <React.Fragment key={g.id}>
-                          <td className="num" style={{ borderLeft: "2px solid var(--line)", fontWeight: 700 }}>{formatRateValue(g.bySegment.all[row.key], row.format)}<AvgSub value={g.bySegment.all[row.key]} format={row.format} monthN={g.months?.length} /></td>
-                          <td className="num">{formatRateValue(g.bySegment.organic[row.key], row.format)}<AvgSub value={g.bySegment.organic[row.key]} format={row.format} monthN={g.months?.length} /></td>
-                          <td className="num">{formatRateValue(g.bySegment.nonOrganic[row.key], row.format)}<AvgSub value={g.bySegment.nonOrganic[row.key]} format={row.format} monthN={g.months?.length} /></td>
+                          <td className={"num" + (wAll.has(gi) ? " rate-worse" : "")} style={{ borderLeft: "2px solid var(--line)", fontWeight: 700 }}>{formatRateValue(g.bySegment.all[row.key], row.format)}<AvgSub value={g.bySegment.all[row.key]} format={row.format} monthN={g.months?.length} /></td>
+                          <td className={"num" + (wOrg.has(gi) ? " rate-worse" : "")}>{formatRateValue(g.bySegment.organic[row.key], row.format)}<AvgSub value={g.bySegment.organic[row.key]} format={row.format} monthN={g.months?.length} /></td>
+                          <td className={"num" + (wNon.has(gi) ? " rate-worse" : "")}>{formatRateValue(g.bySegment.nonOrganic[row.key], row.format)}<AvgSub value={g.bySegment.nonOrganic[row.key]} format={row.format} monthN={g.months?.length} /></td>
                         </React.Fragment>
                       ))}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -4412,9 +4432,9 @@ export function PaymentRateView() {
                 {(result.rows || []).map((row) => (
                   <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
                     <td className="metric-label">{row.label}</td>
-                    {row.values.map((val, i) => (
-                      <td key={i} className="num">{formatRateValue(val, row.format)}<AvgSub value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
-                    ))}
+                    {(() => { const worst = worstRateIdxs(row.values, row.format, row.key); return row.values.map((val, i) => (
+                      <td key={i} className={"num" + (worst.has(i) ? " rate-worse" : "")}>{formatRateValue(val, row.format)}<AvgSub value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
+                    )); })()}
                   </tr>
                 ))}
               </tbody>
