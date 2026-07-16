@@ -308,8 +308,15 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .rate-table tr.metric-pct td.metric-label{background:#FFE8D6;}
 .rate-table td.num{font-variant-numeric:tabular-nums;}
 .rate-table td.num .rate-avg-sub{font-size:11px;font-weight:500;color:var(--muted);margin-top:2px;white-space:nowrap;}
+/* 비교군 클릭 강조: 헤더 클릭 → 그 비교군 열(과 해당 월 행) 하이라이트 */
+.rate-table th.grp-click{cursor:pointer;user-select:none;}
+.rate-table th.grp-click:hover{background:#F3EFE8;}
+.rate-table th.grp-sel,.rate-table th.grp-click.grp-sel:hover{background:var(--accent-soft);color:var(--accent-deep);}
+.rate-table td.num.grp-sel{background:#FFF6EF;}
 /* 비교군 중 뒤처진 결제율 셀 (부재율은 가장 높은 셀) */
 .rate-table td.num.rate-worse{background:#FBE3DC;box-shadow:inset 0 0 0 1px #F3C4B5;}
+.rate-group-card.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);cursor:pointer;}
+.rate-group-card{cursor:pointer;}
 .rate-plan-block{margin-top:20px;}
 .rate-plan-title{font-size:14px;font-weight:800;margin:0 0 8px;color:var(--accent-deep);}
 .rate-plan-compare th.plan-col,.rate-plan-compare td.plan-col{text-align:left;font-weight:800;min-width:120px;position:sticky;left:0;background:#FFF3E8;z-index:2;}
