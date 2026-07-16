@@ -3985,11 +3985,6 @@ function buildGroupMonthCompareRows(groups) {
 
 function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange, selGroup, onSelectGroup }) {
   const metricDef = RATE_CHART_METRICS.find((m) => m.key === statsMetric) || RATE_CHART_METRICS[0];
-  // 선택한 비교군에 속한 월 (월별 지표 비교표 행 강조용)
-  const selMonths = useMemo(() => {
-    const ms = selGroup != null ? result?.groups?.[selGroup]?.months : null;
-    return new Set((ms || []).map((m) => String(m).replace(/\.$/, "")));
-  }, [result, selGroup]);
   const chartSeries = useMemo(
     () => buildRateChartSeries(result, metricDef.key, metricDef.format),
     [result, metricDef],
@@ -4068,19 +4063,16 @@ function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange, selG
               </tr>
             </thead>
             <tbody>
-              {timeline.map((row) => {
-                const inSel = selMonths.has(String(row.month).replace(/\.$/, ""));
-                return (
-                <tr key={row.month} className={inSel ? "month-sel" : ""}>
+              {timeline.map((row) => (
+                <tr key={row.month}>
                   <td className="metric-label">{monthShortLabel(row.month)}</td>
                   {RATE_CHART_METRICS.map((m) => (
-                    <td key={m.key} className={"num" + (m.format === "percent" ? " metric-pct" : "") + (inSel ? " grp-sel" : "")}>
+                    <td key={m.key} className={"num" + (m.format === "percent" ? " metric-pct" : "")}>
                       {formatRateValue(row.metrics?.[m.key], m.format)}
                     </td>
                   ))}
                 </tr>
-                );
-              })}
+              ))}
             </tbody>
           </table>
         </div>
