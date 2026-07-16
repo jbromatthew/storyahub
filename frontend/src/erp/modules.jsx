@@ -3647,18 +3647,17 @@ function formatRateValue(value, format) {
   return String(value);
 }
 
-// 비교군 중 결제전환율이 뒤처진(가장 낮은) 그룹 셀 인덱스 — 당월/실 결제전환율만 대상
-const RATE_WORSE_KEYS = new Set(["monthlyRate", "actualRate"]);
-function worstRateIdxs(values, format, rowKey) {
-  if (format !== "percent" || !RATE_WORSE_KEYS.has(rowKey)) return EMPTY_SET;
-  const nums = values.map((v) => (v == null || Number.isNaN(v) ? null : Number(v)));
-  const valid = nums.filter((v) => v != null);
-  if (valid.length < 2) return EMPTY_SET;
-  const worst = Math.min(...valid);
-  if (worst === Math.max(...valid)) return EMPTY_SET; // 모두 동률이면 표시 안 함
-  return new Set(nums.map((v, i) => (v === worst ? i : -1)).filter((i) => i >= 0));
+// 비교군 2개를 클릭하면 왼쪽 비교군 셀에 방향 색: 오른쪽보다 떨어지면 분홍, 올라가면 파랑
+function diffCls(values, selGroups) {
+  if (!selGroups || selGroups.length !== 2) return () => "";
+  const li = Math.min(selGroups[0], selGroups[1]);
+  const ri = Math.max(selGroups[0], selGroups[1]);
+  const a = values[li];
+  const b = values[ri];
+  if (a == null || b == null || Number.isNaN(a) || Number.isNaN(b)) return () => "";
+  const cls = a < b ? " rate-down" : a > b ? " rate-up" : "";
+  return (i) => (i === li ? cls : "");
 }
-const EMPTY_SET = new Set();
 
 // 여러 달 선택 시 건수 지표에 월평균(합계÷월수) 부기 (% 지표는 이미 기간 집계율이라 제외)
 function AvgSub({ value, format, monthN }) {
@@ -3725,10 +3724,10 @@ function PlanMetricsCell({ metrics, firstOfGroup }) {
 }
 
 // 담당자별/요금제별 비교표: 오가닉 분리 시 각 비교군을 전체/오가닉/비오가닉 3열로
-function SegCompareHead({ firstLabel, groupLabels, split, selGroup, onSelectGroup }) {
+function SegCompareHead({ firstLabel, groupLabels, split, selGroups, onSelectGroup }) {
   const thProps = (i) => ({
-    className: "grp-click" + (selGroup === i ? " grp-sel" : ""),
-    title: "클릭하면 이 비교군 강조",
+    className: "grp-click" + (selGroups?.includes(i) ? " grp-sel" : ""),
+    title: "두 비교군을 클릭하면 왼쪽에 증감 색 표시",
     onClick: () => onSelectGroup?.(i),
   });
   if (!split) {
@@ -3982,7 +3981,7 @@ function buildGroupMonthCompareRows(groups) {
 }
 
 
-function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange, selGroup, onSelectGroup }) {
+function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange, selGroups, onSelectGroup }) {
   const metricDef = RATE_CHART_METRICS.find((m) => m.key === statsMetric) || RATE_CHART_METRICS[0];
   const chartSeries = useMemo(
     () => buildRateChartSeries(result, metricDef.key, metricDef.format),
@@ -4031,7 +4030,7 @@ function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange, selG
               <tr>
                 <th style={{ textAlign: "left" }}>월</th>
                 {groupLabels.map((label, i) => (
-                  <th key={label} className={"grp-click" + (selGroup === i ? " grp-sel" : "")} title="클릭하면 이 비교군 강조" onClick={() => onSelectGroup?.(i)}>{label}</th>
+                  <th key={label} className={"grp-click" + (selGroups?.includes(i) ? " grp-sel" : "")} title="두 비교군을 클릭하면 왼쪽에 증감 색 표시" onClick={() => onSelectGroup?.(i)}>{label}</th>
                 ))}
               </tr>
             </thead>
@@ -4085,7 +4084,7 @@ function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange, selG
               <tr>
                 <th style={{ textAlign: "left" }}>지표</th>
                 {groupLabels.map((label, i) => (
-                  <th key={label} className={"grp-click" + (selGroup === i ? " grp-sel" : "")} title="클릭하면 이 비교군 강조" onClick={() => onSelectGroup?.(i)}>{label}</th>
+                  <th key={label} className={"grp-click" + (selGroups?.includes(i) ? " grp-sel" : "")} title="두 비교군을 클릭하면 왼쪽에 증감 색 표시" onClick={() => onSelectGroup?.(i)}>{label}</th>
                 ))}
               </tr>
             </thead>
@@ -4093,8 +4092,8 @@ function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange, selG
               {(result?.rows || []).map((row) => (
                 <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
                   <td className="metric-label">{row.label}</td>
-                  {(() => { const worst = worstRateIdxs(row.values, row.format, row.key); return row.values.map((val, i) => (
-                    <td key={i} className={"num" + (worst.has(i) ? " rate-worse" : "")}>{formatRateValue(val, row.format)}<AvgSub value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
+                  {(() => { const dc = diffCls(row.values, selGroups); return row.values.map((val, i) => (
+                    <td key={i} className={"num" + dc(i)}>{formatRateValue(val, row.format)}<AvgSub value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
                   )); })()}
                 </tr>
               ))}
@@ -4120,8 +4119,9 @@ export function PaymentRateView() {
   const [showStats, setShowStats] = useState(false);
   const [statsMetric, setStatsMetric] = useState("monthlyRate");
   const [splitSegments, setSplitSegments] = useState(true); // 요약 표에서 전체/오가닉/비오가닉 분리
-  const [selGroup, setSelGroup] = useState(null); // 클릭으로 강조할 비교군 인덱스
-  const toggleSelGroup = (i) => setSelGroup((p) => (p === i ? null : i));
+  const [selGroups, setSelGroups] = useState([]); // 클릭으로 비교할 비교군 인덱스 (최대 2개)
+  const toggleSelGroup = (i) =>
+    setSelGroups((p) => (p.includes(i) ? p.filter((x) => x !== i) : p.length >= 2 ? [i] : [...p, i]));
 
   const currentMonthSheet = useMemo(() => {
     const now = new Date();
@@ -4297,7 +4297,7 @@ export function PaymentRateView() {
         {groups.map((g, i) => (
           <div
             key={g.id}
-            className={"rate-group-card" + (selGroup === i ? " sel" : "")}
+            className={"rate-group-card" + (selGroups.includes(i) ? " sel" : "")}
             onClick={(e) => {
               // 입력/버튼 조작은 선택 토글로 취급하지 않음
               const t = e.target.tagName;
@@ -4393,7 +4393,7 @@ export function PaymentRateView() {
               groupLabels={groupLabels}
               statsMetric={statsMetric}
               onMetricChange={setStatsMetric}
-              selGroup={selGroup}
+              selGroups={selGroups}
               onSelectGroup={toggleSelGroup}
             />
           ) : (
@@ -4405,7 +4405,7 @@ export function PaymentRateView() {
                   <tr>
                     <th rowSpan={2} style={{ textAlign: "left" }}>지표</th>
                     {result.groups.map((g, gi) => (
-                      <th key={g.id} colSpan={3} className={"grp-click" + (selGroup === gi ? " grp-sel" : "")} title="클릭하면 이 비교군 강조" onClick={() => toggleSelGroup(gi)} style={{ borderLeft: "2px solid var(--line)" }}>{g.label}</th>
+                      <th key={g.id} colSpan={3} className={"grp-click" + (selGroups?.includes(gi) ? " grp-sel" : "")} title="두 비교군을 클릭하면 왼쪽에 증감 색 표시" onClick={() => toggleSelGroup(gi)} style={{ borderLeft: "2px solid var(--line)" }}>{g.label}</th>
                     ))}
                   </tr>
                   <tr>
@@ -4420,18 +4420,18 @@ export function PaymentRateView() {
                 </thead>
                 <tbody>
                   {(result.rows || []).map((row) => {
-                    // 같은 세그먼트끼리(전체/오가닉/비오가닉) 비교군 간 비교해 뒤처진 셀 표시
-                    const wAll = worstRateIdxs(result.groups.map((g) => g.bySegment.all[row.key]), row.format, row.key);
-                    const wOrg = worstRateIdxs(result.groups.map((g) => g.bySegment.organic[row.key]), row.format, row.key);
-                    const wNon = worstRateIdxs(result.groups.map((g) => g.bySegment.nonOrganic[row.key]), row.format, row.key);
+                    // 비교군 2개 선택 시, 같은 세그먼트끼리(전체/오가닉/비오가닉) 왼쪽 비교군에 방향 색
+                    const dcAll = diffCls(result.groups.map((g) => g.bySegment.all[row.key]), selGroups);
+                    const dcOrg = diffCls(result.groups.map((g) => g.bySegment.organic[row.key]), selGroups);
+                    const dcNon = diffCls(result.groups.map((g) => g.bySegment.nonOrganic[row.key]), selGroups);
                     return (
                     <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
                       <td className="metric-label">{row.label}</td>
                       {result.groups.map((g, gi) => (
                         <React.Fragment key={g.id}>
-                          <td className={"num" + (wAll.has(gi) ? " rate-worse" : "")} style={{ borderLeft: "2px solid var(--line)", fontWeight: 700 }}>{formatRateValue(g.bySegment.all[row.key], row.format)}<AvgSub value={g.bySegment.all[row.key]} format={row.format} monthN={g.months?.length} /></td>
-                          <td className={"num" + (wOrg.has(gi) ? " rate-worse" : "")}>{formatRateValue(g.bySegment.organic[row.key], row.format)}<AvgSub value={g.bySegment.organic[row.key]} format={row.format} monthN={g.months?.length} /></td>
-                          <td className={"num" + (wNon.has(gi) ? " rate-worse" : "")}>{formatRateValue(g.bySegment.nonOrganic[row.key], row.format)}<AvgSub value={g.bySegment.nonOrganic[row.key]} format={row.format} monthN={g.months?.length} /></td>
+                          <td className={"num" + dcAll(gi)} style={{ borderLeft: "2px solid var(--line)", fontWeight: 700 }}>{formatRateValue(g.bySegment.all[row.key], row.format)}<AvgSub value={g.bySegment.all[row.key]} format={row.format} monthN={g.months?.length} /></td>
+                          <td className={"num" + dcOrg(gi)}>{formatRateValue(g.bySegment.organic[row.key], row.format)}<AvgSub value={g.bySegment.organic[row.key]} format={row.format} monthN={g.months?.length} /></td>
+                          <td className={"num" + dcNon(gi)}>{formatRateValue(g.bySegment.nonOrganic[row.key], row.format)}<AvgSub value={g.bySegment.nonOrganic[row.key]} format={row.format} monthN={g.months?.length} /></td>
                         </React.Fragment>
                       ))}
                     </tr>
@@ -4447,7 +4447,7 @@ export function PaymentRateView() {
                 <tr>
                   <th style={{ textAlign: "left" }}>지표</th>
                   {groupLabels.map((label, i) => (
-                    <th key={label} className={"grp-click" + (selGroup === i ? " grp-sel" : "")} title="클릭하면 이 비교군 강조" onClick={() => toggleSelGroup(i)}>{label}</th>
+                    <th key={label} className={"grp-click" + (selGroups?.includes(i) ? " grp-sel" : "")} title="두 비교군을 클릭하면 왼쪽에 증감 색 표시" onClick={() => toggleSelGroup(i)}>{label}</th>
                   ))}
                 </tr>
               </thead>
@@ -4455,8 +4455,8 @@ export function PaymentRateView() {
                 {(result.rows || []).map((row) => (
                   <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
                     <td className="metric-label">{row.label}</td>
-                    {(() => { const worst = worstRateIdxs(row.values, row.format, row.key); return row.values.map((val, i) => (
-                      <td key={i} className={"num" + (worst.has(i) ? " rate-worse" : "")}>{formatRateValue(val, row.format)}<AvgSub value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
+                    {(() => { const dc = diffCls(row.values, selGroups); return row.values.map((val, i) => (
+                      <td key={i} className={"num" + dc(i)}>{formatRateValue(val, row.format)}<AvgSub value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
                     )); })()}
                   </tr>
                 ))}
@@ -4492,7 +4492,7 @@ export function PaymentRateView() {
               ) : (
               <div className="rate-table-wrap rate-table-scroll">
                 <table className="rate-table rate-plan-compare">
-                  <SegCompareHead firstLabel="담당자" groupLabels={groupLabels} split={splitSegments} selGroup={selGroup} onSelectGroup={toggleSelGroup} />
+                  <SegCompareHead firstLabel="담당자" groupLabels={groupLabels} split={splitSegments} selGroups={selGroups} onSelectGroup={toggleSelGroup} />
                   <tbody>
                     {assigneeCompareRows.map((row) => (
                       <tr key={row.assignee}>
@@ -4512,7 +4512,7 @@ export function PaymentRateView() {
               <div className="rate-plan-title">요금제별 비교</div>
               <div className="rate-table-wrap rate-table-scroll">
                 <table className="rate-table rate-plan-compare">
-                  <SegCompareHead firstLabel="요금제" groupLabels={groupLabels} split={splitSegments} selGroup={selGroup} onSelectGroup={toggleSelGroup} />
+                  <SegCompareHead firstLabel="요금제" groupLabels={groupLabels} split={splitSegments} selGroups={selGroups} onSelectGroup={toggleSelGroup} />
                   <tbody>
                     {planCompareRows.map((row) => (
                       <tr key={row.plan}>

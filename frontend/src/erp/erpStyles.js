@@ -312,9 +312,9 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .rate-table th.grp-click{cursor:pointer;user-select:none;}
 @media(hover:hover){.rate-table th.grp-click:hover{background:#F3EFE8;}}
 .rate-table th.grp-sel,.rate-table th.grp-click.grp-sel:hover{background:var(--accent-soft);color:var(--accent-deep);}
-.rate-table td.num.grp-sel{background:#FFF6EF;}
-/* 비교군 중 뒤처진 결제율 셀 (부재율은 가장 높은 셀) */
-.rate-table td.num.rate-worse{background:#FBE3DC;box-shadow:inset 0 0 0 1px #F3C4B5;}
+/* 비교군 2개 선택 시 왼쪽 비교군 셀: 오른쪽보다 떨어지면 분홍, 올라가면 파랑 */
+.rate-table td.num.rate-down{background:#FBE3E4;box-shadow:inset 0 0 0 1px #F3B5BC;}
+.rate-table td.num.rate-up{background:#E2EEFB;box-shadow:inset 0 0 0 1px #B7D3F0;}
 .rate-group-card.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);cursor:pointer;}
 .rate-group-card{cursor:pointer;}
 .rate-plan-block{margin-top:20px;}
