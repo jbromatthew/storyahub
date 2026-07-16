@@ -5463,6 +5463,7 @@ export function SalesDashboardView() {
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
         월별 목표는 <strong>대시보드 시트</strong>에서 불러오며, 앱에서 수정한 목표는 <strong>DB에 저장</strong>됩니다. (시트에는 아직 자동 반영되지 않음)
         현황은 결제 주문 DB의 <strong>신규센터</strong> 건수입니다. <strong>업종·채널·요금제</strong> 항목을 누르면 하위 분해(요금제·채널·업종·주차별) 상세를 볼 수 있습니다.
+        {" "}<strong>당월 문의 목표</strong>는 대시보드 시트 상단에 <strong>‘문의 목표’</strong> 칸을 만들어 옆에 숫자를 넣으면 표시되고, 문의 현황은 문의 시트의 당월 신규문의 건수입니다.
         {data?.spreadsheetUrl && (
           <>{" "}<a href={data.spreadsheetUrl} target="_blank" rel="noreferrer">목표 시트</a></>
         )}
@@ -5523,6 +5524,23 @@ export function SalesDashboardView() {
                     {formatDashGap(data.summary.gap)}
                   </div>
                 </div>
+                {(data.summary.inquiryGoal != null || data.summary.inquiryActual > 0) && (
+                  <>
+                    <div className="dash-stat">
+                      <div className="lbl">당월 문의 목표</div>
+                      <div className="val">{data.summary.inquiryGoal ?? "-"}</div>
+                    </div>
+                    <div className="dash-stat">
+                      <div className="lbl">문의 현황</div>
+                      <div className="val" style={data.summary.inquiryRate != null ? { color: dashRateColor(data.summary.inquiryRate) } : undefined}>
+                        {data.summary.inquiryActual}
+                        {data.summary.inquiryRate != null && (
+                          <span className="small" style={{ marginLeft: 6, fontWeight: 700 }}>{formatDashRate(data.summary.inquiryRate)}</span>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
                 {(data.summary.remainingDays != null || data.summary.remainingBusinessDays != null) && (
                   <>
                     <div className="dash-stat">

@@ -126,6 +126,9 @@ export type SalesDashboardData = {
     remainingDays: number | null;
     remainingBusinessDays: number | null;
     sheetActual: number | null;
+    inquiryGoal: number | null;
+    inquiryActual: number;
+    inquiryRate: number | null;
   };
   sections: DashboardSection[];
   industryPlan?: IndustryPlanSection;
@@ -424,7 +427,48 @@ function parseSummary(grid: string[][]) {
     remainingDays: parseNum(row2[5]) || null,
     remainingBusinessDays: parseNum(row3[2]) || null,
     sheetActual: parseNum(row3[4]) || null,
+    inquiryGoal: findLabeledNumber(grid, /^문의목표$/),
   };
+}
+
+/**
+ * 시트 상단(요약 영역)에서 라벨이 붙은 숫자를 찾는다.
+ * 예) 어느 셀에 '문의 목표'라고 쓰고 바로 오른쪽(또는 같은 줄 다음) 칸에 숫자를 넣으면 읽어온다.
+ */
+function findLabeledNumber(grid: string[][], pattern: RegExp, maxRow = 6): number | null {
+  for (let r = 0; r < Math.min(maxRow, grid.length); r++) {
+    const row = grid[r] ?? [];
+    for (let c = 0; c < row.length; c++) {
+      if (!pattern.test((row[c] || "").replace(/\s/g, ""))) continue;
+      for (let k = c + 1; k < row.length; k++) {
+        const v = (row[k] || "").trim();
+        if (v !== "") return parseNum(v);
+      }
+    }
+  }
+  return null;
+}
+
+/** 당월 신규문의 건수 (문의 시트 기준, 결제율 분석과 동일 소스) */
+async function loadInquiryCount(monthSheet: string): Promise<number> {
+  const spreadsheetId = env.googleSheets.inquirySpreadsheetId;
+  const target = normalizeMonthSheet(monthSheet);
+  const rows = await prisma.erpSalesInquiry.findMany({
+    where: { spreadsheetId },
+    select: { data: true, sheetName: true },
+  });
+  let n = 0;
+  for (const row of rows) {
+    if (normalizeMonthSheet(row.sheetName) !== target) continue;
+    const data = row.data as Record<string, string>;
+    if ((data["구분"] || "").trim() === "신규문의") n += 1;
+  }
+  return n;
+}
+
+function normalizeMonthSheet(name: string): string {
+  const t = (name ?? "").trim();
+  return t.endsWith(".") ? t : `${t}.`;
 }
 
 function sortLabels(labels: string[], preferred: readonly string[]): string[] {
@@ -770,6 +814,10 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
 
   const monthLabel = sheetMonthToLabel(selectedMonth);
   const counts = await loadMonthCounts(monthLabel);
+  const inquiryActual = await loadInquiryCount(selectedMonth);
+  const inquiryGoal = summaryMeta.inquiryGoal;
+  const inquiryRate =
+    inquiryGoal && inquiryGoal > 0 ? Math.round((inquiryActual / inquiryGoal) * 1000) / 10 : null;
   const weekly = buildWeeklyBreakdown(channelWeek, industryWeek, planWeek, counts);
   const industryDrilldowns = buildIndustryDrilldowns(
     counts,
@@ -812,6 +860,9 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
       remainingDays: summaryMeta.remainingDays,
       remainingBusinessDays: summaryMeta.remainingBusinessDays,
       sheetActual: summaryMeta.sheetActual,
+      inquiryGoal,
+      inquiryActual,
+      inquiryRate,
     },
     sections: [
       buildSection("channel", "채널별", channelParsed.labels, channelParsed.goals, counts.byChannel, []),
