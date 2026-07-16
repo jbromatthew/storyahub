@@ -100,6 +100,16 @@ export type IndustryDrilldown = {
   weekly: DashboardItem[];
 };
 
+// 채널별·요금제별 탭에서 항목을 눌렀을 때 보여줄 하위 분해 (읽기 전용, 현황 기준)
+export type DimensionDrilldown = {
+  key: string;
+  summary: DashboardItem;
+  byIndustry: DashboardItem[];
+  byChannel: DashboardItem[];
+  byPlan: DashboardItem[];
+  weekly: DashboardItem[];
+};
+
 export type SalesDashboardData = {
   month: string;
   monthLabel: string;
@@ -124,6 +134,8 @@ export type SalesDashboardData = {
   goalsCustomized: boolean;
   weekly: WeeklyBreakdown;
   industryDrilldowns: Record<string, IndustryDrilldown>;
+  channelDrilldowns: Record<string, DimensionDrilldown>;
+  planDrilldowns: Record<string, DimensionDrilldown>;
   syncedThrough: string | null;
 };
 
@@ -141,6 +153,10 @@ type MonthCounts = {
   byPlan: Map<string, number>;
   byIndustryPlan: Map<string, Map<string, number>>;
   byIndustryChannel: Map<string, Map<string, number>>;
+  byChannelIndustry: Map<string, Map<string, number>>;
+  byChannelPlan: Map<string, Map<string, number>>;
+  byPlanIndustry: Map<string, Map<string, number>>;
+  byPlanChannel: Map<string, Map<string, number>>;
   byWeek: Map<number, WeekBucket>;
 };
 
@@ -461,8 +477,18 @@ async function loadMonthCounts(monthLabel: string): Promise<MonthCounts> {
   const byPlan = new Map<string, number>();
   const byIndustryPlan = new Map<string, Map<string, number>>();
   const byIndustryChannel = new Map<string, Map<string, number>>();
+  const byChannelIndustry = new Map<string, Map<string, number>>();
+  const byChannelPlan = new Map<string, Map<string, number>>();
+  const byPlanIndustry = new Map<string, Map<string, number>>();
+  const byPlanChannel = new Map<string, Map<string, number>>();
   const byWeek = new Map<number, WeekBucket>();
   let total = 0;
+
+  const bump = (outer: Map<string, Map<string, number>>, a: string, b: string) => {
+    const inner = outer.get(a) ?? new Map<string, number>();
+    inner.set(b, (inner.get(b) ?? 0) + 1);
+    outer.set(a, inner);
+  };
 
   for (const row of rows) {
     const data = row.data as Record<string, string>;
@@ -483,12 +509,12 @@ async function loadMonthCounts(monthLabel: string): Promise<MonthCounts> {
     byChannel.set(channel, (byChannel.get(channel) ?? 0) + 1);
     byIndustry.set(industry, (byIndustry.get(industry) ?? 0) + 1);
     byPlan.set(plan, (byPlan.get(plan) ?? 0) + 1);
-    const planMap = byIndustryPlan.get(industry) ?? new Map<string, number>();
-    planMap.set(plan, (planMap.get(plan) ?? 0) + 1);
-    byIndustryPlan.set(industry, planMap);
-    const channelMap = byIndustryChannel.get(industry) ?? new Map<string, number>();
-    channelMap.set(channel, (channelMap.get(channel) ?? 0) + 1);
-    byIndustryChannel.set(industry, channelMap);
+    bump(byIndustryPlan, industry, plan);
+    bump(byIndustryChannel, industry, channel);
+    bump(byChannelIndustry, channel, industry);
+    bump(byChannelPlan, channel, plan);
+    bump(byPlanIndustry, plan, industry);
+    bump(byPlanChannel, plan, channel);
 
     if (weekNum != null) {
       const bucket = byWeek.get(weekNum) ?? emptyWeekBucket();
@@ -497,7 +523,73 @@ async function loadMonthCounts(monthLabel: string): Promise<MonthCounts> {
     }
   }
 
-  return { total, byChannel, byIndustry, byPlan, byIndustryPlan, byIndustryChannel, byWeek };
+  return {
+    total,
+    byChannel,
+    byIndustry,
+    byPlan,
+    byIndustryPlan,
+    byIndustryChannel,
+    byChannelIndustry,
+    byChannelPlan,
+    byPlanIndustry,
+    byPlanChannel,
+    byWeek,
+  };
+}
+
+function buildDimensionDrilldowns(
+  dim: "channel" | "plan",
+  counts: MonthCounts,
+  sectionGoals: { labels: string[]; goals: number[] },
+  weekLabels: string[]
+): Record<string, DimensionDrilldown> {
+  const actualMap = dim === "channel" ? counts.byChannel : counts.byPlan;
+  const crossIndustry = dim === "channel" ? counts.byChannelIndustry : counts.byPlanIndustry;
+  const crossOther = dim === "channel" ? counts.byChannelPlan : counts.byPlanChannel;
+  const keyPreferred = dim === "channel" ? [] : PLAN_ORDER;
+  const otherPreferred = dim === "channel" ? PLAN_ORDER : [];
+
+  const keys = sortLabels(
+    [...new Set([...actualMap.keys(), ...sectionGoals.labels])],
+    keyPreferred
+  );
+
+  const out: Record<string, DimensionDrilldown> = {};
+  for (const key of keys) {
+    const gi = sectionGoals.labels.indexOf(key);
+    const goal = gi >= 0 ? sectionGoals.goals[gi] ?? 0 : 0;
+    const actual = actualMap.get(key) ?? 0;
+    if (actual <= 0 && goal <= 0) continue;
+
+    const industryMap = crossIndustry.get(key) ?? new Map<string, number>();
+    const byIndustry = sortLabels([...industryMap.keys()], INDUSTRY_TYPES)
+      .map((l) => item(l, 0, industryMap.get(l) ?? 0))
+      .filter((it) => it.actual > 0);
+
+    const otherMap = crossOther.get(key) ?? new Map<string, number>();
+    const byOther = sortLabels([...otherMap.keys()], otherPreferred)
+      .map((l) => item(l, 0, otherMap.get(l) ?? 0))
+      .filter((it) => it.actual > 0);
+
+    const weekly = weekLabels
+      .map((label, idx) => {
+        const bucket = counts.byWeek.get(idx + 1);
+        const map = dim === "channel" ? bucket?.byChannel : bucket?.byPlan;
+        return item(label, 0, map?.get(key) ?? 0);
+      })
+      .filter((it) => it.actual > 0);
+
+    out[key] = {
+      key,
+      summary: item(key, goal, actual),
+      byIndustry,
+      byChannel: dim === "plan" ? byOther : [],
+      byPlan: dim === "channel" ? byOther : [],
+      weekly,
+    };
+  }
+  return out;
 }
 
 function buildIndustryDrilldowns(
@@ -685,6 +777,9 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
     industryWeek,
     mergedIndustry
   );
+  const drillWeekLabels = resolveWeekLabels(industryWeek ?? channelWeek ?? planWeek, counts);
+  const channelDrilldowns = buildDimensionDrilldowns("channel", counts, channelParsed, drillWeekLabels);
+  const planDrilldowns = buildDimensionDrilldowns("plan", counts, planParsed, drillWeekLabels);
   const industryPlan = buildIndustryPlanSection(goalOverrides, counts);
   const inboundGoal = mergedIndustry.goals.reduce((s, g) => s + g, 0);
   const totalGoal = summaryMeta.totalGoal || inboundGoal;
@@ -729,6 +824,8 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
     goalsCustomized,
     weekly,
     industryDrilldowns,
+    channelDrilldowns,
+    planDrilldowns,
     syncedThrough: latest?.sheetName ?? null,
   };
 }

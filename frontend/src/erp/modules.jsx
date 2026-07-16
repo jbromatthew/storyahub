@@ -5177,6 +5177,40 @@ export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGo
   );
 }
 
+// 채널별·요금제별 항목 드릴다운 (읽기 전용, 현황 기준 하위 분해)
+export function DashboardDimensionDrill({ dimLabel, detail, onBack }) {
+  const summary = detail?.summary;
+  const tables = [];
+  if (dimLabel === "채널") {
+    tables.push({ title: "업종별", labelHeader: "업종", items: detail?.byIndustry });
+    tables.push({ title: "요금제별", labelHeader: "요금제", items: detail?.byPlan });
+  } else {
+    tables.push({ title: "업종별", labelHeader: "업종", items: detail?.byIndustry });
+    tables.push({ title: "채널별", labelHeader: "채널", items: detail?.byChannel });
+  }
+  tables.push({ title: "주차별", labelHeader: "주차", items: detail?.weekly });
+  return (
+    <div className="dash-drill">
+      <div className="dash-drill-hd">
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onBack}>← {dimLabel} 목록</button>
+        <strong>{detail?.key}</strong>
+        {summary && (
+          <span className="small">
+            {summary.goal > 0 ? `목표 ${summary.goal} · ` : ""}현황 {summary.actual}
+            {summary.goal > 0 ? ` · ${formatDashRate(summary.rate)}` : ""}
+          </span>
+        )}
+      </div>
+      <div className="small" style={{ margin: "2px 0 10px", color: "var(--muted)", lineHeight: 1.5 }}>
+        <strong>{detail?.key}</strong> 건({summary?.actual ?? 0})을 업종·{dimLabel === "채널" ? "요금제" : "채널"}·주차별로 나눈 현황입니다.
+      </div>
+      {tables.map((t) => (
+        <DashboardItemsTable key={t.title} title={t.title} labelHeader={t.labelHeader} items={t.items} showGoal={false} />
+      ))}
+    </div>
+  );
+}
+
 function cloneGoalOverrides(data) {
   const src = data?.goalOverrides || {};
   const clone2 = (obj) => {
@@ -5298,6 +5332,7 @@ export function SalesDashboardView() {
   const [draftGoals, setDraftGoals] = useState({ industryGoals: {}, industryPlanGoals: {} });
   const [savingGoals, setSavingGoals] = useState(false);
   const [drillIndustry, setDrillIndustry] = useState(null);
+  const [dimDrill, setDimDrill] = useState(null); // { dim: "channel"|"plan", key }
 
   const load = useCallback(() => {
     setLoading(true);
@@ -5306,6 +5341,7 @@ export function SalesDashboardView() {
         setData(res);
         setDraftGoals(cloneGoalOverrides(res));
         setDrillIndustry(null);
+        setDimDrill(null);
       })
       .catch(notifyError)
       .finally(() => setLoading(false));
@@ -5408,6 +5444,16 @@ export function SalesDashboardView() {
     setDrillIndustry(industry);
   };
 
+  const dimDrillMap = tab === "channel" ? data?.channelDrilldowns : tab === "plan" ? data?.planDrilldowns : null;
+  const openDimDrill = (dim, key) => {
+    const map = dim === "channel" ? data?.channelDrilldowns : data?.planDrilldowns;
+    if (editMode || !map?.[key]) return;
+    setDimDrill({ dim, key });
+  };
+  const activeDimDetail = dimDrill
+    ? (dimDrill.dim === "channel" ? data?.channelDrilldowns : data?.planDrilldowns)?.[dimDrill.key]
+    : null;
+
   const months = data?.months || [];
 
   return (
@@ -5416,7 +5462,7 @@ export function SalesDashboardView() {
       <div className="h-title">세일즈 계기판</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
         월별 목표는 <strong>대시보드 시트</strong>에서 불러오며, 앱에서 수정한 목표는 <strong>DB에 저장</strong>됩니다. (시트에는 아직 자동 반영되지 않음)
-        현황은 결제 주문 DB의 <strong>신규센터</strong> 건수입니다. <strong>업종</strong>을 누르면 요금제·채널·주차별 상세를 볼 수 있습니다.
+        현황은 결제 주문 DB의 <strong>신규센터</strong> 건수입니다. <strong>업종·채널·요금제</strong> 항목을 누르면 하위 분해(요금제·채널·업종·주차별) 상세를 볼 수 있습니다.
         {data?.spreadsheetUrl && (
           <>{" "}<a href={data.spreadsheetUrl} target="_blank" rel="noreferrer">목표 시트</a></>
         )}
@@ -5528,6 +5574,12 @@ export function SalesDashboardView() {
               onSaveGoals={saveDrillGoals}
               saving={savingGoals}
             />
+          ) : dimDrill && activeDimDetail ? (
+            <DashboardDimensionDrill
+              dimLabel={dimDrill.dim === "channel" ? "채널" : "요금제"}
+              detail={activeDimDetail}
+              onBack={() => setDimDrill(null)}
+            />
           ) : (
           <>
           <div className="sales-tabs">
@@ -5536,7 +5588,7 @@ export function SalesDashboardView() {
                 key={t.id}
                 type="button"
                 className={"sales-tab" + (tab === t.id ? " on" : "")}
-                onClick={() => { setTab(t.id); setDrillIndustry(null); }}
+                onClick={() => { setTab(t.id); setDrillIndustry(null); setDimDrill(null); }}
               >
                 {t.label}
               </button>
@@ -5599,14 +5651,24 @@ export function SalesDashboardView() {
                       </tbody>
                     </table>
                   </div>
-                  <DashboardWeeklyMatrix title="채널별 주차 현황" rows={data.weekly.channel} weekLabels={data.weekly.weekLabels} />
+                  <DashboardWeeklyMatrix
+                    title="채널별 주차 현황"
+                    rows={data.weekly.channel}
+                    weekLabels={data.weekly.weekLabels}
+                    onRowClick={(channel) => openDimDrill("channel", channel)}
+                  />
                   <DashboardWeeklyMatrix
                     title="업종별 주차 현황"
                     rows={data.weekly.industry}
                     weekLabels={data.weekly.weekLabels}
                     onRowClick={(industry) => openIndustryDrill(industry)}
                   />
-                  <DashboardWeeklyMatrix title="요금제별 주차 현황" rows={data.weekly.plan} weekLabels={data.weekly.weekLabels} />
+                  <DashboardWeeklyMatrix
+                    title="요금제별 주차 현황"
+                    rows={data.weekly.plan}
+                    weekLabels={data.weekly.weekLabels}
+                    onRowClick={(plan) => openDimDrill("plan", plan)}
+                  />
                 </>
               )}
             </>
@@ -5725,10 +5787,14 @@ export function SalesDashboardView() {
                     const rate = goal > 0 ? Math.round((row.actual / goal) * 1000) / 10 : null;
                     const gap = row.actual - goal;
                     return (
-                    <tr key={row.key} className={tab === "industry" && !editMode && data?.industryDrilldowns?.[row.label] ? "dash-drill-row" : ""}>
+                    <tr key={row.key} className={!editMode && ((tab === "industry" && data?.industryDrilldowns?.[row.label]) || ((tab === "channel" || tab === "plan") && dimDrillMap?.[row.label])) ? "dash-drill-row" : ""}>
                       <td className="label">
                         {tab === "industry" && !editMode && data?.industryDrilldowns?.[row.label] ? (
                           <button type="button" className="dash-drill-link" onClick={() => openIndustryDrill(row.label)}>
+                            {row.label}
+                          </button>
+                        ) : (tab === "channel" || tab === "plan") && !editMode && dimDrillMap?.[row.label] ? (
+                          <button type="button" className="dash-drill-link" onClick={() => openDimDrill(tab, row.label)}>
                             {row.label}
                           </button>
                         ) : row.label}
