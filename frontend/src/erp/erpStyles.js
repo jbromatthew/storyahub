@@ -178,7 +178,7 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .sales-table{width:max-content;min-width:100%;border-collapse:collapse;font-size:12px;}
 .sales-table th,.sales-table td{padding:8px 10px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis;vertical-align:top;}
 .sales-table th{position:sticky;top:0;background:#F8F9FA;z-index:1;font-weight:700;color:var(--muted);text-align:left;}
-.sales-table tr:hover td{background:#FAFCFF;}
+@media(hover:hover){.sales-table tr:hover td{background:#FAFCFF;}}
 .trend-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin:12px 0;}
 .trend-industry-picker{min-width:220px;max-width:360px;}
 .trend-industry-chip{display:inline-flex;align-items:center;padding:3px 8px;border-radius:6px;background:#F1F1EF;font-size:12px;font-weight:600;line-height:1.3;white-space:nowrap;}
@@ -197,8 +197,8 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .trend-table th.trend-month-hd{z-index:3;background:#F8F9FA;}
 .trend-table td.num{text-align:right;font-variant-numeric:tabular-nums;}
 .trend-table td.zero{color:#C5C8CC;}
-.trend-table tr:hover td{background:#FAFCFF;}
-.trend-table tr:hover td.trend-month{background:#FAFCFF;}
+@media(hover:hover){.trend-table tr:hover td{background:#FAFCFF;}}
+@media(hover:hover){.trend-table tr:hover td.trend-month{background:#FAFCFF;}}
 .trend-table .trend-selectable{cursor:pointer;user-select:none;}
 .trend-table .trend-selectable.selected{background:#FFE8DC !important;color:#8A3B12;}
 .trend-table th.trend-selectable.selected{color:#8A3B12;}
@@ -310,7 +310,7 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .rate-table td.num .rate-avg-sub{font-size:11px;font-weight:500;color:var(--muted);margin-top:2px;white-space:nowrap;}
 /* 비교군 클릭 강조: 헤더 클릭 → 그 비교군 열(과 해당 월 행) 하이라이트 */
 .rate-table th.grp-click{cursor:pointer;user-select:none;}
-.rate-table th.grp-click:hover{background:#F3EFE8;}
+@media(hover:hover){.rate-table th.grp-click:hover{background:#F3EFE8;}}
 .rate-table th.grp-sel,.rate-table th.grp-click.grp-sel:hover{background:var(--accent-soft);color:var(--accent-deep);}
 .rate-table td.num.grp-sel{background:#FFF6EF;}
 /* 비교군 중 뒤처진 결제율 셀 (부재율은 가장 높은 셀) */
@@ -442,8 +442,9 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .sidenavitem:hover:not(.on){background:var(--paper);color:var(--ink);}
 /* 통계표: 숫자 tabular-nums + 행 hover */
 .dash-table .num,.trend-table .num,.daily-table .num,.rate-table .num,.sales-table td{font-variant-numeric:tabular-nums;font-feature-settings:"tnum";}
-.dash-table tbody tr,.daily-table tbody tr,.rate-table tbody tr{transition:background .12s;}
-.dash-table tbody tr:hover,.daily-table tbody tr:hover,.rate-table tbody tr:hover{background:var(--accent-soft);}
+.dash-table tbody tr,.daily-table tbody tr{transition:background .12s;}
+/* 행 hover는 마우스 기기에서만 — 터치(폰/패드)에서는 탭한 행이 칠해진 채 남는 문제 방지. rate-table은 배경색이 '뒤처진 지표' 전용이라 행 hover 제외 */
+@media(hover:hover){.dash-table tbody tr:hover,.daily-table tbody tr:hover{background:var(--accent-soft);}}
 
 /* ===== 문의/결제 대시보드 드릴다운 ===== */
 .daily-summary .daily-stat{border:none;font-family:inherit;text-align:left;cursor:pointer;width:100%;transition:box-shadow .15s,transform .12s;}
