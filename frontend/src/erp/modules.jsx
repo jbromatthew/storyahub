@@ -4041,7 +4041,7 @@ function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange, selG
                 <tr key={row.month}>
                   <td className="metric-label">{monthShortLabel(row.month)}</td>
                   {row.byGroup.map((metrics, i) => (
-                    <td key={i} className={"num" + (selGroup === i ? " grp-sel" : "")}>
+                    <td key={i} className="num">
                       {formatRateValue(metrics?.[metricDef.key], metricDef.format)}
                     </td>
                   ))}
@@ -4095,7 +4095,7 @@ function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange, selG
                 <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
                   <td className="metric-label">{row.label}</td>
                   {(() => { const worst = worstRateIdxs(row.values, row.format, row.key); return row.values.map((val, i) => (
-                    <td key={i} className={"num" + (selGroup === i ? " grp-sel" : "") + (worst.has(i) ? " rate-worse" : "")}>{formatRateValue(val, row.format)}<AvgSub value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
+                    <td key={i} className={"num" + (worst.has(i) ? " rate-worse" : "")}>{formatRateValue(val, row.format)}<AvgSub value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
                   )); })()}
                 </tr>
               ))}
@@ -4430,9 +4430,9 @@ export function PaymentRateView() {
                       <td className="metric-label">{row.label}</td>
                       {result.groups.map((g, gi) => (
                         <React.Fragment key={g.id}>
-                          <td className={"num" + (selGroup === gi ? " grp-sel" : "") + (wAll.has(gi) ? " rate-worse" : "")} style={{ borderLeft: "2px solid var(--line)", fontWeight: 700 }}>{formatRateValue(g.bySegment.all[row.key], row.format)}<AvgSub value={g.bySegment.all[row.key]} format={row.format} monthN={g.months?.length} /></td>
-                          <td className={"num" + (selGroup === gi ? " grp-sel" : "") + (wOrg.has(gi) ? " rate-worse" : "")}>{formatRateValue(g.bySegment.organic[row.key], row.format)}<AvgSub value={g.bySegment.organic[row.key]} format={row.format} monthN={g.months?.length} /></td>
-                          <td className={"num" + (selGroup === gi ? " grp-sel" : "") + (wNon.has(gi) ? " rate-worse" : "")}>{formatRateValue(g.bySegment.nonOrganic[row.key], row.format)}<AvgSub value={g.bySegment.nonOrganic[row.key]} format={row.format} monthN={g.months?.length} /></td>
+                          <td className={"num" + (wAll.has(gi) ? " rate-worse" : "")} style={{ borderLeft: "2px solid var(--line)", fontWeight: 700 }}>{formatRateValue(g.bySegment.all[row.key], row.format)}<AvgSub value={g.bySegment.all[row.key]} format={row.format} monthN={g.months?.length} /></td>
+                          <td className={"num" + (wOrg.has(gi) ? " rate-worse" : "")}>{formatRateValue(g.bySegment.organic[row.key], row.format)}<AvgSub value={g.bySegment.organic[row.key]} format={row.format} monthN={g.months?.length} /></td>
+                          <td className={"num" + (wNon.has(gi) ? " rate-worse" : "")}>{formatRateValue(g.bySegment.nonOrganic[row.key], row.format)}<AvgSub value={g.bySegment.nonOrganic[row.key]} format={row.format} monthN={g.months?.length} /></td>
                         </React.Fragment>
                       ))}
                     </tr>
@@ -4457,7 +4457,7 @@ export function PaymentRateView() {
                   <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
                     <td className="metric-label">{row.label}</td>
                     {(() => { const worst = worstRateIdxs(row.values, row.format, row.key); return row.values.map((val, i) => (
-                      <td key={i} className={"num" + (selGroup === i ? " grp-sel" : "") + (worst.has(i) ? " rate-worse" : "")}>{formatRateValue(val, row.format)}<AvgSub value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
+                      <td key={i} className={"num" + (worst.has(i) ? " rate-worse" : "")}>{formatRateValue(val, row.format)}<AvgSub value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
                     )); })()}
                   </tr>
                 ))}
