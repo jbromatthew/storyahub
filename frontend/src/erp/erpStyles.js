@@ -87,6 +87,18 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .isf-f.full{grid-column:1/-1;}
 .isf-f > span{font-size:11.5px;font-weight:700;color:var(--muted);}
 @media(max-width:640px){.isf-f,.isf-f.c3,.isf-f.c4,.isf-f.c8{grid-column:1/-1;}}
+/* 확인 다이얼로그 (confirmAction) — ERP 모드에도 필요 */
+.sheetbg{position:fixed;inset:0;background:rgba(20,16,12,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeUp .2s ease both;}
+.sheet{width:100%;max-width:400px;background:var(--card);border-radius:20px;padding:20px 22px 24px;box-shadow:0 20px 60px rgba(0,0,0,.22);animation:fadeUp .22s ease both;}
+.confirm-bg{z-index:500;}
+.confirm-sheet{max-width:340px;text-align:center;padding:26px 22px 22px;}
+.confirm-icon{width:52px;height:52px;border-radius:16px;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;background:#FFF0EB;color:#B85C4A;}
+.confirm-title{margin:0;font-weight:800;font-size:18px;line-height:1.35;color:var(--ink);}
+.confirm-msg{margin:10px 0 0;font-size:14px;line-height:1.5;color:var(--muted);}
+.confirm-actions{display:flex;gap:10px;margin-top:22px;}
+.confirm-actions .btn{flex:1;padding:14px;font-size:15px;}
+.confirm-danger{background:#B85C4A;color:#fff;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
 .status-pill{display:inline-flex;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;}
 .status-pill.wait{background:#FFF3E0;color:#E65100;}
 .status-pill.done{background:#E8F5E9;color:var(--ok);}
