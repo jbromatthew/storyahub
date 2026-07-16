@@ -3763,16 +3763,32 @@ export function RateDropAlerts({ result }) {
           <div className="small" style={{ fontWeight: 500, marginTop: 2 }}>※ 기준군에 진행 중인 달이 포함돼 건수 지표는 실제보다 낮게 보일 수 있어요 (전환율은 영향 적음)</div>
         )}
       </div>
-      {visible.map((a, i) => (
-        <div key={i} className="rate-alert-row">
-          <span className="ra-dim">{a.dim}</span>
-          <span className="ra-seg">{a.seg}</span>
-          <span className="ra-metric">{a.metric}</span>
-          <span className="ra-now">{a.now}</span>
-          <span className="small">(평균 {a.base})</span>
-          <span className="ra-delta">{a.delta}</span>
-        </div>
-      ))}
+      <div className="rate-table-wrap rate-table-scroll" style={{ marginTop: 8 }}>
+        <table className="rate-table rate-alerts-tbl">
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left" }}>항목</th>
+              <th>구분</th>
+              <th style={{ textAlign: "left" }}>지표</th>
+              <th>{baseLabel}</th>
+              <th>비교군 평균</th>
+              <th>하락</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((a, i) => (
+              <tr key={i}>
+                <td className="ra-dim" style={{ textAlign: "left" }}>{a.dim}</td>
+                <td><span className="ra-seg">{a.seg}</span></td>
+                <td style={{ textAlign: "left" }}>{a.metric}</td>
+                <td className="num ra-now">{a.now}</td>
+                <td className="num">{a.base}</td>
+                <td className="num ra-delta">{a.delta}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {alerts.length > visible.length && (
         <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => setShowAll(true)}>
           +{alerts.length - visible.length}건 더 보기

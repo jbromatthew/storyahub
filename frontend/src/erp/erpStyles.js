@@ -317,8 +317,9 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .rate-alerts.ok{border-color:#CFE4CF;background:#F6FBF6;}
 .rate-alerts-hd{font-size:13.5px;font-weight:800;margin-bottom:6px;line-height:1.5;}
 .rate-alerts.ok .rate-alerts-hd{margin-bottom:0;}
-.rate-alert-row{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:6px 0;border-bottom:1px dashed #F0E0D6;font-size:13px;}
-.rate-alert-row:last-of-type{border-bottom:none;}
+.rate-alerts-tbl{background:#fff;}
+.rate-alerts-tbl th{white-space:nowrap;}
+.rate-alerts-tbl td{white-space:nowrap;}
 .ra-dim{font-weight:800;}
 .ra-seg{font-size:11px;font-weight:700;background:#F3F0EA;color:var(--muted);border-radius:6px;padding:2px 6px;}
 .ra-metric{color:var(--muted);font-weight:600;}
