@@ -302,6 +302,7 @@ export async function computePaymentRate(query: PaymentRateQuery) {
       rows: PAYMENT_RATE_ROWS.map((row) => ({ ...row, values: [] })),
       planTables: [],
       assigneeTables: [],
+      industryTables: [],
       timeline: [],
     };
   }
@@ -327,6 +328,7 @@ export async function computePaymentRate(query: PaymentRateQuery) {
     const overallNonOrganic = emptyCounts();
     const byPlan = new Map<string, SegCounts>();
     const byAssignee = new Map<string, SegCounts>();
+    const byIndustry = new Map<string, SegCounts>();
 
     for (const rawMonth of group.months) {
       const month = normalizeMonthSheet(rawMonth);
@@ -350,6 +352,11 @@ export async function computePaymentRate(query: PaymentRateQuery) {
         addToCounts(assigneeBucket.all, data);
         if (seg) addToCounts(assigneeBucket[seg], data);
         byAssignee.set(assignee, assigneeBucket);
+        const industry = (data["업종"] || "").trim() || "확인불가";
+        const industryBucket = byIndustry.get(industry) ?? emptySegCounts();
+        addToCounts(industryBucket.all, data);
+        if (seg) addToCounts(industryBucket[seg], data);
+        byIndustry.set(industry, industryBucket);
       }
     }
 
@@ -381,6 +388,19 @@ export async function computePaymentRate(query: PaymentRateQuery) {
         const b = byAssignee.get(name) ?? emptySegCounts();
         return { assignee: name, metrics: withRates(b.all), metricsBySegment: segMetrics(b) };
       }),
+      byIndustry: [...byIndustry.keys()]
+        .sort((a, b) => {
+          const ai = INDUSTRY_TYPES.indexOf(a as (typeof INDUSTRY_TYPES)[number]);
+          const bi = INDUSTRY_TYPES.indexOf(b as (typeof INDUSTRY_TYPES)[number]);
+          if (ai >= 0 && bi >= 0) return ai - bi;
+          if (ai >= 0) return -1;
+          if (bi >= 0) return 1;
+          return a.localeCompare(b, "ko");
+        })
+        .map((name) => {
+          const b = byIndustry.get(name) ?? emptySegCounts();
+          return { industry: name, metrics: withRates(b.all), metricsBySegment: segMetrics(b) };
+        }),
     };
   });
 
@@ -414,6 +434,11 @@ export async function computePaymentRate(query: PaymentRateQuery) {
       groupId: g.id,
       groupLabel: g.label,
       assignees: g.byAssignee,
+    })),
+    industryTables: groups.map((g) => ({
+      groupId: g.id,
+      groupLabel: g.label,
+      industries: g.byIndustry,
     })),
   };
 }

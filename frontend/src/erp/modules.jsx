@@ -3659,6 +3659,132 @@ function diffCls(values, selGroups) {
   return (i) => (i === li ? cls : "");
 }
 
+// ─── 떨어진 지표 자동 점검: 기준군(첫 비교군) vs 나머지 비교군 평균 ───
+const DROP_METRICS = [
+  { key: "inquiries", label: "문의수", type: "count" },
+  { key: "consulting", label: "상담진행", type: "count" },
+  { key: "monthlyPayment", label: "당월 결제", type: "count" },
+  { key: "monthlyRate", label: "당월 전환율", type: "rate" },
+  { key: "actualRate", label: "실 전환율", type: "rate" },
+];
+const DROP_SEGS = [["all", "전체"], ["organic", "오가닉"], ["nonOrganic", "비오가닉"]];
+
+function buildDropAlerts(result) {
+  const groups = result?.groups || [];
+  if (groups.length < 2) return null;
+  const monthsN = groups.map((g) => Math.max(1, g.months?.length || 1));
+
+  // 차원: 전체 + 업종별 + 요금제별 (그룹 순서에 맞춘 세그먼트 지표 시리즈)
+  const dims = [{ label: "전체", perGroup: groups.map((g) => g.bySegment) }];
+  const collect = (tables, listKey, nameKey, prefix) => {
+    if (!tables?.length) return;
+    const names = [...new Set(tables.flatMap((t) => (t[listKey] || []).map((r) => r[nameKey])))];
+    for (const name of names) {
+      dims.push({
+        label: `${prefix} ${name}`,
+        perGroup: tables.map((t) => (t[listKey] || []).find((r) => r[nameKey] === name)?.metricsBySegment ?? null),
+      });
+    }
+  };
+  collect(result.industryTables, "industries", "industry", "업종");
+  collect(result.planTables, "plans", "plan", "요금제");
+
+  const alerts = [];
+  for (const dim of dims) {
+    for (const [segKey, segLabel] of DROP_SEGS) {
+      const baseSeg = dim.perGroup[0]?.[segKey];
+      if (!baseSeg) continue;
+      for (const m of DROP_METRICS) {
+        const norm = (metrics, gi) => {
+          const v = metrics?.[m.key];
+          if (v == null || Number.isNaN(v)) return null;
+          return m.type === "count" ? v / monthsN[gi] : v;
+        };
+        const baseVal = norm(baseSeg, 0);
+        if (baseVal == null) continue;
+        const others = [];
+        for (let gi = 1; gi < groups.length; gi++) {
+          const seg = dim.perGroup[gi]?.[segKey];
+          const v = norm(seg, gi);
+          if (v != null) others.push({ v, inq: seg?.inquiries ?? 0 });
+        }
+        if (!others.length) continue;
+        const baseline = others.reduce((s, o) => s + o.v, 0) / others.length;
+        if (!(baseVal < baseline)) continue;
+        if (m.type === "rate") {
+          // 표본이 너무 작으면 노이즈 — 문의 5건 미만은 제외
+          if ((baseSeg.inquiries ?? 0) < 5 || others.reduce((s, o) => s + o.inq, 0) < 5) continue;
+          const deltaPp = (baseline - baseVal) * 100;
+          if (deltaPp < 3) continue; // 3%p 미만 하락은 무시
+          alerts.push({
+            dim: dim.label, seg: segLabel, metric: m.label, score: deltaPp,
+            now: `${(baseVal * 100).toFixed(1)}%`, base: `${(baseline * 100).toFixed(1)}%`, delta: `▼${deltaPp.toFixed(1)}%p`,
+          });
+        } else {
+          if (baseline < 2) continue; // 월평균 2건 미만 모수는 제외
+          const relPct = ((baseline - baseVal) / baseline) * 100;
+          if (relPct < 20) continue; // 20% 미만 감소는 무시
+          const r1 = (v) => (Math.round(v * 10) / 10).toLocaleString();
+          alerts.push({
+            dim: dim.label, seg: segLabel, metric: `${m.label}(월평균)`, score: relPct,
+            now: `${r1(baseVal)}건`, base: `${r1(baseline)}건`, delta: `▼${Math.round(relPct)}%`,
+          });
+        }
+      }
+    }
+  }
+  alerts.sort((a, b) => b.score - a.score);
+  return alerts;
+}
+
+export function RateDropAlerts({ result }) {
+  const [showAll, setShowAll] = useState(false);
+  const alerts = useMemo(() => buildDropAlerts(result), [result]);
+  if (alerts == null) return null; // 비교군 2개 미만
+  const baseLabel = result?.groups?.[0]?.label || "기준군";
+  const otherLabels = (result?.groups || []).slice(1).map((g) => g.label).join("·");
+  if (!alerts.length) {
+    return (
+      <div className="rate-alerts ok">
+        <div className="rate-alerts-hd">✅ 떨어진 지표 없음 <span className="small">— {baseLabel} vs {otherLabels} 평균 기준</span></div>
+      </div>
+    );
+  }
+  const visible = showAll ? alerts : alerts.slice(0, 8);
+  const now = new Date();
+  const curSheet = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.`;
+  const baseInProgress = (result?.groups?.[0]?.months || []).includes(curSheet);
+  return (
+    <div className="rate-alerts">
+      <div className="rate-alerts-hd">
+        ⚠️ 떨어진 지표 {alerts.length}건
+        <span className="small"> — {baseLabel}을(를) 나머지 비교군({otherLabels}) 평균과 비교 · 건수는 월평균 환산</span>
+        {baseInProgress && (
+          <div className="small" style={{ fontWeight: 500, marginTop: 2 }}>※ 기준군에 진행 중인 달이 포함돼 건수 지표는 실제보다 낮게 보일 수 있어요 (전환율은 영향 적음)</div>
+        )}
+      </div>
+      {visible.map((a, i) => (
+        <div key={i} className="rate-alert-row">
+          <span className="ra-dim">{a.dim}</span>
+          <span className="ra-seg">{a.seg}</span>
+          <span className="ra-metric">{a.metric}</span>
+          <span className="ra-now">{a.now}</span>
+          <span className="small">(평균 {a.base})</span>
+          <span className="ra-delta">{a.delta}</span>
+        </div>
+      ))}
+      {alerts.length > visible.length && (
+        <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => setShowAll(true)}>
+          +{alerts.length - visible.length}건 더 보기
+        </button>
+      )}
+      {showAll && alerts.length > 8 && (
+        <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => setShowAll(false)}>접기</button>
+      )}
+    </div>
+  );
+}
+
 // 여러 달 선택 시 건수 지표에 월평균(합계÷월수) 부기 (% 지표는 이미 기간 집계율이라 제외)
 function AvgSub({ value, format, monthN }) {
   if (format !== "number" || !monthN || monthN <= 1 || value == null || Number.isNaN(value)) return null;
@@ -4386,6 +4512,8 @@ export function PaymentRateView() {
               </button>
             )}
           </div>
+
+          <RateDropAlerts result={result} />
 
           {showStats ? (
             <RateStatsPanel

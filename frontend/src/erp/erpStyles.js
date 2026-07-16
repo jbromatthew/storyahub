@@ -312,6 +312,18 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .rate-table th.grp-click{cursor:pointer;user-select:none;}
 @media(hover:hover){.rate-table th.grp-click:hover{background:#F3EFE8;}}
 .rate-table th.grp-sel,.rate-table th.grp-click.grp-sel:hover{background:var(--accent-soft);color:var(--accent-deep);}
+/* 떨어진 지표 자동 점검 패널 */
+.rate-alerts{margin-top:12px;border:1px solid #F3C4B5;background:#FFF9F7;border-radius:12px;padding:12px 14px;}
+.rate-alerts.ok{border-color:#CFE4CF;background:#F6FBF6;}
+.rate-alerts-hd{font-size:13.5px;font-weight:800;margin-bottom:6px;line-height:1.5;}
+.rate-alerts.ok .rate-alerts-hd{margin-bottom:0;}
+.rate-alert-row{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:6px 0;border-bottom:1px dashed #F0E0D6;font-size:13px;}
+.rate-alert-row:last-of-type{border-bottom:none;}
+.ra-dim{font-weight:800;}
+.ra-seg{font-size:11px;font-weight:700;background:#F3F0EA;color:var(--muted);border-radius:6px;padding:2px 6px;}
+.ra-metric{color:var(--muted);font-weight:600;}
+.ra-now{font-weight:800;font-variant-numeric:tabular-nums;}
+.ra-delta{font-weight:800;color:#C0392B;font-variant-numeric:tabular-nums;}
 /* 비교군 2개 선택 시 왼쪽 비교군 셀: 오른쪽보다 떨어지면 분홍, 올라가면 파랑 */
 .rate-table td.num.rate-down{background:#FBE3E4;box-shadow:inset 0 0 0 1px #F3B5BC;}
 .rate-table td.num.rate-up{background:#E2EEFB;box-shadow:inset 0 0 0 1px #B7D3F0;}
