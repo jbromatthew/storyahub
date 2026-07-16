@@ -6134,33 +6134,34 @@ export function SalesDailyView() {
 }
 
 // ───────── 브로제이 설치일정 (앱 네이티브 관리, 시트 동기화 없음) ─────────
+const INSTALL_GROUPS = ["기본 정보", "장비 · 설치", "고객 · 현장", "정산 · 서류"];
 const INSTALL_FIELDS = [
-  { key: "installDate", label: "시공일", type: "date", w: 116 },
-  { key: "team", label: "설치팀", type: "text", w: 96 },
-  { key: "type", label: "구분", type: "select", options: ["", "스마트상점", "신규설치", "통화소통", "A.S", "이전설치"], w: 92 },
-  { key: "plan", label: "요금제", type: "text", w: 96 },
-  { key: "doorlock", label: "도어락", type: "select", options: ["", "자동문", "설치필요"], w: 88 },
-  { key: "kiosk1", label: "키오스크 1", type: "text", w: 160 },
-  { key: "qty1", label: "수량", type: "number", w: 56 },
-  { key: "kiosk2", label: "키오스크 2", type: "text", w: 140 },
-  { key: "qty2", label: "수량", type: "number", w: 56 },
-  { key: "centerName", label: "센터명", type: "text", w: 180 },
-  { key: "region", label: "지역", type: "select", options: ["", "지방", "수도권"], w: 80 },
-  { key: "address", label: "주소", type: "text", w: 240 },
-  { key: "notes", label: "특이사항", type: "textarea", w: 260 },
-  { key: "siteStatus", label: "현장상태", type: "select", options: ["", "정상운영", "인테리어"], w: 92 },
-  { key: "visitTime", label: "방문예정시각", type: "text", w: 104 },
-  { key: "phone", label: "연락처", type: "text", w: 120 },
-  { key: "bizRegNo", label: "사업자번호", type: "text", w: 120 },
-  { key: "paymentTid", label: "일반결제TID", type: "text", w: 120 },
-  { key: "cultureTid", label: "문화비결제TID", type: "text", w: 120 },
-  { key: "photoDelivered", label: "사진전달", type: "select", options: ["", "전달완료"], w: 90 },
-  { key: "serialNo", label: "시리얼번호", type: "text", w: 120 },
-  { key: "baseFee", label: "기본금", type: "number", w: 100 },
-  { key: "addInstall", label: "추가설치", type: "text", w: 90 },
-  { key: "addVisit", label: "추가방문", type: "text", w: 90 },
-  { key: "finalSettle", label: "최종 정산", type: "number", w: 100 },
-  { key: "tidRegistered", label: "TID 등록 여부", type: "text", w: 116 },
+  { key: "installDate", label: "시공일", type: "date", w: 116, g: "기본 정보", cls: "c4" },
+  { key: "team", label: "설치팀", type: "text", w: 96, g: "기본 정보", cls: "c4" },
+  { key: "type", label: "구분", type: "select", options: ["", "스마트상점", "신규설치", "통화소통", "A.S", "이전설치"], w: 92, g: "기본 정보", cls: "c4" },
+  { key: "plan", label: "요금제", type: "text", w: 96, g: "기본 정보", cls: "c4" },
+  { key: "region", label: "지역", type: "select", options: ["", "지방", "수도권"], w: 80, g: "기본 정보", cls: "c4" },
+  { key: "siteStatus", label: "현장상태", type: "select", options: ["", "정상운영", "인테리어"], w: 92, g: "기본 정보", cls: "c4" },
+  { key: "kiosk1", label: "키오스크 1", type: "text", w: 160, g: "장비 · 설치", cls: "c8" },
+  { key: "qty1", label: "수량", type: "number", w: 56, g: "장비 · 설치", cls: "c4" },
+  { key: "kiosk2", label: "키오스크 2", type: "text", w: 140, g: "장비 · 설치", cls: "c8" },
+  { key: "qty2", label: "수량", type: "number", w: 56, g: "장비 · 설치", cls: "c4" },
+  { key: "doorlock", label: "도어락", type: "select", options: ["", "자동문", "설치필요"], w: 88, g: "장비 · 설치", cls: "c4" },
+  { key: "centerName", label: "센터명", type: "text", w: 180, g: "고객 · 현장", cls: "c8" },
+  { key: "phone", label: "연락처", type: "text", w: 120, g: "고객 · 현장", cls: "c4" },
+  { key: "address", label: "주소", type: "text", w: 240, g: "고객 · 현장", cls: "full" },
+  { key: "visitTime", label: "방문예정시각", type: "text", w: 104, g: "고객 · 현장", cls: "c4" },
+  { key: "notes", label: "특이사항", type: "textarea", w: 260, g: "고객 · 현장", cls: "full" },
+  { key: "bizRegNo", label: "사업자번호", type: "text", w: 120, g: "정산 · 서류", cls: "c4" },
+  { key: "serialNo", label: "시리얼번호", type: "text", w: 120, g: "정산 · 서류", cls: "c4" },
+  { key: "photoDelivered", label: "사진전달", type: "select", options: ["", "전달완료"], w: 90, g: "정산 · 서류", cls: "c4" },
+  { key: "baseFee", label: "기본금", type: "number", w: 100, g: "정산 · 서류", cls: "c4" },
+  { key: "addInstall", label: "추가설치", type: "text", w: 90, g: "정산 · 서류", cls: "c4" },
+  { key: "addVisit", label: "추가방문", type: "text", w: 90, g: "정산 · 서류", cls: "c4" },
+  { key: "finalSettle", label: "최종 정산", type: "number", w: 100, g: "정산 · 서류", cls: "c4" },
+  { key: "paymentTid", label: "일반결제TID", type: "text", w: 120, g: "정산 · 서류", cls: "c4" },
+  { key: "cultureTid", label: "문화비결제TID", type: "text", w: 120, g: "정산 · 서류", cls: "c4" },
+  { key: "tidRegistered", label: "TID 등록 여부", type: "text", w: 116, g: "정산 · 서류", cls: "c4" },
 ];
 const INSTALL_NUM_KEYS = new Set(INSTALL_FIELDS.filter((f) => f.type === "number").map((f) => f.key));
 
@@ -6282,8 +6283,8 @@ export function InstallScheduleView() {
 
       <div className="sales-toolbar" style={{ marginTop: 12, gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <button type="button" className="btn btn-sm btn-accent" onClick={() => setEditing(emptyInstallRow(month || currentInstallMonth()))}>+ 설치 건 추가</button>
-        <input className="input" style={{ maxWidth: 220 }} placeholder="센터명·주소·연락처 검색" value={q} onChange={(e) => setQ(e.target.value)} />
-        <span className="small" style={{ color: "var(--muted)" }}>{filtered.length}건</span>
+        <input className="input" style={{ maxWidth: 240, flex: "0 1 240px" }} placeholder="🔍 센터명·주소·연락처 검색" value={q} onChange={(e) => setQ(e.target.value)} />
+        <span className="tag gray" style={{ marginLeft: "auto" }}>{filtered.length}건</span>
       </div>
 
       {loading ? (
@@ -6319,23 +6320,30 @@ export function InstallScheduleView() {
 
       {editing && (
         <div className="daily-drill-back" style={{ alignItems: "center" }} onClick={() => !saving && setEditing(null)}>
-          <div className="daily-drill" style={{ width: "min(760px,100%)", maxHeight: "88vh", borderRadius: 18 }} onClick={(e) => e.stopPropagation()}>
-            <div className="daily-drill-hd">
+          <div className="isf-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="isf-hd">
               <div>
-                <div className="daily-drill-eyebrow">브로제이 설치일정</div>
-                <div className="daily-drill-title">{editing.id ? "설치 건 수정" : "설치 건 추가"} · {editing.month || month}</div>
+                <div className="daily-drill-eyebrow">브로제이 설치일정 · {editing.month || month}</div>
+                <div className="daily-drill-title">{editing.id ? "설치 건 수정" : "새 설치 건 추가"}</div>
               </div>
               <button type="button" className="daily-drill-x" aria-label="닫기" onClick={() => setEditing(null)}>✕</button>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: "10px 14px" }}>
-              {INSTALL_FIELDS.map((f) => (
-                <label key={f.key} style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: f.type === "textarea" ? "1 / -1" : "auto" }}>
-                  <span className="small" style={{ fontWeight: 700 }}>{f.label}</span>
-                  <InstallField field={f} value={editing[f.key]} onChange={(k, v) => setEditing((prev) => ({ ...prev, [k]: v }))} />
-                </label>
+            <div className="isf-body">
+              {INSTALL_GROUPS.map((g) => (
+                <section key={g}>
+                  <div className="isf-sec-hd">{g}</div>
+                  <div className="isf-grid">
+                    {INSTALL_FIELDS.filter((f) => f.g === g).map((f) => (
+                      <label key={f.key} className={"isf-f " + (f.cls || "")}>
+                        <span>{f.label}</span>
+                        <InstallField field={f} value={editing[f.key]} onChange={(k, v) => setEditing((prev) => ({ ...prev, [k]: v }))} />
+                      </label>
+                    ))}
+                  </div>
+                </section>
               ))}
             </div>
-            <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+            <div className="isf-foot">
               <button type="button" className="btn btn-ghost" onClick={() => setEditing(null)} disabled={saving}>취소</button>
               <button type="button" className="btn btn-accent" onClick={save} disabled={saving}>{saving ? "저장 중…" : "저장"}</button>
             </div>
