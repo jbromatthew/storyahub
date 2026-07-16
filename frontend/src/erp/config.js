@@ -1,6 +1,7 @@
 export const ERP_MODULES = [
   { id: "kb", label: "지식경영", icon: "book", group: "main" },
-  { id: "meetings", label: "회의록", icon: "meet", group: "work" },
+  // 회의록 메뉴는 잠시 숨김 (라우트·컴포넌트는 그대로 유지)
+  // { id: "meetings", label: "회의록", icon: "meet", group: "work" },
   // OKR 메뉴는 잠시 숨김 (나중에 다시 노출). 라우트·컴포넌트는 그대로 유지됨.
   // { id: "okr", label: "OKR", icon: "okr", group: "work" },
   { id: "sales-daily", label: "문의/결제 대시보드", icon: "board", group: "sales", groupLabel: "문의/결제" },
