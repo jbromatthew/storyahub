@@ -6142,11 +6142,14 @@ const INSTALL_FIELDS = [
   { key: "plan", label: "요금제", type: "text", w: 96, g: "기본 정보", cls: "c4" },
   { key: "region", label: "지역", type: "select", options: ["", "지방", "수도권"], w: 80, g: "기본 정보", cls: "c4" },
   { key: "siteStatus", label: "현장상태", type: "select", options: ["", "정상운영", "인테리어"], w: 92, g: "기본 정보", cls: "c4" },
+  { key: "centerFree", label: "센터 유/무상", type: "text", w: 96, g: "기본 정보", cls: "c4" },
   { key: "kiosk1", label: "키오스크 1", type: "text", w: 160, g: "장비 · 설치", cls: "c8" },
   { key: "qty1", label: "수량", type: "number", w: 56, g: "장비 · 설치", cls: "c4" },
   { key: "kiosk2", label: "키오스크 2", type: "text", w: 140, g: "장비 · 설치", cls: "c8" },
   { key: "qty2", label: "수량", type: "number", w: 56, g: "장비 · 설치", cls: "c4" },
-  { key: "doorlock", label: "도어락", type: "select", options: ["", "자동문", "설치필요"], w: 88, g: "장비 · 설치", cls: "c4" },
+  { key: "kiosk3", label: "키오스크 3", type: "text", w: 140, g: "장비 · 설치", cls: "c8" },
+  { key: "qty3", label: "수량", type: "number", w: 56, g: "장비 · 설치", cls: "c4" },
+  { key: "doorlock", label: "도어락", type: "select", options: ["", "자동문", "여닫이문", "설치필요", "해당사항X"], w: 88, g: "장비 · 설치", cls: "c4" },
   { key: "centerName", label: "센터명", type: "text", w: 180, g: "고객 · 현장", cls: "c8" },
   { key: "phone", label: "연락처", type: "text", w: 120, g: "고객 · 현장", cls: "c4" },
   { key: "address", label: "주소", type: "text", w: 240, g: "고객 · 현장", cls: "full" },
@@ -6199,6 +6202,9 @@ export function InstallScheduleView() {
   const [editing, setEditing] = useState(null); // row object being added/edited
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [tabs, setTabs] = useState(null);
+  const [importing, setImporting] = useState("");
 
   const loadMonths = useCallback(async () => {
     try {
@@ -6253,6 +6259,28 @@ export function InstallScheduleView() {
     try { await api.erpInstallScheduleDelete(row.id); toastSuccess("삭제했습니다"); loadRows(month); } catch (e) { notifyError(e); }
   };
 
+  const openImport = async () => {
+    setImportOpen(true);
+    if (tabs == null) {
+      try { const res = await api.erpInstallScheduleSheetTabs(); setTabs(res.tabs || []); }
+      catch (e) { notifyError(e); setTabs([]); }
+    }
+  };
+
+  const runImport = async (tab) => {
+    const ok = await confirmAction(`'${tab}' 시트를 가져올까요?`, "해당 월의 기존 데이터는 시트 내용으로 교체됩니다. 설치팀은 업체 관리에 자동 등록됩니다.");
+    if (!ok) return;
+    setImporting(tab);
+    try {
+      const res = await api.erpInstallScheduleImport(tab);
+      toastSuccess(`${res.month} · ${res.imported}건 가져왔습니다`);
+      setImportOpen(false);
+      await loadMonths();
+      setMonth(res.month);
+    } catch (e) { notifyError(e); }
+    finally { setImporting(""); }
+  };
+
   const filtered = useMemo(() => {
     const kw = q.trim().toLowerCase();
     if (!kw) return rows;
@@ -6283,6 +6311,7 @@ export function InstallScheduleView() {
 
       <div className="sales-toolbar" style={{ marginTop: 12, gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <button type="button" className="btn btn-sm btn-accent" onClick={() => setEditing(emptyInstallRow(month || currentInstallMonth()))}>+ 설치 건 추가</button>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={openImport}>⭳ 시트에서 가져오기</button>
         <input className="input" style={{ maxWidth: 240, flex: "0 1 240px" }} placeholder="🔍 센터명·주소·연락처 검색" value={q} onChange={(e) => setQ(e.target.value)} />
         <span className="tag gray" style={{ marginLeft: "auto" }}>{filtered.length}건</span>
       </div>
@@ -6315,6 +6344,41 @@ export function InstallScheduleView() {
               {!filtered.length && <tr><td colSpan={INSTALL_FIELDS.length + 1} className="erp-tbl-empty">{rows.length ? "검색 결과가 없습니다" : "설치 건이 없습니다. “+ 설치 건 추가”로 시작하세요."}</td></tr>}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {importOpen && (
+        <div className="daily-drill-back" style={{ alignItems: "center" }} onClick={() => !importing && setImportOpen(false)}>
+          <div className="isf-modal" style={{ width: "min(460px,100%)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="isf-hd">
+              <div>
+                <div className="daily-drill-eyebrow">BROJ 설치 일정 시트</div>
+                <div className="daily-drill-title">시트에서 가져오기</div>
+              </div>
+              <button type="button" className="daily-drill-x" aria-label="닫기" onClick={() => setImportOpen(false)}>✕</button>
+            </div>
+            <div className="isf-body">
+              <div className="small" style={{ lineHeight: 1.5 }}>
+                가져올 <strong>월 탭</strong>을 선택하세요. 해당 월 데이터는 시트 내용으로 <strong>교체</strong>되고, 설치팀은 업체 관리에 자동 등록됩니다.
+              </div>
+              {tabs == null ? (
+                <div className="spinner" />
+              ) : !tabs.length ? (
+                <div className="small" style={{ color: "var(--muted)", padding: "8px 0" }}>
+                  불러올 월 탭이 없습니다. 서비스 계정에 시트 열람 권한이 있는지 확인하세요.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {tabs.map((t) => (
+                    <button key={t} type="button" className="btn btn-ghost" style={{ justifyContent: "space-between", textAlign: "left" }} disabled={!!importing} onClick={() => runImport(t)}>
+                      <span>{t}</span>
+                      <span className="small">{importing === t ? "가져오는 중…" : "가져오기 →"}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

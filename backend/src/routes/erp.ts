@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { randomBytes, randomInt as cryptoRandomInt } from "crypto";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
+import { fetchSheetGrid, listSheetTitles } from "../services/googleSheets.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 import { requireErpMember } from "../middleware/requireErpMember.js";
 import { env } from "../env.js";
@@ -1708,7 +1709,8 @@ erpRouter.delete("/construction/stock-moves/:id", async (req: AuthedRequest, res
 
 // ── 브로제이 설치일정 (앱 네이티브, 시트 동기화 없음) ──
 const INSTALL_DATA_KEYS = [
-  "team", "type", "plan", "doorlock", "kiosk1", "qty1", "kiosk2", "qty2",
+  "team", "type", "plan", "centerFree", "doorlock",
+  "kiosk1", "qty1", "kiosk2", "qty2", "kiosk3", "qty3",
   "region", "address", "notes", "siteStatus", "visitTime", "phone", "bizRegNo",
   "paymentTid", "cultureTid", "photoDelivered", "serialNo", "baseFee",
   "addInstall", "addVisit", "finalSettle", "tidRegistered",
@@ -1804,4 +1806,127 @@ erpRouter.delete("/install-schedule/:id", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
   await prisma.erpInstallSchedule.delete({ where: { id: req.params.id } });
   res.json({ ok: true });
+});
+
+// 설치일정 원본 시트 (BROJ 설치 일정) — 시트에서 1회 가져오기(import) 용
+const INSTALL_SHEET_ID = "1wPBJTDtlNT8VCluPhIJioiC5hyNiLp2uPe507T9jDPo";
+
+// 헤더 라벨 → 필드 키 (공백 제거 후 매칭). '수량'은 카운터로 kiosk와 순서대로 매칭, 나머지 제외.
+const INSTALL_HEADER_MAP: Record<string, string> = {
+  "설치팀": "team", "시공일": "installDate", "구분": "type", "센터유/무상": "centerFree",
+  "요금제": "plan", "도어락": "doorlock",
+  "키오스크1": "kiosk1", "키오스크2": "kiosk2", "키오스크3": "kiosk3",
+  "센터명": "centerName", "지역": "region", "주소": "address", "특이사항": "notes",
+  "현장상태": "siteStatus", "방문예정시각": "visitTime", "연락처": "phone",
+  "사업자번호": "bizRegNo", "일반결제TID": "paymentTid", "문화비결제TID": "cultureTid",
+  "사진전달": "photoDelivered", "시리얼번호": "serialNo", "시리얼": "serialNo",
+  "기본금": "baseFee", "추가설치": "addInstall", "추가방문": "addVisit",
+  "최종정산": "finalSettle", "TID등록여부": "tidRegistered",
+};
+
+function normInstallDate(raw: string): string | null {
+  const m = String(raw ?? "").match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (!m) return null;
+  return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+}
+
+function installNum(raw: string): number | null {
+  const s = String(raw ?? "").replace(/[,\s]/g, "");
+  if (!s || /^#?N\/?A$/i.test(s)) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function installMonthFromTab(tab: string): string {
+  const m = tab.match(/(\d{4})\.(\d{2})/);
+  return m ? `${m[1]}.${m[2]}` : tab.trim();
+}
+
+erpRouter.get("/install-schedule/sheet-tabs", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  try {
+    const titles = await listSheetTitles(INSTALL_SHEET_ID);
+    // 월별 설치 탭만 (YYYY.MM.으로 시작) 최신순
+    const tabs = titles
+      .filter((t) => /^\d{4}\.\d{2}\./.test(t.trim()))
+      .sort((a, b) => b.localeCompare(a));
+    res.json({ tabs, all: titles });
+  } catch (e) {
+    console.error("install-sheet-tabs", e);
+    res.status(502).json({ error: "시트 목록을 불러오지 못했습니다. 서비스 계정에 시트 열람 권한이 있는지 확인하세요." });
+  }
+});
+
+erpRouter.post("/install-schedule/import", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const sheetName = String(req.body?.sheetName ?? "").trim();
+  if (!sheetName) return res.status(400).json({ error: "가져올 시트 탭 이름이 필요합니다" });
+
+  let grid: string[][];
+  try {
+    grid = await fetchSheetGrid(INSTALL_SHEET_ID, sheetName);
+  } catch (e) {
+    console.error("install-import-fetch", e);
+    return res.status(502).json({ error: "시트를 읽지 못했습니다. 서비스 계정에 이 시트 열람 권한이 있는지 확인하세요." });
+  }
+
+  // 헤더 행 찾기 (센터명 + 시공일 있는 행)
+  const headerIdx = grid.findIndex((row) => {
+    const set = new Set((row ?? []).map((c) => String(c ?? "").replace(/\s/g, "")));
+    return set.has("센터명") && set.has("시공일");
+  });
+  if (headerIdx < 0) return res.status(422).json({ error: "헤더 행(센터명·시공일)을 찾지 못했습니다" });
+
+  // 열 → 필드 매핑 (수량은 kiosk 순서대로 qty1/2/3)
+  const headers = grid[headerIdx] ?? [];
+  const colField: Record<number, string> = {};
+  let qtyCount = 0;
+  for (let c = 0; c < headers.length; c++) {
+    const h = String(headers[c] ?? "").replace(/\s/g, "");
+    if (!h) continue;
+    if (h === "수량") { qtyCount += 1; if (qtyCount <= 3) colField[c] = `qty${qtyCount}`; continue; }
+    const field = INSTALL_HEADER_MAP[h];
+    if (field) colField[c] = field;
+  }
+
+  const month = installMonthFromTab(sheetName);
+  const NUM_FIELDS = new Set(["qty1", "qty2", "qty3", "baseFee", "finalSettle"]);
+  const rows: Array<{ installDate: string | null; centerName: string | null; data: Record<string, unknown> }> = [];
+
+  for (let r = headerIdx + 1; r < grid.length; r++) {
+    const row = grid[r] ?? [];
+    const rec: Record<string, unknown> = {};
+    for (const [cStr, field] of Object.entries(colField)) {
+      const raw = String(row[Number(cStr)] ?? "").trim();
+      if (raw === "") continue;
+      if (field === "installDate") { rec.installDate = normInstallDate(raw); continue; }
+      if (NUM_FIELDS.has(field)) { const n = installNum(raw); if (n != null) rec[field] = n; continue; }
+      rec[field] = raw;
+    }
+    const centerName = (rec.centerName as string) || null;
+    const installDate = (rec.installDate as string) || null;
+    // 빈 행 스킵 (센터명·시공일·설치팀 모두 없으면)
+    if (!centerName && !installDate && !rec.team) continue;
+    const { installDate: _i, centerName: _c, ...data } = rec;
+    rows.push({ installDate, centerName, data });
+  }
+
+  // 설치팀(스스아이오티 등) 업체 관리에 자동 등록
+  const teamNames = [...new Set(rows.map((r) => String((r.data as Record<string, unknown>).team ?? "").trim()).filter(Boolean))];
+  for (const name of teamNames) {
+    const exists = await prisma.erpConstructionTeam.findFirst({ where: { name } });
+    if (!exists) await prisma.erpConstructionTeam.create({ data: { name } });
+  }
+
+  // 해당 월 기존 데이터 교체 (재-가져오기 시 중복 방지)
+  await prisma.$transaction([
+    prisma.erpInstallSchedule.deleteMany({ where: { month } }),
+    ...rows.map((row, i) =>
+      prisma.erpInstallSchedule.create({
+        data: { month, installDate: row.installDate, centerName: row.centerName, data: row.data as object, sortIndex: i },
+      })
+    ),
+  ]);
+
+  res.json({ ok: true, month, imported: rows.length, teams: teamNames });
 });

@@ -326,6 +326,18 @@ export function orderExternalKey(sheetRow: number): string {
   return `row:${sheetRow}`;
 }
 
+/** 스프레드시트의 모든 탭 이름 (필터 없이) */
+export async function listSheetTitles(spreadsheetId: string): Promise<string[]> {
+  const sheets = getSheetsClient();
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets.properties.title",
+  });
+  return (
+    meta.data.sheets?.map((s) => s.properties?.title).filter((t): t is string => !!t) ?? []
+  );
+}
+
 export async function listMonthSheets(spreadsheetId: string): Promise<string[]> {
   const sheets = getSheetsClient();
   const meta = await sheets.spreadsheets.get({

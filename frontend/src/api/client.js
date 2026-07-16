@@ -362,6 +362,8 @@ export const api = {
   erpInstallScheduleCreate: (data) => req("/erp/install-schedule", { method: "POST", body: data }),
   erpInstallScheduleUpdate: (id, data) => req(`/erp/install-schedule/${id}`, { method: "PATCH", body: data }),
   erpInstallScheduleDelete: (id) => req(`/erp/install-schedule/${id}`, { method: "DELETE" }),
+  erpInstallScheduleSheetTabs: () => req("/erp/install-schedule/sheet-tabs"),
+  erpInstallScheduleImport: (sheetName) => req("/erp/install-schedule/import", { method: "POST", body: { sheetName } }),
   erpSalesTaxInvoices: ({ month } = {}) => {
     const p = new URLSearchParams();
     if (month) p.set("month", month);
