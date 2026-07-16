@@ -1908,6 +1908,7 @@ erpRouter.post("/install-schedule/import", async (req: AuthedRequest, res) => {
     // 빈 행 스킵 (센터명·시공일·설치팀 모두 없으면)
     if (!centerName && !installDate && !rec.team) continue;
     const { installDate: _i, centerName: _c, ...data } = rec;
+    data.sourceTab = sheetName; // 재-가져오기 시 이 탭 데이터만 정확히 교체 (중복/타업체 clobber 방지)
     rows.push({ installDate, centerName, data });
   }
 
@@ -1918,9 +1919,11 @@ erpRouter.post("/install-schedule/import", async (req: AuthedRequest, res) => {
     if (!exists) await prisma.erpConstructionTeam.create({ data: { name } });
   }
 
-  // 해당 월 기존 데이터 교체 (재-가져오기 시 중복 방지)
+  // 이 시트 탭에서 가져온 기존 데이터만 교체 (재-가져오기 시 중복 방지, 같은 달 다른 업체는 보존)
   await prisma.$transaction([
-    prisma.erpInstallSchedule.deleteMany({ where: { month } }),
+    prisma.erpInstallSchedule.deleteMany({
+      where: { month, data: { path: ["sourceTab"], equals: sheetName } },
+    }),
     ...rows.map((row, i) =>
       prisma.erpInstallSchedule.create({
         data: { month, installDate: row.installDate, centerName: row.centerName, data: row.data as object, sortIndex: i },
