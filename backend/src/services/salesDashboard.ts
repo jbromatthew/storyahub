@@ -98,6 +98,7 @@ export type IndustryDrilldown = {
   plans: DashboardItem[];
   channels: DashboardItem[];
   weekly: DashboardItem[];
+  inquiry: { goal: number | null; actual: number; rate: number | null };
 };
 
 // 채널별·요금제별 탭에서 항목을 눌렀을 때 보여줄 하위 분해 (읽기 전용, 현황 기준)
@@ -449,21 +450,57 @@ function findLabeledNumber(grid: string[][], pattern: RegExp, maxRow = 6): numbe
   return null;
 }
 
-/** 당월 신규문의 건수 (문의 시트 기준, 결제율 분석과 동일 소스) */
-async function loadInquiryCount(monthSheet: string): Promise<number> {
+/** 당월 신규문의 건수 (문의 시트 기준, 결제율 분석과 동일 소스). 업종별 분해도 함께 반환 */
+async function loadInquiryStats(monthSheet: string): Promise<{ total: number; byIndustry: Map<string, number> }> {
   const spreadsheetId = env.googleSheets.inquirySpreadsheetId;
   const target = normalizeMonthSheet(monthSheet);
   const rows = await prisma.erpSalesInquiry.findMany({
     where: { spreadsheetId },
     select: { data: true, sheetName: true },
   });
-  let n = 0;
+  let total = 0;
+  const byIndustry = new Map<string, number>();
   for (const row of rows) {
     if (normalizeMonthSheet(row.sheetName) !== target) continue;
     const data = row.data as Record<string, string>;
-    if ((data["구분"] || "").trim() === "신규문의") n += 1;
+    if ((data["구분"] || "").trim() !== "신규문의") continue;
+    total += 1;
+    const industry = (data["업종"] || "").trim() || "확인불가";
+    byIndustry.set(industry, (byIndustry.get(industry) ?? 0) + 1);
   }
-  return n;
+  return { total, byIndustry };
+}
+
+/** 섹션 안에서 특정 라벨의 행(예: '문의목표')을 열별(업종/채널/요금제)로 읽는다. 없으면 null */
+function parseSectionNamedRow(
+  grid: string[][],
+  sectionRow: number,
+  rowLabelPattern: RegExp
+): Map<string, number> | null {
+  const headerRow = sectionRow + 1;
+  const headers = grid[headerRow] ?? [];
+  const labels: string[] = [];
+  const cols: number[] = [];
+  for (let c = 2; c < headers.length; c++) {
+    const h = (headers[c] || "").trim();
+    if (!h) continue;
+    if (h === "합계") break;
+    labels.push(h);
+    cols.push(c);
+  }
+  let targetRow = -1;
+  for (let r = headerRow + 1; r < Math.min(headerRow + 16, grid.length); r++) {
+    const lbl = (grid[r]?.[1] || "").replace(/\s/g, "");
+    if (/^\d+\./.test(lbl)) break; // 다음 섹션 시작
+    if (rowLabelPattern.test(lbl)) {
+      targetRow = r;
+      break;
+    }
+  }
+  if (targetRow < 0) return null;
+  const map = new Map<string, number>();
+  labels.forEach((label, i) => map.set(label, parseNum(grid[targetRow]?.[cols[i]])));
+  return map;
 }
 
 function normalizeMonthSheet(name: string): string {
@@ -640,7 +677,9 @@ function buildIndustryDrilldowns(
   counts: MonthCounts,
   overrides: DashboardGoalOverrides,
   industryWeek: SectionWeekData | null,
-  mergedIndustry: { labels: string[]; goals: number[] }
+  mergedIndustry: { labels: string[]; goals: number[] },
+  inquiryByIndustry: Map<string, number>,
+  inquiryGoalByIndustry: Map<string, number> | null
 ): Record<string, IndustryDrilldown> {
   const weekLabels = resolveWeekLabels(industryWeek, counts);
   const industries = sortLabels(
@@ -687,7 +726,11 @@ function buildIndustryDrilldowns(
       return item(label, goal, weekActual);
     }).filter((it) => it.goal > 0 || it.actual > 0);
 
-    if (actual <= 0 && industryGoal <= 0 && !plans.length && !channels.length && !weekly.length) {
+    const iActual = inquiryByIndustry.get(industry) ?? 0;
+    const iGoal = inquiryGoalByIndustry?.get(industry) ?? null;
+    const iRate = iGoal && iGoal > 0 ? Math.round((iActual / iGoal) * 1000) / 10 : null;
+
+    if (actual <= 0 && industryGoal <= 0 && !plans.length && !channels.length && !weekly.length && iActual <= 0) {
       continue;
     }
 
@@ -697,6 +740,7 @@ function buildIndustryDrilldowns(
       plans,
       channels,
       weekly,
+      inquiry: { goal: iGoal, actual: iActual, rate: iRate },
     };
   }
 
@@ -814,16 +858,20 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
 
   const monthLabel = sheetMonthToLabel(selectedMonth);
   const counts = await loadMonthCounts(monthLabel);
-  const inquiryActual = await loadInquiryCount(selectedMonth);
+  const inquiryStats = await loadInquiryStats(selectedMonth);
+  const inquiryActual = inquiryStats.total;
   const inquiryGoal = summaryMeta.inquiryGoal;
   const inquiryRate =
     inquiryGoal && inquiryGoal > 0 ? Math.round((inquiryActual / inquiryGoal) * 1000) / 10 : null;
+  const inquiryGoalByIndustry = industryRow >= 0 ? parseSectionNamedRow(grid, industryRow, /^문의목표$/) : null;
   const weekly = buildWeeklyBreakdown(channelWeek, industryWeek, planWeek, counts);
   const industryDrilldowns = buildIndustryDrilldowns(
     counts,
     goalOverrides,
     industryWeek,
-    mergedIndustry
+    mergedIndustry,
+    inquiryStats.byIndustry,
+    inquiryGoalByIndustry
   );
   const drillWeekLabels = resolveWeekLabels(industryWeek ?? channelWeek ?? planWeek, counts);
   const channelDrilldowns = buildDimensionDrilldowns("channel", counts, channelParsed, drillWeekLabels);

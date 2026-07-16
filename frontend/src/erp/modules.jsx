@@ -5154,6 +5154,12 @@ export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGo
             목표 {summary.goal} · 현황 {summary.actual} · {formatDashRate(summary.rate)}
           </span>
         )}
+        {detail?.inquiry && (detail.inquiry.goal != null || detail.inquiry.actual > 0) && (
+          <span className="small" style={{ color: "var(--muted)" }}>
+            · 문의 {detail.inquiry.goal != null ? `목표 ${detail.inquiry.goal} · ` : ""}현황 {detail.inquiry.actual}
+            {detail.inquiry.rate != null ? ` · ${formatDashRate(detail.inquiry.rate)}` : ""}
+          </span>
+        )}
         <div style={{ marginLeft: "auto" }}>
           {editing ? (
             <span className="row" style={{ gap: 6 }}>
