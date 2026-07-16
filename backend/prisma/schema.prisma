@@ -777,3 +777,17 @@ model ErpConstructionStockMove {
 
   @@index([stockId])
 }
+
+// 브로제이 설치일정 (아파트너와 완전 별개, 시트 동기화 없이 앱에서 직접 관리)
+model ErpInstallSchedule {
+  id          String   @id @default(cuid())
+  month       String   // 월 탭 (예: "2025.09")
+  installDate String?  // 시공일 YYYY-MM-DD (정렬용)
+  centerName  String?  // 센터명 (검색용)
+  data        Json     @default("{}") // 나머지 필드(구분·요금제·키오스크·연락처·정산 등)
+  sortIndex   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([month])
+}

@@ -1705,3 +1705,103 @@ erpRouter.delete("/construction/stock-moves/:id", async (req: AuthedRequest, res
   await prisma.erpConstructionStockMove.delete({ where: { id: req.params.id } });
   res.json({ ok: true });
 });
+
+// ── 브로제이 설치일정 (앱 네이티브, 시트 동기화 없음) ──
+const INSTALL_DATA_KEYS = [
+  "team", "type", "plan", "doorlock", "kiosk1", "qty1", "kiosk2", "qty2",
+  "region", "address", "notes", "siteStatus", "visitTime", "phone", "bizRegNo",
+  "paymentTid", "cultureTid", "photoDelivered", "serialNo", "baseFee",
+  "addInstall", "addVisit", "finalSettle", "tidRegistered",
+];
+
+function pickInstallData(body: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of INSTALL_DATA_KEYS) {
+    if (body[k] === undefined) continue;
+    const v = body[k];
+    out[k] = typeof v === "string" ? v.trim() : v;
+  }
+  return out;
+}
+
+function defaultInstallMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function installMonth(v: unknown): string {
+  return String(v ?? "").trim() || defaultInstallMonth();
+}
+
+function flattenInstall(row: {
+  id: string; month: string; installDate: string | null; centerName: string | null;
+  sortIndex: number; data: unknown; createdAt: Date; updatedAt: Date;
+}) {
+  return {
+    id: row.id,
+    month: row.month,
+    installDate: row.installDate,
+    centerName: row.centerName,
+    sortIndex: row.sortIndex,
+    ...(row.data as Record<string, unknown>),
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+erpRouter.get("/install-schedule/months", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const rows = await prisma.erpInstallSchedule.findMany({ select: { month: true }, distinct: ["month"] });
+  const months = [...new Set(rows.map((r) => r.month))].sort((a, b) => b.localeCompare(a));
+  res.json({ months });
+});
+
+erpRouter.get("/install-schedule", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const month = String(req.query.month ?? "").trim();
+  const rows = await prisma.erpInstallSchedule.findMany({
+    where: month ? { month } : {},
+    orderBy: [{ installDate: "asc" }, { sortIndex: "asc" }, { createdAt: "asc" }],
+  });
+  res.json({ rows: rows.map(flattenInstall) });
+});
+
+erpRouter.post("/install-schedule", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const row = await prisma.erpInstallSchedule.create({
+    data: {
+      month: installMonth(body.month),
+      installDate: cstDate(body.installDate),
+      centerName: String(body.centerName ?? "").trim() || null,
+      data: pickInstallData(body) as object,
+      sortIndex: Number(body.sortIndex) || 0,
+    },
+  });
+  res.json(flattenInstall(row));
+});
+
+erpRouter.patch("/install-schedule/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const existing = await prisma.erpInstallSchedule.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: "설치일정 행을 찾을 수 없습니다" });
+  const mergedData = { ...(existing.data as Record<string, unknown>), ...pickInstallData(body) };
+  const row = await prisma.erpInstallSchedule.update({
+    where: { id: req.params.id },
+    data: {
+      ...(body.month !== undefined ? { month: installMonth(body.month) } : {}),
+      ...(body.installDate !== undefined ? { installDate: cstDate(body.installDate) } : {}),
+      ...(body.centerName !== undefined ? { centerName: String(body.centerName).trim() || null } : {}),
+      ...(body.sortIndex !== undefined ? { sortIndex: Number(body.sortIndex) || 0 } : {}),
+      data: mergedData as object,
+    },
+  });
+  res.json(flattenInstall(row));
+});
+
+erpRouter.delete("/install-schedule/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  await prisma.erpInstallSchedule.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});

@@ -6132,3 +6132,216 @@ export function SalesDailyView() {
     </div>
   );
 }
+
+// ───────── 브로제이 설치일정 (앱 네이티브 관리, 시트 동기화 없음) ─────────
+const INSTALL_FIELDS = [
+  { key: "installDate", label: "시공일", type: "date", w: 116 },
+  { key: "team", label: "설치팀", type: "text", w: 96 },
+  { key: "type", label: "구분", type: "select", options: ["", "스마트상점", "신규설치", "통화소통", "A.S", "이전설치"], w: 92 },
+  { key: "plan", label: "요금제", type: "text", w: 96 },
+  { key: "doorlock", label: "도어락", type: "select", options: ["", "자동문", "설치필요"], w: 88 },
+  { key: "kiosk1", label: "키오스크 1", type: "text", w: 160 },
+  { key: "qty1", label: "수량", type: "number", w: 56 },
+  { key: "kiosk2", label: "키오스크 2", type: "text", w: 140 },
+  { key: "qty2", label: "수량", type: "number", w: 56 },
+  { key: "centerName", label: "센터명", type: "text", w: 180 },
+  { key: "region", label: "지역", type: "select", options: ["", "지방", "수도권"], w: 80 },
+  { key: "address", label: "주소", type: "text", w: 240 },
+  { key: "notes", label: "특이사항", type: "textarea", w: 260 },
+  { key: "siteStatus", label: "현장상태", type: "select", options: ["", "정상운영", "인테리어"], w: 92 },
+  { key: "visitTime", label: "방문예정시각", type: "text", w: 104 },
+  { key: "phone", label: "연락처", type: "text", w: 120 },
+  { key: "bizRegNo", label: "사업자번호", type: "text", w: 120 },
+  { key: "paymentTid", label: "일반결제TID", type: "text", w: 120 },
+  { key: "cultureTid", label: "문화비결제TID", type: "text", w: 120 },
+  { key: "photoDelivered", label: "사진전달", type: "select", options: ["", "전달완료"], w: 90 },
+  { key: "serialNo", label: "시리얼번호", type: "text", w: 120 },
+  { key: "baseFee", label: "기본금", type: "number", w: 100 },
+  { key: "addInstall", label: "추가설치", type: "text", w: 90 },
+  { key: "addVisit", label: "추가방문", type: "text", w: 90 },
+  { key: "finalSettle", label: "최종 정산", type: "number", w: 100 },
+  { key: "tidRegistered", label: "TID 등록 여부", type: "text", w: 116 },
+];
+const INSTALL_NUM_KEYS = new Set(INSTALL_FIELDS.filter((f) => f.type === "number").map((f) => f.key));
+
+function currentInstallMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function emptyInstallRow(month) {
+  const r = { month };
+  INSTALL_FIELDS.forEach((f) => { r[f.key] = ""; });
+  return r;
+}
+
+function InstallField({ field, value, onChange }) {
+  const common = { className: "input", value: value ?? "", onChange: (e) => onChange(field.key, e.target.value) };
+  if (field.type === "select") {
+    return (
+      <select {...common}>
+        {field.options.map((o) => <option key={o} value={o}>{o || "—"}</option>)}
+      </select>
+    );
+  }
+  if (field.type === "textarea") {
+    return <textarea {...common} rows={2} style={{ resize: "vertical" }} />;
+  }
+  return <input {...common} type={field.type === "date" ? "date" : field.type === "number" ? "number" : "text"} inputMode={field.type === "number" ? "numeric" : undefined} />;
+}
+
+export function InstallScheduleView() {
+  const [months, setMonths] = useState([]);
+  const [month, setMonth] = useState(null);
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // row object being added/edited
+  const [saving, setSaving] = useState(false);
+  const [q, setQ] = useState("");
+
+  const loadMonths = useCallback(async () => {
+    try {
+      const res = await api.erpInstallScheduleMonths();
+      const list = res.months || [];
+      setMonths(list);
+      setMonth((prev) => prev || list[0] || currentInstallMonth());
+    } catch (e) { notifyError(e); }
+  }, []);
+
+  const loadRows = useCallback(async (m) => {
+    if (!m) return;
+    setLoading(true);
+    try {
+      const res = await api.erpInstallSchedule({ month: m });
+      setRows(res.rows || []);
+    } catch (e) { notifyError(e); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { loadMonths(); }, [loadMonths]);
+  useEffect(() => { if (month) loadRows(month); }, [month, loadRows]);
+
+  const addMonth = () => {
+    const v = window.prompt("추가할 월을 입력하세요 (예: 2025.09)", currentInstallMonth());
+    if (!v) return;
+    const m = v.trim();
+    if (!/^\d{4}\.\d{2}$/.test(m)) { notifyError(new Error("YYYY.MM 형식으로 입력하세요 (예: 2025.09)")); return; }
+    setMonths((prev) => [...new Set([m, ...prev])].sort((a, b) => b.localeCompare(a)));
+    setMonth(m);
+  };
+
+  const save = async () => {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      const payload = { ...editing, month: editing.month || month };
+      if (editing.id) await api.erpInstallScheduleUpdate(editing.id, payload);
+      else await api.erpInstallScheduleCreate(payload);
+      toastSuccess("저장했습니다");
+      setEditing(null);
+      await loadMonths();
+      await loadRows(payload.month);
+      if (payload.month !== month) setMonth(payload.month);
+    } catch (e) { notifyError(e); }
+    finally { setSaving(false); }
+  };
+
+  const remove = async (row) => {
+    const ok = await confirmAction(`이 설치일정을 삭제할까요?`, `${row.centerName || "(센터명 없음)"} · ${row.installDate || "날짜 미정"}`);
+    if (!ok) return;
+    try { await api.erpInstallScheduleDelete(row.id); toastSuccess("삭제했습니다"); loadRows(month); } catch (e) { notifyError(e); }
+  };
+
+  const filtered = useMemo(() => {
+    const kw = q.trim().toLowerCase();
+    if (!kw) return rows;
+    return rows.filter((r) => [r.centerName, r.address, r.phone, r.team, r.plan].some((v) => String(v || "").toLowerCase().includes(kw)));
+  }, [rows, q]);
+
+  const fmtVal = (row, f) => {
+    const v = row[f.key];
+    if (v == null || v === "") return "";
+    if (INSTALL_NUM_KEYS.has(f.key)) { const n = Number(v); return Number.isFinite(n) ? n.toLocaleString() : v; }
+    return v;
+  };
+
+  return (
+    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">Construction</div>
+      <div className="h-title">설치일정 <span style={{ color: "var(--muted)", fontWeight: 700, fontSize: 15 }}>(브로제이)</span></div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+        브로제이 설치 건을 월별로 관리합니다. (아파트너 공사와 별개 · 시트 동기화 없이 앱에서 직접 입력)
+      </div>
+
+      <div className="dash-month-picks" style={{ marginTop: 14 }}>
+        {months.map((m) => (
+          <button key={m} type="button" className={"dash-month-chip" + (month === m ? " on" : "")} onClick={() => setMonth(m)}>{m}</button>
+        ))}
+        <button type="button" className="dash-month-chip" onClick={addMonth}>+ 월 추가</button>
+      </div>
+
+      <div className="sales-toolbar" style={{ marginTop: 12, gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button type="button" className="btn btn-sm btn-accent" onClick={() => setEditing(emptyInstallRow(month || currentInstallMonth()))}>+ 설치 건 추가</button>
+        <input className="input" style={{ maxWidth: 220 }} placeholder="센터명·주소·연락처 검색" value={q} onChange={(e) => setQ(e.target.value)} />
+        <span className="small" style={{ color: "var(--muted)" }}>{filtered.length}건</span>
+      </div>
+
+      {loading ? (
+        <div className="spinner" />
+      ) : (
+        <div className="erp-tbl-wrap" style={{ marginTop: 8, overflowX: "auto" }}>
+          <table className="erp-tbl" style={{ minWidth: 1600 }}>
+            <thead>
+              <tr>
+                {INSTALL_FIELDS.map((f) => <th key={f.key} style={{ minWidth: f.w, whiteSpace: "nowrap" }}>{f.label}</th>)}
+                <th style={{ minWidth: 96, position: "sticky", right: 0, background: "var(--card)" }}>관리</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((row) => (
+                <tr key={row.id}>
+                  {INSTALL_FIELDS.map((f) => (
+                    <td key={f.key} className={INSTALL_NUM_KEYS.has(f.key) ? "num" : ""} style={{ maxWidth: f.w + 60, whiteSpace: f.key === "notes" || f.key === "address" ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={String(row[f.key] ?? "")}>
+                      {fmtVal(row, f)}
+                    </td>
+                  ))}
+                  <td style={{ position: "sticky", right: 0, background: "var(--card)", whiteSpace: "nowrap" }}>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing({ ...row })}>수정</button>
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger,#D9534F)" }} onClick={() => remove(row)}>삭제</button>
+                  </td>
+                </tr>
+              ))}
+              {!filtered.length && <tr><td colSpan={INSTALL_FIELDS.length + 1} className="erp-tbl-empty">{rows.length ? "검색 결과가 없습니다" : "설치 건이 없습니다. “+ 설치 건 추가”로 시작하세요."}</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {editing && (
+        <div className="daily-drill-back" style={{ alignItems: "center" }} onClick={() => !saving && setEditing(null)}>
+          <div className="daily-drill" style={{ width: "min(760px,100%)", maxHeight: "88vh", borderRadius: 18 }} onClick={(e) => e.stopPropagation()}>
+            <div className="daily-drill-hd">
+              <div>
+                <div className="daily-drill-eyebrow">브로제이 설치일정</div>
+                <div className="daily-drill-title">{editing.id ? "설치 건 수정" : "설치 건 추가"} · {editing.month || month}</div>
+              </div>
+              <button type="button" className="daily-drill-x" aria-label="닫기" onClick={() => setEditing(null)}>✕</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: "10px 14px" }}>
+              {INSTALL_FIELDS.map((f) => (
+                <label key={f.key} style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: f.type === "textarea" ? "1 / -1" : "auto" }}>
+                  <span className="small" style={{ fontWeight: 700 }}>{f.label}</span>
+                  <InstallField field={f} value={editing[f.key]} onChange={(k, v) => setEditing((prev) => ({ ...prev, [k]: v }))} />
+                </label>
+              ))}
+            </div>
+            <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+              <button type="button" className="btn btn-ghost" onClick={() => setEditing(null)} disabled={saving}>취소</button>
+              <button type="button" className="btn btn-accent" onClick={save} disabled={saving}>{saving ? "저장 중…" : "저장"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

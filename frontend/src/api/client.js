@@ -353,6 +353,15 @@ export const api = {
   erpConstructionCreateQuote: (data) => req("/erp/construction/quotes", { method: "POST", body: data }),
   erpConstructionUpdateQuote: (id, data) => req(`/erp/construction/quotes/${id}`, { method: "PATCH", body: data }),
   erpConstructionDeleteQuote: (id) => req(`/erp/construction/quotes/${id}`, { method: "DELETE" }),
+  erpInstallScheduleMonths: () => req("/erp/install-schedule/months"),
+  erpInstallSchedule: ({ month } = {}) => {
+    const p = new URLSearchParams();
+    if (month) p.set("month", month);
+    return req(`/erp/install-schedule?${p}`);
+  },
+  erpInstallScheduleCreate: (data) => req("/erp/install-schedule", { method: "POST", body: data }),
+  erpInstallScheduleUpdate: (id, data) => req(`/erp/install-schedule/${id}`, { method: "PATCH", body: data }),
+  erpInstallScheduleDelete: (id) => req(`/erp/install-schedule/${id}`, { method: "DELETE" }),
   erpSalesTaxInvoices: ({ month } = {}) => {
     const p = new URLSearchParams();
     if (month) p.set("month", month);
