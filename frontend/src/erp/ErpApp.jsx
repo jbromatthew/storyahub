@@ -17,7 +17,7 @@ import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendVi
 function NavBtn({ on, icon, label, onClick, layout = "side" }) {
   const cls = layout === "side" ? "sidenavitem" : "sidenavitem";
   return (
-    <button type="button" className={cls + (on ? " on" : "")} onClick={onClick}>
+    <button type="button" className={cls + (on ? " on" : "")} title={label} onClick={onClick}>
       {icon({ width: 20, height: 20 })}<span>{label}</span>
     </button>
   );
@@ -103,6 +103,14 @@ export default function ErpApp() {
   const [user, setUser] = useState(null);
   const [tab, setTab] = useState("kb");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sideCollapsed, setSideCollapsed] = useState(() => {
+    try { return localStorage.getItem("erp_side_collapsed") === "1"; } catch { return false; }
+  });
+  const toggleSidebar = () => setSideCollapsed((v) => {
+    const next = !v;
+    try { localStorage.setItem("erp_side_collapsed", next ? "1" : "0"); } catch { /* ignore */ }
+    return next;
+  });
   const [kbArticles, setKbArticles] = useState([]);
   const [kbView, setKbView] = useState(null);
   const [shareTarget, setShareTarget] = useState(null);
@@ -303,8 +311,13 @@ export default function ErpApp() {
         resourceType={shareTarget?.type} resourceId={shareTarget?.id} title={shareTarget?.title} />
       <div className="app-shell">
         {boot === "app" && (
-          <aside className="app-sidebar">
-            <div className="app-brand">ERP</div>
+          <aside className={"app-sidebar" + (sideCollapsed ? " collapsed" : "")}>
+            <div className="app-sidebar-hd">
+              <div className="app-brand">ERP</div>
+              <button type="button" className="side-toggle" title={sideCollapsed ? "메뉴 펼치기" : "메뉴 접기"} aria-label={sideCollapsed ? "메뉴 펼치기" : "메뉴 접기"} onClick={toggleSidebar}>
+                {sideCollapsed ? "»" : "«"}
+              </button>
+            </div>
             <nav className="app-sidenav">
               <ErpNav tab={tab} kbView={kbView} onSelect={goTab} user={user} />
             </nav>

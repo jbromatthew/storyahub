@@ -12,8 +12,21 @@ html,body,#root{height:100%;overflow:hidden;}
 body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);color:var(--ink);}
 .sa-root,.erp-root{height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:hidden;}
 .app-shell{display:flex;flex:1;min-height:0;}
-.app-sidebar{width:240px;background:#fff;border-right:1px solid var(--line);padding:20px 14px;display:none;flex-direction:column;}
+.app-sidebar{width:240px;background:#fff;border-right:1px solid var(--line);padding:20px 14px;display:none;flex-direction:column;transition:width .18s ease;}
 .app-brand{font-size:20px;font-weight:900;letter-spacing:-.03em;padding:4px 10px 18px;}
+/* 사이드바 접기/펼치기 */
+.app-sidebar-hd{display:flex;align-items:center;justify-content:space-between;}
+.app-sidebar-hd .app-brand{padding:4px 10px 18px 10px;}
+.side-toggle{border:1px solid var(--line);background:#fff;color:var(--muted);width:26px;height:26px;border-radius:8px;cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;margin:0 0 14px;flex:0 0 auto;}
+.side-toggle:hover{background:var(--accent-soft);color:var(--accent-deep);border-color:var(--accent-soft);}
+.app-sidebar.collapsed{width:64px;padding:20px 10px;}
+.app-sidebar.collapsed .app-sidebar-hd{justify-content:center;}
+.app-sidebar.collapsed .app-brand{display:none;}
+.app-sidebar.collapsed .sidenav-group{display:none;}
+.app-sidebar.collapsed .sidenavitem{justify-content:center;padding:11px 0;gap:0;}
+.app-sidebar.collapsed .sidenavitem span{display:none;}
+.app-sidebar.collapsed .app-sidebar-foot{display:none;}
+.app-sidebar.collapsed .sidenav-admin .sidenav-subitem{justify-content:center;padding:11px 0;gap:0;}
 .app-brand span{color:var(--accent-deep);}
 .app-sidenav{display:flex;flex-direction:column;gap:4px;flex:1;}
 .sidenavitem{display:flex;align-items:center;gap:12px;width:100%;padding:11px 14px;border-radius:12px;border:none;background:transparent;font:inherit;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;text-align:left;}
