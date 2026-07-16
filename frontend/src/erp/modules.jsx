@@ -3647,16 +3647,15 @@ function formatRateValue(value, format) {
   return String(value);
 }
 
-// 비교군 중 결제율이 뒤처진(가장 나쁜) 그룹 셀 인덱스 — % 지표만, 부재율은 높을수록 나쁨
+// 비교군 중 결제전환율이 뒤처진(가장 낮은) 그룹 셀 인덱스 — 당월/실 결제전환율만 대상
+const RATE_WORSE_KEYS = new Set(["monthlyRate", "actualRate"]);
 function worstRateIdxs(values, format, rowKey) {
-  if (format !== "percent") return EMPTY_SET;
+  if (format !== "percent" || !RATE_WORSE_KEYS.has(rowKey)) return EMPTY_SET;
   const nums = values.map((v) => (v == null || Number.isNaN(v) ? null : Number(v)));
   const valid = nums.filter((v) => v != null);
   if (valid.length < 2) return EMPTY_SET;
-  const higherIsWorse = rowKey === "absenceRate";
-  const worst = higherIsWorse ? Math.max(...valid) : Math.min(...valid);
-  const best = higherIsWorse ? Math.min(...valid) : Math.max(...valid);
-  if (worst === best) return EMPTY_SET; // 모두 동률이면 표시 안 함
+  const worst = Math.min(...valid);
+  if (worst === Math.max(...valid)) return EMPTY_SET; // 모두 동률이면 표시 안 함
   return new Set(nums.map((v, i) => (v === worst ? i : -1)).filter((i) => i >= 0));
 }
 const EMPTY_SET = new Set();
