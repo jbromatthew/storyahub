@@ -3669,9 +3669,9 @@ const DROP_METRICS = [
 ];
 const DROP_SEGS = [["all", "전체"], ["organic", "오가닉"], ["nonOrganic", "비오가닉"]];
 
-function buildDropAlerts(result) {
+function buildDropAlerts(result, baseIdx, otherIdxs) {
   const groups = result?.groups || [];
-  if (groups.length < 2) return null;
+  if (groups.length < 2 || !otherIdxs.length) return null;
   const monthsN = groups.map((g) => Math.max(1, g.months?.length || 1));
 
   // 차원: 전체 + 업종별 + 요금제별 (그룹 순서에 맞춘 세그먼트 지표 시리즈)
@@ -3692,7 +3692,7 @@ function buildDropAlerts(result) {
   const alerts = [];
   for (const dim of dims) {
     for (const [segKey, segLabel] of DROP_SEGS) {
-      const baseSeg = dim.perGroup[0]?.[segKey];
+      const baseSeg = dim.perGroup[baseIdx]?.[segKey];
       if (!baseSeg) continue;
       for (const m of DROP_METRICS) {
         const norm = (metrics, gi) => {
@@ -3700,10 +3700,10 @@ function buildDropAlerts(result) {
           if (v == null || Number.isNaN(v)) return null;
           return m.type === "count" ? v / monthsN[gi] : v;
         };
-        const baseVal = norm(baseSeg, 0);
+        const baseVal = norm(baseSeg, baseIdx);
         if (baseVal == null) continue;
         const others = [];
-        for (let gi = 1; gi < groups.length; gi++) {
+        for (const gi of otherIdxs) {
           const seg = dim.perGroup[gi]?.[segKey];
           const v = norm(seg, gi);
           if (v != null) others.push({ v, inq: seg?.inquiries ?? 0 });
@@ -3737,28 +3737,41 @@ function buildDropAlerts(result) {
   return alerts;
 }
 
-export function RateDropAlerts({ result }) {
+export function RateDropAlerts({ result, selGroups }) {
   const [showAll, setShowAll] = useState(false);
-  const alerts = useMemo(() => buildDropAlerts(result), [result]);
+  // 비교군 클릭 선택에 따라 기준·비교 대상 결정: 0개=첫 군 vs 나머지, 1개=그 군 vs 나머지, 2개=왼쪽 vs 오른쪽
+  const { baseIdx, otherIdxs } = useMemo(() => {
+    const n = result?.groups?.length || 0;
+    const sel = selGroups || [];
+    if (sel.length === 2) {
+      const li = Math.min(sel[0], sel[1]);
+      const ri = Math.max(sel[0], sel[1]);
+      return { baseIdx: li, otherIdxs: [ri] };
+    }
+    const base = sel.length === 1 ? sel[0] : 0;
+    return { baseIdx: base, otherIdxs: [...Array(n).keys()].filter((i) => i !== base) };
+  }, [result, selGroups]);
+  const alerts = useMemo(() => buildDropAlerts(result, baseIdx, otherIdxs), [result, baseIdx, otherIdxs]);
   if (alerts == null) return null; // 비교군 2개 미만
-  const baseLabel = result?.groups?.[0]?.label || "기준군";
-  const otherLabels = (result?.groups || []).slice(1).map((g) => g.label).join("·");
+  const baseLabel = result?.groups?.[baseIdx]?.label || "기준군";
+  const otherLabels = otherIdxs.map((i) => result?.groups?.[i]?.label).filter(Boolean).join("·");
+  const avgSuffix = otherIdxs.length > 1 ? " 평균" : "";
   if (!alerts.length) {
     return (
       <div className="rate-alerts ok">
-        <div className="rate-alerts-hd">✅ 떨어진 지표 없음 <span className="small">— {baseLabel} vs {otherLabels} 평균 기준</span></div>
+        <div className="rate-alerts-hd">✅ 떨어진 지표 없음 <span className="small">— {baseLabel} vs {otherLabels}{avgSuffix} 기준</span></div>
       </div>
     );
   }
   const visible = showAll ? alerts : alerts.slice(0, 8);
   const now = new Date();
   const curSheet = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.`;
-  const baseInProgress = (result?.groups?.[0]?.months || []).includes(curSheet);
+  const baseInProgress = (result?.groups?.[baseIdx]?.months || []).includes(curSheet);
   return (
     <div className="rate-alerts">
       <div className="rate-alerts-hd">
         ⚠️ 떨어진 지표 {alerts.length}건
-        <span className="small"> — {baseLabel}을(를) 나머지 비교군({otherLabels}) 평균과 비교 · 건수는 월평균 환산</span>
+        <span className="small"> — {baseLabel}을(를) {otherLabels}{avgSuffix}과 비교 · 건수는 월평균 환산{(selGroups?.length || 0) > 0 ? " · 클릭 선택 기준" : ""}</span>
         {baseInProgress && (
           <div className="small" style={{ fontWeight: 500, marginTop: 2 }}>※ 기준군에 진행 중인 달이 포함돼 건수 지표는 실제보다 낮게 보일 수 있어요 (전환율은 영향 적음)</div>
         )}
@@ -3771,7 +3784,7 @@ export function RateDropAlerts({ result }) {
               <th>구분</th>
               <th style={{ textAlign: "left" }}>지표</th>
               <th>{baseLabel}</th>
-              <th>비교군 평균</th>
+              <th>{otherIdxs.length > 1 ? "비교군 평균" : otherLabels}</th>
               <th>하락</th>
             </tr>
           </thead>
@@ -4529,7 +4542,7 @@ export function PaymentRateView() {
             )}
           </div>
 
-          <RateDropAlerts result={result} />
+          <RateDropAlerts result={result} selGroups={selGroups} />
 
           {showStats ? (
             <RateStatsPanel
