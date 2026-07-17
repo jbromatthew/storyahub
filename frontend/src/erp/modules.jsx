@@ -3648,7 +3648,10 @@ function formatRateValue(value, format) {
 }
 
 // 비교군 2개를 클릭하면 왼쪽 비교군 셀에 방향 색: 오른쪽보다 떨어지면 분홍, 올라가면 파랑
-function diffCls(values, selGroups) {
+// 당월 결제 관련 행(당월 결제·당월 결제전환율)에만 적용
+const DIFF_ROW_KEYS = new Set(["monthlyPayment", "monthlyRate"]);
+function diffCls(values, selGroups, rowKey) {
+  if (!DIFF_ROW_KEYS.has(rowKey)) return () => "";
   if (!selGroups || selGroups.length !== 2) return () => "";
   const li = Math.min(selGroups[0], selGroups[1]);
   const ri = Math.max(selGroups[0], selGroups[1]);
@@ -3661,11 +3664,8 @@ function diffCls(values, selGroups) {
 
 // ─── 떨어진 지표 자동 점검: 기준군(첫 비교군) vs 나머지 비교군 평균 ───
 const DROP_METRICS = [
-  { key: "inquiries", label: "문의수", type: "count" },
-  { key: "consulting", label: "상담진행", type: "count" },
   { key: "monthlyPayment", label: "당월 결제", type: "count" },
   { key: "monthlyRate", label: "당월 전환율", type: "rate" },
-  { key: "actualRate", label: "실 전환율", type: "rate" },
 ];
 const DROP_SEGS = [["all", "전체"], ["organic", "오가닉"], ["nonOrganic", "비오가닉"]];
 
@@ -4259,7 +4259,7 @@ function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange, selG
               {(result?.rows || []).map((row) => (
                 <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
                   <td className="metric-label">{row.label}</td>
-                  {(() => { const dc = diffCls(diffValsFor(row.values, row.format, result?.groups), selGroups); return row.values.map((val, i) => (
+                  {(() => { const dc = diffCls(diffValsFor(row.values, row.format, result?.groups), selGroups, row.key); return row.values.map((val, i) => (
                     <td key={i} className={"num" + dc(i)}><RateCellVal value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
                   )); })()}
                 </tr>
@@ -4590,9 +4590,9 @@ export function PaymentRateView() {
                 <tbody>
                   {(result.rows || []).map((row) => {
                     // 비교군 2개 선택 시, 같은 세그먼트끼리(전체/오가닉/비오가닉) 왼쪽 비교군에 방향 색
-                    const dcAll = diffCls(diffValsFor(result.groups.map((g) => g.bySegment.all[row.key]), row.format, result.groups), selGroups);
-                    const dcOrg = diffCls(diffValsFor(result.groups.map((g) => g.bySegment.organic[row.key]), row.format, result.groups), selGroups);
-                    const dcNon = diffCls(diffValsFor(result.groups.map((g) => g.bySegment.nonOrganic[row.key]), row.format, result.groups), selGroups);
+                    const dcAll = diffCls(diffValsFor(result.groups.map((g) => g.bySegment.all[row.key]), row.format, result.groups), selGroups, row.key);
+                    const dcOrg = diffCls(diffValsFor(result.groups.map((g) => g.bySegment.organic[row.key]), row.format, result.groups), selGroups, row.key);
+                    const dcNon = diffCls(diffValsFor(result.groups.map((g) => g.bySegment.nonOrganic[row.key]), row.format, result.groups), selGroups, row.key);
                     return (
                     <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
                       <td className="metric-label">{row.label}</td>
@@ -4624,7 +4624,7 @@ export function PaymentRateView() {
                 {(result.rows || []).map((row) => (
                   <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
                     <td className="metric-label">{row.label}</td>
-                    {(() => { const dc = diffCls(diffValsFor(row.values, row.format, result?.groups), selGroups); return row.values.map((val, i) => (
+                    {(() => { const dc = diffCls(diffValsFor(row.values, row.format, result?.groups), selGroups, row.key); return row.values.map((val, i) => (
                       <td key={i} className={"num" + dc(i)}><RateCellVal value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
                     )); })()}
                   </tr>
