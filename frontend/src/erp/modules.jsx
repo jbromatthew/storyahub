@@ -4598,9 +4598,9 @@ export function PaymentRateView() {
                       <td className="metric-label">{row.label}</td>
                       {result.groups.map((g, gi) => (
                         <React.Fragment key={g.id}>
-                          <td className={"num" + dcAll(gi)} style={{ borderLeft: "2px solid var(--line)", fontWeight: 700 }}><RateCellVal value={g.bySegment.} format={row.format} monthN={g.months?.length} /></td>
-                          <td className={"num" + dcOrg(gi)}><RateCellVal value={g.bySegment.} format={row.format} monthN={g.months?.length} /></td>
-                          <td className={"num" + dcNon(gi)}><RateCellVal value={g.bySegment.} format={row.format} monthN={g.months?.length} /></td>
+                          <td className={"num" + dcAll(gi)} style={{ borderLeft: "2px solid var(--line)", fontWeight: 700 }}><RateCellVal value={g.bySegment.all[row.key]} format={row.format} monthN={g.months?.length} /></td>
+                          <td className={"num" + dcOrg(gi)}><RateCellVal value={g.bySegment.organic[row.key]} format={row.format} monthN={g.months?.length} /></td>
+                          <td className={"num" + dcNon(gi)}><RateCellVal value={g.bySegment.nonOrganic[row.key]} format={row.format} monthN={g.months?.length} /></td>
                         </React.Fragment>
                       ))}
                     </tr>
