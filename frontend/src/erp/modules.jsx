@@ -3814,11 +3814,23 @@ export function RateDropAlerts({ result, selGroups }) {
   );
 }
 
-// 여러 달 선택 시 건수 지표에 월평균(합계÷월수) 부기 (% 지표는 이미 기간 집계율이라 제외)
-function AvgSub({ value, format, monthN }) {
-  if (format !== "number" || !monthN || monthN <= 1 || value == null || Number.isNaN(value)) return null;
-  const avg = value / monthN;
-  return <div className="rate-avg-sub">월평균 {(Math.round(avg * 10) / 10).toLocaleString()}</div>;
+// 여러 달 비교군의 건수는 월평균을 기본으로, 합계를 작게 부기 (% 지표는 기간 집계율 그대로)
+function RateCellVal({ value, format, monthN }) {
+  if (value == null || Number.isNaN(value)) return "-";
+  if (format === "percent" || !monthN || monthN <= 1) return formatRateValue(value, format);
+  const avg = Math.round((value / monthN) * 10) / 10;
+  return (
+    <>
+      {avg.toLocaleString()}
+      <div className="rate-avg-sub">합계 {Number(value).toLocaleString()}</div>
+    </>
+  );
+}
+
+// 증감 비교용 값 정규화: 건수는 월평균으로 환산해 월수 차이 왜곡 제거
+function diffValsFor(values, format, groups) {
+  if (format !== "number") return values;
+  return values.map((v, i) => (v == null || Number.isNaN(v) ? null : v / Math.max(1, groups?.[i]?.months?.length || 1)));
 }
 
 const PLAN_CELL_METRICS = [
@@ -4247,8 +4259,8 @@ function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange, selG
               {(result?.rows || []).map((row) => (
                 <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
                   <td className="metric-label">{row.label}</td>
-                  {(() => { const dc = diffCls(row.values, selGroups); return row.values.map((val, i) => (
-                    <td key={i} className={"num" + dc(i)}>{formatRateValue(val, row.format)}<AvgSub value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
+                  {(() => { const dc = diffCls(diffValsFor(row.values, row.format, result?.groups), selGroups); return row.values.map((val, i) => (
+                    <td key={i} className={"num" + dc(i)}><RateCellVal value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
                   )); })()}
                 </tr>
               ))}
@@ -4578,17 +4590,17 @@ export function PaymentRateView() {
                 <tbody>
                   {(result.rows || []).map((row) => {
                     // 비교군 2개 선택 시, 같은 세그먼트끼리(전체/오가닉/비오가닉) 왼쪽 비교군에 방향 색
-                    const dcAll = diffCls(result.groups.map((g) => g.bySegment.all[row.key]), selGroups);
-                    const dcOrg = diffCls(result.groups.map((g) => g.bySegment.organic[row.key]), selGroups);
-                    const dcNon = diffCls(result.groups.map((g) => g.bySegment.nonOrganic[row.key]), selGroups);
+                    const dcAll = diffCls(diffValsFor(result.groups.map((g) => g.bySegment.all[row.key]), row.format, result.groups), selGroups);
+                    const dcOrg = diffCls(diffValsFor(result.groups.map((g) => g.bySegment.organic[row.key]), row.format, result.groups), selGroups);
+                    const dcNon = diffCls(diffValsFor(result.groups.map((g) => g.bySegment.nonOrganic[row.key]), row.format, result.groups), selGroups);
                     return (
                     <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
                       <td className="metric-label">{row.label}</td>
                       {result.groups.map((g, gi) => (
                         <React.Fragment key={g.id}>
-                          <td className={"num" + dcAll(gi)} style={{ borderLeft: "2px solid var(--line)", fontWeight: 700 }}>{formatRateValue(g.bySegment.all[row.key], row.format)}<AvgSub value={g.bySegment.all[row.key]} format={row.format} monthN={g.months?.length} /></td>
-                          <td className={"num" + dcOrg(gi)}>{formatRateValue(g.bySegment.organic[row.key], row.format)}<AvgSub value={g.bySegment.organic[row.key]} format={row.format} monthN={g.months?.length} /></td>
-                          <td className={"num" + dcNon(gi)}>{formatRateValue(g.bySegment.nonOrganic[row.key], row.format)}<AvgSub value={g.bySegment.nonOrganic[row.key]} format={row.format} monthN={g.months?.length} /></td>
+                          <td className={"num" + dcAll(gi)} style={{ borderLeft: "2px solid var(--line)", fontWeight: 700 }}><RateCellVal value={g.bySegment.} format={row.format} monthN={g.months?.length} /></td>
+                          <td className={"num" + dcOrg(gi)}><RateCellVal value={g.bySegment.} format={row.format} monthN={g.months?.length} /></td>
+                          <td className={"num" + dcNon(gi)}><RateCellVal value={g.bySegment.} format={row.format} monthN={g.months?.length} /></td>
                         </React.Fragment>
                       ))}
                     </tr>
@@ -4612,8 +4624,8 @@ export function PaymentRateView() {
                 {(result.rows || []).map((row) => (
                   <tr key={row.key} className={row.format === "percent" ? "metric-pct" : ""}>
                     <td className="metric-label">{row.label}</td>
-                    {(() => { const dc = diffCls(row.values, selGroups); return row.values.map((val, i) => (
-                      <td key={i} className={"num" + dc(i)}>{formatRateValue(val, row.format)}<AvgSub value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
+                    {(() => { const dc = diffCls(diffValsFor(row.values, row.format, result?.groups), selGroups); return row.values.map((val, i) => (
+                      <td key={i} className={"num" + dc(i)}><RateCellVal value={val} format={row.format} monthN={result?.groups?.[i]?.months?.length} /></td>
                     )); })()}
                   </tr>
                 ))}
