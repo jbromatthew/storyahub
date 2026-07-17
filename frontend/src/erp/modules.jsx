@@ -3674,20 +3674,20 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
   if (groups.length < 2 || !otherIdxs.length) return null;
   const monthsN = groups.map((g) => Math.max(1, g.months?.length || 1));
 
-  // 차원: 전체 + 업종별 + 요금제별 (그룹 순서에 맞춘 세그먼트 지표 시리즈)
-  const dims = [{ label: "전체", perGroup: groups.map((g) => g.bySegment) }];
-  const collect = (tables, listKey, nameKey, prefix) => {
+  // 차원: 업종별 + 요금제별 (그룹 순서에 맞춘 세그먼트 지표 시리즈) — '전체'는 제외
+  const dims = [];
+  const collect = (tables, listKey, nameKey, field) => {
     if (!tables?.length) return;
     const names = [...new Set(tables.flatMap((t) => (t[listKey] || []).map((r) => r[nameKey])))];
     for (const name of names) {
       dims.push({
-        label: `${prefix} ${name}`,
+        [field]: name,
         perGroup: tables.map((t) => (t[listKey] || []).find((r) => r[nameKey] === name)?.metricsBySegment ?? null),
       });
     }
   };
-  collect(result.industryTables, "industries", "industry", "업종");
-  collect(result.planTables, "plans", "plan", "요금제");
+  collect(result.industryTables, "industries", "industry", "industry");
+  collect(result.planTables, "plans", "plan", "plan");
 
   const alerts = [];
   for (const dim of dims) {
@@ -3717,7 +3717,7 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
           const deltaPp = (baseline - baseVal) * 100;
           if (deltaPp < 3) continue; // 3%p 미만 하락은 무시
           alerts.push({
-            dim: dim.label, seg: segLabel, metric: m.label, score: deltaPp,
+            industry: dim.industry || "", plan: dim.plan || "", seg: segLabel, metric: m.label, score: deltaPp,
             now: `${(baseVal * 100).toFixed(1)}%`, base: `${(baseline * 100).toFixed(1)}%`, delta: `▼${deltaPp.toFixed(1)}%p`,
           });
         } else {
@@ -3726,7 +3726,7 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
           if (relPct < 20) continue; // 20% 미만 감소는 무시
           const r1 = (v) => (Math.round(v * 10) / 10).toLocaleString();
           alerts.push({
-            dim: dim.label, seg: segLabel, metric: `${m.label}(월평균)`, score: relPct,
+            industry: dim.industry || "", plan: dim.plan || "", seg: segLabel, metric: `${m.label}(월평균)`, score: relPct,
             now: `${r1(baseVal)}건`, base: `${r1(baseline)}건`, delta: `▼${Math.round(relPct)}%`,
           });
         }
@@ -3780,7 +3780,8 @@ export function RateDropAlerts({ result, selGroups }) {
         <table className="rate-table rate-alerts-tbl">
           <thead>
             <tr>
-              <th style={{ textAlign: "left" }}>항목</th>
+              <th style={{ textAlign: "left" }}>업종</th>
+              <th style={{ textAlign: "left" }}>요금제</th>
               <th>구분</th>
               <th style={{ textAlign: "left" }}>지표</th>
               <th>{baseLabel}</th>
@@ -3791,7 +3792,8 @@ export function RateDropAlerts({ result, selGroups }) {
           <tbody>
             {visible.map((a, i) => (
               <tr key={i}>
-                <td className="ra-dim" style={{ textAlign: "left" }}>{a.dim}</td>
+                <td className="ra-dim" style={{ textAlign: "left" }}>{a.industry || "-"}</td>
+                <td className="ra-dim" style={{ textAlign: "left" }}>{a.plan || "-"}</td>
                 <td><span className="ra-seg">{a.seg}</span></td>
                 <td style={{ textAlign: "left" }}>{a.metric}</td>
                 <td className="num ra-now">{a.now}</td>
