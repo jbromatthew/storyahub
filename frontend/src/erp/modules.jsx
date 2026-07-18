@@ -1875,8 +1875,8 @@ function printConstructionQuote(quote, apartment) {
   w.document.close();
 }
 
-// 현장 사진 한 칸 (공사전/공사후) — 업로드/썸네일/삭제
-function SitePhotoSlot({ label, mediaKey, onUpload, onRemove, busy }) {
+// 현장 사진 한 칸 (공사전/공사후) — 업로드/썸네일/다운로드/삭제
+function SitePhotoSlot({ label, mediaKey, onUpload, onRemove, busy, downloadName }) {
   const [url, setUrl] = useState(null);
   useEffect(() => {
     let alive = true;
@@ -1884,6 +1884,23 @@ function SitePhotoSlot({ label, mediaKey, onUpload, onRemove, busy }) {
     else setUrl(null);
     return () => { alive = false; };
   }, [mediaKey]);
+  const download = async () => {
+    try {
+      const u = url || (await mediaUrl(mediaKey));
+      if (!u) throw new Error("no url");
+      const blob = await fetch(u).then((r) => r.blob());
+      const ext = (String(mediaKey).split(".").pop() || "jpg").toLowerCase();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${(downloadName || label).replace(/[\\/:*?"<>|]/g, "_")}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } catch {
+      notifyError(new Error("사진 다운로드에 실패했습니다"));
+    }
+  };
   return (
     <div style={{ flex: "1 1 140px" }}>
       <div className="small" style={{ fontWeight: 700, marginBottom: 4, color: "var(--muted)" }}>{label}</div>
@@ -1892,6 +1909,7 @@ function SitePhotoSlot({ label, mediaKey, onUpload, onRemove, busy }) {
           {url
             ? <img src={url} alt={label} style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 10, border: "1px solid var(--line)", display: "block" }} />
             : <div style={{ width: "100%", height: 120, borderRadius: 10, border: "1px solid var(--line)", background: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 12 }}>불러오는 중…</div>}
+          <button type="button" className="erp-btn-dl" title="사진 다운로드" style={{ position: "absolute", top: 6, right: 40 }} onClick={download}>⬇</button>
           <button type="button" className="erp-btn-x" style={{ position: "absolute", top: 6, right: 6 }} onClick={onRemove}>✕</button>
         </div>
       ) : (
@@ -2570,8 +2588,8 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
                 <button type="button" className="cst-x" onClick={() => removeSite(i)}>✕</button>
               </div>
               <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-                <SitePhotoSlot label="공사 전" mediaKey={s.beforeKey} busy={photoBusy === `${i}-before`} onUpload={() => uploadSitePhoto(i, "before")} onRemove={() => setSite(i, { beforeKey: null })} />
-                <SitePhotoSlot label="공사 후" mediaKey={s.afterKey} busy={photoBusy === `${i}-after`} onUpload={() => uploadSitePhoto(i, "after")} onRemove={() => setSite(i, { afterKey: null })} />
+                <SitePhotoSlot label="공사 전" mediaKey={s.beforeKey} busy={photoBusy === `${i}-before`} downloadName={`${s.name || `개소${i + 1}`} 공사전`} onUpload={() => uploadSitePhoto(i, "before")} onRemove={() => setSite(i, { beforeKey: null })} />
+                <SitePhotoSlot label="공사 후" mediaKey={s.afterKey} busy={photoBusy === `${i}-after`} downloadName={`${s.name || `개소${i + 1}`} 공사후`} onUpload={() => uploadSitePhoto(i, "after")} onRemove={() => setSite(i, { afterKey: null })} />
               </div>
             </div>
           ))}

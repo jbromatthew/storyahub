@@ -555,6 +555,8 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .erp-tag-chip{display:inline-block;font-size:11px;color:var(--muted);background:#F5F1EA;border-radius:6px;padding:2px 7px;margin-right:4px;white-space:nowrap;}
 .erp-btn-x{border:1px solid var(--line);background:#fff;color:#C0392B;border-radius:8px;width:28px;height:28px;font:inherit;font-size:13px;cursor:pointer;line-height:1;}
 .erp-btn-x:hover{background:#FDECEA;border-color:#F3B8AE;}
+.erp-btn-dl{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;width:28px;height:28px;font:inherit;font-size:13px;cursor:pointer;line-height:1;}
+.erp-btn-dl:hover{background:var(--accent-soft);color:var(--accent-deep);}
 @media(max-width:560px){.erp-tbl{font-size:13px;}.erp-tbl thead th,.erp-tbl tbody td{padding:10px 12px;}}
 
 /* 카카오맵 장소검색 드롭다운 */
