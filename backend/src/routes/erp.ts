@@ -1761,8 +1761,25 @@ erpRouter.get("/install-schedule/months", async (req: AuthedRequest, res) => {
 erpRouter.get("/install-schedule", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
   const month = String(req.query.month ?? "").trim();
+  const from = cstDate(req.query.from);
+  const to = cstDate(req.query.to);
+  let where: object = {};
+  if (from || to) {
+    // 기간 조회: 시공일 범위 + (시공일 미정 건은 월이 범위 안이면 포함)
+    const dateCond = { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) };
+    const fm = from ? from.slice(0, 7).replace("-", ".") : null; // YYYY.MM
+    const tm = to ? to.slice(0, 7).replace("-", ".") : null;
+    where = {
+      OR: [
+        { installDate: dateCond },
+        { installDate: null, month: { ...(fm ? { gte: fm } : {}), ...(tm ? { lte: tm } : {}) } },
+      ],
+    };
+  } else if (month) {
+    where = { month };
+  }
   const rows = await prisma.erpInstallSchedule.findMany({
-    where: month ? { month } : {},
+    where,
     orderBy: [{ installDate: "asc" }, { sortIndex: "asc" }, { createdAt: "asc" }],
   });
   res.json({ rows: rows.map(flattenInstall) });

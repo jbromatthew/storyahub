@@ -100,6 +100,23 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .isf-f.full{grid-column:1/-1;}
 .isf-f > span{font-size:11.5px;font-weight:700;color:var(--muted);}
 @media(max-width:640px){.isf-f,.isf-f.c3,.isf-f.c4,.isf-f.c8{grid-column:1/-1;}}
+/* 설치일정 요약 칩 + 캘린더 */
+.isc-summary{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px;}
+.iscal{margin-top:10px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;}
+.iscal-hd{display:flex;align-items:center;justify-content:center;gap:14px;font-weight:800;font-size:15px;margin-bottom:10px;}
+.iscal-nav{border:1px solid var(--line);background:#fff;border-radius:8px;width:28px;height:28px;cursor:pointer;font:inherit;font-size:12px;line-height:1;}
+.iscal-nav:hover{background:var(--accent-soft);color:var(--accent-deep);}
+.iscal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+.iscal-dow{text-align:center;font-size:11.5px;font-weight:700;color:var(--muted);padding:4px 0;}
+.iscal-dow:first-child{color:#C0392B;}
+.iscal-day{min-height:64px;border:1px solid var(--line);border-radius:10px;padding:6px;background:#fff;cursor:pointer;display:flex;flex-direction:column;gap:4px;align-items:flex-start;font:inherit;text-align:left;transition:border-color .12s;}
+.iscal-day.empty{border:none;background:transparent;cursor:default;}
+.iscal-day.has{background:#FFF9F4;border-color:#F3D8C8;}
+.iscal-day.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
+.iscal-day .d{font-size:12px;font-weight:700;color:var(--muted);}
+.iscal-day.today .d{color:var(--accent-deep);text-decoration:underline;}
+.iscal-cnt{font-size:11.5px;font-weight:800;background:var(--accent);color:#fff;border-radius:8px;padding:2px 7px;}
+@media(max-width:640px){.iscal-day{min-height:46px;padding:4px;}.iscal-cnt{padding:1px 5px;font-size:10.5px;}}
 /* 확인 다이얼로그 (confirmAction) — ERP 모드에도 필요 */
 .sheetbg{position:fixed;inset:0;background:rgba(20,16,12,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeUp .2s ease both;}
 .sheet{width:100%;max-width:400px;background:var(--card);border-radius:20px;padding:20px 22px 24px;box-shadow:0 20px 60px rgba(0,0,0,.22);animation:fadeUp .22s ease both;}

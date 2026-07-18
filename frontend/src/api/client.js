@@ -354,9 +354,11 @@ export const api = {
   erpConstructionUpdateQuote: (id, data) => req(`/erp/construction/quotes/${id}`, { method: "PATCH", body: data }),
   erpConstructionDeleteQuote: (id) => req(`/erp/construction/quotes/${id}`, { method: "DELETE" }),
   erpInstallScheduleMonths: () => req("/erp/install-schedule/months"),
-  erpInstallSchedule: ({ month } = {}) => {
+  erpInstallSchedule: ({ month, from, to } = {}) => {
     const p = new URLSearchParams();
     if (month) p.set("month", month);
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
     return req(`/erp/install-schedule?${p}`);
   },
   erpInstallScheduleCreate: (data) => req("/erp/install-schedule", { method: "POST", body: data }),

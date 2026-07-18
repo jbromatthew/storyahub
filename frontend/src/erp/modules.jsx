@@ -6426,9 +6426,19 @@ function InstallField({ field, value, onChange }) {
   return <input {...common} type={field.type === "date" ? "date" : field.type === "number" ? "number" : "text"} inputMode={field.type === "number" ? "numeric" : undefined} />;
 }
 
+function fmtDateYmd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function monthRangeOf(y, m) {
+  return [`${y}-${String(m).padStart(2, "0")}-01`, fmtDateYmd(new Date(y, m, 0))];
+}
+
 export function InstallScheduleView() {
-  const [months, setMonths] = useState([]);
-  const [month, setMonth] = useState(null);
+  const today = new Date();
+  const [range, setRange] = useState(() => monthRangeOf(today.getFullYear(), today.getMonth() + 1)); // [from, to] — 둘 다 비면 전체
+  const [view, setView] = useState("list"); // list | cal
+  const [calYm, setCalYm] = useState({ y: today.getFullYear(), m: today.getMonth() + 1 });
+  const [selDay, setSelDay] = useState(null); // 캘린더에서 클릭한 날짜
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // row object being added/edited
@@ -6438,49 +6448,51 @@ export function InstallScheduleView() {
   const [tabs, setTabs] = useState(null);
   const [importing, setImporting] = useState("");
 
-  const loadMonths = useCallback(async () => {
-    try {
-      const res = await api.erpInstallScheduleMonths();
-      const list = res.months || [];
-      setMonths(list);
-      setMonth((prev) => prev || list[0] || currentInstallMonth());
-    } catch (e) { notifyError(e); }
-  }, []);
+  const rangeMonth = range[0] ? range[0].slice(0, 7).replace("-", ".") : currentInstallMonth();
 
-  const loadRows = useCallback(async (m) => {
-    if (!m) return;
+  const loadRows = useCallback(async ([from, to]) => {
     setLoading(true);
     try {
-      const res = await api.erpInstallSchedule({ month: m });
+      const res = await api.erpInstallSchedule(from || to ? { from, to } : {});
       setRows(res.rows || []);
     } catch (e) { notifyError(e); }
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { loadMonths(); }, [loadMonths]);
-  useEffect(() => { if (month) loadRows(month); }, [month, loadRows]);
+  useEffect(() => { loadRows(range); }, [range, loadRows]);
 
-  const addMonth = () => {
-    const v = window.prompt("추가할 월을 입력하세요 (예: 2025.09)", currentInstallMonth());
-    if (!v) return;
-    const m = v.trim();
-    if (!/^\d{4}\.\d{2}$/.test(m)) { notifyError(new Error("YYYY.MM 형식으로 입력하세요 (예: 2025.09)")); return; }
-    setMonths((prev) => [...new Set([m, ...prev])].sort((a, b) => b.localeCompare(a)));
-    setMonth(m);
+  const setMonthRange = (y, m) => {
+    setSelDay(null);
+    setCalYm({ y, m });
+    setRange(monthRangeOf(y, m));
   };
+  const shiftCalMonth = (delta) => {
+    const d = new Date(calYm.y, calYm.m - 1 + delta, 1);
+    setMonthRange(d.getFullYear(), d.getMonth() + 1);
+  };
+  const presetThisMonth = () => setMonthRange(today.getFullYear(), today.getMonth() + 1);
+  const presetPrevMonth = () => {
+    const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    setMonthRange(d.getFullYear(), d.getMonth() + 1);
+  };
+  const presetLast3 = () => {
+    const s = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+    setSelDay(null);
+    setRange([fmtDateYmd(s), monthRangeOf(today.getFullYear(), today.getMonth() + 1)[1]]);
+  };
+  const presetAll = () => { setSelDay(null); setRange(["", ""]); };
 
   const save = async () => {
     if (!editing) return;
     setSaving(true);
     try {
-      const payload = { ...editing, month: editing.month || month };
+      const derivedMonth = editing.installDate ? editing.installDate.slice(0, 7).replace("-", ".") : rangeMonth;
+      const payload = { ...editing, month: editing.month || derivedMonth };
       if (editing.id) await api.erpInstallScheduleUpdate(editing.id, payload);
       else await api.erpInstallScheduleCreate(payload);
       toastSuccess("저장했습니다");
       setEditing(null);
-      await loadMonths();
-      await loadRows(payload.month);
-      if (payload.month !== month) setMonth(payload.month);
+      await loadRows(range);
     } catch (e) { notifyError(e); }
     finally { setSaving(false); }
   };
@@ -6488,7 +6500,7 @@ export function InstallScheduleView() {
   const remove = async (row) => {
     const ok = await confirmAction(`이 설치일정을 삭제할까요?`, `${row.centerName || "(센터명 없음)"} · ${row.installDate || "날짜 미정"}`);
     if (!ok) return;
-    try { await api.erpInstallScheduleDelete(row.id); toastSuccess("삭제했습니다"); loadRows(month); } catch (e) { notifyError(e); }
+    try { await api.erpInstallScheduleDelete(row.id); toastSuccess("삭제했습니다"); loadRows(range); } catch (e) { notifyError(e); }
   };
 
   const openImport = async () => {
@@ -6507,8 +6519,9 @@ export function InstallScheduleView() {
       const res = await api.erpInstallScheduleImport(tab);
       toastSuccess(`${res.month} · ${res.imported}건 가져왔습니다`);
       setImportOpen(false);
-      await loadMonths();
-      setMonth(res.month);
+      const m = String(res.month || "").match(/^(\d{4})\.(\d{2})/);
+      if (m) setMonthRange(Number(m[1]), Number(m[2]));
+      else loadRows(range);
     } catch (e) { notifyError(e); }
     finally { setImporting(""); }
   };
@@ -6518,6 +6531,41 @@ export function InstallScheduleView() {
     if (!kw) return rows;
     return rows.filter((r) => [r.centerName, r.address, r.phone, r.team, r.plan].some((v) => String(v || "").toLowerCase().includes(kw)));
   }, [rows, q]);
+
+  // 구분별 건수 요약 (+ 날짜 미정)
+  const summary = useMemo(() => {
+    const byType = new Map();
+    let undated = 0;
+    for (const r of filtered) {
+      const t = String(r.type || "").trim() || "미분류";
+      byType.set(t, (byType.get(t) || 0) + 1);
+      if (!r.installDate) undated += 1;
+    }
+    return { byType: [...byType.entries()].sort((a, b) => b[1] - a[1]), undated };
+  }, [filtered]);
+
+  // 캘린더용 날짜별 건수
+  const dayCounts = useMemo(() => {
+    const m = new Map();
+    for (const r of filtered) if (r.installDate) m.set(r.installDate, (m.get(r.installDate) || 0) + 1);
+    return m;
+  }, [filtered]);
+
+  // 표에 실제 표시할 행 (캘린더에서 날짜 선택 시 그날만)
+  const tableRows = useMemo(
+    () => (view === "cal" && selDay ? filtered.filter((r) => r.installDate === selDay) : filtered),
+    [filtered, view, selDay]
+  );
+
+  // 캘린더 셀 (앞쪽 빈 칸 + 날짜들)
+  const calCells = useMemo(() => {
+    const first = new Date(calYm.y, calYm.m - 1, 1);
+    const daysN = new Date(calYm.y, calYm.m, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < first.getDay(); i++) cells.push(null);
+    for (let d = 1; d <= daysN; d++) cells.push(`${calYm.y}-${String(calYm.m).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+    return cells;
+  }, [calYm]);
 
   const fmtVal = (row, f) => {
     const v = row[f.key];
@@ -6534,19 +6582,67 @@ export function InstallScheduleView() {
         브로제이 설치 건을 월별로 관리합니다. (아파트너 공사와 별개 · 시트 동기화 없이 앱에서 직접 입력)
       </div>
 
-      <div className="dash-month-picks" style={{ marginTop: 14 }}>
-        {months.map((m) => (
-          <button key={m} type="button" className={"dash-month-chip" + (month === m ? " on" : "")} onClick={() => setMonth(m)}>{m}</button>
-        ))}
-        <button type="button" className="dash-month-chip" onClick={addMonth}>+ 월 추가</button>
+      <div className="sales-toolbar" style={{ marginTop: 14, gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span className="small" style={{ fontWeight: 700 }}>기간</span>
+        <input className="input" type="date" style={{ maxWidth: 150 }} value={range[0]} onChange={(e) => { setSelDay(null); setRange([e.target.value, range[1]]); }} />
+        <span className="small">~</span>
+        <input className="input" type="date" style={{ maxWidth: 150 }} value={range[1]} onChange={(e) => { setSelDay(null); setRange([range[0], e.target.value]); }} />
+        <button type="button" className="btn btn-sm btn-ghost" onClick={presetThisMonth}>이번 달</button>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={presetPrevMonth}>지난 달</button>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={presetLast3}>최근 3개월</button>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={presetAll}>전체</button>
+        <div className="seg" style={{ marginLeft: "auto", width: 150 }}>
+          <button type="button" className={view === "list" ? "on" : ""} onClick={() => setView("list")}>목록</button>
+          <button type="button" className={view === "cal" ? "on" : ""} onClick={() => { setView("cal"); if (range[0]) { const [y, m] = range[0].split("-").map(Number); setCalYm({ y, m }); } }}>캘린더</button>
+        </div>
       </div>
 
-      <div className="sales-toolbar" style={{ marginTop: 12, gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <button type="button" className="btn btn-sm btn-accent" onClick={() => setEditing(emptyInstallRow(month || currentInstallMonth()))}>+ 설치 건 추가</button>
+      <div className="isc-summary">
+        <span className="tag" style={{ background: "var(--accent-soft)", color: "var(--accent-deep)", fontSize: 12.5 }}>총 {filtered.length}건</span>
+        {summary.byType.map(([t, n]) => (
+          <span key={t} className="tag gray" style={{ fontSize: 12.5 }}>{t} {n}</span>
+        ))}
+        {summary.undated > 0 && <span className="tag gray" style={{ fontSize: 12.5 }}>날짜미정 {summary.undated}</span>}
+      </div>
+
+      <div className="sales-toolbar" style={{ marginTop: 10, gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button type="button" className="btn btn-sm btn-accent" onClick={() => setEditing(emptyInstallRow(rangeMonth))}>+ 설치 건 추가</button>
         <button type="button" className="btn btn-sm btn-ghost" onClick={openImport}>⭳ 시트에서 가져오기</button>
         <input className="input" style={{ maxWidth: 240, flex: "0 1 240px" }} placeholder="🔍 센터명·주소·연락처 검색" value={q} onChange={(e) => setQ(e.target.value)} />
-        <span className="tag gray" style={{ marginLeft: "auto" }}>{filtered.length}건</span>
+        {view === "cal" && selDay && (
+          <button type="button" className="btn btn-sm btn-ghost" onClick={() => setSelDay(null)}>{selDay} 선택 해제 ✕</button>
+        )}
+        <span className="tag gray" style={{ marginLeft: "auto" }}>{tableRows.length}건 표시</span>
       </div>
+
+      {view === "cal" && !loading && (
+        <div className="iscal">
+          <div className="iscal-hd">
+            <button type="button" className="iscal-nav" onClick={() => shiftCalMonth(-1)}>◀</button>
+            <span>{calYm.y}년 {calYm.m}월</span>
+            <button type="button" className="iscal-nav" onClick={() => shiftCalMonth(1)}>▶</button>
+          </div>
+          <div className="iscal-grid">
+            {["일", "월", "화", "수", "목", "금", "토"].map((d) => <div key={d} className="iscal-dow">{d}</div>)}
+            {calCells.map((d, i) => {
+              if (!d) return <div key={`e${i}`} className="iscal-day empty" />;
+              const n = dayCounts.get(d) || 0;
+              const isToday = d === fmtDateYmd(today);
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  className={"iscal-day" + (n ? " has" : "") + (selDay === d ? " sel" : "") + (isToday ? " today" : "")}
+                  onClick={() => setSelDay(selDay === d ? null : d)}
+                >
+                  <span className="d">{Number(d.slice(8))}</span>
+                  {n > 0 && <span className="iscal-cnt">{n}건</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="spinner" />
@@ -6560,7 +6656,7 @@ export function InstallScheduleView() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((row) => (
+              {tableRows.map((row) => (
                 <tr key={row.id}>
                   {INSTALL_FIELDS.map((f) => (
                     <td key={f.key} className={INSTALL_NUM_KEYS.has(f.key) ? "num" : ""} style={{ maxWidth: f.w + 60, whiteSpace: f.key === "notes" || f.key === "address" ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={String(row[f.key] ?? "")}>
@@ -6573,7 +6669,7 @@ export function InstallScheduleView() {
                   </td>
                 </tr>
               ))}
-              {!filtered.length && <tr><td colSpan={INSTALL_FIELDS.length + 1} className="erp-tbl-empty">{rows.length ? "검색 결과가 없습니다" : "설치 건이 없습니다. “+ 설치 건 추가”로 시작하세요."}</td></tr>}
+              {!tableRows.length && <tr><td colSpan={INSTALL_FIELDS.length + 1} className="erp-tbl-empty">{rows.length ? (selDay ? "선택한 날짜에 설치 건이 없습니다" : "검색 결과가 없습니다") : "이 기간에 설치 건이 없습니다. “+ 설치 건 추가”로 시작하세요."}</td></tr>}
             </tbody>
           </table>
         </div>
