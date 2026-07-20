@@ -3692,20 +3692,20 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
   if (groups.length < 2 || !otherIdxs.length) return null;
   const monthsN = groups.map((g) => Math.max(1, g.months?.length || 1));
 
-  // 차원: 업종별 + 요금제별 (그룹 순서에 맞춘 세그먼트 지표 시리즈) — '전체'는 제외
+  // 차원: 업종×요금제 교차 조합만 (그룹 순서에 맞춘 세그먼트 지표 시리즈)
   const dims = [];
-  const collect = (tables, listKey, nameKey, field) => {
-    if (!tables?.length) return;
-    const names = [...new Set(tables.flatMap((t) => (t[listKey] || []).map((r) => r[nameKey])))];
-    for (const name of names) {
+  const ipTables = result.industryPlanTables;
+  if (ipTables?.length) {
+    const keys = [...new Set(ipTables.flatMap((t) => (t.items || []).map((r) => `${r.industry}|||${r.plan}`)))];
+    for (const key of keys) {
+      const [industry, plan] = key.split("|||");
       dims.push({
-        [field]: name,
-        perGroup: tables.map((t) => (t[listKey] || []).find((r) => r[nameKey] === name)?.metricsBySegment ?? null),
+        industry,
+        plan,
+        perGroup: ipTables.map((t) => (t.items || []).find((r) => r.industry === industry && r.plan === plan)?.metricsBySegment ?? null),
       });
     }
-  };
-  collect(result.industryTables, "industries", "industry", "industry");
-  collect(result.planTables, "plans", "plan", "plan");
+  }
 
   const alerts = [];
   for (const dim of dims) {

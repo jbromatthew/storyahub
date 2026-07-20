@@ -303,6 +303,7 @@ export async function computePaymentRate(query: PaymentRateQuery) {
       planTables: [],
       assigneeTables: [],
       industryTables: [],
+      industryPlanTables: [],
       timeline: [],
     };
   }
@@ -329,6 +330,7 @@ export async function computePaymentRate(query: PaymentRateQuery) {
     const byPlan = new Map<string, SegCounts>();
     const byAssignee = new Map<string, SegCounts>();
     const byIndustry = new Map<string, SegCounts>();
+    const byIndustryPlan = new Map<string, SegCounts>();
 
     for (const rawMonth of group.months) {
       const month = normalizeMonthSheet(rawMonth);
@@ -357,6 +359,11 @@ export async function computePaymentRate(query: PaymentRateQuery) {
         addToCounts(industryBucket.all, data);
         if (seg) addToCounts(industryBucket[seg], data);
         byIndustry.set(industry, industryBucket);
+        const ipKey = `${industry}|||${plan}`;
+        const ipBucket = byIndustryPlan.get(ipKey) ?? emptySegCounts();
+        addToCounts(ipBucket.all, data);
+        if (seg) addToCounts(ipBucket[seg], data);
+        byIndustryPlan.set(ipKey, ipBucket);
       }
     }
 
@@ -401,6 +408,10 @@ export async function computePaymentRate(query: PaymentRateQuery) {
           const b = byIndustry.get(name) ?? emptySegCounts();
           return { industry: name, metrics: withRates(b.all), metricsBySegment: segMetrics(b) };
         }),
+      byIndustryPlan: [...byIndustryPlan.entries()].map(([key, b]) => {
+        const [industry, plan] = key.split("|||");
+        return { industry, plan, metrics: withRates(b.all), metricsBySegment: segMetrics(b) };
+      }),
     };
   });
 
@@ -439,6 +450,11 @@ export async function computePaymentRate(query: PaymentRateQuery) {
       groupId: g.id,
       groupLabel: g.label,
       industries: g.byIndustry,
+    })),
+    industryPlanTables: groups.map((g) => ({
+      groupId: g.id,
+      groupLabel: g.label,
+      items: g.byIndustryPlan,
     })),
   };
 }
