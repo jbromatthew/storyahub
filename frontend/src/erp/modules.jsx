@@ -3757,6 +3757,7 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
           const oPay = others.reduce((s, o) => s + o.pay, 0);
           alerts.push({
             industry: dim.industry || "", plan: dim.plan || "", agg: !!dim.agg, seg: segLabel, metric: m.label, score: deltaPp,
+            nowV: baseVal, baseV: baseline,
             now: `${(baseVal * 100).toFixed(1)}%`, base: `${(baseline * 100).toFixed(1)}%`, delta: `▼${deltaPp.toFixed(1)}%p`,
             nowSub: `상담 ${r1((baseSeg.consulting ?? 0) / baseM)} · 결제 ${r1((baseSeg.monthlyPayment ?? 0) / baseM)}`,
             baseSub: `상담 ${r1(oCons / oM)} · 결제 ${r1(oPay / oM)}`,
@@ -3783,6 +3784,9 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
 
 export function RateDropAlerts({ result, selGroups }) {
   const [showAll, setShowAll] = useState(false);
+  const [sort, setSort] = useState({ key: "score", dir: "desc" });
+  const clickSort = (key, numericDefault) =>
+    setSort((p) => (p.key === key ? { key, dir: p.dir === "desc" ? "asc" : "desc" } : { key, dir: numericDefault ? "desc" : "asc" }));
   // 비교군 클릭 선택에 따라 기준·비교 대상 결정: 0개=첫 군 vs 나머지, 1개=그 군 vs 나머지, 2개=왼쪽 vs 오른쪽
   const { baseIdx, otherIdxs } = useMemo(() => {
     const n = result?.groups?.length || 0;
@@ -3796,6 +3800,16 @@ export function RateDropAlerts({ result, selGroups }) {
     return { baseIdx: base, otherIdxs: [...Array(n).keys()].filter((i) => i !== base) };
   }, [result, selGroups]);
   const alerts = useMemo(() => buildDropAlerts(result, baseIdx, otherIdxs), [result, baseIdx, otherIdxs]);
+  const sorted = useMemo(() => {
+    if (!alerts) return [];
+    const mul = sort.dir === "asc" ? 1 : -1;
+    return [...alerts].sort((a, b) => {
+      const av = a[sort.key];
+      const bv = b[sort.key];
+      if (typeof av === "number" && typeof bv === "number") return (av - bv) * mul;
+      return String(av ?? "").localeCompare(String(bv ?? ""), "ko") * mul;
+    });
+  }, [alerts, sort]);
   if (alerts == null) return null; // 비교군 2개 미만
   const baseLabel = result?.groups?.[baseIdx]?.label || "기준군";
   const otherLabels = otherIdxs.map((i) => result?.groups?.[i]?.label).filter(Boolean).join("·");
@@ -3807,7 +3821,7 @@ export function RateDropAlerts({ result, selGroups }) {
       </div>
     );
   }
-  const visible = showAll ? alerts : alerts.slice(0, 8);
+  const visible = showAll ? sorted : sorted.slice(0, 8);
   const now = new Date();
   const curSheet = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.`;
   const baseInProgress = (result?.groups?.[baseIdx]?.months || []).includes(curSheet);
@@ -3824,13 +3838,24 @@ export function RateDropAlerts({ result, selGroups }) {
         <table className="rate-table rate-alerts-tbl">
           <thead>
             <tr>
-              <th style={{ textAlign: "left" }}>업종</th>
-              <th style={{ textAlign: "left" }}>요금제</th>
-              <th>구분</th>
-              <th style={{ textAlign: "left" }}>지표</th>
-              <th>{baseLabel}</th>
-              <th>{otherIdxs.length > 1 ? "비교군 평균" : otherLabels}</th>
-              <th>하락</th>
+              {[
+                { key: "industry", label: "업종", left: true },
+                { key: "plan", label: "요금제", left: true },
+                { key: "seg", label: "구분" },
+                { key: "metric", label: "지표", left: true },
+                { key: "nowV", label: baseLabel, num: true },
+                { key: "baseV", label: otherIdxs.length > 1 ? "비교군 평균" : otherLabels, num: true },
+                { key: "score", label: "하락", num: true },
+              ].map((c) => (
+                <th
+                  key={c.key}
+                  title="클릭하면 정렬"
+                  onClick={() => clickSort(c.key, c.num)}
+                  style={{ cursor: "pointer", userSelect: "none", ...(c.left ? { textAlign: "left" } : {}) }}
+                >
+                  {c.label}{sort.key === c.key ? (sort.dir === "desc" ? " ▼" : " ▲") : ""}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
