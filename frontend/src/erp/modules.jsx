@@ -3691,20 +3691,8 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
   if (groups.length < 2 || !otherIdxs.length) return null;
   const monthsN = groups.map((g) => Math.max(1, g.months?.length || 1));
 
-  // 차원: 업종 전체(요금제 합산) + 업종×요금제 교차 조합
+  // 차원: 업종×요금제 교차 조합 (요금제별 각각의 하락률)
   const dims = [];
-  // 업종 수준 합산 — 조합이 잘게 쪼개져 표본 컷(문의 5건)에 걸려도 업종 단위 하락은 잡히게
-  const indTables = result.industryTables;
-  if (indTables?.length) {
-    const names = [...new Set(indTables.flatMap((t) => (t.industries || []).map((r) => r.industry)))];
-    for (const name of names) {
-      dims.push({
-        industry: name,
-        plan: "(전체)",
-        perGroup: indTables.map((t) => (t.industries || []).find((r) => r.industry === name)?.metricsBySegment ?? null),
-      });
-    }
-  }
   const ipTables = result.industryPlanTables;
   if (ipTables?.length) {
     const keys = [...new Set(ipTables.flatMap((t) => (t.items || []).map((r) => `${r.industry}|||${r.plan}`)))];
@@ -3741,10 +3729,10 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
         const baseline = others.reduce((s, o) => s + o.v, 0) / others.length;
         if (!(baseVal < baseline)) continue;
         if (m.type === "rate") {
-          // 표본이 너무 작으면 노이즈 — 문의 5건 미만은 제외
-          if ((baseSeg.inquiries ?? 0) < 5 || others.reduce((s, o) => s + o.inq, 0) < 5) continue;
           // 상담진행이 아직 없으면 0%는 '떨어짐'이 아니라 판단 불가 — 제외
           if ((baseSeg.consulting ?? 0) < 1) continue;
+          // 비교 기준 쪽 표본이 너무 작으면 % 자체가 불안정 — 문의 합 5건 미만 제외
+          if (others.reduce((s, o) => s + o.inq, 0) < 5) continue;
           const deltaPp = (baseline - baseVal) * 100;
           if (deltaPp < 3) continue; // 3%p 미만 하락은 무시
           alerts.push({
