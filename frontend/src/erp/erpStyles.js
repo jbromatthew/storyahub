@@ -563,6 +563,7 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .erp-tbl tbody tr.clickable:hover td{background:#FBF7F3;}
 .erp-tbl th.num,.erp-tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .erp-tbl th.ctr,.erp-tbl td.ctr{text-align:center;}
+.erp-tbl.erp-tbl-center thead th,.erp-tbl.erp-tbl-center tbody td{text-align:center;}
 .erp-tbl th.shrink,.erp-tbl td.shrink{width:1%;white-space:nowrap;}
 .erp-tbl .cell-ttl{font-weight:700;color:var(--ink);}
 .erp-tbl .cell-sub{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.35;}

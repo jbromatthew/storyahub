@@ -6880,10 +6880,10 @@ export function ConsultDocsView() {
           <div className="rate-plan-block">
             <div className="rate-plan-title">담당자별 통계</div>
             <div className="erp-tbl-wrap">
-              <table className="erp-tbl">
+              <table className="erp-tbl erp-tbl-center">
                 <thead>
                   <tr>
-                    <th style={{ textAlign: "left" }}>담당자</th>
+                    <th>담당자</th>
                     <th>등록</th>
                     <th>COO 승인</th>
                     <th>CEO 승인</th>
@@ -6921,13 +6921,13 @@ export function ConsultDocsView() {
           <div className="rate-plan-block">
             <div className="rate-plan-title">자료 목록 <span className="small" style={{ fontWeight: 500 }}>({docs.length}건)</span></div>
             <div className="erp-tbl-wrap">
-              <table className="erp-tbl">
+              <table className="erp-tbl erp-tbl-center">
                 <thead>
                   <tr>
                     <th style={{ whiteSpace: "nowrap" }}>등록일</th>
                     <th style={{ whiteSpace: "nowrap" }}>담당자</th>
-                    <th style={{ textAlign: "left" }}>매크로명</th>
-                    <th style={{ textAlign: "left" }}>링크·메모</th>
+                    <th>매크로명</th>
+                    <th>링크·메모</th>
                     <th>COO 승인</th>
                     <th>CEO 승인</th>
                     <th>관리</th>
@@ -6938,8 +6938,8 @@ export function ConsultDocsView() {
                     <tr key={d.id}>
                       <td style={{ whiteSpace: "nowrap" }}>{new Date(d.createdAt).toLocaleDateString("ko-KR", { year: "2-digit", month: "numeric", day: "numeric" })}</td>
                       <td style={{ whiteSpace: "nowrap", fontWeight: 700 }}>{d.authorName}</td>
-                      <td style={{ textAlign: "left", fontWeight: 700 }}>{d.title}</td>
-                      <td style={{ textAlign: "left", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.note || ""}>
+                      <td style={{ fontWeight: 700 }}>{d.title}</td>
+                      <td style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.note || ""}>
                         {/^https?:\/\//.test(d.note || "") ? <a href={d.note} target="_blank" rel="noreferrer">{d.note}</a> : (d.note || "-")}
                       </td>
                       <td><ConsultApproveCell approved={d.cooApproved} at={d.cooAt} mine={role === "coo"} busy={busyId === d.id} onToggle={() => toggleApprove(d)} /></td>
