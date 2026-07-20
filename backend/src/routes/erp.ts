@@ -1825,6 +1825,98 @@ erpRouter.delete("/install-schedule/:id", async (req: AuthedRequest, res) => {
   res.json({ ok: true });
 });
 
+// ── 상담자료(매크로) 컨펌 — 세일즈팀 등록, CEO/COO 승인 ──
+const CONSULT_CEO_EMAIL = "david@broj.company";
+const CONSULT_COO_EMAIL = "matthew@broj.company";
+
+async function consultAccess(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, name: true },
+  });
+  const email = (user?.email || "").trim().toLowerCase();
+  const role: "ceo" | "coo" | null =
+    email === CONSULT_CEO_EMAIL ? "ceo" : email === CONSULT_COO_EMAIL ? "coo" : null;
+  const emp = await prisma.erpEmployee.findFirst({
+    where: { OR: [{ userId }, { email }] },
+    include: { department: true },
+  });
+  const deptName = emp?.department?.name || "";
+  const canUpload = /세일즈|영업|sales/i.test(deptName);
+  return {
+    user,
+    role,
+    canUpload,
+    visible: canUpload || role != null,
+    displayName: emp?.name || user?.name || email,
+  };
+}
+
+erpRouter.get("/consult-docs/access", async (req: AuthedRequest, res) => {
+  const a = await consultAccess(req.userId!);
+  res.json({ visible: a.visible, canUpload: a.canUpload, role: a.role });
+});
+
+erpRouter.get("/consult-docs", async (req: AuthedRequest, res) => {
+  const a = await consultAccess(req.userId!);
+  if (!a.visible) return res.status(403).json({ error: "세일즈팀 및 승인권자 전용 메뉴입니다" });
+  const from = cstDate(req.query.from);
+  const to = cstDate(req.query.to);
+  const where: Record<string, unknown> = {};
+  if (from || to) {
+    where.createdAt = {
+      ...(from ? { gte: new Date(`${from}T00:00:00+09:00`) } : {}),
+      ...(to ? { lte: new Date(`${to}T23:59:59+09:00`) } : {}),
+    };
+  }
+  const docs = await prisma.erpConsultDoc.findMany({ where, orderBy: { createdAt: "desc" } });
+  res.json({ docs, canUpload: a.canUpload, role: a.role });
+});
+
+erpRouter.post("/consult-docs", async (req: AuthedRequest, res) => {
+  const a = await consultAccess(req.userId!);
+  if (!a.canUpload) return res.status(403).json({ error: "상담자료 등록은 세일즈팀만 할 수 있습니다" });
+  const title = String(req.body?.title ?? "").trim();
+  const note = String(req.body?.note ?? "").trim();
+  if (!title) return res.status(400).json({ error: "매크로명을 입력하세요" });
+  const doc = await prisma.erpConsultDoc.create({
+    data: {
+      title,
+      note: note || null,
+      authorId: a.user!.id,
+      authorName: a.displayName,
+      authorEmail: (a.user!.email || "").toLowerCase(),
+    },
+  });
+  res.json(doc);
+});
+
+erpRouter.post("/consult-docs/:id/approve", async (req: AuthedRequest, res) => {
+  const a = await consultAccess(req.userId!);
+  if (!a.role) return res.status(403).json({ error: "승인은 CEO·COO만 할 수 있습니다" });
+  const value = !!req.body?.value;
+  const doc = await prisma.erpConsultDoc.update({
+    where: { id: req.params.id },
+    data: a.role === "ceo"
+      ? { ceoApproved: value, ceoAt: value ? new Date() : null }
+      : { cooApproved: value, cooAt: value ? new Date() : null },
+  });
+  res.json(doc);
+});
+
+erpRouter.delete("/consult-docs/:id", async (req: AuthedRequest, res) => {
+  const a = await consultAccess(req.userId!);
+  const doc = await prisma.erpConsultDoc.findUnique({ where: { id: req.params.id } });
+  if (!doc) return res.status(404).json({ error: "자료를 찾을 수 없습니다" });
+  const isAuthor = doc.authorId === a.user?.id;
+  // 작성자는 승인 전까지만, 승인권자는 언제나 삭제 가능
+  if (!a.role && !(isAuthor && !doc.cooApproved && !doc.ceoApproved)) {
+    return res.status(403).json({ error: "본인이 올린 승인 전 자료만 삭제할 수 있습니다" });
+  }
+  await prisma.erpConsultDoc.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
 // 설치일정 원본 시트 (BROJ 설치 일정) — 시트에서 1회 가져오기(import) 용
 const INSTALL_SHEET_ID = "1wPBJTDtlNT8VCluPhIJioiC5hyNiLp2uPe507T9jDPo";
 

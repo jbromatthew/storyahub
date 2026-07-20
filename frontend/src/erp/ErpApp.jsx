@@ -12,7 +12,7 @@ import { userPreferences } from "../preferences.js";
 import { ERP_CSS } from "./erpStyles.js";
 import { ERP_MODULES, ERP_ADMIN_MODULES } from "./config.js";
 import { erpIcons as I } from "./icons.jsx";
-import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesDashboardView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, MembersView } from "./modules.jsx";
+import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesDashboardView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, ConsultDocsView, MembersView } from "./modules.jsx";
 
 function NavBtn({ on, icon, label, onClick, layout = "side" }) {
   const cls = layout === "side" ? "sidenavitem" : "sidenavitem";
@@ -36,12 +36,12 @@ function erpModuleLabel(id) {
     || "ERP";
 }
 
-function ErpNav({ tab, kbView, onSelect, onLogout, user }) {
+function ErpNav({ tab, kbView, onSelect, onLogout, user, hiddenIds }) {
   const showAdmin = canAccessErpAdmin(user);
   return (
     <>
       <div className="sidenav-top">
-        {ERP_MODULES.filter((m) => !m.ownerOnly || user?.erpAccess?.isOwner).map((m, i, arr) => {
+        {ERP_MODULES.filter((m) => (!m.ownerOnly || user?.erpAccess?.isOwner) && !(m.consultGate && !hiddenIds?.consultVisible)).map((m, i, arr) => {
           const prev = arr[i - 1];
           const showGroup = m.groupLabel && m.groupLabel !== prev?.groupLabel;
           return (
@@ -115,6 +115,12 @@ export default function ErpApp() {
   const [kbView, setKbView] = useState(null);
   const [shareTarget, setShareTarget] = useState(null);
   const [fileViewer, setFileViewer] = useState(null);
+  const [consultVisible, setConsultVisible] = useState(false); // 상담자료 컨펌 메뉴 노출 (세일즈팀·CEO·COO)
+
+  useEffect(() => {
+    if (boot !== "app") return;
+    api.erpConsultAccess().then((a) => setConsultVisible(!!a?.visible)).catch(() => setConsultVisible(false));
+  }, [boot]);
 
   const loadKb = useCallback(async () => {
     const kb = await api.listKb();
@@ -298,6 +304,7 @@ export default function ErpApp() {
       case "construction-broj": return <ConstructionView orderType="브로제이" />;
       case "vendors": return <VendorsView />;
       case "install-schedule": return <InstallScheduleView />;
+      case "consult-docs": return <ConsultDocsView />;
       case "sales-daily": return <SalesDailyView />;
       default: return <KnowledgeFeed articles={kbArticles} section="knowledge" openWrite={openKbWrite} erpMode />;
     }
@@ -319,7 +326,7 @@ export default function ErpApp() {
               </button>
             </div>
             <nav className="app-sidenav">
-              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} user={user} />
+              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} user={user} hiddenIds={{ consultVisible }} />
             </nav>
             <div className="app-sidebar-foot" style={{ fontSize: 12, color: "var(--muted)", padding: "12px 10px" }}>
               <div>지식경영 · 회의록 · OKR · 문의/결제</div>
@@ -369,7 +376,7 @@ export default function ErpApp() {
               </button>
             </div>
             <nav className="mobile-drawer-nav">
-              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} onLogout={handleLogout} user={user} />
+              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} onLogout={handleLogout} user={user} hiddenIds={{ consultVisible }} />
             </nav>
           </aside>
         </>

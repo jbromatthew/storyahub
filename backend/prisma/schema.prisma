@@ -778,6 +778,25 @@ model ErpConstructionStockMove {
   @@index([stockId])
 }
 
+// 상담자료(매크로) 컨펌 — 세일즈팀 등록, CEO/COO 승인 체크
+model ErpConsultDoc {
+  id          String    @id @default(cuid())
+  title       String    // 매크로명
+  note        String?   // 링크·메모
+  authorId    String
+  authorName  String
+  authorEmail String
+  cooApproved Boolean   @default(false)
+  cooAt       DateTime?
+  ceoApproved Boolean   @default(false)
+  ceoAt       DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([createdAt])
+  @@index([authorEmail])
+}
+
 // 브로제이 설치일정 (아파트너와 완전 별개, 시트 동기화 없이 앱에서 직접 관리)
 model ErpInstallSchedule {
   id          String   @id @default(cuid())

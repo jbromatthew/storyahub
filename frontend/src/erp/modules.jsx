@@ -6745,3 +6745,217 @@ export function InstallScheduleView() {
     </div>
   );
 }
+
+// ───────── 상담자료(매크로) 컨펌 — 세일즈팀 등록, CEO/COO 승인 ─────────
+function quarterRangeOf(y, q) {
+  const sm = (q - 1) * 3;
+  return [fmtDateYmd(new Date(y, sm, 1)), fmtDateYmd(new Date(y, sm + 3, 0))];
+}
+
+// 승인 칸: 내 권한이면 토글 버튼, 아니면 상태 표시
+function ConsultApproveCell({ approved, at, mine, busy, onToggle }) {
+  const dateStr = at ? new Date(at).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" }) : null;
+  if (!mine) {
+    return approved
+      ? <span className="cd-ok" title={dateStr || ""}>✓{dateStr ? <em>{dateStr}</em> : null}</span>
+      : <span className="cd-wait">─</span>;
+  }
+  return (
+    <button type="button" className={"cd-toggle" + (approved ? " on" : "")} disabled={busy} onClick={onToggle} title={approved ? "승인 취소" : "승인"}>
+      {approved ? <>✓{dateStr ? <em>{dateStr}</em> : null}</> : "승인"}
+    </button>
+  );
+}
+
+export function ConsultDocsView() {
+  const today = new Date();
+  const curQ = Math.floor(today.getMonth() / 3) + 1;
+  const [range, setRange] = useState(() => quarterRangeOf(today.getFullYear(), curQ));
+  const [docs, setDocs] = useState([]);
+  const [canUpload, setCanUpload] = useState(false);
+  const [role, setRole] = useState(null); // "ceo" | "coo" | null
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ title: "", note: "" });
+  const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState("");
+
+  const load = useCallback(async ([from, to]) => {
+    setLoading(true);
+    try {
+      const res = await api.erpConsultDocs(from || to ? { from, to } : {});
+      setDocs(res.docs || []);
+      setCanUpload(!!res.canUpload);
+      setRole(res.role || null);
+    } catch (e) { notifyError(e); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(range); }, [range, load]);
+
+  const submit = async () => {
+    if (!form.title.trim()) { notifyError(new Error("매크로명을 입력하세요")); return; }
+    setSaving(true);
+    try {
+      await api.erpConsultCreate({ title: form.title, note: form.note });
+      toastSuccess("등록했습니다");
+      setForm({ title: "", note: "" });
+      load(range);
+    } catch (e) { notifyError(e); }
+    finally { setSaving(false); }
+  };
+
+  const toggleApprove = async (doc) => {
+    const cur = role === "ceo" ? doc.ceoApproved : doc.cooApproved;
+    setBusyId(doc.id);
+    try {
+      const updated = await api.erpConsultApprove(doc.id, !cur);
+      setDocs((prev) => prev.map((d) => (d.id === doc.id ? updated : d)));
+    } catch (e) { notifyError(e); }
+    finally { setBusyId(""); }
+  };
+
+  const removeDoc = async (doc) => {
+    const ok = await confirmAction(`'${doc.title}' 자료를 삭제할까요?`, `${doc.authorName} · ${new Date(doc.createdAt).toLocaleDateString("ko-KR")}`);
+    if (!ok) return;
+    try { await api.erpConsultDelete(doc.id); toastSuccess("삭제했습니다"); load(range); } catch (e) { notifyError(e); }
+  };
+
+  // 담당자별 통계: 등록 / COO 승인 / CEO 승인 / 완료(둘 다) / 완료율
+  const stats = useMemo(() => {
+    const map = new Map();
+    for (const d of docs) {
+      const k = d.authorName || d.authorEmail;
+      const s = map.get(k) || { name: k, total: 0, coo: 0, ceo: 0, done: 0 };
+      s.total += 1;
+      if (d.cooApproved) s.coo += 1;
+      if (d.ceoApproved) s.ceo += 1;
+      if (d.cooApproved && d.ceoApproved) s.done += 1;
+      map.set(k, s);
+    }
+    const rows = [...map.values()].sort((a, b) => b.total - a.total);
+    const sum = rows.reduce((acc, r) => ({ total: acc.total + r.total, coo: acc.coo + r.coo, ceo: acc.ceo + r.ceo, done: acc.done + r.done }), { total: 0, coo: 0, ceo: 0, done: 0 });
+    return { rows, sum };
+  }, [docs]);
+
+  const pct = (a, b) => (b > 0 ? `${Math.round((a / b) * 100)}%` : "-");
+  const presetQ = (offset) => {
+    const base = new Date(today.getFullYear(), today.getMonth() + offset * 3, 1);
+    const q = Math.floor(base.getMonth() / 3) + 1;
+    setRange(quarterRangeOf(base.getFullYear(), q));
+  };
+
+  return (
+    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">Sales</div>
+      <div className="h-title">상담자료 컨펌</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+        세일즈팀이 상담자료(매크로)를 등록하면 COO·CEO가 각각 승인합니다. 담당자는 올린 사람으로 자동 지정됩니다.
+        {role && <> · <strong>{role === "ceo" ? "CEO" : "COO"} 승인 권한</strong>으로 접속 중</>}
+      </div>
+
+      <div className="sales-toolbar" style={{ marginTop: 14, gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span className="small" style={{ fontWeight: 700 }}>기간</span>
+        <input className="input" type="date" style={{ maxWidth: 150 }} value={range[0]} onChange={(e) => setRange([e.target.value, range[1]])} />
+        <span className="small">~</span>
+        <input className="input" type="date" style={{ maxWidth: 150 }} value={range[1]} onChange={(e) => setRange([range[0], e.target.value])} />
+        <button type="button" className="btn btn-sm btn-ghost" onClick={() => presetQ(0)}>이번 분기</button>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={() => presetQ(-1)}>지난 분기</button>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setRange(monthRangeOf(today.getFullYear(), today.getMonth() + 1))}>이번 달</button>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setRange(["", ""])}>전체</button>
+      </div>
+
+      {canUpload && (
+        <div className="card" style={{ marginTop: 12, padding: 14 }}>
+          <div className="small" style={{ fontWeight: 800, marginBottom: 8, color: "var(--accent-deep)" }}>새 상담자료 등록</div>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <input className="input" style={{ flex: "2 1 220px" }} placeholder="매크로명 (예: 신규상담_요금안내_v3)" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+            <input className="input" style={{ flex: "3 1 260px" }} placeholder="링크·메모 (선택)" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+            <button type="button" className="btn btn-accent btn-sm" style={{ flex: "0 0 auto" }} disabled={saving} onClick={submit}>{saving ? "등록 중…" : "등록"}</button>
+          </div>
+        </div>
+      )}
+
+      {loading ? <div className="spinner" /> : (
+        <>
+          <div className="rate-plan-block">
+            <div className="rate-plan-title">담당자별 통계</div>
+            <div className="erp-tbl-wrap">
+              <table className="erp-tbl">
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left" }}>담당자</th>
+                    <th>등록</th>
+                    <th>COO 승인</th>
+                    <th>CEO 승인</th>
+                    <th>완료(둘 다)</th>
+                    <th>완료율</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.rows.map((r) => (
+                    <tr key={r.name}>
+                      <td style={{ fontWeight: 700 }}>{r.name}</td>
+                      <td className="num">{r.total}</td>
+                      <td className="num">{r.coo}</td>
+                      <td className="num">{r.ceo}</td>
+                      <td className="num" style={{ fontWeight: 800 }}>{r.done}</td>
+                      <td className="num">{pct(r.done, r.total)}</td>
+                    </tr>
+                  ))}
+                  {stats.rows.length > 0 && (
+                    <tr style={{ background: "#FFF8F0", fontWeight: 800 }}>
+                      <td>합계</td>
+                      <td className="num">{stats.sum.total}</td>
+                      <td className="num">{stats.sum.coo}</td>
+                      <td className="num">{stats.sum.ceo}</td>
+                      <td className="num">{stats.sum.done}</td>
+                      <td className="num">{pct(stats.sum.done, stats.sum.total)}</td>
+                    </tr>
+                  )}
+                  {!stats.rows.length && <tr><td colSpan={6} className="erp-tbl-empty">이 기간에 등록된 자료가 없습니다</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rate-plan-block">
+            <div className="rate-plan-title">자료 목록 <span className="small" style={{ fontWeight: 500 }}>({docs.length}건)</span></div>
+            <div className="erp-tbl-wrap">
+              <table className="erp-tbl">
+                <thead>
+                  <tr>
+                    <th style={{ whiteSpace: "nowrap" }}>등록일</th>
+                    <th style={{ whiteSpace: "nowrap" }}>담당자</th>
+                    <th style={{ textAlign: "left" }}>매크로명</th>
+                    <th style={{ textAlign: "left" }}>링크·메모</th>
+                    <th>COO 승인</th>
+                    <th>CEO 승인</th>
+                    <th>관리</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {docs.map((d) => (
+                    <tr key={d.id}>
+                      <td style={{ whiteSpace: "nowrap" }}>{new Date(d.createdAt).toLocaleDateString("ko-KR", { year: "2-digit", month: "numeric", day: "numeric" })}</td>
+                      <td style={{ whiteSpace: "nowrap", fontWeight: 700 }}>{d.authorName}</td>
+                      <td style={{ textAlign: "left", fontWeight: 700 }}>{d.title}</td>
+                      <td style={{ textAlign: "left", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.note || ""}>
+                        {/^https?:\/\//.test(d.note || "") ? <a href={d.note} target="_blank" rel="noreferrer">{d.note}</a> : (d.note || "-")}
+                      </td>
+                      <td><ConsultApproveCell approved={d.cooApproved} at={d.cooAt} mine={role === "coo"} busy={busyId === d.id} onToggle={() => toggleApprove(d)} /></td>
+                      <td><ConsultApproveCell approved={d.ceoApproved} at={d.ceoAt} mine={role === "ceo"} busy={busyId === d.id} onToggle={() => toggleApprove(d)} /></td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => removeDoc(d)}>삭제</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!docs.length && <tr><td colSpan={7} className="erp-tbl-empty">이 기간에 등록된 자료가 없습니다. {canUpload ? "위에서 첫 자료를 등록해 보세요." : ""}</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

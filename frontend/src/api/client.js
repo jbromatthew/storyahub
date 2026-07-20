@@ -364,6 +364,16 @@ export const api = {
   erpInstallScheduleCreate: (data) => req("/erp/install-schedule", { method: "POST", body: data }),
   erpInstallScheduleUpdate: (id, data) => req(`/erp/install-schedule/${id}`, { method: "PATCH", body: data }),
   erpInstallScheduleDelete: (id) => req(`/erp/install-schedule/${id}`, { method: "DELETE" }),
+  erpConsultAccess: () => req("/erp/consult-docs/access"),
+  erpConsultDocs: ({ from, to } = {}) => {
+    const p = new URLSearchParams();
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    return req(`/erp/consult-docs?${p}`);
+  },
+  erpConsultCreate: (data) => req("/erp/consult-docs", { method: "POST", body: data }),
+  erpConsultApprove: (id, value) => req(`/erp/consult-docs/${id}/approve`, { method: "POST", body: { value } }),
+  erpConsultDelete: (id) => req(`/erp/consult-docs/${id}`, { method: "DELETE" }),
   erpInstallScheduleSheetTabs: () => req("/erp/install-schedule/sheet-tabs"),
   erpInstallScheduleImport: (sheetName) => req("/erp/install-schedule/import", { method: "POST", body: { sheetName } }),
   erpSalesTaxInvoices: ({ month } = {}) => {

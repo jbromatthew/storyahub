@@ -100,6 +100,13 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .isf-f.full{grid-column:1/-1;}
 .isf-f > span{font-size:11.5px;font-weight:700;color:var(--muted);}
 @media(max-width:640px){.isf-f,.isf-f.c3,.isf-f.c4,.isf-f.c8{grid-column:1/-1;}}
+/* 상담자료 컨펌 승인 칸 */
+.cd-ok{display:inline-flex;align-items:center;gap:4px;color:#2E7D32;font-weight:800;}
+.cd-ok em,.cd-toggle em{font-style:normal;font-size:10.5px;font-weight:600;color:var(--muted);}
+.cd-wait{color:#C8C1B5;font-weight:700;}
+.cd-toggle{border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 10px;font:inherit;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:4px;}
+.cd-toggle:hover{border-color:var(--accent);color:var(--accent-deep);}
+.cd-toggle.on{background:#EAF6EA;border-color:#BFE0BF;color:#2E7D32;}
 /* 설치일정 요약 칩 + 캘린더 */
 .isc-summary{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px;}
 .iscal{margin-top:10px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;}
