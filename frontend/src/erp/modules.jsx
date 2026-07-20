@@ -3692,6 +3692,8 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
   const monthsN = groups.map((g) => Math.max(1, g.months?.length || 1));
 
   // 차원: 업종×요금제 교차 조합 (요금제별 각각의 하락률)
+  // + 업종 합산(agg)은 요금제별로 원인이 특정되지 않는 구성 변화 하락을 보조로 잡는 용도 —
+  //   같은 업종·세그먼트에 요금제별 행이 하나라도 있으면 표시하지 않음
   const dims = [];
   const ipTables = result.industryPlanTables;
   if (ipTables?.length) {
@@ -3702,6 +3704,18 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
         industry,
         plan,
         perGroup: ipTables.map((t) => (t.items || []).find((r) => r.industry === industry && r.plan === plan)?.metricsBySegment ?? null),
+      });
+    }
+  }
+  const indTables = result.industryTables;
+  if (indTables?.length) {
+    const names = [...new Set(indTables.flatMap((t) => (t.industries || []).map((r) => r.industry)))];
+    for (const name of names) {
+      dims.push({
+        industry: name,
+        plan: "종합",
+        agg: true,
+        perGroup: indTables.map((t) => (t.industries || []).find((r) => r.industry === name)?.metricsBySegment ?? null),
       });
     }
   }
@@ -3736,7 +3750,7 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
           const deltaPp = (baseline - baseVal) * 100;
           if (deltaPp < 3) continue; // 3%p 미만 하락은 무시
           alerts.push({
-            industry: dim.industry || "", plan: dim.plan || "", seg: segLabel, metric: m.label, score: deltaPp,
+            industry: dim.industry || "", plan: dim.plan || "", agg: !!dim.agg, seg: segLabel, metric: m.label, score: deltaPp,
             now: `${(baseVal * 100).toFixed(1)}%`, base: `${(baseline * 100).toFixed(1)}%`, delta: `▼${deltaPp.toFixed(1)}%p`,
           });
         } else {
@@ -3745,15 +3759,18 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
           if (relPct < 20) continue; // 20% 미만 감소는 무시
           const r1 = (v) => (Math.round(v * 10) / 10).toLocaleString();
           alerts.push({
-            industry: dim.industry || "", plan: dim.plan || "", seg: segLabel, metric: `${m.label}(월평균)`, score: relPct,
+            industry: dim.industry || "", plan: dim.plan || "", agg: !!dim.agg, seg: segLabel, metric: `${m.label}(월평균)`, score: relPct,
             now: `${r1(baseVal)}건`, base: `${r1(baseline)}건`, delta: `▼${Math.round(relPct)}%`,
           });
         }
       }
     }
   }
-  alerts.sort((a, b) => b.score - a.score);
-  return alerts;
+  // 업종 종합(agg) 행은 같은 업종·구분에 요금제별 행이 하나도 없을 때만 남긴다
+  const planHit = new Set(alerts.filter((a) => !a.agg).map((a) => `${a.industry}|${a.seg}`));
+  const finalAlerts = alerts.filter((a) => !a.agg || !planHit.has(`${a.industry}|${a.seg}`));
+  finalAlerts.sort((a, b) => b.score - a.score);
+  return finalAlerts;
 }
 
 export function RateDropAlerts({ result, selGroups }) {
