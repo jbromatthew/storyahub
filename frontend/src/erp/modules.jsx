@@ -3737,7 +3737,7 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
         for (const gi of otherIdxs) {
           const seg = dim.perGroup[gi]?.[segKey];
           const v = norm(seg, gi);
-          if (v != null) others.push({ v, inq: seg?.inquiries ?? 0, cons: seg?.consulting ?? 0, pay: seg?.monthlyPayment ?? 0 });
+          if (v != null) others.push({ v, inq: seg?.inquiries ?? 0, cons: seg?.consulting ?? 0, pay: seg?.monthlyPayment ?? 0, mN: monthsN[gi] });
         }
         if (!others.length) continue;
         const baseline = others.reduce((s, o) => s + o.v, 0) / others.length;
@@ -3749,13 +3749,17 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
           if (others.reduce((s, o) => s + o.inq, 0) < 5) continue;
           const deltaPp = (baseline - baseVal) * 100;
           if (deltaPp < 3) continue; // 3%p 미만 하락은 무시
+          // 상담·결제 부기도 월평균으로 (기준군·비교군 모두 월수로 나눔)
+          const r1 = (v) => (Math.round(v * 10) / 10).toLocaleString();
+          const baseM = monthsN[baseIdx];
+          const oM = others.reduce((s, o) => s + o.mN, 0) || 1;
           const oCons = others.reduce((s, o) => s + o.cons, 0);
           const oPay = others.reduce((s, o) => s + o.pay, 0);
           alerts.push({
             industry: dim.industry || "", plan: dim.plan || "", agg: !!dim.agg, seg: segLabel, metric: m.label, score: deltaPp,
             now: `${(baseVal * 100).toFixed(1)}%`, base: `${(baseline * 100).toFixed(1)}%`, delta: `▼${deltaPp.toFixed(1)}%p`,
-            nowSub: `상담 ${baseSeg.consulting ?? 0} · 결제 ${baseSeg.monthlyPayment ?? 0}`,
-            baseSub: `상담 ${oCons} · 결제 ${oPay}`,
+            nowSub: `상담 ${r1((baseSeg.consulting ?? 0) / baseM)} · 결제 ${r1((baseSeg.monthlyPayment ?? 0) / baseM)}`,
+            baseSub: `상담 ${r1(oCons / oM)} · 결제 ${r1(oPay / oM)}`,
           });
         } else {
           if (baseline < 2) continue; // 월평균 2건 미만 모수는 제외
