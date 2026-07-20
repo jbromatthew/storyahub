@@ -3667,7 +3667,7 @@ function formatRateValue(value, format) {
 
 // 비교군 2개를 클릭하면 왼쪽 비교군 셀에 방향 색: 오른쪽보다 떨어지면 분홍, 올라가면 파랑
 // 당월 결제 관련 행(당월 결제·당월 결제전환율)에만 적용
-const DIFF_ROW_KEYS = new Set(["monthlyPayment", "monthlyRate"]);
+const DIFF_ROW_KEYS = new Set(["monthlyRate"]);
 function diffCls(values, selGroups, rowKey) {
   if (!DIFF_ROW_KEYS.has(rowKey)) return () => "";
   if (!selGroups || selGroups.length !== 2) return () => "";
@@ -3682,7 +3682,6 @@ function diffCls(values, selGroups, rowKey) {
 
 // ─── 떨어진 지표 자동 점검: 기준군(첫 비교군) vs 나머지 비교군 평균 ───
 const DROP_METRICS = [
-  { key: "monthlyPayment", label: "당월 결제", type: "count" },
   { key: "monthlyRate", label: "당월 전환율", type: "rate" },
 ];
 const DROP_SEGS = [["all", "전체"], ["organic", "오가닉"], ["nonOrganic", "비오가닉"]];
