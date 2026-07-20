@@ -3731,6 +3731,8 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
         if (m.type === "rate") {
           // 표본이 너무 작으면 노이즈 — 문의 5건 미만은 제외
           if ((baseSeg.inquiries ?? 0) < 5 || others.reduce((s, o) => s + o.inq, 0) < 5) continue;
+          // 상담진행이 아직 없으면 0%는 '떨어짐'이 아니라 판단 불가 — 제외
+          if ((baseSeg.consulting ?? 0) < 1) continue;
           const deltaPp = (baseline - baseVal) * 100;
           if (deltaPp < 3) continue; // 3%p 미만 하락은 무시
           alerts.push({
