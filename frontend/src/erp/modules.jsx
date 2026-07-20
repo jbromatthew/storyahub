@@ -3737,7 +3737,7 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
         for (const gi of otherIdxs) {
           const seg = dim.perGroup[gi]?.[segKey];
           const v = norm(seg, gi);
-          if (v != null) others.push({ v, inq: seg?.inquiries ?? 0 });
+          if (v != null) others.push({ v, inq: seg?.inquiries ?? 0, cons: seg?.consulting ?? 0, pay: seg?.monthlyPayment ?? 0 });
         }
         if (!others.length) continue;
         const baseline = others.reduce((s, o) => s + o.v, 0) / others.length;
@@ -3749,9 +3749,13 @@ function buildDropAlerts(result, baseIdx, otherIdxs) {
           if (others.reduce((s, o) => s + o.inq, 0) < 5) continue;
           const deltaPp = (baseline - baseVal) * 100;
           if (deltaPp < 3) continue; // 3%p 미만 하락은 무시
+          const oCons = others.reduce((s, o) => s + o.cons, 0);
+          const oPay = others.reduce((s, o) => s + o.pay, 0);
           alerts.push({
             industry: dim.industry || "", plan: dim.plan || "", agg: !!dim.agg, seg: segLabel, metric: m.label, score: deltaPp,
             now: `${(baseVal * 100).toFixed(1)}%`, base: `${(baseline * 100).toFixed(1)}%`, delta: `▼${deltaPp.toFixed(1)}%p`,
+            nowSub: `상담 ${baseSeg.consulting ?? 0} · 결제 ${baseSeg.monthlyPayment ?? 0}`,
+            baseSub: `상담 ${oCons} · 결제 ${oPay}`,
           });
         } else {
           if (baseline < 2) continue; // 월평균 2건 미만 모수는 제외
@@ -3832,8 +3836,8 @@ export function RateDropAlerts({ result, selGroups }) {
                 <td className="ra-dim" style={{ textAlign: "left" }}>{a.plan || "-"}</td>
                 <td><span className="ra-seg">{a.seg}</span></td>
                 <td style={{ textAlign: "left" }}>{a.metric}</td>
-                <td className="num ra-now">{a.now}</td>
-                <td className="num">{a.base}</td>
+                <td className="num ra-now">{a.now}{a.nowSub && <div className="rate-avg-sub">{a.nowSub}</div>}</td>
+                <td className="num">{a.base}{a.baseSub && <div className="rate-avg-sub">{a.baseSub}</div>}</td>
                 <td className="num ra-delta">{a.delta}</td>
               </tr>
             ))}
@@ -6963,7 +6967,9 @@ export function ConsultDocsView() {
                       <td><ConsultApproveCell approved={d.cooApproved} at={d.cooAt} mine={role === "coo"} busy={busyId === d.id} onToggle={() => toggleApprove(d)} /></td>
                       <td><ConsultApproveCell approved={d.ceoApproved} at={d.ceoAt} mine={role === "ceo"} busy={busyId === d.id} onToggle={() => toggleApprove(d)} /></td>
                       <td style={{ whiteSpace: "nowrap" }}>
-                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => removeDoc(d)}>삭제</button>
+                        {role === "coo"
+                          ? <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => removeDoc(d)}>삭제</button>
+                          : <span className="small">-</span>}
                       </td>
                     </tr>
                   ))}

@@ -1906,13 +1906,10 @@ erpRouter.post("/consult-docs/:id/approve", async (req: AuthedRequest, res) => {
 
 erpRouter.delete("/consult-docs/:id", async (req: AuthedRequest, res) => {
   const a = await consultAccess(req.userId!);
+  // 삭제는 COO(matthew)만 가능
+  if (a.role !== "coo") return res.status(403).json({ error: "삭제 권한이 없습니다 (COO 전용)" });
   const doc = await prisma.erpConsultDoc.findUnique({ where: { id: req.params.id } });
   if (!doc) return res.status(404).json({ error: "자료를 찾을 수 없습니다" });
-  const isAuthor = doc.authorId === a.user?.id;
-  // 작성자는 승인 전까지만, 승인권자는 언제나 삭제 가능
-  if (!a.role && !(isAuthor && !doc.cooApproved && !doc.ceoApproved)) {
-    return res.status(403).json({ error: "본인이 올린 승인 전 자료만 삭제할 수 있습니다" });
-  }
   await prisma.erpConsultDoc.delete({ where: { id: req.params.id } });
   res.json({ ok: true });
 });
