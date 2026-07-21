@@ -34,6 +34,7 @@ import { erpRouter } from "./routes/erp.js";
 import { salesSyncRouter } from "./routes/salesSync.js";
 import { constructionPublicRouter } from "./routes/constructionPublic.js";
 import { startPurgeScheduler } from "./services/purge.js";
+import { startSalesDashboardWarmer } from "./services/salesDashboard.js";
 
 const app = express();
 applySecurityMiddleware(app);
@@ -106,6 +107,7 @@ app.listen(env.port, () => {
       console.log("PostgreSQL (RDS) connected");
       // 결제 없는 배포에서는 만료 데이터 삭제(purge)를 절대 돌리지 않는다.
       if (!env.erpMode && !env.billingDisabled) startPurgeScheduler();
+      startSalesDashboardWarmer();
     })
     .catch((e) => console.warn("PostgreSQL unreachable — check DATABASE_URL / RDS security group:", (e as Error).message));
 });

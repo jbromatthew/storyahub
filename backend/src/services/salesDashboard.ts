@@ -1054,6 +1054,29 @@ export async function writeDashboardGoalsToSheet(
   return { updated: updates.length };
 }
 
+/**
+ * 세일즈 계기판 캐시 워머 — 4분마다 당월 데이터를 미리 갱신해 두어
+ * 오랜만에 열어도 첫 화면이 캐시에서 즉시 나오게 한다.
+ */
+export function startSalesDashboardWarmer(): void {
+  const warm = async () => {
+    try {
+      invalidateSheetCache("db:sales-order-lite");
+      invalidateSheetCache("db:sales-inquiry-lite");
+      const months = await listDashboardMonths();
+      const now = new Date();
+      const cur = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.`;
+      const month = months.includes(cur) ? cur : months[0];
+      if (month) invalidateSheetCache(`grid:${dashboardSpreadsheetId()}:${month}`);
+      await getSalesDashboard(month);
+    } catch {
+      // 워머 실패는 무시 — 다음 주기에 재시도, 실제 요청은 자체 조회로 동작
+    }
+  };
+  setTimeout(warm, 5_000);
+  setInterval(warm, 4 * 60_000);
+}
+
 export async function getSalesDashboard(month?: string): Promise<SalesDashboardData> {
   const spreadsheetId = dashboardSpreadsheetId();
   const months = await listDashboardMonths();
