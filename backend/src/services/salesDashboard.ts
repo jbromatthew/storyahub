@@ -748,6 +748,81 @@ function buildIndustryDrilldowns(
   return out;
 }
 
+// '5. 업종X요금제' 섹션 파싱: 업종별 3열(목표/현황/미달) 블록 × 요금제 행 매트릭스
+type IndustryPlanSheet = {
+  found: boolean;
+  goals: Record<string, Record<string, number>>; // {업종: {요금제: 목표}}
+  industryGoalCols: Record<string, number>; // {업종: 목표 열 인덱스}
+  planRowIdx: Record<string, number>; // {요금제: 행 인덱스}
+};
+
+function parseIndustryPlanSheet(grid: string[][]): IndustryPlanSheet {
+  const empty: IndustryPlanSheet = { found: false, goals: {}, industryGoalCols: {}, planRowIdx: {} };
+  // 섹션 라벨은 임의 위치(예: AZ31)에 있을 수 있음 — 전체 그리드에서 탐색
+  let sectionRow = -1;
+  let baseCol = -1;
+  outer: for (let i = 0; i < grid.length; i++) {
+    const row = grid[i] ?? [];
+    for (let c = 0; c < row.length; c++) {
+      const s = String(row[c] ?? "").replace(/\s/g, "");
+      if (/^5\.업종[X×]요금제/i.test(s)) {
+        sectionRow = i;
+        baseCol = c;
+        break outer;
+      }
+    }
+  }
+  if (sectionRow < 0) return empty;
+
+  const indRow = grid[sectionRow + 1] ?? [];
+  const subRow = grid[sectionRow + 2] ?? [];
+  // 업종 블록: 업종명이 있는 열부터, 그 아래 줄에서 '목표' 열 찾기
+  const industryGoalCols: Record<string, number> = {};
+  for (let c = baseCol + 1; c < indRow.length; c++) {
+    const name = (indRow[c] || "").trim();
+    if (!name || name === "합계") continue;
+    for (let k = c; k < Math.min(c + 4, subRow.length); k++) {
+      if ((subRow[k] || "").trim() === "목표") {
+        industryGoalCols[name] = k;
+        break;
+      }
+    }
+  }
+  if (!Object.keys(industryGoalCols).length) return empty;
+
+  const goals: Record<string, Record<string, number>> = {};
+  const planRowIdx: Record<string, number> = {};
+  for (let r = sectionRow + 3; r < grid.length; r++) {
+    const label = (grid[r]?.[baseCol] ?? "").trim();
+    if (!label) continue;
+    if (label === "합계") break;
+    if (/^\d+\./.test(label.replace(/\s/g, ""))) break; // 다음 섹션
+    planRowIdx[label] = r;
+    for (const [ind, col] of Object.entries(industryGoalCols)) {
+      const raw = (grid[r]?.[col] ?? "").trim();
+      if (raw === "") continue;
+      const n = parseNum(raw);
+      if (!goals[ind]) goals[ind] = {};
+      if (n > 0) goals[ind][label] = n;
+    }
+  }
+  return { found: true, goals, industryGoalCols, planRowIdx };
+}
+
+/** 시트 매트릭스(기본) 위에 셀 단위로 시트 값 우선 병합 — 시트에 값이 없으면 DB 오버라이드 사용 */
+function mergeIndustryPlanGoals(
+  sheet: Record<string, Record<string, number>>,
+  db: Record<string, Record<string, number>>
+): Record<string, Record<string, number>> {
+  const out: Record<string, Record<string, number>> = {};
+  const inds = new Set([...Object.keys(sheet), ...Object.keys(db)]);
+  for (const ind of inds) {
+    const row: Record<string, number> = { ...(db[ind] || {}), ...(sheet[ind] || {}) };
+    if (Object.keys(row).length) out[ind] = row;
+  }
+  return out;
+}
+
 function mergeIndustryGoals(
   sheetLabels: string[],
   sheetGoals: number[],
@@ -875,6 +950,20 @@ export async function writeDashboardGoalsToSheet(
   }
   collect(/^3\.요금제별/, planTotals);
 
+  // '5. 업종X요금제' 매트릭스에 업종×요금제 목표 셀 단위 역기록
+  const ipSheet = parseIndustryPlanSheet(grid);
+  if (ipSheet.found) {
+    for (const [ind, planGoals] of Object.entries(overrides.industryPlanGoals)) {
+      const col = ipSheet.industryGoalCols[ind];
+      if (col == null) continue;
+      for (const [plan, v] of Object.entries(planGoals)) {
+        const row = ipSheet.planRowIdx[plan];
+        if (row == null) continue;
+        updates.push({ range: `'${month}'!${colLetter(col)}${row + 1}`, value: v });
+      }
+    }
+  }
+
   await batchUpdateValues(spreadsheetId, updates);
   return { updated: updates.length };
 }
@@ -904,6 +993,12 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
   const planWeek = planRow >= 0 ? parseSectionWeekData(grid, planRow) : null;
 
   const goalOverrides = await loadDashboardGoalOverrides(selectedMonth);
+  // '5. 업종X요금제' 시트 매트릭스를 기본으로, DB 오버라이드는 시트에 값 없는 셀만 보충
+  const sheetIPG = parseIndustryPlanSheet(grid);
+  const effOverrides: DashboardGoalOverrides = {
+    ...goalOverrides,
+    industryPlanGoals: mergeIndustryPlanGoals(sheetIPG.goals, goalOverrides.industryPlanGoals),
+  };
   const mergedIndustry = mergeIndustryGoals(
     industryParsed.labels,
     industryParsed.goals,
@@ -921,7 +1016,7 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
   const weekly = buildWeeklyBreakdown(channelWeek, industryWeek, planWeek, counts);
   const industryDrilldowns = buildIndustryDrilldowns(
     counts,
-    goalOverrides,
+    effOverrides,
     industryWeek,
     mergedIndustry,
     inquiryStats.byIndustry,
@@ -930,11 +1025,11 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
   const drillWeekLabels = resolveWeekLabels(industryWeek ?? channelWeek ?? planWeek, counts);
   const channelDrilldowns = buildDimensionDrilldowns("channel", counts, channelParsed, drillWeekLabels);
   const planDrilldowns = buildDimensionDrilldowns("plan", counts, planParsed, drillWeekLabels);
-  const industryPlan = buildIndustryPlanSection(goalOverrides, counts);
+  const industryPlan = buildIndustryPlanSection(effOverrides, counts);
   const inboundGoal = mergedIndustry.goals.reduce((s, g) => s + g, 0);
   const totalGoal = summaryMeta.totalGoal || inboundGoal;
   const actual = counts.total;
-  const goalWarnings = validateIndustryPlanGoals(goalOverrides);
+  const goalWarnings = validateIndustryPlanGoals(effOverrides);
   const goalsCustomized =
     Object.keys(goalOverrides.industryGoals).length > 0 ||
     Object.keys(goalOverrides.industryPlanGoals).length > 0 ||
