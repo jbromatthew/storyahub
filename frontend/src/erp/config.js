@@ -10,9 +10,9 @@ export const ERP_MODULES = [
   { id: "sales-inquiry-trend", label: "문의 월간추이", icon: "trend", group: "sales" },
   { id: "sales-trend", label: "세일즈 월간추이", icon: "trend", group: "sales" },
   { id: "sales-dashboard", label: "세일즈 계기판", icon: "gauge", group: "sales" },
-  { id: "sales-tax-invoice", label: "세금계산서 미발행", icon: "board", group: "sales" },
   // 세일즈팀 + CEO/COO(승인권자)에게만 노출 — ErpApp에서 /erp/consult-docs/access로 판별
-  { id: "consult-docs", label: "상담자료 컨펌", icon: "meet", group: "sales", consultGate: true },
+  { id: "consult-docs", label: "상담자료 컨펌", icon: "meet", group: "sales-docs", groupLabel: "세일즈 자료", consultGate: true },
+  { id: "sales-tax-invoice", label: "세금계산서 미발행", icon: "board", group: "mgmt", groupLabel: "경영지원팀" },
   { id: "construction", label: "아파트너 공사관리", icon: "board", group: "construction", groupLabel: "공사 관리 (나만)", ownerOnly: true },
   // 브로제이 공사는 플로우가 달라 별도 관리 예정 — 잠시 메뉴에서 숨김 (라우트·orderType는 그대로 유지)
   // { id: "construction-broj", label: "브로제이 공사관리", icon: "board", group: "construction", ownerOnly: true },
