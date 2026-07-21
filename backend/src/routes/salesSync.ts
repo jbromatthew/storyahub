@@ -33,6 +33,7 @@ import {
 import { getUnissuedTaxInvoices } from "../services/salesTaxInvoice.js";
 import {
   getSalesDashboard,
+  writeDashboardGoalsToSheet,
   listDashboardMonths,
   saveDashboardGoalOverrides,
 } from "../services/salesDashboard.js";
@@ -184,16 +185,23 @@ salesSyncRouter.put("/dashboard/goals", async (req: AuthedRequest, res: Response
     return res.status(400).json({ error: "month과 목표 데이터가 필요합니다" });
   }
   try {
-    await saveDashboardGoalOverrides(
-      parsed.data.month,
-      {
-        industryGoals: parsed.data.industryGoals ?? {},
-        industryPlanGoals: parsed.data.industryPlanGoals ?? {},
-        industryChannelGoals: parsed.data.industryChannelGoals ?? {},
-      },
-      req.userId
-    );
-    res.json(await getSalesDashboard(parsed.data.month));
+    const overrides = {
+      industryGoals: parsed.data.industryGoals ?? {},
+      industryPlanGoals: parsed.data.industryPlanGoals ?? {},
+      industryChannelGoals: parsed.data.industryChannelGoals ?? {},
+    };
+    await saveDashboardGoalOverrides(parsed.data.month, overrides, req.userId);
+    // 시트 역기록 — 실패해도 DB 저장은 유지 (권한 없으면 안내만)
+    let sheetSync: { ok: boolean; updated?: number; error?: string };
+    try {
+      const r = await writeDashboardGoalsToSheet(parsed.data.month, overrides);
+      sheetSync = { ok: true, updated: r.updated };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      sheetSync = { ok: false, error: /permission|forbidden|403/i.test(msg) ? "시트 편집 권한 없음 — sheets-sync 서비스 계정을 편집자로 공유하세요" : msg };
+    }
+    const dash = await getSalesDashboard(parsed.data.month);
+    res.json({ ...dash, sheetSync });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: msg });

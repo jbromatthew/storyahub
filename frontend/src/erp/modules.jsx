@@ -5679,6 +5679,8 @@ export function SalesDashboardView() {
         setData(res);
         setDraftGoals(cloneGoalOverrides(res));
         setEditMode(false);
+        if (res.sheetSync?.ok) toastSuccess(`목표 저장 완료 · 시트에도 ${res.sheetSync.updated}칸 반영`);
+        else if (res.sheetSync) notifyError(new Error(`목표는 저장됐지만 시트 반영 실패: ${res.sheetSync.error}`));
       })
       .catch(notifyError)
       .finally(() => setSavingGoals(false));
@@ -5700,7 +5702,9 @@ export function SalesDashboardView() {
       .then((res) => {
         setData(res);
         setDraftGoals(cloneGoalOverrides(res));
-        toastSuccess("목표를 저장했어요");
+        if (res.sheetSync?.ok) toastSuccess(`목표 저장 완료 · 시트에도 ${res.sheetSync.updated}칸 반영`);
+        else if (res.sheetSync) notifyError(new Error(`목표는 저장됐지만 시트 반영 실패: ${res.sheetSync.error}`));
+        else toastSuccess("목표를 저장했어요");
       })
       .catch(notifyError)
       .finally(() => setSavingGoals(false));
@@ -5750,7 +5754,7 @@ export function SalesDashboardView() {
       <div className="h-eyebrow">Sales</div>
       <div className="h-title">세일즈 계기판</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
-        월별 목표는 <strong>대시보드 시트</strong>에서 불러오며, 앱에서 수정한 목표는 <strong>DB에 저장</strong>됩니다. (시트에는 아직 자동 반영되지 않음)
+        월별 목표는 <strong>대시보드 시트</strong>에서 불러오고, 앱에서 수정하면 <strong>시트에도 자동 반영</strong>됩니다.
         현황은 결제 주문 DB의 <strong>신규센터</strong> 건수입니다. <strong>업종·채널·요금제</strong> 항목을 누르면 하위 분해(요금제·채널·업종·주차별) 상세를 볼 수 있습니다.
         {" "}<strong>당월 문의 목표</strong>는 대시보드 시트 상단에 <strong>‘문의 목표’</strong> 칸을 만들어 옆에 숫자를 넣으면 표시되고, 문의 현황은 문의 시트의 당월 신규문의 건수입니다.
         {data?.spreadsheetUrl && (
@@ -5765,17 +5769,19 @@ export function SalesDashboardView() {
       </div>
 
       {months.length > 0 && (
-        <div className="dash-month-picks">
-          {months.map((m) => (
-            <button
-              key={m}
-              type="button"
-              className={"dash-month-chip" + (data?.month === m ? " on" : "")}
-              onClick={() => setSelectedMonth(m)}
-            >
-              {m.replace(/\.$/, "")}
-            </button>
-          ))}
+        <div className="sales-toolbar" style={{ marginTop: 12, alignItems: "center", gap: 8 }}>
+          <span className="small" style={{ fontWeight: 700 }}>월</span>
+          <select
+            className="input"
+            style={{ maxWidth: 150 }}
+            value={data?.month || ""}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+          >
+            {months.map((m) => (
+              <option key={m} value={m}>{m.replace(/\.$/, "")}</option>
+            ))}
+          </select>
+          <span className="small">시트에 월 탭을 추가하면 자동으로 목록에 뜹니다</span>
         </div>
       )}
 

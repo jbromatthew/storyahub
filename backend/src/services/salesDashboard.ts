@@ -2,6 +2,7 @@ import { prisma } from "../db.js";
 import { env } from "../env.js";
 import {
   fetchSheetGrid,
+  batchUpdateValues,
   listMonthSheets,
   parseOrderRowDate,
   parseOrderRowMonth,
@@ -823,6 +824,59 @@ function buildIndustryPlanSection(
 
 export async function listDashboardMonths(): Promise<string[]> {
   return listMonthSheets(dashboardSpreadsheetId());
+}
+
+function colLetter(i: number): string {
+  let s = "";
+  let n = i + 1;
+  while (n > 0) {
+    s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+/** 앱에서 수정한 목표를 대시보드 시트에 역기록 (업종별 목표 행 + 요금제별 목표 행) */
+export async function writeDashboardGoalsToSheet(
+  month: string,
+  overrides: DashboardGoalOverrides
+): Promise<{ updated: number }> {
+  const spreadsheetId = dashboardSpreadsheetId();
+  const grid = await fetchSheetGrid(spreadsheetId, month);
+  const updates: Array<{ range: string; value: number }> = [];
+
+  const collect = (sectionPattern: RegExp, goals: Record<string, number>) => {
+    if (!Object.keys(goals).length) return;
+    const sectionRow = findSectionRow(grid, sectionPattern);
+    if (sectionRow < 0) return;
+    const headerRow = sectionRow + 1;
+    const headers = grid[headerRow] ?? [];
+    let goalRow = -1;
+    for (let r = headerRow + 1; r < Math.min(headerRow + 8, grid.length); r++) {
+      if ((grid[r]?.[1] || "").trim() === "목표") {
+        goalRow = r;
+        break;
+      }
+    }
+    if (goalRow < 0) return;
+    for (let c = 2; c < headers.length; c++) {
+      const h = (headers[c] || "").trim();
+      if (h === "합계") break;
+      if (!h || goals[h] == null) continue;
+      updates.push({ range: `'${month}'!${colLetter(c)}${goalRow + 1}`, value: goals[h] });
+    }
+  };
+
+  collect(/^2\.업종별/, overrides.industryGoals);
+  // 요금제별 목표 행 = 업종×요금제 목표의 요금제별 합계
+  const planTotals: Record<string, number> = {};
+  for (const row of Object.values(overrides.industryPlanGoals)) {
+    for (const [plan, v] of Object.entries(row)) planTotals[plan] = (planTotals[plan] ?? 0) + v;
+  }
+  collect(/^3\.요금제별/, planTotals);
+
+  await batchUpdateValues(spreadsheetId, updates);
+  return { updated: updates.length };
 }
 
 export async function getSalesDashboard(month?: string): Promise<SalesDashboardData> {

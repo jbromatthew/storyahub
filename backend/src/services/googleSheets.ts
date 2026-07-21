@@ -10,7 +10,7 @@ const ORDER_RAW_SHEET_RE = /2022\.06\s*~\s*Raw/i;
 const INQUIRY_HISTORICAL_CUTOFF_YM = 202510;
 /** 2026년 1월 이전은 결제 주문 Raw 시트에서 월별 분리 */
 export const ORDER_MONTHLY_SYNC_FROM_YM = 202601;
-const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly";
+const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"; // 읽기+쓰기 (목표 역기록용)
 
 export type SheetRow = {
   sheetRow: number;
@@ -324,6 +324,22 @@ export function inquiryExternalKey(data: Record<string, string>, sheetRow: numbe
 
 export function orderExternalKey(sheetRow: number): string {
   return `row:${sheetRow}`;
+}
+
+/** 여러 셀을 한 번에 쓰기 (목표 역기록용) */
+export async function batchUpdateValues(
+  spreadsheetId: string,
+  updates: Array<{ range: string; value: number | string }>
+): Promise<void> {
+  if (!updates.length) return;
+  const sheets = getSheetsClient();
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      valueInputOption: "USER_ENTERED",
+      data: updates.map((u) => ({ range: u.range, values: [[u.value]] })),
+    },
+  });
 }
 
 /** 여러 범위를 한 번에 읽기 (batchGet) */
