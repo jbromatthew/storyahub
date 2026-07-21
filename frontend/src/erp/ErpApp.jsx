@@ -14,10 +14,10 @@ import { ERP_MODULES, ERP_ADMIN_MODULES } from "./config.js";
 import { erpIcons as I } from "./icons.jsx";
 import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesDashboardView, BrojDashboardView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, ConsultDocsView, MembersView } from "./modules.jsx";
 
-function NavBtn({ on, icon, label, onClick, layout = "side" }) {
+function NavBtn({ on, icon, label, onClick, hidden, layout = "side" }) {
   const cls = layout === "side" ? "sidenavitem" : "sidenavitem";
   return (
-    <button type="button" className={cls + (on ? " on" : "")} title={label} onClick={onClick}>
+    <button type="button" className={cls + (on ? " on" : "") + (hidden ? " sidenav-hide" : "")} title={label} onClick={onClick}>
       {icon({ width: 20, height: 20 })}<span>{label}</span>
     </button>
   );
@@ -36,21 +36,38 @@ function erpModuleLabel(id) {
     || "ERP";
 }
 
-function ErpNav({ tab, kbView, onSelect, onLogout, user, hiddenIds }) {
+function ErpNav({ tab, kbView, onSelect, onLogout, user, hiddenIds, collapsedGroups, onToggleGroup }) {
   const showAdmin = canAccessErpAdmin(user);
+  const items = ERP_MODULES.filter((m) => (!m.ownerOnly || user?.erpAccess?.isOwner) && !(m.consultGate && !hiddenIds?.consultVisible));
+  // 그룹 헤더가 있는 그룹만 접기 대상 (지식경영 등 헤더 없는 항목은 항상 표시)
+  const collapsibleGroups = new Set(items.filter((m) => m.groupLabel).map((m) => m.group));
+  const isClosed = (g) => collapsibleGroups.has(g) && (collapsedGroups || []).includes(g);
   return (
     <>
       <div className="sidenav-top">
-        {ERP_MODULES.filter((m) => (!m.ownerOnly || user?.erpAccess?.isOwner) && !(m.consultGate && !hiddenIds?.consultVisible)).map((m, i, arr) => {
+        {items.map((m, i, arr) => {
           const prev = arr[i - 1];
           const showGroup = m.groupLabel && m.groupLabel !== prev?.groupLabel;
+          const closed = isClosed(m.group);
+          const groupHasActive = closed && arr.some((x) => x.group === m.group && x.id === tab && !kbView);
           return (
             <React.Fragment key={m.id}>
-              {showGroup && <div className="sidenav-group">{m.groupLabel}</div>}
+              {showGroup && (
+                <button
+                  type="button"
+                  className={"sidenav-group sidenav-group-toggle" + (groupHasActive ? " has-on" : "")}
+                  onClick={() => onToggleGroup?.(m.group)}
+                  title={closed ? "펼치기" : "접기"}
+                >
+                  <span>{m.groupLabel}</span>
+                  <span className="chev">{closed ? "▸" : "▾"}</span>
+                </button>
+              )}
               <NavBtn
                 on={tab === m.id && !kbView}
                 icon={I[m.icon] || I.book}
                 label={m.label}
+                hidden={closed}
                 onClick={() => onSelect(m.id)}
               />
             </React.Fragment>
@@ -109,6 +126,14 @@ export default function ErpApp() {
   const toggleSidebar = () => setSideCollapsed((v) => {
     const next = !v;
     try { localStorage.setItem("erp_side_collapsed", next ? "1" : "0"); } catch { /* ignore */ }
+    return next;
+  });
+  const [collapsedGroups, setCollapsedGroups] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("erp_groups_collapsed") || "[]"); } catch { return []; }
+  });
+  const toggleGroup = (g) => setCollapsedGroups((prev) => {
+    const next = prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g];
+    try { localStorage.setItem("erp_groups_collapsed", JSON.stringify(next)); } catch { /* ignore */ }
     return next;
   });
   const [kbArticles, setKbArticles] = useState([]);
@@ -327,7 +352,7 @@ export default function ErpApp() {
               </button>
             </div>
             <nav className="app-sidenav">
-              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} user={user} hiddenIds={{ consultVisible }} />
+              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} user={user} hiddenIds={{ consultVisible }} collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup} />
             </nav>
             <div className="app-sidebar-foot" style={{ fontSize: 12, color: "var(--muted)", padding: "12px 10px" }}>
               <div>지식경영 · 회의록 · OKR · 문의/결제</div>
@@ -377,7 +402,7 @@ export default function ErpApp() {
               </button>
             </div>
             <nav className="mobile-drawer-nav">
-              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} onLogout={handleLogout} user={user} hiddenIds={{ consultVisible }} />
+              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} onLogout={handleLogout} user={user} hiddenIds={{ consultVisible }} collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup} />
             </nav>
           </aside>
         </>

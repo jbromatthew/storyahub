@@ -316,6 +316,14 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .dash-stats{grid-template-columns:repeat(4,minmax(0,1fr));}
 }
 .sidenav-group{font-size:11px;font-weight:800;color:var(--muted);padding:14px 12px 6px;letter-spacing:.02em;}
+/* 그룹 접기/펼치기 */
+.sidenav-group-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;border:none;background:transparent;cursor:pointer;font:inherit;font-size:11px;font-weight:800;color:var(--muted);text-align:left;border-radius:8px;}
+.sidenav-group-toggle:hover{color:var(--accent-deep);}
+.sidenav-group-toggle .chev{font-size:10px;opacity:.7;}
+.sidenav-group-toggle.has-on{color:var(--accent-deep);}
+.sidenav-hide{display:none !important;}
+/* 아이콘 레일(사이드바 접힘) 모드에선 그룹 접기 무시하고 전부 표시 */
+.app-sidebar.collapsed .sidenav-hide{display:flex !important;}
 .sidenav-top{display:flex;flex-direction:column;gap:4px;flex:1;min-height:0;}
 .sidenav-admin{margin-top:auto;padding-top:12px;border-top:1px solid var(--line);}
 .sidenav-admin .sidenav-group{padding-top:0;}
