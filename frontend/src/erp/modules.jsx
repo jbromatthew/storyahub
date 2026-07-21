@@ -7061,11 +7061,15 @@ export function BrojDashboardView() {
   const val = (row, kind) => (mi == null ? null : row?.[kind === "goal" ? "goals" : "actuals"]?.[mi]);
   const isTotalView = mi != null && !/^\d{4}\.\d{2}$/.test(months[mi]?.key || "");
   // 활성센터 같은 스톡 지표는 '종합'에서 연 합계가 아니라 마지막 기록 월 값이 맞음
+  // (시트가 미래 월에도 수식을 채워두는 경우가 있어 현재 월까지만 본다)
+  const nowD = new Date();
+  const curMonthKey = `${nowD.getFullYear()}.${String(nowD.getMonth() + 1).padStart(2, "0")}`;
   const lastActual = (row) => {
     for (let i = months.length - 1; i >= 0; i--) {
-      if (!/^\d{4}\.\d{2}$/.test(months[i]?.key || "")) continue;
+      const key = months[i]?.key || "";
+      if (!/^\d{4}\.\d{2}$/.test(key) || key > curMonthKey) continue;
       const v = row?.actuals?.[i];
-      if (v != null) return { v, key: months[i].key };
+      if (v != null) return { v, key };
     }
     return null;
   };
