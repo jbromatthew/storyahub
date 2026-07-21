@@ -5,6 +5,7 @@ import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { fetchSheetGrid, listSheetTitles } from "../services/googleSheets.js";
 import { getBrojDashboard } from "../services/brojDashboard.js";
+import { listRevenueMonths, getRevenueTrend, getRevenueDetail } from "../services/salesRevenue.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 import { requireErpMember } from "../middleware/requireErpMember.js";
 import { env } from "../env.js";
@@ -1923,6 +1924,26 @@ erpRouter.get("/broj-dashboard", async (req: AuthedRequest, res) => {
   } catch (e) {
     console.error("broj-dashboard", e);
     res.status(502).json({ error: "계기판 시트를 읽지 못했습니다. 서비스 계정에 시트 열람 권한이 있는지 확인하세요." });
+  }
+});
+
+// 매출 분석 (결제주문내역 시트 실시간) — 소유자 전용
+erpRouter.get("/sales-revenue", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  try {
+    const months = await listRevenueMonths();
+    if (!months.length) return res.json({ months: [], trend: [], detail: null });
+    const reqMonth = String(req.query.month ?? "").trim();
+    const monthKeys = months.map((m) => m.replace(/\.$/, ""));
+    const selected = monthKeys.includes(reqMonth) ? reqMonth : monthKeys[monthKeys.length - 1];
+    const [trend, detail] = await Promise.all([
+      getRevenueTrend(months),
+      getRevenueDetail(selected),
+    ]);
+    res.json({ months: monthKeys, trend, detail });
+  } catch (e) {
+    console.error("sales-revenue", e);
+    res.status(502).json({ error: "주문내역 시트를 읽지 못했습니다" });
   }
 });
 

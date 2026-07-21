@@ -326,6 +326,23 @@ export function orderExternalKey(sheetRow: number): string {
   return `row:${sheetRow}`;
 }
 
+/** 여러 범위를 한 번에 읽기 (batchGet) */
+export async function batchGetRanges(
+  spreadsheetId: string,
+  ranges: string[]
+): Promise<string[][][]> {
+  const sheets = getSheetsClient();
+  const res = await sheets.spreadsheets.values.batchGet({
+    spreadsheetId,
+    ranges,
+    valueRenderOption: "FORMATTED_VALUE",
+    dateTimeRenderOption: "FORMATTED_STRING",
+  });
+  return (res.data.valueRanges ?? []).map((vr) =>
+    (vr.values ?? []).map((row) => (row ?? []).map((cell) => cellToString(cell)))
+  );
+}
+
 /** 스프레드시트의 모든 탭 이름 (필터 없이) */
 export async function listSheetTitles(spreadsheetId: string): Promise<string[]> {
   const sheets = getSheetsClient();

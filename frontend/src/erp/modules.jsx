@@ -7271,3 +7271,178 @@ export function BrojDashboardView() {
     </div>
   );
 }
+
+// ───────── 매출 분석 (NBM·EBM, 주문내역 실시간 · 소유자 전용) ─────────
+function wonFmt(v) {
+  if (v == null || Number.isNaN(v)) return "-";
+  return Math.round(v).toLocaleString();
+}
+
+export function RevenueView() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [month, setMonth] = useState(null);
+
+  const load = useCallback((m) => {
+    setLoading(true);
+    api.erpSalesRevenue(m ? { month: m } : {})
+      .then((res) => {
+        setData(res);
+        setMonth(res.detail?.month || null);
+      })
+      .catch(notifyError)
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const d = data?.detail;
+  const trend = data?.trend || [];
+
+  const trendViz = useMemo(() => ({
+    categories: trend.map((t) => t.month.slice(2)),
+    series: [
+      { label: "NBM", color: seriesColor(0), values: trend.map((t) => (t.nbm == null ? null : Math.round(t.nbm / 1e6))) },
+      { label: "EBM", color: seriesColor(1), values: trend.map((t) => (t.ebm == null ? null : Math.round(t.ebm / 1e6))) },
+    ],
+  }), [trend]);
+
+  const catRows = useMemo(() => (d?.categories || []).filter((c) => c.amount || c.margin), [d]);
+
+  return (
+    <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">Sales</div>
+      <div className="h-title">매출 분석 <span style={{ color: "var(--muted)", fontWeight: 700, fontSize: 15 }}>NBM · EBM</span></div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+        결제주문내역 시트를 실시간으로 읽습니다. NBM은 주문 매출(문자 충전·수수료·취소/환불 제외), EBM은 문자 충전·수수료입니다.
+      </div>
+
+      {loading && !data ? <div className="spinner" /> : !d ? (
+        <div className="small" style={{ textAlign: "center", padding: 40 }}>데이터가 없습니다</div>
+      ) : (
+        <>
+          <div className="dash-month-picks" style={{ marginTop: 14 }}>
+            {(data.months || []).map((m) => (
+              <button key={m} type="button" className={"dash-month-chip" + (month === m ? " on" : "")} onClick={() => { setMonth(m); load(m); }}>{m}</button>
+            ))}
+          </div>
+
+          <div className="broj-cards">
+            <div className="broj-card">
+              <div className="lbl">NBM 매출</div>
+              <div className="val">{brojEok(d.nbmTotal)}</div>
+              <div className="sub">마진 {brojEok(d.nbmMargin)}</div>
+            </div>
+            <div className="broj-card">
+              <div className="lbl">EBM 매출</div>
+              <div className="val">{brojEok(d.ebm.total)}</div>
+              <div className="sub">{d.ebm.items.map((it) => `${it.label} ${brojEok(it.amount)}`).join(" · ")}</div>
+            </div>
+            <div className="broj-card">
+              <div className="lbl">합계</div>
+              <div className="val">{brojEok(d.nbmTotal + d.ebm.total)}</div>
+              <div className="sub">{d.month}</div>
+            </div>
+          </div>
+
+          <div className="rate-plan-block">
+            <StatViz
+              title="NBM · EBM 월 추이 (백만원)"
+              views={["line", "bar"]}
+              format="number"
+              categories={trendViz.categories}
+              series={trendViz.series}
+            />
+          </div>
+
+          <div className="rate-plan-block">
+            <div className="rate-plan-title">NBM 담당자별 <span className="small" style={{ fontWeight: 500 }}>— {d.month} · 총 {wonFmt(d.nbmTotal)}원</span></div>
+            <div className="dash-table-wrap">
+              <table className="dash-table">
+                <thead>
+                  <tr>
+                    <th className="label">담당자</th>
+                    <th>매출 (원)</th>
+                    <th>비중</th>
+                    <th>비율</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.assignees.map((a) => (
+                    <tr key={a.name}>
+                      <td className="label">{a.name}</td>
+                      <td className="num" style={{ fontWeight: 700 }}>{wonFmt(a.amount)}</td>
+                      <td className="num" style={{ fontWeight: 800 }}>{a.share}%</td>
+                      <td className="dash-bar-cell">
+                        <div className="dash-bar">
+                          <div className="dash-bar-fill" style={{ width: `${Math.min(a.share, 100)}%`, background: "var(--accent)" }} />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {!d.assignees.length && <tr><td colSpan={4} className="erp-tbl-empty">담당자 데이터가 없습니다</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rate-plan-block">
+            <div className="rate-plan-title">NBM 카테고리별 <span className="small" style={{ fontWeight: 500 }}>(원)</span></div>
+            <div className="dash-table-wrap">
+              <table className="dash-table">
+                <thead>
+                  <tr>
+                    <th className="label">구분</th>
+                    <th className="label" style={{ position: "static" }}>항목</th>
+                    <th>매출</th>
+                    <th>마진</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {catRows.map((c, i) => (
+                    <tr key={i}>
+                      <td className="label">{i === 0 || catRows[i - 1].group !== c.group ? c.group : ""}</td>
+                      <td style={{ textAlign: "left", fontWeight: 600 }}>{c.item}</td>
+                      <td className="num">{wonFmt(c.amount)}</td>
+                      <td className="num">{wonFmt(c.margin)}</td>
+                    </tr>
+                  ))}
+                  {!catRows.length && <tr><td colSpan={4} className="erp-tbl-empty">카테고리 데이터가 없습니다</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rate-plan-block">
+            <div className="rate-plan-title">EBM 상세 <span className="small" style={{ fontWeight: 500 }}>(원 · 담당자 구분 없음)</span></div>
+            <div className="dash-table-wrap">
+              <table className="dash-table">
+                <thead>
+                  <tr>
+                    <th className="label">항목</th>
+                    <th>매출</th>
+                    <th>마진</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.ebm.items.map((it) => (
+                    <tr key={it.label}>
+                      <td className="label">{it.label}</td>
+                      <td className="num" style={{ fontWeight: 700 }}>{wonFmt(it.amount)}</td>
+                      <td className="num">{wonFmt(it.margin)}</td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: "#FFF8F0" }}>
+                    <td className="label">합계</td>
+                    <td className="num" style={{ fontWeight: 800 }}>{wonFmt(d.ebm.total)}</td>
+                    <td className="num" style={{ fontWeight: 800 }}>{wonFmt(d.ebm.margin)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
