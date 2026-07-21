@@ -7084,6 +7084,40 @@ export function BrojDashboardView() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, mi]);
 
+  // 남은 개월 페이스: 연간 목표 대비 누적을 빼고, 남은 개월로 나눠 월 필요치 계산
+  const pace = useMemo(() => {
+    if (!data) return null;
+    const monthly = months.map((m, i) => ({ m, i })).filter(({ m }) => /^2026\.\d{2}$/.test(m.key));
+    if (!monthly.length) return null;
+    const now = new Date();
+    const curKey = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const curNum = now.getFullYear() === 2026 ? now.getMonth() + 1 : now.getFullYear() > 2026 ? 12 : 0;
+    const remain = Math.max(0, 12 - curNum); // 당월 이후 남은 개월
+    const upto = monthly.filter(({ m }) => m.key <= curKey);
+    const elapsed = Math.max(1, upto.length);
+    const items = [];
+    const add = (secId, rowLabel, name, money) => {
+      const row = rowAt(secId, rowLabel);
+      const annual = row?.goals?.[0]; // '2026년 종합' 목표
+      if (!annual) return;
+      const cum = upto.reduce((s, { i }) => s + (row.actuals[i] ?? 0), 0);
+      const remainGoal = annual - cum;
+      items.push({
+        name, money, annual, cum, remainGoal,
+        need: remain > 0 && remainGoal > 0 ? remainGoal / remain : null,
+        avg: cum / elapsed,
+      });
+    };
+    add("inquiry", "전체", "총 문의", false);
+    add("payment", "전체", "총 결제", false);
+    add("revenue", "전체", "매출 전체", true);
+    add("revenue", "SBM", "매출 SBM", true);
+    add("revenue", "EBM", "매출 EBM", true);
+    add("revenue", "NBM", "매출 NBM", true);
+    return { remain, elapsed, items };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, months]);
+
   const SECTION_VIEWS = [
     { id: "active", churn: false },
     { id: "inquiry", churn: false },
@@ -7134,6 +7168,48 @@ export function BrojDashboardView() {
               </div>
             ))}
           </div>
+
+          {pace && pace.items.length > 0 && (
+            <div className="rate-plan-block">
+              <div className="rate-plan-title">🎯 연간 목표 페이스 — 남은 {pace.remain}개월 <span className="small" style={{ fontWeight: 500 }}>(누적은 1~{pace.elapsed}월, 당월 진행분 포함)</span></div>
+              <div className="dash-table-wrap">
+                <table className="dash-table">
+                  <thead>
+                    <tr>
+                      <th className="label">지표</th>
+                      <th>연간 목표</th>
+                      <th>누적 현황</th>
+                      <th>남은 목표</th>
+                      <th>월 필요</th>
+                      <th>현재 월평균</th>
+                      <th>판정</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pace.items.map((it) => {
+                      const fmt = (v) => (v == null ? "-" : it.money ? brojEok(v) : Math.round(v).toLocaleString());
+                      const done = it.remainGoal <= 0;
+                      const short = !done && it.need != null ? it.need - it.avg : null;
+                      const ok = done || (short != null && short <= 0);
+                      return (
+                        <tr key={it.name}>
+                          <td className="label">{it.name}</td>
+                          <td className="num">{fmt(it.annual)}</td>
+                          <td className="num" style={{ fontWeight: 700 }}>{fmt(it.cum)}</td>
+                          <td className="num">{done ? "달성 ✓" : fmt(it.remainGoal)}</td>
+                          <td className="num" style={{ fontWeight: 800 }}>{done ? "-" : `월 ${fmt(it.need)}`}</td>
+                          <td className="num">{fmt(it.avg)}</td>
+                          <td className={"num " + (ok ? "gap-pos" : "gap-neg")} style={{ fontWeight: 700, whiteSpace: "nowrap" }}>
+                            {done ? "목표 달성 ✅" : ok ? "현재 페이스로 달성 가능" : `월 +${fmt(short)} 더 필요`}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {revTrend && (
             <div className="rate-plan-block">
