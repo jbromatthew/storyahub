@@ -374,6 +374,7 @@ export const api = {
   erpConsultCreate: (data) => req("/erp/consult-docs", { method: "POST", body: data }),
   erpConsultApprove: (id, value) => req(`/erp/consult-docs/${id}/approve`, { method: "POST", body: { value } }),
   erpConsultDelete: (id) => req(`/erp/consult-docs/${id}`, { method: "DELETE" }),
+  erpBrojDashboard: () => req("/erp/broj-dashboard"),
   erpInstallScheduleSheetTabs: () => req("/erp/install-schedule/sheet-tabs"),
   erpInstallScheduleImport: (sheetName) => req("/erp/install-schedule/import", { method: "POST", body: { sheetName } }),
   erpSalesTaxInvoices: ({ month } = {}) => {

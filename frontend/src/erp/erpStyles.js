@@ -107,6 +107,12 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .cd-toggle{border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 10px;font:inherit;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:4px;}
 .cd-toggle:hover{border-color:var(--accent);color:var(--accent-deep);}
 .cd-toggle.on{background:#EAF6EA;border-color:#BFE0BF;color:#2E7D32;}
+/* 브로제이 계기판 요약 카드 */
+.broj-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px;}
+.broj-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;}
+.broj-card .lbl{font-size:12px;font-weight:700;color:var(--muted);}
+.broj-card .val{font-size:24px;font-weight:900;margin-top:4px;letter-spacing:-.02em;}
+.broj-card .sub{font-size:12px;color:var(--muted);margin-top:4px;}
 /* 설치일정 요약 칩 + 캘린더 */
 .isc-summary{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px;}
 .iscal{margin-top:10px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;}

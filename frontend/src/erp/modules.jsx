@@ -7012,3 +7012,192 @@ export function ConsultDocsView() {
     </div>
   );
 }
+
+// ───────── 브로제이 계기판 (2026년 계기판 시트 · 소유자 전용) ─────────
+function brojFmt(v, format) {
+  if (v == null || Number.isNaN(v)) return "-";
+  if (format === "percent") return `${(v * 100).toFixed(2)}%`;
+  if (format === "money") return Math.round(v).toLocaleString();
+  return Math.round(v).toLocaleString();
+}
+function brojEok(v) {
+  if (v == null || Number.isNaN(v)) return "-";
+  return `${(v / 1e8).toFixed(1)}억`;
+}
+
+export function BrojDashboardView() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [mi, setMi] = useState(null); // 선택 월 인덱스 (months 배열 기준)
+
+  useEffect(() => {
+    api.erpBrojDashboard()
+      .then((res) => {
+        setData(res);
+        const now = new Date();
+        const cur = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}`;
+        const idx = (res.months || []).findIndex((m) => m.key === cur);
+        setMi(idx >= 0 ? idx : 0);
+      })
+      .catch(notifyError)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const months = data?.months || [];
+  const sec = (id) => data?.sections?.find((s) => s.id === id);
+  const rowAt = (id, label) => sec(id)?.rows?.find((r) => r.label === label);
+  const val = (row, kind) => (mi == null ? null : row?.[kind === "goal" ? "goals" : "actuals"]?.[mi]);
+
+  // 매출 추이 (종합 제외 월들, 백만원 단위)
+  const revTrend = useMemo(() => {
+    if (!data) return null;
+    const idxs = months.map((m, i) => ({ m, i })).filter(({ m }) => /^\d{4}\.\d{2}$/.test(m.key));
+    const pick = (label) => {
+      const row = rowAt("revenue", label);
+      return idxs.map(({ i }) => (row?.actuals?.[i] == null ? null : Math.round(row.actuals[i] / 1e6)));
+    };
+    return {
+      categories: idxs.map(({ m }) => m.key.slice(2)),
+      series: [
+        { label: "NBM", color: seriesColor(0), values: pick("NBM") },
+        { label: "EBM", color: seriesColor(1), values: pick("EBM") },
+        { label: "SBM", color: seriesColor(2), values: pick("SBM") },
+      ],
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, months]);
+
+  const summaryCards = useMemo(() => {
+    if (mi == null || !data) return [];
+    const mk = (label, row, format) => {
+      const g = val(row, "goal");
+      const a = val(row, "actual");
+      const rate = g && g > 0 && a != null ? Math.round((a / g) * 1000) / 10 : null;
+      return { label, g, a, rate, format };
+    };
+    return [
+      mk("활성센터", rowAt("active", "전체"), "number"),
+      mk("총 결제", rowAt("payment", "전체"), "number"),
+      mk("총 이탈", rowAt("churnCount", "전체"), "number"),
+      mk("총 매출", rowAt("revenue", "전체"), "money"),
+    ];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, mi]);
+
+  const SECTION_VIEWS = [
+    { id: "active", churn: false },
+    { id: "inquiry", churn: false },
+    { id: "payment", churn: false },
+    { id: "churnCount", churn: true },
+    { id: "churnRate", churn: true },
+    { id: "revenue", churn: false },
+    { id: "margin", churn: false },
+  ];
+
+  return (
+    <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">BROJ</div>
+      <div className="h-title">브로제이 계기판</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+        2026년 계기판 시트를 실시간으로 읽어옵니다 (동기화 불필요).
+        {data?.spreadsheetUrl && <>{" "}<a href={data.spreadsheetUrl} target="_blank" rel="noreferrer">원본 시트</a></>}
+      </div>
+
+      {loading ? <div className="spinner" /> : !data ? (
+        <div className="small" style={{ textAlign: "center", padding: 40 }}>데이터가 없습니다</div>
+      ) : (
+        <>
+          <div className="dash-month-picks" style={{ marginTop: 14 }}>
+            {months.map((m, i) => (
+              <button key={m.key} type="button" className={"dash-month-chip" + (mi === i ? " on" : "")} onClick={() => setMi(i)}>
+                {m.key === "2026년 종합" ? "종합" : m.key}
+              </button>
+            ))}
+          </div>
+          {months[mi]?.notes?.length > 0 && (
+            <div className="isc-summary">
+              {months[mi].notes.map((n, i) => <span key={i} className="tag gray" style={{ fontSize: 12 }}>{n}</span>)}
+            </div>
+          )}
+
+          <div className="broj-cards">
+            {summaryCards.map((c) => (
+              <div key={c.label} className="broj-card">
+                <div className="lbl">{c.label}</div>
+                <div className="val" style={c.rate != null && c.label !== "총 이탈" ? { color: dashRateColor(c.rate) } : undefined}>
+                  {c.format === "money" ? brojEok(c.a) : brojFmt(c.a, c.format)}
+                </div>
+                <div className="sub">
+                  목표 {c.format === "money" ? brojEok(c.g) : brojFmt(c.g, c.format)}
+                  {c.rate != null && c.label !== "총 이탈" && <> · {formatDashRate(c.rate)}</>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {revTrend && (
+            <div className="rate-plan-block">
+              <StatViz
+                title="매출 추이 — NBM · EBM · SBM (백만원)"
+                views={["line", "bar"]}
+                format="number"
+                categories={revTrend.categories}
+                series={revTrend.series}
+              />
+            </div>
+          )}
+
+          {SECTION_VIEWS.map(({ id, churn }) => {
+            const s = sec(id);
+            if (!s?.rows?.length) return null;
+            return (
+              <div key={id} className="rate-plan-block">
+                <div className="rate-plan-title">{s.label}{s.format === "money" ? " (원)" : ""}</div>
+                <div className="dash-table-wrap">
+                  <table className="dash-table">
+                    <thead>
+                      <tr>
+                        <th className="label">지표</th>
+                        <th>목표</th>
+                        <th>현황</th>
+                        {churn ? <th>차이</th> : <><th>달성률</th><th>미달</th></>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {s.rows.map((row) => {
+                        const g = val(row, "goal");
+                        const a = val(row, "actual");
+                        if (g == null && a == null) return null;
+                        const rate = g && g > 0 && a != null ? Math.round((a / g) * 1000) / 10 : null;
+                        const gap = a != null && g != null ? a - g : null;
+                        return (
+                          <tr key={row.label}>
+                            <td className="label">{row.label}</td>
+                            <td className="num">{brojFmt(g, s.format)}</td>
+                            <td className="num" style={{ fontWeight: 700 }}>{brojFmt(a, s.format)}</td>
+                            {churn ? (
+                              <td className={"num" + (gap != null ? (gap > 0 ? " gap-neg" : " gap-pos") : "")}>
+                                {gap == null ? "-" : (gap > 0 ? "+" : "") + brojFmt(gap, s.format)}
+                              </td>
+                            ) : (
+                              <>
+                                <td className="num" style={{ color: dashRateColor(rate), fontWeight: 700 }}>{formatDashRate(rate)}</td>
+                                <td className={"num" + (gap != null ? (gap >= 0 ? " gap-pos" : " gap-neg") : "")}>
+                                  {gap == null ? "-" : formatDashGap(Math.round(gap))}
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}

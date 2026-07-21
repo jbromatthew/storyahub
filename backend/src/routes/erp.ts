@@ -4,6 +4,7 @@ import { randomBytes, randomInt as cryptoRandomInt } from "crypto";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { fetchSheetGrid, listSheetTitles } from "../services/googleSheets.js";
+import { getBrojDashboard } from "../services/brojDashboard.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 import { requireErpMember } from "../middleware/requireErpMember.js";
 import { env } from "../env.js";
@@ -1912,6 +1913,17 @@ erpRouter.delete("/consult-docs/:id", async (req: AuthedRequest, res) => {
   if (!doc) return res.status(404).json({ error: "자료를 찾을 수 없습니다" });
   await prisma.erpConsultDoc.delete({ where: { id: req.params.id } });
   res.json({ ok: true });
+});
+
+// 브로제이 계기판 (2026년 계기판 시트) — 매출·마진 포함이라 소유자 전용
+erpRouter.get("/broj-dashboard", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  try {
+    res.json(await getBrojDashboard());
+  } catch (e) {
+    console.error("broj-dashboard", e);
+    res.status(502).json({ error: "계기판 시트를 읽지 못했습니다. 서비스 계정에 시트 열람 권한이 있는지 확인하세요." });
+  }
 });
 
 // 설치일정 원본 시트 (BROJ 설치 일정) — 시트에서 1회 가져오기(import) 용
