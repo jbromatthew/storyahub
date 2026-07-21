@@ -7148,12 +7148,6 @@ export function BrojDashboardView() {
               </button>
             ))}
           </div>
-          {months[mi]?.notes?.length > 0 && (
-            <div className="isc-summary">
-              {months[mi].notes.map((n, i) => <span key={i} className="tag gray" style={{ fontSize: 12 }}>{n}</span>)}
-            </div>
-          )}
-
           <div className="broj-cards">
             {summaryCards.map((c) => (
               <div key={c.label} className="broj-card">
