@@ -142,6 +142,17 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .confirm-actions .btn{flex:1;padding:14px;font-size:15px;}
 .confirm-danger{background:#B85C4A;color:#fff;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+/* 토스트 — 중간 하단 고정 (ERP 모드 전용 스타일) */
+.toast-host{position:fixed;left:50%;bottom:calc(28px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:600;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;width:min(92vw,440px);}
+.toast{display:flex;align-items:flex-start;gap:10px;padding:13px 18px;border-radius:14px;box-shadow:0 14px 40px rgba(20,16,12,.2);font-size:13.5px;font-weight:600;line-height:1.45;max-width:100%;animation:toastIn .24s ease both;}
+@keyframes toastIn{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+.toast-error{background:#FFF6F3;border:1px solid #F0D2C5;color:#8B3A22;}
+.toast-success{background:#EFF6F0;border:1px solid #CADFCF;color:#2D5A3D;}
+.toast-info{background:#fff;border:1px solid var(--line);color:var(--ink);}
+.toast-icon{width:21px;height:21px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:800;margin-top:1px;}
+.toast-error .toast-icon{background:#EFC4B2;color:#7A2F1A;}
+.toast-success .toast-icon{background:#3E7A52;color:#fff;}
+.toast-info .toast-icon{background:var(--sand,#EFE9E1);color:var(--ink);}
 .status-pill{display:inline-flex;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;}
 .status-pill.wait{background:#FFF3E0;color:#E65100;}
 .status-pill.done{background:#E8F5E9;color:var(--ok);}
