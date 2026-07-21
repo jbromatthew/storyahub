@@ -3,6 +3,7 @@ import { env } from "../env.js";
 import {
   fetchSheetColumnNames,
   fetchSheetRows,
+  invalidateSheetCache,
   findInquiryRawSheetName,
   findOrderRawSheetName,
   isGoogleSheetsConfigured,
@@ -387,6 +388,9 @@ export async function syncSalesSheet(
         syncedById: syncedById ?? null,
       },
     });
+
+    // 계기판용 경량 캐시가 방금 동기화된 데이터를 바로 반영하도록 무효화
+    invalidateSheetCache(kind === "order" ? "db:sales-order-lite" : "db:sales-inquiry-lite");
 
     return { kind, sheetName, spreadsheetId, added, updated, deleted, rowCount: rows.length };
   } catch (e) {

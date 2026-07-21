@@ -461,22 +461,24 @@ function findLabeledNumber(grid: string[][], pattern: RegExp, maxRow = 6): numbe
 type InquiryLite = { sheet: string; industry: string };
 
 function loadInquiryLite(): Promise<InquiryLite[]> {
-  return memoSheetCall("db:sales-inquiry-lite", 60_000, async () => {
-    const rows = await prisma.erpSalesInquiry.findMany({
-      where: { spreadsheetId: env.googleSheets.inquirySpreadsheetId },
-      select: { data: true, sheetName: true },
-    });
-    const out: InquiryLite[] = [];
-    for (const row of rows) {
-      const data = row.data as Record<string, string>;
-      if ((data["구분"] || "").trim() !== "신규문의") continue;
-      out.push({
-        sheet: normalizeMonthSheet(row.sheetName),
-        industry: (data["업종"] || "").trim() || "확인불가",
-      });
-    }
-    return out;
+  return memoSheetCall("db:sales-inquiry-lite", 60_000, loadInquiryLiteRaw, 10 * 60_000);
+}
+
+async function loadInquiryLiteRaw(): Promise<InquiryLite[]> {
+  const rows = await prisma.erpSalesInquiry.findMany({
+    where: { spreadsheetId: env.googleSheets.inquirySpreadsheetId },
+    select: { data: true, sheetName: true },
   });
+  const out: InquiryLite[] = [];
+  for (const row of rows) {
+    const data = row.data as Record<string, string>;
+    if ((data["구분"] || "").trim() !== "신규문의") continue;
+    out.push({
+      sheet: normalizeMonthSheet(row.sheetName),
+      industry: (data["업종"] || "").trim() || "확인불가",
+    });
+  }
+  return out;
 }
 
 /** 당월 신규문의 건수 (문의 시트 기준, 결제율 분석과 동일 소스). 업종별 분해도 함께 반환 */
@@ -581,26 +583,28 @@ type OrderLite = {
 };
 
 function loadNewCenterLite(): Promise<OrderLite[]> {
-  return memoSheetCall("db:sales-order-lite", 60_000, async () => {
-    const rows = await prisma.erpSalesOrder.findMany({
-      where: { spreadsheetId: env.googleSheets.orderSpreadsheetId },
-      select: { data: true },
-    });
-    const out: OrderLite[] = [];
-    for (const row of rows) {
-      const data = row.data as Record<string, string>;
-      if ((data["구분"] || "").trim() !== NEW_CENTER_TYPE) continue;
-      const mk = parseOrderRowMonth(data);
-      out.push({
-        month: mk ? sheetMonthToLabel(mk) : null,
-        date: parseOrderRowDate(data),
-        channel: (data["마케팅채널"] || "").trim() || "기타",
-        industry: (data["업종"] || "").trim() || "확인불가",
-        plan: (data["기본 요금제"] || "").trim() || "알 수 없음",
-      });
-    }
-    return out;
+  return memoSheetCall("db:sales-order-lite", 60_000, loadNewCenterLiteRaw, 10 * 60_000);
+}
+
+async function loadNewCenterLiteRaw(): Promise<OrderLite[]> {
+  const rows = await prisma.erpSalesOrder.findMany({
+    where: { spreadsheetId: env.googleSheets.orderSpreadsheetId },
+    select: { data: true },
   });
+  const out: OrderLite[] = [];
+  for (const row of rows) {
+    const data = row.data as Record<string, string>;
+    if ((data["구분"] || "").trim() !== NEW_CENTER_TYPE) continue;
+    const mk = parseOrderRowMonth(data);
+    out.push({
+      month: mk ? sheetMonthToLabel(mk) : null,
+      date: parseOrderRowDate(data),
+      channel: (data["마케팅채널"] || "").trim() || "기타",
+      industry: (data["업종"] || "").trim() || "확인불가",
+      plan: (data["기본 요금제"] || "").trim() || "알 수 없음",
+    });
+  }
+  return out;
 }
 
 async function loadMonthCounts(monthLabel: string): Promise<MonthCounts> {

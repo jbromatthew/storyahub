@@ -363,16 +363,38 @@ export async function batchGetRanges(
  * 짧은 TTL 인메모리 캐시 (계기판 등 조회 빈도가 높은 읽기 전용 호출용).
  * 진행 중인 Promise를 그대로 저장해 동시 요청도 API 1회로 합쳐진다.
  */
-const memoCache = new Map<string, { at: number; promise: Promise<unknown> }>();
+const memoCache = new Map<string, { at: number; promise: Promise<unknown>; refreshing?: boolean }>();
 
-export function memoSheetCall<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
+/**
+ * ttlMs 이내면 캐시 그대로, staleMs 이내면 이전 값을 즉시 반환하면서 백그라운드로 갱신,
+ * 그보다 오래됐으면 새로 조회를 기다린다.
+ */
+export function memoSheetCall<T>(
+  key: string,
+  ttlMs: number,
+  fn: () => Promise<T>,
+  staleMs = 0
+): Promise<T> {
   const hit = memoCache.get(key);
-  if (hit && Date.now() - hit.at < ttlMs) return hit.promise as Promise<T>;
+  const now = Date.now();
+  if (hit && now - hit.at < ttlMs) return hit.promise as Promise<T>;
+  if (hit && now - hit.at < staleMs) {
+    if (!hit.refreshing) {
+      hit.refreshing = true;
+      fn().then(
+        (v) => memoCache.set(key, { at: Date.now(), promise: Promise.resolve(v) }),
+        () => {
+          hit.refreshing = false;
+        }
+      );
+    }
+    return hit.promise as Promise<T>;
+  }
   const promise = fn().catch((err) => {
     memoCache.delete(key);
     throw err;
   });
-  memoCache.set(key, { at: Date.now(), promise });
+  memoCache.set(key, { at: now, promise });
   return promise;
 }
 
@@ -512,14 +534,17 @@ export async function fetchSheetGrid(
   );
 }
 
-/** fetchSheetGrid의 TTL 캐시 버전 (계기판 조회용) */
+/** fetchSheetGrid의 TTL 캐시 버전 (계기판 조회용) — 만료 후 10분까지는 이전 값 즉시 반환 + 백그라운드 갱신 */
 export function fetchSheetGridCached(
   spreadsheetId: string,
   sheetName: string,
   ttlMs = 60_000
 ): Promise<string[][]> {
-  return memoSheetCall(`grid:${spreadsheetId}:${sheetName}`, ttlMs, () =>
-    fetchSheetGrid(spreadsheetId, sheetName)
+  return memoSheetCall(
+    `grid:${spreadsheetId}:${sheetName}`,
+    ttlMs,
+    () => fetchSheetGrid(spreadsheetId, sheetName),
+    10 * 60_000
   );
 }
 
@@ -528,5 +553,10 @@ export function listMonthSheetsCached(
   spreadsheetId: string,
   ttlMs = 5 * 60_000
 ): Promise<string[]> {
-  return memoSheetCall(`months:${spreadsheetId}`, ttlMs, () => listMonthSheets(spreadsheetId));
+  return memoSheetCall(
+    `months:${spreadsheetId}`,
+    ttlMs,
+    () => listMonthSheets(spreadsheetId),
+    60 * 60_000
+  );
 }
