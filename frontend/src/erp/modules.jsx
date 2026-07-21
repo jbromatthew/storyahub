@@ -5459,6 +5459,12 @@ export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGo
           <strong>{industry}</strong> 업종 목표 <strong>{industryGoal}개</strong> 범위 안에서 요금제별·채널별 목표를 나눠 설정하세요.
         </div>
       )}
+      {!editing && industryGoal > 0 && !(detail?.plans || []).some((p) => p.goal > 0) && (
+        <div className="small dash-goal-hint" style={{ marginBottom: 10 }}>
+          업종 목표 <strong>{industryGoal}개</strong>가 아직 요금제별로 나눠져 있지 않아 아래 목표가 <strong>-</strong>로 보입니다.
+          우측 상단 <strong>목표 편집</strong>으로 요금제·채널별 목표를 나눠 넣으세요.
+        </div>
+      )}
       <DrillGoalTable title="요금제별" labelHeader="요금제" items={detail?.plans} editable={editing} draft={planDraft} onChange={(label, v) => setPlanDraft((p) => ({ ...p, [label]: parseGoalInput(v) }))} industryGoal={industryGoal} />
       <DrillGoalTable title="채널별" labelHeader="채널" items={detail?.channels} editable={editing} draft={channelDraft} onChange={(label, v) => setChannelDraft((p) => ({ ...p, [label]: parseGoalInput(v) }))} industryGoal={industryGoal} />
       <DashboardItemsTable title="주차별" labelHeader="주차" items={detail?.weekly} />
