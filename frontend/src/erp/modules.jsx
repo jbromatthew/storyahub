@@ -5397,16 +5397,24 @@ function DrillGoalTable({ title, labelHeader, items, editable, draft, onChange, 
   );
 }
 
-export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGoals, currentChannelGoals, onSaveGoals, saving }) {
+export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGoals, currentChannelGoals, onSaveGoals, saving, planList }) {
   const summary = detail?.summary;
   const industryGoal = summary?.goal || 0;
   const [editing, setEditing] = useState(false);
   const [planDraft, setPlanDraft] = useState({});
   const [channelDraft, setChannelDraft] = useState({});
 
+  // 편집 시에는 실적·목표 0이라도 전체 요금제(Trial·Starter·Lite 포함)를 보여준다
+  const fullPlanItems = useMemo(() => {
+    const base = detail?.plans || [];
+    const master = planList?.length ? planList : base.map((p) => p.label);
+    return master.map((label) => base.find((p) => p.label === label) || { key: label, label, goal: 0, actual: 0, gap: 0, rate: null });
+  }, [detail, planList]);
+  const planItems = editing ? fullPlanItems : detail?.plans;
+
   const startEdit = () => {
     const pd = {};
-    (detail?.plans || []).forEach((p) => { pd[p.label] = currentPlanGoals?.[p.label] ?? p.goal ?? 0; });
+    fullPlanItems.forEach((p) => { pd[p.label] = currentPlanGoals?.[p.label] ?? p.goal ?? 0; });
     const cd = {};
     (detail?.channels || []).forEach((c) => { cd[c.label] = currentChannelGoals?.[c.label] ?? c.goal ?? 0; });
     setPlanDraft(pd);
@@ -5465,7 +5473,7 @@ export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGo
           우측 상단 <strong>목표 편집</strong>으로 요금제·채널별 목표를 나눠 넣으세요.
         </div>
       )}
-      <DrillGoalTable title="요금제별" labelHeader="요금제" items={detail?.plans} editable={editing} draft={planDraft} onChange={(label, v) => setPlanDraft((p) => ({ ...p, [label]: parseGoalInput(v) }))} industryGoal={industryGoal} />
+      <DrillGoalTable title="요금제별" labelHeader="요금제" items={planItems} editable={editing} draft={planDraft} onChange={(label, v) => setPlanDraft((p) => ({ ...p, [label]: parseGoalInput(v) }))} industryGoal={industryGoal} />
       <DrillGoalTable title="채널별" labelHeader="채널" items={detail?.channels} editable={editing} draft={channelDraft} onChange={(label, v) => setChannelDraft((p) => ({ ...p, [label]: parseGoalInput(v) }))} industryGoal={industryGoal} />
       <DashboardItemsTable title="주차별" labelHeader="주차" items={detail?.weekly} />
     </div>
@@ -5887,6 +5895,7 @@ export function SalesDashboardView() {
             <DashboardIndustryDrill
               industry={drillIndustry}
               detail={drillDetail}
+              planList={data?.industryPlan?.plans || []}
               onBack={() => setDrillIndustry(null)}
               currentPlanGoals={data?.goalOverrides?.industryPlanGoals?.[drillIndustry]}
               currentChannelGoals={data?.goalOverrides?.industryChannelGoals?.[drillIndustry]}
