@@ -17,6 +17,7 @@ function fmtVal(v, format) {
   if (v == null || Number.isNaN(v)) return "-";
   if (format === "percent") return `${Math.round(v)}%`;
   if (format === "won") return `₩${Math.round(v).toLocaleString()}`;
+  if (format === "eok") return `${(Math.round(v * 100) / 100).toLocaleString()}억`;
   return Number.isInteger(v) ? v.toLocaleString() : v.toFixed(1);
 }
 

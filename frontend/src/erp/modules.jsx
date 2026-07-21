@@ -7059,14 +7059,24 @@ export function BrojDashboardView() {
   const sec = (id) => data?.sections?.find((s) => s.id === id);
   const rowAt = (id, label) => sec(id)?.rows?.find((r) => r.label === label);
   const val = (row, kind) => (mi == null ? null : row?.[kind === "goal" ? "goals" : "actuals"]?.[mi]);
+  const isTotalView = mi != null && !/^\d{4}\.\d{2}$/.test(months[mi]?.key || "");
+  // 활성센터 같은 스톡 지표는 '종합'에서 연 합계가 아니라 마지막 기록 월 값이 맞음
+  const lastActual = (row) => {
+    for (let i = months.length - 1; i >= 0; i--) {
+      if (!/^\d{4}\.\d{2}$/.test(months[i]?.key || "")) continue;
+      const v = row?.actuals?.[i];
+      if (v != null) return { v, key: months[i].key };
+    }
+    return null;
+  };
 
-  // 매출 추이 (종합 제외 월들, 백만원 단위)
+  // 매출 추이 (종합 제외 월들, 억원 단위)
   const revTrend = useMemo(() => {
     if (!data) return null;
     const idxs = months.map((m, i) => ({ m, i })).filter(({ m }) => /^\d{4}\.\d{2}$/.test(m.key));
     const pick = (label) => {
       const row = rowAt("revenue", label);
-      return idxs.map(({ i }) => (row?.actuals?.[i] == null ? null : Math.round(row.actuals[i] / 1e6)));
+      return idxs.map(({ i }) => (row?.actuals?.[i] == null ? null : Math.round((row.actuals[i] / 1e8) * 100) / 100));
     };
     return {
       categories: idxs.map(({ m }) => m.key.slice(2)),
@@ -7081,14 +7091,19 @@ export function BrojDashboardView() {
 
   const summaryCards = useMemo(() => {
     if (mi == null || !data) return [];
-    const mk = (label, row, format) => {
+    const mk = (label, row, format, latestWhenTotal = false) => {
       const g = val(row, "goal");
-      const a = val(row, "actual");
+      let a = val(row, "actual");
+      let note = null;
+      if (latestWhenTotal && isTotalView) {
+        const la = lastActual(row);
+        if (la) { a = la.v; note = `${la.key} 기준`; }
+      }
       const rate = g && g > 0 && a != null ? Math.round((a / g) * 1000) / 10 : null;
-      return { label, g, a, rate, format };
+      return { label, g, a, rate, format, note };
     };
     return [
-      mk("활성센터", rowAt("active", "전체"), "number"),
+      mk("활성센터", rowAt("active", "전체"), "number", true),
       mk("총 결제", rowAt("payment", "전체"), "number"),
       mk("총 이탈", rowAt("churnCount", "전체"), "number"),
       mk("총 매출", rowAt("revenue", "전체"), "money"),
@@ -7170,6 +7185,7 @@ export function BrojDashboardView() {
                 <div className="sub">
                   목표 {c.format === "money" ? brojEok(c.g) : brojFmt(c.g, c.format)}
                   {c.rate != null && c.label !== "총 이탈" && <> · {formatDashRate(c.rate)}</>}
+                  {c.note && <> · {c.note}</>}
                 </div>
               </div>
             ))}
@@ -7188,7 +7204,7 @@ export function BrojDashboardView() {
                       <th>남은 목표</th>
                       <th>월 필요</th>
                       <th>현재 월평균</th>
-                      <th>판정</th>
+                      <th>월평균 추가 필요</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -7203,10 +7219,10 @@ export function BrojDashboardView() {
                           <td className="num">{fmt(it.annual)}</td>
                           <td className="num" style={{ fontWeight: 700 }}>{fmt(it.cum)}</td>
                           <td className="num">{done ? "달성 ✓" : fmt(it.remainGoal)}</td>
-                          <td className="num" style={{ fontWeight: 800 }}>{done ? "-" : `월 ${fmt(it.need)}`}</td>
+                          <td className="num">{done ? "-" : fmt(it.need)}</td>
                           <td className="num">{fmt(it.avg)}</td>
-                          <td className={"num " + (ok ? "gap-pos" : "gap-neg")} style={{ fontWeight: 700, whiteSpace: "nowrap" }}>
-                            {done ? "목표 달성 ✅" : ok ? "현재 페이스로 달성 가능" : `월 +${fmt(short)} 더 필요`}
+                          <td className={"num " + (ok ? "gap-pos" : "gap-neg")} style={{ fontWeight: 800, fontSize: 15, whiteSpace: "nowrap" }}>
+                            {done ? "달성 ✅" : ok ? "충분 ✅" : `+${fmt(short)}`}
                           </td>
                         </tr>
                       );
@@ -7220,9 +7236,9 @@ export function BrojDashboardView() {
           {revTrend && (
             <div className="rate-plan-block">
               <StatViz
-                title="매출 추이 — NBM · EBM · SBM (백만원)"
+                title="매출 추이 — NBM · EBM · SBM (억원)"
                 views={["line", "bar"]}
-                format="number"
+                format="eok"
                 categories={revTrend.categories}
                 series={revTrend.series}
               />
@@ -7232,9 +7248,14 @@ export function BrojDashboardView() {
           {SECTION_VIEWS.map(({ id, churn }) => {
             const s = sec(id);
             if (!s?.rows?.length) return null;
+            const useLatest = id === "active" && isTotalView;
+            const latestKey = useLatest ? lastActual(s.rows[0])?.key : null;
             return (
               <div key={id} className="rate-plan-block">
-                <div className="rate-plan-title">{s.label}{s.format === "money" ? " (원)" : ""}</div>
+                <div className="rate-plan-title">
+                  {s.label}{s.format === "money" ? " (원)" : ""}
+                  {useLatest && latestKey && <span className="small" style={{ fontWeight: 500 }}> — 현황은 {latestKey} 기준</span>}
+                </div>
                 <div className="dash-table-wrap">
                   <table className="dash-table">
                     <thead>
@@ -7248,7 +7269,7 @@ export function BrojDashboardView() {
                     <tbody>
                       {s.rows.map((row) => {
                         const g = val(row, "goal");
-                        const a = val(row, "actual");
+                        const a = useLatest ? (lastActual(row)?.v ?? val(row, "actual")) : val(row, "actual");
                         if (g == null && a == null) return null;
                         const rate = g && g > 0 && a != null ? Math.round((a / g) * 1000) / 10 : null;
                         const gap = a != null && g != null ? a - g : null;
@@ -7314,8 +7335,8 @@ export function RevenueView() {
   const trendViz = useMemo(() => ({
     categories: trend.map((t) => t.month.slice(2)),
     series: [
-      { label: "NBM", color: seriesColor(0), values: trend.map((t) => (t.nbm == null ? null : Math.round(t.nbm / 1e6))) },
-      { label: "EBM", color: seriesColor(1), values: trend.map((t) => (t.ebm == null ? null : Math.round(t.ebm / 1e6))) },
+      { label: "NBM", color: seriesColor(0), values: trend.map((t) => (t.nbm == null ? null : Math.round((t.nbm / 1e8) * 100) / 100)) },
+      { label: "EBM", color: seriesColor(1), values: trend.map((t) => (t.ebm == null ? null : Math.round((t.ebm / 1e8) * 100) / 100)) },
     ],
   }), [trend]);
 
@@ -7359,9 +7380,9 @@ export function RevenueView() {
 
           <div className="rate-plan-block">
             <StatViz
-              title="NBM · EBM 월 추이 (백만원)"
+              title="NBM · EBM 월 추이 (억원)"
               views={["line", "bar"]}
-              format="number"
+              format="eok"
               categories={trendViz.categories}
               series={trendViz.series}
             />
