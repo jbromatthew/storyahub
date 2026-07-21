@@ -326,6 +326,11 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .app-sidebar.collapsed .sidenav-hide{display:flex !important;}
 .sidenav-top{display:flex;flex-direction:column;gap:4px;flex:1;min-height:0;}
 .sidenav-admin{margin-top:auto;padding-top:12px;border-top:1px solid var(--line);}
+/* 메뉴가 길어지면 섹션이 짜부라져 겹침 — 드로어/사이드바 전체를 스크롤로 */
+.mobile-drawer-nav .sidenav-top,.app-sidenav .sidenav-top{flex:0 0 auto;min-height:auto;}
+.mobile-drawer-nav .sidenav-admin,.app-sidenav .sidenav-admin{flex:0 0 auto;}
+.app-sidenav{overflow-y:auto;}
+.mobile-drawer-nav .mobile-drawer-foot{flex:0 0 auto;}
 .sidenav-admin .sidenav-group{padding-top:0;}
 .sidenav-subitem{padding-left:22px;font-size:13px;gap:10px;}
 .rate-filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0;}
