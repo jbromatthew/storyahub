@@ -2,8 +2,11 @@ import { prisma } from "../db.js";
 import { env } from "../env.js";
 import {
   fetchSheetGrid,
+  fetchSheetGridCached,
   batchUpdateValues,
-  listMonthSheets,
+  listMonthSheetsCached,
+  invalidateSheetCache,
+  memoSheetCall,
   parseOrderRowDate,
   parseOrderRowMonth,
 } from "./googleSheets.js";
@@ -48,6 +51,7 @@ export type DashboardItem = {
   actual: number;
   gap: number;
   rate: number | null;
+  avg3?: number; // 직전 3개월 월평균 (목표 설정 참고용, 업종별 섹션 등)
 };
 
 export type DashboardSection = {
@@ -453,23 +457,38 @@ function findLabeledNumber(grid: string[][], pattern: RegExp, maxRow = 6): numbe
   return null;
 }
 
+/** 신규문의 행 경량 캐시 — 전체 JSON을 매 요청마다 다시 읽지 않도록 필요한 필드만 추려 60초 보관 */
+type InquiryLite = { sheet: string; industry: string };
+
+function loadInquiryLite(): Promise<InquiryLite[]> {
+  return memoSheetCall("db:sales-inquiry-lite", 60_000, async () => {
+    const rows = await prisma.erpSalesInquiry.findMany({
+      where: { spreadsheetId: env.googleSheets.inquirySpreadsheetId },
+      select: { data: true, sheetName: true },
+    });
+    const out: InquiryLite[] = [];
+    for (const row of rows) {
+      const data = row.data as Record<string, string>;
+      if ((data["구분"] || "").trim() !== "신규문의") continue;
+      out.push({
+        sheet: normalizeMonthSheet(row.sheetName),
+        industry: (data["업종"] || "").trim() || "확인불가",
+      });
+    }
+    return out;
+  });
+}
+
 /** 당월 신규문의 건수 (문의 시트 기준, 결제율 분석과 동일 소스). 업종별 분해도 함께 반환 */
 async function loadInquiryStats(monthSheet: string): Promise<{ total: number; byIndustry: Map<string, number> }> {
-  const spreadsheetId = env.googleSheets.inquirySpreadsheetId;
   const target = normalizeMonthSheet(monthSheet);
-  const rows = await prisma.erpSalesInquiry.findMany({
-    where: { spreadsheetId },
-    select: { data: true, sheetName: true },
-  });
+  const rows = await loadInquiryLite();
   let total = 0;
   const byIndustry = new Map<string, number>();
   for (const row of rows) {
-    if (normalizeMonthSheet(row.sheetName) !== target) continue;
-    const data = row.data as Record<string, string>;
-    if ((data["구분"] || "").trim() !== "신규문의") continue;
+    if (row.sheet !== target) continue;
     total += 1;
-    const industry = (data["업종"] || "").trim() || "확인불가";
-    byIndustry.set(industry, (byIndustry.get(industry) ?? 0) + 1);
+    byIndustry.set(row.industry, (byIndustry.get(row.industry) ?? 0) + 1);
   }
   return { total, byIndustry };
 }
@@ -549,12 +568,43 @@ function buildSection(
   };
 }
 
-async function loadMonthCounts(monthLabel: string): Promise<MonthCounts> {
-  const spreadsheetId = env.googleSheets.orderSpreadsheetId;
-  const rows = await prisma.erpSalesOrder.findMany({
-    where: { spreadsheetId },
-    select: { data: true },
+/**
+ * 신규센터 행 경량 캐시 — 주문 원본(135컬럼 JSON) 전체 스캔을 요청마다 반복하지 않도록
+ * 계기판에 필요한 5개 필드만 추려 60초 보관. 당월 집계와 직전 3개월 평균이 같은 캐시를 공유한다.
+ */
+type OrderLite = {
+  month: string | null; // YYYY-MM
+  date: string | null; // YYYY-MM-DD
+  channel: string;
+  industry: string;
+  plan: string;
+};
+
+function loadNewCenterLite(): Promise<OrderLite[]> {
+  return memoSheetCall("db:sales-order-lite", 60_000, async () => {
+    const rows = await prisma.erpSalesOrder.findMany({
+      where: { spreadsheetId: env.googleSheets.orderSpreadsheetId },
+      select: { data: true },
+    });
+    const out: OrderLite[] = [];
+    for (const row of rows) {
+      const data = row.data as Record<string, string>;
+      if ((data["구분"] || "").trim() !== NEW_CENTER_TYPE) continue;
+      const mk = parseOrderRowMonth(data);
+      out.push({
+        month: mk ? sheetMonthToLabel(mk) : null,
+        date: parseOrderRowDate(data),
+        channel: (data["마케팅채널"] || "").trim() || "기타",
+        industry: (data["업종"] || "").trim() || "확인불가",
+        plan: (data["기본 요금제"] || "").trim() || "알 수 없음",
+      });
+    }
+    return out;
   });
+}
+
+async function loadMonthCounts(monthLabel: string): Promise<MonthCounts> {
+  const rows = await loadNewCenterLite();
 
   const byChannel = new Map<string, number>();
   const byIndustry = new Map<string, number>();
@@ -575,20 +625,12 @@ async function loadMonthCounts(monthLabel: string): Promise<MonthCounts> {
   };
 
   for (const row of rows) {
-    const data = row.data as Record<string, string>;
-    if ((data["구분"] || "").trim() !== NEW_CENTER_TYPE) continue;
-    const monthKey = parseOrderRowMonth(data);
-    if (!monthKey) continue;
-    const label = sheetMonthToLabel(monthKey);
-    if (label !== monthLabel) continue;
+    if (row.month !== monthLabel) continue;
 
-    const dateKey = parseOrderRowDate(data);
-    const weekNum = dateKey ? weekOfMonth(dateKey, monthLabel) : null;
+    const weekNum = row.date ? weekOfMonth(row.date, monthLabel) : null;
 
     total += 1;
-    const channel = (data["마케팅채널"] || "").trim() || "기타";
-    const industry = (data["업종"] || "").trim() || "확인불가";
-    const plan = (data["기본 요금제"] || "").trim() || "알 수 없음";
+    const { channel, industry, plan } = row;
 
     byChannel.set(channel, (byChannel.get(channel) ?? 0) + 1);
     byIndustry.set(industry, (byIndustry.get(industry) ?? 0) + 1);
@@ -689,23 +731,16 @@ async function loadPrevIndustryAvg(monthLabels: string[]): Promise<PrevAvg> {
   const n = Math.max(1, monthLabels.length);
   if (!monthLabels.length) return { byIndustryPlan, byIndustryChannel, n };
   const labelSet = new Set(monthLabels);
-  const rows = await prisma.erpSalesOrder.findMany({
-    where: { spreadsheetId: env.googleSheets.orderSpreadsheetId },
-    select: { data: true },
-  });
+  const rows = await loadNewCenterLite();
   const bump = (outer: Map<string, Map<string, number>>, a: string, b: string) => {
     const inner = outer.get(a) ?? new Map<string, number>();
     inner.set(b, (inner.get(b) ?? 0) + 1);
     outer.set(a, inner);
   };
   for (const row of rows) {
-    const data = row.data as Record<string, string>;
-    if ((data["구분"] || "").trim() !== NEW_CENTER_TYPE) continue;
-    const mk = parseOrderRowMonth(data);
-    if (!mk || !labelSet.has(sheetMonthToLabel(mk))) continue;
-    const industry = (data["업종"] || "").trim() || "확인불가";
-    bump(byIndustryPlan, industry, (data["기본 요금제"] || "").trim() || "알 수 없음");
-    bump(byIndustryChannel, industry, (data["마케팅채널"] || "").trim() || "기타");
+    if (!row.month || !labelSet.has(row.month)) continue;
+    bump(byIndustryPlan, row.industry, row.plan);
+    bump(byIndustryChannel, row.industry, row.channel);
   }
   return { byIndustryPlan, byIndustryChannel, n };
 }
@@ -943,7 +978,7 @@ function buildIndustryPlanSection(
 }
 
 export async function listDashboardMonths(): Promise<string[]> {
-  return listMonthSheets(dashboardSpreadsheetId());
+  return listMonthSheetsCached(dashboardSpreadsheetId());
 }
 
 function colLetter(i: number): string {
@@ -1010,6 +1045,8 @@ export async function writeDashboardGoalsToSheet(
   }
 
   await batchUpdateValues(spreadsheetId, updates);
+  // 방금 쓴 목표가 다음 조회에 바로 보이도록 그리드 캐시 무효화
+  invalidateSheetCache(`grid:${spreadsheetId}`);
   return { updated: updates.length };
 }
 
@@ -1022,7 +1059,26 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
     (month && months.includes(month) ? month : null) ??
     (months.includes(currentSheet) ? currentSheet : months[0] ?? currentSheet);
 
-  const grid = await fetchSheetGrid(spreadsheetId, selectedMonth);
+  // 무거운 원천 조회는 전부 병렬 실행 (시트 그리드 / 목표 오버라이드 / 신규센터 집계 / 문의 집계 / 직전 3개월 / 최근 동기화)
+  const monthLabel = sheetMonthToLabel(selectedMonth);
+  const [selY, selM] = monthLabel.split("-").map(Number);
+  const prevLabels: string[] = [];
+  for (let k = 1; k <= 3; k++) {
+    const d = new Date(selY, selM - 1 - k, 1);
+    prevLabels.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  const [grid, goalOverrides, counts, inquiryStats, prevAvg, latest] = await Promise.all([
+    fetchSheetGridCached(spreadsheetId, selectedMonth),
+    loadDashboardGoalOverrides(selectedMonth),
+    loadMonthCounts(monthLabel),
+    loadInquiryStats(selectedMonth),
+    loadPrevIndustryAvg(prevLabels),
+    prisma.erpSalesOrder.findFirst({
+      where: { spreadsheetId: env.googleSheets.orderSpreadsheetId },
+      orderBy: { syncedAt: "desc" },
+      select: { sheetName: true },
+    }),
+  ]);
   const summaryMeta = parseSummary(grid);
 
   const channelRow = findSectionRow(grid, /^1\.채널별/);
@@ -1037,7 +1093,6 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
   const industryWeek = industryRow >= 0 ? parseSectionWeekData(grid, industryRow) : null;
   const planWeek = planRow >= 0 ? parseSectionWeekData(grid, planRow) : null;
 
-  const goalOverrides = await loadDashboardGoalOverrides(selectedMonth);
   // '5. 업종X요금제' 시트 매트릭스를 기본으로, DB 오버라이드는 시트에 값 없는 셀만 보충
   const sheetIPG = parseIndustryPlanSheet(grid);
   const effOverrides: DashboardGoalOverrides = {
@@ -1050,23 +1105,12 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
     goalOverrides
   );
 
-  const monthLabel = sheetMonthToLabel(selectedMonth);
-  const counts = await loadMonthCounts(monthLabel);
-  const inquiryStats = await loadInquiryStats(selectedMonth);
   const inquiryActual = inquiryStats.total;
   const inquiryGoal = summaryMeta.inquiryGoal;
   const inquiryRate =
     inquiryGoal && inquiryGoal > 0 ? Math.round((inquiryActual / inquiryGoal) * 1000) / 10 : null;
   const inquiryGoalByIndustry = industryRow >= 0 ? parseSectionNamedRow(grid, industryRow, /^문의목표$/) : null;
   const weekly = buildWeeklyBreakdown(channelWeek, industryWeek, planWeek, counts);
-  // 직전 3개월 (목표 설정 참고용 월평균)
-  const [selY, selM] = monthLabel.split("-").map(Number);
-  const prevLabels: string[] = [];
-  for (let k = 1; k <= 3; k++) {
-    const d = new Date(selY, selM - 1 - k, 1);
-    prevLabels.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-  }
-  const prevAvg = await loadPrevIndustryAvg(prevLabels);
   const industryDrilldowns = buildIndustryDrilldowns(
     counts,
     effOverrides,
@@ -1089,11 +1133,25 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
     Object.keys(goalOverrides.industryPlanGoals).length > 0 ||
     Object.keys(goalOverrides.industryChannelGoals).length > 0;
 
-  const latest = await prisma.erpSalesOrder.findFirst({
-    where: { spreadsheetId: env.googleSheets.orderSpreadsheetId },
-    orderBy: { syncedAt: "desc" },
-    select: { sheetName: true },
-  });
+  // 업종별 직전 3개월 월평균 (업종 목표 설정 참고용)
+  const industryAvg3 = new Map<string, number>();
+  for (const [ind, planMap] of prevAvg.byIndustryPlan) {
+    let sum = 0;
+    for (const v of planMap.values()) sum += v;
+    industryAvg3.set(ind, Math.round((sum / prevAvg.n) * 10) / 10);
+  }
+  const industrySection = buildSection(
+    "industry",
+    "업종별",
+    mergedIndustry.labels,
+    mergedIndustry.goals,
+    counts.byIndustry,
+    INDUSTRY_TYPES
+  );
+  industrySection.items = industrySection.items.map((it) => ({
+    ...it,
+    avg3: industryAvg3.get(it.label) ?? 0,
+  }));
 
   return {
     month: selectedMonth,
@@ -1117,7 +1175,7 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
     },
     sections: [
       buildSection("channel", "채널별", channelParsed.labels, channelParsed.goals, counts.byChannel, []),
-      buildSection("industry", "업종별", mergedIndustry.labels, mergedIndustry.goals, counts.byIndustry, INDUSTRY_TYPES),
+      industrySection,
       buildSection("plan", "요금제별", planParsed.labels, planParsed.goals, counts.byPlan, PLAN_ORDER),
     ],
     industryPlan,

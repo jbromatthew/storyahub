@@ -359,6 +359,29 @@ export async function batchGetRanges(
   );
 }
 
+/**
+ * 짧은 TTL 인메모리 캐시 (계기판 등 조회 빈도가 높은 읽기 전용 호출용).
+ * 진행 중인 Promise를 그대로 저장해 동시 요청도 API 1회로 합쳐진다.
+ */
+const memoCache = new Map<string, { at: number; promise: Promise<unknown> }>();
+
+export function memoSheetCall<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
+  const hit = memoCache.get(key);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.promise as Promise<T>;
+  const promise = fn().catch((err) => {
+    memoCache.delete(key);
+    throw err;
+  });
+  memoCache.set(key, { at: Date.now(), promise });
+  return promise;
+}
+
+export function invalidateSheetCache(prefix: string): void {
+  for (const key of memoCache.keys()) {
+    if (key.startsWith(prefix)) memoCache.delete(key);
+  }
+}
+
 /** 스프레드시트의 모든 탭 이름 (필터 없이) */
 export async function listSheetTitles(spreadsheetId: string): Promise<string[]> {
   const sheets = getSheetsClient();
@@ -487,4 +510,23 @@ export async function fetchSheetGrid(
   return (res.data.values ?? []).map((row) =>
     (row ?? []).map((cell) => cellToString(cell))
   );
+}
+
+/** fetchSheetGrid의 TTL 캐시 버전 (계기판 조회용) */
+export function fetchSheetGridCached(
+  spreadsheetId: string,
+  sheetName: string,
+  ttlMs = 60_000
+): Promise<string[][]> {
+  return memoSheetCall(`grid:${spreadsheetId}:${sheetName}`, ttlMs, () =>
+    fetchSheetGrid(spreadsheetId, sheetName)
+  );
+}
+
+/** listMonthSheets의 TTL 캐시 버전 (탭 목록은 자주 안 바뀜) */
+export function listMonthSheetsCached(
+  spreadsheetId: string,
+  ttlMs = 5 * 60_000
+): Promise<string[]> {
+  return memoSheetCall(`months:${spreadsheetId}`, ttlMs, () => listMonthSheets(spreadsheetId));
 }

@@ -5638,6 +5638,9 @@ function GaugeRing({ rate, size = 132 }) {
   );
 }
 
+// 세일즈 계기판 응답 캐시 (월별) — 재방문 시 즉시 표시 후 백그라운드 갱신
+const salesDashCache = new Map();
+
 export function SalesDashboardView() {
   const [selectedMonth, setSelectedMonth] = useState(null);
   const [tab, setTab] = useState("industry");
@@ -5648,17 +5651,32 @@ export function SalesDashboardView() {
   const [savingGoals, setSavingGoals] = useState(false);
   const [drillIndustry, setDrillIndustry] = useState(null);
   const [dimDrill, setDimDrill] = useState(null); // { dim: "channel"|"plan", key }
+  const editModeRef = useRef(editMode);
+  editModeRef.current = editMode;
 
   const load = useCallback(() => {
-    setLoading(true);
+    const cacheKey = selectedMonth || "";
+    const cached = salesDashCache.get(cacheKey);
+    if (cached) {
+      setData(cached);
+      setDraftGoals(cloneGoalOverrides(cached));
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+    setDrillIndustry(null);
+    setDimDrill(null);
     return api.erpSalesDashboard({ month: selectedMonth || undefined })
       .then((res) => {
+        salesDashCache.set(cacheKey, res);
+        if (res.month) salesDashCache.set(res.month, res);
+        if (editModeRef.current) return; // 목표 편집 중이면 백그라운드 갱신으로 덮어쓰지 않음
         setData(res);
         setDraftGoals(cloneGoalOverrides(res));
-        setDrillIndustry(null);
-        setDimDrill(null);
       })
-      .catch(notifyError)
+      .catch((err) => {
+        if (!cached) notifyError(err);
+      })
       .finally(() => setLoading(false));
   }, [selectedMonth]);
 
@@ -5702,6 +5720,8 @@ export function SalesDashboardView() {
       industryChannelGoals: draftGoals.industryChannelGoals,
     })
       .then((res) => {
+        if (res.month) salesDashCache.set(res.month, res);
+        salesDashCache.set(selectedMonth || "", res);
         setData(res);
         setDraftGoals(cloneGoalOverrides(res));
         setEditMode(false);
@@ -5726,6 +5746,8 @@ export function SalesDashboardView() {
       industryChannelGoals: base.industryChannelGoals,
     })
       .then((res) => {
+        if (res.month) salesDashCache.set(res.month, res);
+        salesDashCache.set(selectedMonth || "", res);
         setData(res);
         setDraftGoals(cloneGoalOverrides(res));
         if (res.sheetSync?.ok) toastSuccess(`목표 저장 완료 · 시트에도 ${res.sheetSync.updated}칸 반영`);
@@ -6113,6 +6135,7 @@ export function SalesDashboardView() {
                   <tr>
                     <th className="label">{section.label}</th>
                     <th>목표</th>
+                    {tab === "industry" && <th>직전 3개월 평균</th>}
                     <th>현황</th>
                     <th>달성률</th>
                     <th>미달</th>
@@ -6150,6 +6173,9 @@ export function SalesDashboardView() {
                           />
                         ) : goal}
                       </td>
+                      {tab === "industry" && (
+                        <td className="num" style={{ color: "var(--muted)" }}>{row.avg3 != null ? row.avg3 : "-"}</td>
+                      )}
                       <td className="num">{row.actual}</td>
                       <td className="num" style={{ color: dashRateColor(rate), fontWeight: 700 }}>
                         {formatDashRate(rate)}
@@ -6174,6 +6200,11 @@ export function SalesDashboardView() {
                   <tr style={{ background: "#FFF8F0" }}>
                     <td className="label">합계</td>
                     <td className="num">{tab === "industry" && editMode ? inboundGoal : section.total.goal}</td>
+                    {tab === "industry" && (
+                      <td className="num" style={{ color: "var(--muted)" }}>
+                        {Math.round(section.items.reduce((s, r) => s + (r.avg3 || 0), 0) * 10) / 10}
+                      </td>
+                    )}
                     <td className="num">{section.total.actual}</td>
                     <td className="num" style={{ color: dashRateColor(section.total.rate), fontWeight: 800 }}>
                       {formatDashRate(section.total.rate)}
