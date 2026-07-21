@@ -5344,6 +5344,7 @@ function DrillGoalTable({ title, labelHeader, items, editable, draft, onChange, 
             <tr>
               <th className="label">{labelHeader}</th>
               <th>목표</th>
+              <th>직전 3개월 평균</th>
               <th>현황</th>
               <th>달성률</th>
               <th>미달</th>
@@ -5369,6 +5370,7 @@ function DrillGoalTable({ title, labelHeader, items, editable, draft, onChange, 
                       />
                     ) : (row.goal || "-")}
                   </td>
+                  <td className="num" style={{ color: "var(--muted)" }}>{row.avg3 != null ? row.avg3 : "-"}</td>
                   <td className="num">{row.actual}</td>
                   <td className="num" style={{ color: dashRateColor(goal > 0 ? rate : null), fontWeight: 700 }}>
                     {goal > 0 ? formatDashRate(rate) : "-"}
@@ -5408,7 +5410,7 @@ export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGo
   const fullPlanItems = useMemo(() => {
     const base = detail?.plans || [];
     const master = planList?.length ? planList : base.map((p) => p.label);
-    return master.map((label) => base.find((p) => p.label === label) || { key: label, label, goal: 0, actual: 0, gap: 0, rate: null });
+    return master.map((label) => base.find((p) => p.label === label) || { key: label, label, goal: 0, actual: 0, gap: 0, rate: null, avg3: 0 });
   }, [detail, planList]);
   const planItems = editing ? fullPlanItems : detail?.plans;
 
@@ -5431,7 +5433,17 @@ export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGo
     return r;
   };
 
-  const save = () => {
+  const save = async () => {
+    // 요금제 합계가 업종 목표와 다르면 저장 전에 알림 (저장 자체는 허용)
+    const planSum = Object.values(cleanGoals(planDraft)).reduce((a, b) => a + b, 0);
+    if (industryGoal > 0 && planSum !== industryGoal) {
+      const diff = planSum - industryGoal;
+      const ok = await confirmAction(
+        "요금제 합계가 업종 목표와 다릅니다",
+        `요금제 합 ${planSum} / 업종 목표 ${industryGoal} — ${diff > 0 ? `${diff}개 초과` : `${-diff}개 미배분`} 상태입니다. 그래도 저장할까요?`
+      );
+      if (!ok) return;
+    }
     Promise.resolve(onSaveGoals(industry, cleanGoals(planDraft), cleanGoals(channelDraft))).then(() => setEditing(false));
   };
 

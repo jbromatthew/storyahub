@@ -93,11 +93,13 @@ export type WeeklyBreakdown = {
   plan: WeeklyDimensionRow[];
 };
 
+export type DrillItem = DashboardItem & { avg3?: number };
+
 export type IndustryDrilldown = {
   industry: string;
   summary: DashboardItem;
-  plans: DashboardItem[];
-  channels: DashboardItem[];
+  plans: DrillItem[];
+  channels: DrillItem[];
   weekly: DashboardItem[];
   inquiry: { goal: number | null; actual: number; rate: number | null };
 };
@@ -674,13 +676,48 @@ function buildDimensionDrilldowns(
   return out;
 }
 
+type PrevAvg = {
+  byIndustryPlan: Map<string, Map<string, number>>;
+  byIndustryChannel: Map<string, Map<string, number>>;
+  n: number;
+};
+
+/** 직전 N개월 업종×요금제/채널 신규센터 건수 합 (목표 설정 참고용 월평균 계산) */
+async function loadPrevIndustryAvg(monthLabels: string[]): Promise<PrevAvg> {
+  const byIndustryPlan = new Map<string, Map<string, number>>();
+  const byIndustryChannel = new Map<string, Map<string, number>>();
+  const n = Math.max(1, monthLabels.length);
+  if (!monthLabels.length) return { byIndustryPlan, byIndustryChannel, n };
+  const labelSet = new Set(monthLabels);
+  const rows = await prisma.erpSalesOrder.findMany({
+    where: { spreadsheetId: env.googleSheets.orderSpreadsheetId },
+    select: { data: true },
+  });
+  const bump = (outer: Map<string, Map<string, number>>, a: string, b: string) => {
+    const inner = outer.get(a) ?? new Map<string, number>();
+    inner.set(b, (inner.get(b) ?? 0) + 1);
+    outer.set(a, inner);
+  };
+  for (const row of rows) {
+    const data = row.data as Record<string, string>;
+    if ((data["구분"] || "").trim() !== NEW_CENTER_TYPE) continue;
+    const mk = parseOrderRowMonth(data);
+    if (!mk || !labelSet.has(sheetMonthToLabel(mk))) continue;
+    const industry = (data["업종"] || "").trim() || "확인불가";
+    bump(byIndustryPlan, industry, (data["기본 요금제"] || "").trim() || "알 수 없음");
+    bump(byIndustryChannel, industry, (data["마케팅채널"] || "").trim() || "기타");
+  }
+  return { byIndustryPlan, byIndustryChannel, n };
+}
+
 function buildIndustryDrilldowns(
   counts: MonthCounts,
   overrides: DashboardGoalOverrides,
   industryWeek: SectionWeekData | null,
   mergedIndustry: { labels: string[]; goals: number[] },
   inquiryByIndustry: Map<string, number>,
-  inquiryGoalByIndustry: Map<string, number> | null
+  inquiryGoalByIndustry: Map<string, number> | null,
+  prevAvg: PrevAvg
 ): Record<string, IndustryDrilldown> {
   const weekLabels = resolveWeekLabels(industryWeek, counts);
   const industries = sortLabels(
@@ -704,21 +741,29 @@ function buildIndustryDrilldowns(
       (idx >= 0 ? mergedIndustry.goals[idx] ?? 0 : 0);
     const actual = counts.byIndustry.get(industry) ?? 0;
 
+    const avgPlanMap = prevAvg.byIndustryPlan.get(industry) ?? new Map<string, number>();
+    const avgChMap = prevAvg.byIndustryChannel.get(industry) ?? new Map<string, number>();
+    const avg3Of = (map: Map<string, number>, key: string) =>
+      Math.round(((map.get(key) ?? 0) / prevAvg.n) * 10) / 10;
+
     const planGoals = overrides.industryPlanGoals[industry] ?? {};
     const planActuals = counts.byIndustryPlan.get(industry) ?? new Map<string, number>();
     const planLabels = sortLabels(
-      [...new Set([...PLAN_ORDER, ...planActuals.keys(), ...Object.keys(planGoals)])],
+      [...new Set([...PLAN_ORDER, ...planActuals.keys(), ...Object.keys(planGoals), ...avgPlanMap.keys()])],
       PLAN_ORDER
     );
     const plans = planLabels
-      .map((plan) => item(plan, planGoals[plan] ?? 0, planActuals.get(plan) ?? 0))
-      .filter((it) => it.goal > 0 || it.actual > 0);
+      .map((plan) => ({ ...item(plan, planGoals[plan] ?? 0, planActuals.get(plan) ?? 0), avg3: avg3Of(avgPlanMap, plan) }))
+      .filter((it) => it.goal > 0 || it.actual > 0 || it.avg3 > 0);
 
     const channelGoals = overrides.industryChannelGoals[industry] ?? {};
     const channelActuals = counts.byIndustryChannel.get(industry) ?? new Map<string, number>();
-    const channels = sortLabels([...new Set([...channelActuals.keys(), ...Object.keys(channelGoals)])], [])
-      .map((channel) => item(channel, channelGoals[channel] ?? 0, channelActuals.get(channel) ?? 0))
-      .filter((it) => it.goal > 0 || it.actual > 0);
+    const channels = sortLabels(
+      [...new Set([...channelActuals.keys(), ...Object.keys(channelGoals), ...avgChMap.keys()])],
+      []
+    )
+      .map((channel) => ({ ...item(channel, channelGoals[channel] ?? 0, channelActuals.get(channel) ?? 0), avg3: avg3Of(avgChMap, channel) }))
+      .filter((it) => it.goal > 0 || it.actual > 0 || it.avg3 > 0);
 
     const weekly = weekLabels.map((label, weekIdx) => {
       const weekNum = weekIdx + 1;
@@ -1014,13 +1059,22 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
     inquiryGoal && inquiryGoal > 0 ? Math.round((inquiryActual / inquiryGoal) * 1000) / 10 : null;
   const inquiryGoalByIndustry = industryRow >= 0 ? parseSectionNamedRow(grid, industryRow, /^문의목표$/) : null;
   const weekly = buildWeeklyBreakdown(channelWeek, industryWeek, planWeek, counts);
+  // 직전 3개월 (목표 설정 참고용 월평균)
+  const [selY, selM] = monthLabel.split("-").map(Number);
+  const prevLabels: string[] = [];
+  for (let k = 1; k <= 3; k++) {
+    const d = new Date(selY, selM - 1 - k, 1);
+    prevLabels.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  const prevAvg = await loadPrevIndustryAvg(prevLabels);
   const industryDrilldowns = buildIndustryDrilldowns(
     counts,
     effOverrides,
     industryWeek,
     mergedIndustry,
     inquiryStats.byIndustry,
-    inquiryGoalByIndustry
+    inquiryGoalByIndustry,
+    prevAvg
   );
   const drillWeekLabels = resolveWeekLabels(industryWeek ?? channelWeek ?? planWeek, counts);
   const channelDrilldowns = buildDimensionDrilldowns("channel", counts, channelParsed, drillWeekLabels);
