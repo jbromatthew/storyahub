@@ -2072,3 +2072,75 @@ erpRouter.post("/install-schedule/import", async (req: AuthedRequest, res) => {
 
   res.json({ ok: true, month, imported: rows.length, teams: teamNames });
 });
+
+/* ===================== 일일보고 — CEO/COO 전용 ===================== */
+
+const DAILY_EXEC_EMAILS = new Set([CONSULT_CEO_EMAIL, CONSULT_COO_EMAIL]);
+
+async function dailyAccess(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, name: true },
+  });
+  const email = (user?.email || "").trim().toLowerCase();
+  return { user, email, ok: DAILY_EXEC_EMAILS.has(email) };
+}
+
+// 월별 보고 목록 (두 사람 것 모두)
+erpRouter.get("/daily-reports", async (req: AuthedRequest, res) => {
+  const a = await dailyAccess(req.userId!);
+  if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });
+  const month = typeof req.query.month === "string" ? req.query.month : "";
+  const where = /^\d{4}-\d{2}$/.test(month) ? { date: { startsWith: month } } : {};
+  const reports = await prisma.erpDailyReport.findMany({
+    where,
+    orderBy: [{ date: "desc" }, { authorEmail: "asc" }],
+  });
+  res.json({ reports, myEmail: a.email });
+});
+
+// 직전 보고의 '내일 할 일' (선택 날짜 이전 내 최신 보고 — 다음날 '오늘 한 일' 프리필용)
+erpRouter.get("/daily-reports/prev-plan", async (req: AuthedRequest, res) => {
+  const a = await dailyAccess(req.userId!);
+  if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });
+  const date = typeof req.query.date === "string" ? req.query.date : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "date 형식은 YYYY-MM-DD" });
+  const prev = await prisma.erpDailyReport.findFirst({
+    where: { authorEmail: a.email, date: { lt: date }, NOT: { plan: "" } },
+    orderBy: { date: "desc" },
+    select: { date: true, plan: true },
+  });
+  res.json({ prev });
+});
+
+// 본인 보고 저장 (업서트)
+erpRouter.put("/daily-reports/:date", async (req: AuthedRequest, res) => {
+  const a = await dailyAccess(req.userId!);
+  if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });
+  const date = req.params.date;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "date 형식은 YYYY-MM-DD" });
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const clean = (v: unknown) => (typeof v === "string" ? v.slice(0, 20000) : "");
+  const data = { did: clean(body.did), missed: clean(body.missed), plan: clean(body.plan) };
+  const report = await prisma.erpDailyReport.upsert({
+    where: { date_authorEmail: { date, authorEmail: a.email } },
+    create: {
+      date,
+      authorId: a.user!.id,
+      authorName: a.user?.name || a.email,
+      authorEmail: a.email,
+      ...data,
+    },
+    update: data,
+  });
+  res.json({ report });
+});
+
+// 본인 보고 삭제
+erpRouter.delete("/daily-reports/:date", async (req: AuthedRequest, res) => {
+  const a = await dailyAccess(req.userId!);
+  if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });
+  const date = req.params.date;
+  await prisma.erpDailyReport.deleteMany({ where: { date, authorEmail: a.email } });
+  res.json({ ok: true });
+});

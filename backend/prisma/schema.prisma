@@ -810,3 +810,20 @@ model ErpInstallSchedule {
 
   @@index([month])
 }
+
+// 일일보고 — CEO/COO 전용 (날짜별 3문답)
+model ErpDailyReport {
+  id          String   @id @default(cuid())
+  date        String   // YYYY-MM-DD
+  authorId    String
+  authorName  String
+  authorEmail String
+  did         String   @default("") // 오늘 무슨 일을 하였나
+  missed      String   @default("") // 오늘 했어야 했는데 못했나
+  plan        String   @default("") // 내일은 무슨 일을 할 것인가
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([date, authorEmail])
+  @@index([date])
+}

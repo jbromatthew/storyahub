@@ -329,6 +329,15 @@ export const api = {
     return req(`/erp/sales/dashboard?${p}`);
   },
   erpSalesDashboardGoals: (body) => req("/erp/sales/dashboard/goals", { method: "PUT", body }),
+  // 일일보고 (CEO/COO 전용)
+  erpDailyReports: ({ month } = {}) => {
+    const p = new URLSearchParams();
+    if (month) p.set("month", month);
+    return req(`/erp/daily-reports?${p}`);
+  },
+  erpDailyReportPrevPlan: (date) => req(`/erp/daily-reports/prev-plan?date=${encodeURIComponent(date)}`),
+  erpDailyReportSave: (date, body) => req(`/erp/daily-reports/${date}`, { method: "PUT", body }),
+  erpDailyReportDelete: (date) => req(`/erp/daily-reports/${date}`, { method: "DELETE" }),
   erpMarketingDashboard: ({ month } = {}) => {
     const p = new URLSearchParams();
     if (month) p.set("month", month);

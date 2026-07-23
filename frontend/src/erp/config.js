@@ -1,5 +1,7 @@
 export const ERP_MODULES = [
   { id: "kb", label: "지식경영", icon: "book", group: "main" },
+  // CEO/COO 전용 — ErpApp에서 이메일로 필터
+  { id: "daily-report", label: "일일보고", icon: "meet", group: "main", execOnly: true },
   // 회의록 메뉴는 잠시 숨김 (라우트·컴포넌트는 그대로 유지)
   // { id: "meetings", label: "회의록", icon: "meet", group: "work" },
   // OKR 메뉴는 잠시 숨김 (나중에 다시 노출). 라우트·컴포넌트는 그대로 유지됨.

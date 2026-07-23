@@ -7601,3 +7601,229 @@ export function RevenueView() {
     </div>
   );
 }
+
+/* ===================== 일일보고 (CEO/COO 전용) ===================== */
+
+const DAILY_QUESTIONS = [
+  { key: "did", label: "오늘 무슨 일을 하였나?" },
+  { key: "missed", label: "오늘 무슨 일을 했어야 했는데 못했나?" },
+  { key: "plan", label: "내일은 무슨 일을 할 것인가?" },
+];
+
+function dailyAuthorLabel(r) {
+  const email = (r.authorEmail || "").toLowerCase();
+  if (email.startsWith("david")) return "David";
+  if (email.startsWith("matthew")) return "Matthew";
+  return r.authorName || email;
+}
+
+export function DailyReportView() {
+  const now = new Date();
+  const todayStr = fmtDateYmd(now);
+  const [ym, setYm] = useState({ y: now.getFullYear(), m: now.getMonth() + 1 });
+  const [reports, setReports] = useState([]);
+  const [myEmail, setMyEmail] = useState("");
+  const [selDay, setSelDay] = useState(todayStr);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({ did: "", missed: "", plan: "" });
+  const [prevPlan, setPrevPlan] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const monthStr = `${ym.y}-${String(ym.m).padStart(2, "0")}`;
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.erpDailyReports({ month: monthStr })
+      .then((r) => {
+        setReports(r.reports || []);
+        setMyEmail((r.myEmail || "").toLowerCase());
+      })
+      .catch(notifyError)
+      .finally(() => setLoading(false));
+  }, [monthStr]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const byDate = useMemo(() => {
+    const m = new Map();
+    for (const r of reports) {
+      const arr = m.get(r.date) || [];
+      arr.push(r);
+      m.set(r.date, arr);
+    }
+    return m;
+  }, [reports]);
+
+  const calCells = useMemo(() => {
+    const first = new Date(ym.y, ym.m - 1, 1);
+    const days = new Date(ym.y, ym.m, 0).getDate();
+    const cells = Array(first.getDay()).fill(null);
+    for (let d = 1; d <= days; d++) {
+      cells.push(`${ym.y}-${String(ym.m).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+    }
+    return cells;
+  }, [ym]);
+
+  const shiftMonth = (dir) => {
+    setYm((p) => {
+      const d = new Date(p.y, p.m - 1 + dir, 1);
+      return { y: d.getFullYear(), m: d.getMonth() + 1 };
+    });
+    setEditing(false);
+  };
+
+  const dayReports = byDate.get(selDay) || [];
+  const mine = dayReports.find((r) => (r.authorEmail || "").toLowerCase() === myEmail);
+
+  const startEdit = () => {
+    setDraft(mine ? { did: mine.did || "", missed: mine.missed || "", plan: mine.plan || "" } : { did: "", missed: "", plan: "" });
+    setPrevPlan(null);
+    setEditing(true);
+    api.erpDailyReportPrevPlan(selDay)
+      .then((r) => {
+        setPrevPlan(r.prev || null);
+        // 직전 보고의 '내일 할 일'을 오늘 첫 문항에 프리필 (비어있을 때만)
+        if (r.prev?.plan && !(mine?.did)) {
+          setDraft((d) => (d.did ? d : { ...d, did: r.prev.plan }));
+        }
+      })
+      .catch(() => {});
+  };
+
+  const save = () => {
+    setSaving(true);
+    api.erpDailyReportSave(selDay, draft)
+      .then(() => {
+        toastSuccess("일일보고 저장 완료");
+        setEditing(false);
+        load();
+      })
+      .catch(notifyError)
+      .finally(() => setSaving(false));
+  };
+
+  const remove = async () => {
+    if (!(await confirmAction("보고 삭제", `${selDay} 내 보고를 삭제할까요?`))) return;
+    api.erpDailyReportDelete(selDay)
+      .then(() => { toastSuccess("삭제했어요"); setEditing(false); load(); })
+      .catch(notifyError);
+  };
+
+  const fmtDayTitle = (d) => {
+    const [y, m, dd] = d.split("-");
+    return `${y.slice(2)}.${Number(m)}.${Number(dd)}`;
+  };
+
+  return (
+    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40, maxWidth: 860 }}>
+      <div className="h-eyebrow">Daily</div>
+      <div className="h-title">일일보고</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+        날짜를 누르면 그날 보고가 아래에 보입니다. <strong>내일은 무슨 일을 할 것인가</strong>에 적은 내용은
+        다음 보고 작성 시 <strong>오늘 무슨 일을 하였나</strong>에 자동으로 채워집니다.
+      </div>
+
+      <div className="iscal" style={{ marginTop: 14 }}>
+        <div className="iscal-hd">
+          <button type="button" className="iscal-nav" onClick={() => shiftMonth(-1)}>◀</button>
+          <span>{ym.y}년 {ym.m}월</span>
+          <button type="button" className="iscal-nav" onClick={() => shiftMonth(1)}>▶</button>
+        </div>
+        <div className="iscal-grid">
+          {["일", "월", "화", "수", "목", "금", "토"].map((d) => <div key={d} className="iscal-dow">{d}</div>)}
+          {calCells.map((d, i) => {
+            if (!d) return <div key={`e${i}`} className="iscal-day empty" />;
+            const rs = byDate.get(d) || [];
+            return (
+              <button
+                key={d}
+                type="button"
+                className={"iscal-day" + (rs.length ? " has" : "") + (selDay === d ? " sel" : "") + (d === todayStr ? " today" : "")}
+                onClick={() => { setSelDay(d); setEditing(false); }}
+              >
+                <span className="d">{Number(d.slice(8))}</span>
+                {rs.length > 0 && (
+                  <span className="iscal-cnt" title={rs.map(dailyAuthorLabel).join(" · ")}>
+                    {rs.map((r) => dailyAuthorLabel(r)[0]).join("·")}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="spinner" />
+      ) : (
+        <div style={{ marginTop: 18 }}>
+          <div className="row" style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <strong style={{ fontSize: 17 }}>▼ {fmtDayTitle(selDay)}</strong>
+            {!editing && (
+              <button type="button" className="btn btn-sm btn-accent" onClick={startEdit}>
+                {mine ? "내 보고 수정" : "보고 작성"}
+              </button>
+            )}
+            {!editing && mine && (
+              <button type="button" className="btn btn-sm btn-ghost" onClick={remove}>삭제</button>
+            )}
+          </div>
+
+          {editing && (
+            <div className="card" style={{ marginTop: 12, padding: 16 }}>
+              {prevPlan?.plan && (
+                <div className="small dash-goal-hint" style={{ marginBottom: 12 }}>
+                  <strong>{fmtDayTitle(prevPlan.date)} 보고의 ‘내일 할 일’</strong> — 오늘 첫 문항에 채워뒀어요:
+                  <div style={{ whiteSpace: "pre-wrap", marginTop: 4 }}>{prevPlan.plan}</div>
+                </div>
+              )}
+              {DAILY_QUESTIONS.map((q2) => (
+                <div key={q2.key} style={{ marginBottom: 14 }}>
+                  <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>▶ {q2.label}</div>
+                  <textarea
+                    className="input"
+                    style={{ width: "100%", minHeight: 88, resize: "vertical", lineHeight: 1.5 }}
+                    value={draft[q2.key]}
+                    onChange={(e) => setDraft((d) => ({ ...d, [q2.key]: e.target.value }))}
+                    placeholder="내용을 입력하세요"
+                  />
+                </div>
+              ))}
+              <div className="row" style={{ gap: 8, justifyContent: "flex-end" }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)} disabled={saving}>취소</button>
+                <button type="button" className="btn btn-accent btn-sm" onClick={save} disabled={saving}>{saving ? "저장 중…" : "저장"}</button>
+              </div>
+            </div>
+          )}
+
+          {!editing && dayReports.length === 0 && (
+            <div className="small" style={{ padding: "20px 4px", color: "var(--muted)" }}>이 날짜에 작성된 보고가 없습니다</div>
+          )}
+
+          {!editing && [...dayReports]
+            .sort((a, b) => ((a.authorEmail || "").toLowerCase() === myEmail ? -1 : 1) - ((b.authorEmail || "").toLowerCase() === myEmail ? -1 : 1))
+            .map((r) => (
+            <div key={r.id} className="card" style={{ marginTop: 12, padding: 16 }}>
+              <div className="row" style={{ alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <strong>{dailyAuthorLabel(r)}</strong>
+                {(r.authorEmail || "").toLowerCase() === myEmail && <span className="tag" style={{ background: "var(--accent-soft)", color: "var(--accent-deep)", fontSize: 11.5 }}>나</span>}
+                <span className="small" style={{ color: "var(--muted)", marginLeft: "auto" }}>
+                  {new Date(r.updatedAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 수정
+                </span>
+              </div>
+              {DAILY_QUESTIONS.map((q2) => (
+                <div key={q2.key} style={{ marginBottom: 10 }}>
+                  <div className="small" style={{ fontWeight: 800, marginBottom: 4 }}>▶ {q2.label}</div>
+                  <div className="small" style={{ whiteSpace: "pre-wrap", lineHeight: 1.6, color: r[q2.key] ? "var(--ink)" : "var(--muted)" }}>
+                    {r[q2.key] || "－"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

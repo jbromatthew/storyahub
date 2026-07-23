@@ -12,7 +12,7 @@ import { userPreferences } from "../preferences.js";
 import { ERP_CSS } from "./erpStyles.js";
 import { ERP_MODULES, ERP_ADMIN_MODULES } from "./config.js";
 import { erpIcons as I } from "./icons.jsx";
-import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesDashboardView, MarketingDashboardView, BrojDashboardView, RevenueView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, ConsultDocsView, MembersView } from "./modules.jsx";
+import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesDashboardView, MarketingDashboardView, BrojDashboardView, RevenueView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, ConsultDocsView, MembersView, DailyReportView } from "./modules.jsx";
 
 function NavBtn({ on, icon, label, onClick, hidden, layout = "side" }) {
   const cls = layout === "side" ? "sidenavitem" : "sidenavitem";
@@ -24,6 +24,11 @@ function NavBtn({ on, icon, label, onClick, hidden, layout = "side" }) {
 }
 
 const ERP_OWNER_EMAIL = "matthew@broj.company";
+const ERP_EXEC_EMAILS = new Set(["david@broj.company", "matthew@broj.company"]);
+
+function isErpExec(user) {
+  return ERP_EXEC_EMAILS.has((user?.email || "").trim().toLowerCase());
+}
 
 function canAccessErpAdmin(user) {
   if (user?.erpAccess?.canManageMembers) return true;
@@ -38,7 +43,7 @@ function erpModuleLabel(id) {
 
 function ErpNav({ tab, kbView, onSelect, onLogout, user, hiddenIds, collapsedGroups, onToggleGroup }) {
   const showAdmin = canAccessErpAdmin(user);
-  const items = ERP_MODULES.filter((m) => (!m.ownerOnly || user?.erpAccess?.isOwner) && !(m.consultGate && !hiddenIds?.consultVisible));
+  const items = ERP_MODULES.filter((m) => (!m.ownerOnly || user?.erpAccess?.isOwner) && (!m.execOnly || isErpExec(user)) && !(m.consultGate && !hiddenIds?.consultVisible));
   // 그룹 헤더가 있는 그룹만 접기 대상 (지식경영 등 헤더 없는 항목은 항상 표시)
   const collapsibleGroups = new Set(items.filter((m) => m.groupLabel).map((m) => m.group));
   const isClosed = (g) => collapsibleGroups.has(g) && (collapsedGroups || []).includes(g);
@@ -325,6 +330,7 @@ export default function ErpApp() {
       case "sales-inquiry-trend": return <SalesInquiryTrendView />;
       case "sales-dashboard": return <SalesDashboardView />;
       case "marketing-dashboard": return <MarketingDashboardView />;
+      case "daily-report": return <DailyReportView />;
       case "broj-dashboard": return <BrojDashboardView />;
       case "sales-revenue": return <RevenueView />;
       case "sales-tax-invoice": return <TaxInvoiceView />;
