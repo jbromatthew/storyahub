@@ -12,7 +12,7 @@ import { userPreferences } from "../preferences.js";
 import { ERP_CSS } from "./erpStyles.js";
 import { ERP_MODULES, ERP_ADMIN_MODULES } from "./config.js";
 import { erpIcons as I } from "./icons.jsx";
-import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesDashboardView, BrojDashboardView, RevenueView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, ConsultDocsView, MembersView } from "./modules.jsx";
+import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesDashboardView, MarketingDashboardView, BrojDashboardView, RevenueView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, ConsultDocsView, MembersView } from "./modules.jsx";
 
 function NavBtn({ on, icon, label, onClick, hidden, layout = "side" }) {
   const cls = layout === "side" ? "sidenavitem" : "sidenavitem";
@@ -324,6 +324,7 @@ export default function ErpApp() {
       case "sales-trend": return <SalesTrendView />;
       case "sales-inquiry-trend": return <SalesInquiryTrendView />;
       case "sales-dashboard": return <SalesDashboardView />;
+      case "marketing-dashboard": return <MarketingDashboardView />;
       case "broj-dashboard": return <BrojDashboardView />;
       case "sales-revenue": return <RevenueView />;
       case "sales-tax-invoice": return <TaxInvoiceView />;

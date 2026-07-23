@@ -9,6 +9,7 @@ import {
   memoSheetCall,
   parseOrderRowDate,
   parseOrderRowMonth,
+  parseInquiryRowDate,
 } from "./googleSheets.js";
 import { INDUSTRY_TYPES } from "./industryTypes.js";
 import {
@@ -458,7 +459,14 @@ function findLabeledNumber(grid: string[][], pattern: RegExp, maxRow = 6): numbe
 }
 
 /** 신규문의 행 경량 캐시 — 전체 JSON을 매 요청마다 다시 읽지 않도록 필요한 필드만 추려 60초 보관 */
-type InquiryLite = { sheet: string; industry: string };
+type InquiryLite = {
+  sheet: string; // 탭 이름 (YYYY.MM.)
+  month: string; // YYYY-MM
+  industry: string;
+  channel: string;
+  plan: string;
+  date: string | null; // YYYY-MM-DD
+};
 
 function loadInquiryLite(): Promise<InquiryLite[]> {
   return memoSheetCall("db:sales-inquiry-lite", 60_000, loadInquiryLiteRaw, 10 * 60_000);
@@ -473,9 +481,14 @@ async function loadInquiryLiteRaw(): Promise<InquiryLite[]> {
   for (const row of rows) {
     const data = row.data as Record<string, string>;
     if ((data["구분"] || "").trim() !== "신규문의") continue;
+    const sheet = normalizeMonthSheet(row.sheetName);
     out.push({
-      sheet: normalizeMonthSheet(row.sheetName),
+      sheet,
+      month: sheetMonthToLabel(sheet),
       industry: (data["업종"] || "").trim() || "확인불가",
+      channel: (data["마케팅채널"] || "").trim() || "기타",
+      plan: (data["문의요금제"] || "").trim() || "알 수 없음",
+      date: parseInquiryRowDate(data),
     });
   }
   return out;
@@ -1209,6 +1222,228 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
     goalOverrides,
     goalWarnings,
     goalsCustomized,
+    weekly,
+    industryDrilldowns,
+    channelDrilldowns,
+    planDrilldowns,
+    syncedThrough: latest?.sheetName ?? null,
+  };
+}
+
+/* ============================================================
+ * 마케팅 계기판 — 세일즈 계기판과 동일한 구조를 신규문의 기준으로 제공
+ * (목표는 마케팅 대시보드 시트에서 읽기 전용, 현황은 상품문의 DB 실시간 집계)
+ * ============================================================ */
+
+function marketingSpreadsheetId(): string {
+  return env.googleSheets.marketingDashboardSpreadsheetId;
+}
+
+export async function listMarketingMonths(): Promise<string[]> {
+  return listMonthSheetsCached(marketingSpreadsheetId());
+}
+
+/** 신규문의를 신규센터와 동일한 MonthCounts 구조로 집계 */
+async function loadInquiryMonthCounts(monthSheet: string): Promise<MonthCounts> {
+  const target = normalizeMonthSheet(monthSheet);
+  const monthLabel = sheetMonthToLabel(target);
+  const rows = await loadInquiryLite();
+
+  const byChannel = new Map<string, number>();
+  const byIndustry = new Map<string, number>();
+  const byPlan = new Map<string, number>();
+  const byIndustryPlan = new Map<string, Map<string, number>>();
+  const byIndustryChannel = new Map<string, Map<string, number>>();
+  const byChannelIndustry = new Map<string, Map<string, number>>();
+  const byChannelPlan = new Map<string, Map<string, number>>();
+  const byPlanIndustry = new Map<string, Map<string, number>>();
+  const byPlanChannel = new Map<string, Map<string, number>>();
+  const byWeek = new Map<number, WeekBucket>();
+  let total = 0;
+
+  const bump = (outer: Map<string, Map<string, number>>, a: string, b: string) => {
+    const inner = outer.get(a) ?? new Map<string, number>();
+    inner.set(b, (inner.get(b) ?? 0) + 1);
+    outer.set(a, inner);
+  };
+
+  for (const row of rows) {
+    if (row.sheet !== target) continue;
+    const { channel, industry, plan } = row;
+    const weekNum = row.date ? weekOfMonth(row.date, monthLabel) : null;
+
+    total += 1;
+    byChannel.set(channel, (byChannel.get(channel) ?? 0) + 1);
+    byIndustry.set(industry, (byIndustry.get(industry) ?? 0) + 1);
+    byPlan.set(plan, (byPlan.get(plan) ?? 0) + 1);
+    bump(byIndustryPlan, industry, plan);
+    bump(byIndustryChannel, industry, channel);
+    bump(byChannelIndustry, channel, industry);
+    bump(byChannelPlan, channel, plan);
+    bump(byPlanIndustry, plan, industry);
+    bump(byPlanChannel, plan, channel);
+
+    if (weekNum != null) {
+      const bucket = byWeek.get(weekNum) ?? emptyWeekBucket();
+      addToWeekBucket(bucket, channel, industry, plan);
+      byWeek.set(weekNum, bucket);
+    }
+  }
+
+  return {
+    total,
+    byChannel,
+    byIndustry,
+    byPlan,
+    byIndustryPlan,
+    byIndustryChannel,
+    byChannelIndustry,
+    byChannelPlan,
+    byPlanIndustry,
+    byPlanChannel,
+    byWeek,
+  };
+}
+
+/** 직전 N개월 업종×요금제/채널 신규문의 건수 (드릴다운 월평균 참고용) */
+async function loadPrevInquiryAvg(monthLabels: string[]): Promise<PrevAvg> {
+  const byIndustryPlan = new Map<string, Map<string, number>>();
+  const byIndustryChannel = new Map<string, Map<string, number>>();
+  const n = Math.max(1, monthLabels.length);
+  if (!monthLabels.length) return { byIndustryPlan, byIndustryChannel, n };
+  const labelSet = new Set(monthLabels);
+  const rows = await loadInquiryLite();
+  const bump = (outer: Map<string, Map<string, number>>, a: string, b: string) => {
+    const inner = outer.get(a) ?? new Map<string, number>();
+    inner.set(b, (inner.get(b) ?? 0) + 1);
+    outer.set(a, inner);
+  };
+  for (const row of rows) {
+    if (!labelSet.has(row.month)) continue;
+    bump(byIndustryPlan, row.industry, row.plan);
+    bump(byIndustryChannel, row.industry, row.channel);
+  }
+  return { byIndustryPlan, byIndustryChannel, n };
+}
+
+const EMPTY_GOAL_OVERRIDES: DashboardGoalOverrides = {
+  industryGoals: {},
+  industryPlanGoals: {},
+  industryChannelGoals: {},
+};
+
+export async function getMarketingDashboard(month?: string): Promise<SalesDashboardData> {
+  const spreadsheetId = marketingSpreadsheetId();
+  const months = await listMarketingMonths();
+  const now = new Date();
+  const currentSheet = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.`;
+  const selectedMonth =
+    (month && months.includes(month) ? month : null) ??
+    (months.includes(currentSheet) ? currentSheet : months[0] ?? currentSheet);
+
+  const monthLabel = sheetMonthToLabel(selectedMonth);
+  const [selY, selM] = monthLabel.split("-").map(Number);
+  const prevLabels: string[] = [];
+  for (let k = 1; k <= 3; k++) {
+    const d = new Date(selY, selM - 1 - k, 1);
+    prevLabels.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+
+  const [grid, counts, prevAvg, latest] = await Promise.all([
+    fetchSheetGridCached(spreadsheetId, selectedMonth),
+    loadInquiryMonthCounts(selectedMonth),
+    loadPrevInquiryAvg(prevLabels),
+    prisma.erpSalesInquiry.findFirst({
+      where: { spreadsheetId: env.googleSheets.inquirySpreadsheetId },
+      orderBy: { syncedAt: "desc" },
+      select: { sheetName: true },
+    }),
+  ]);
+
+  const channelRow = findSectionRow(grid, /^1\.채널별/);
+  const industryRow = findSectionRow(grid, /^2\.업종별/);
+  const planRow = findSectionRow(grid, /^3\.요금제별/);
+
+  const channelParsed = channelRow >= 0 ? parseSectionGoals(grid, channelRow) : { labels: [], goals: [] };
+  const industryParsed = industryRow >= 0 ? parseSectionGoals(grid, industryRow) : { labels: [], goals: [] };
+  const planParsed = planRow >= 0 ? parseSectionGoals(grid, planRow) : { labels: [], goals: [] };
+
+  const channelWeek = channelRow >= 0 ? parseSectionWeekData(grid, channelRow) : null;
+  const industryWeek = industryRow >= 0 ? parseSectionWeekData(grid, industryRow) : null;
+  const planWeek = planRow >= 0 ? parseSectionWeekData(grid, planRow) : null;
+
+  const remainingDays = findLabeledNumber(grid, /^잔여일$/) ?? null;
+  const remainingBusinessDays = findLabeledNumber(grid, /^잔여영업일$/) ?? null;
+
+  const weekly = buildWeeklyBreakdown(channelWeek, industryWeek, planWeek, counts);
+  const mergedIndustry = { labels: industryParsed.labels, goals: industryParsed.goals };
+  const industryDrilldowns = buildIndustryDrilldowns(
+    counts,
+    EMPTY_GOAL_OVERRIDES,
+    industryWeek,
+    mergedIndustry,
+    new Map(),
+    null,
+    prevAvg
+  );
+  const drillWeekLabels = resolveWeekLabels(industryWeek ?? channelWeek ?? planWeek, counts);
+  const channelDrilldowns = buildDimensionDrilldowns("channel", counts, channelParsed, drillWeekLabels);
+  const planDrilldowns = buildDimensionDrilldowns("plan", counts, planParsed, drillWeekLabels);
+
+  const inboundGoal = industryParsed.goals.reduce((s, g) => s + g, 0);
+  const channelGoalSum = channelParsed.goals.reduce((s, g) => s + g, 0);
+  const totalGoal = inboundGoal || channelGoalSum;
+  const actual = counts.total;
+
+  // 업종별 직전 3개월 월평균 (문의 기준)
+  const industryAvg3 = new Map<string, number>();
+  for (const [ind, planMap] of prevAvg.byIndustryPlan) {
+    let sum = 0;
+    for (const v of planMap.values()) sum += v;
+    industryAvg3.set(ind, Math.round((sum / prevAvg.n) * 10) / 10);
+  }
+  const industrySection = buildSection(
+    "industry",
+    "업종별",
+    mergedIndustry.labels,
+    mergedIndustry.goals,
+    counts.byIndustry,
+    INDUSTRY_TYPES
+  );
+  industrySection.items = industrySection.items.map((it) => ({
+    ...it,
+    avg3: industryAvg3.get(it.label) ?? 0,
+  }));
+
+  return {
+    month: selectedMonth,
+    monthLabel,
+    spreadsheetId,
+    spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+    filterLabel: "신규문의",
+    months,
+    summary: {
+      totalGoal,
+      inboundGoal: totalGoal,
+      actual,
+      gap: actual - totalGoal,
+      rate: totalGoal > 0 ? Math.round((actual / totalGoal) * 1000) / 10 : null,
+      remainingDays,
+      remainingBusinessDays,
+      sheetActual: null,
+      // 마케팅 계기판은 현황 자체가 문의 건수 — 별도 문의 카드는 표시하지 않음
+      inquiryGoal: null,
+      inquiryActual: 0,
+      inquiryRate: null,
+    },
+    sections: [
+      buildSection("channel", "채널별", channelParsed.labels, channelParsed.goals, counts.byChannel, []),
+      industrySection,
+      buildSection("plan", "요금제별", planParsed.labels, planParsed.goals, counts.byPlan, PLAN_ORDER),
+    ],
+    goalOverrides: EMPTY_GOAL_OVERRIDES,
+    goalWarnings: [],
+    goalsCustomized: false,
     weekly,
     industryDrilldowns,
     channelDrilldowns,

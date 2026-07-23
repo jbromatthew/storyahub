@@ -33,6 +33,7 @@ import {
 import { getUnissuedTaxInvoices } from "../services/salesTaxInvoice.js";
 import {
   getSalesDashboard,
+  getMarketingDashboard,
   writeDashboardGoalsToSheet,
   listDashboardMonths,
   saveDashboardGoalOverrides,
@@ -166,6 +167,16 @@ salesSyncRouter.get("/dashboard", async (req: AuthedRequest, res: Response) => {
   const month = typeof req.query.month === "string" ? req.query.month : undefined;
   try {
     res.json(await getSalesDashboard(month));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
+salesSyncRouter.get("/marketing-dashboard", async (req: AuthedRequest, res: Response) => {
+  const month = typeof req.query.month === "string" ? req.query.month : undefined;
+  try {
+    res.json(await getMarketingDashboard(month));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: msg });

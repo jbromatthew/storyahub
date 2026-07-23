@@ -10,6 +10,7 @@ export const ERP_MODULES = [
   { id: "sales-inquiry-trend", label: "문의 월간추이", icon: "trend", group: "sales" },
   { id: "sales-trend", label: "세일즈 월간추이", icon: "trend", group: "sales" },
   { id: "sales-dashboard", label: "세일즈 계기판", icon: "gauge", group: "sales" },
+  { id: "marketing-dashboard", label: "마케팅 계기판", icon: "gauge", group: "sales" },
   { id: "broj-dashboard", label: "브로제이 계기판", icon: "gauge", group: "sales", ownerOnly: true },
   { id: "sales-revenue", label: "매출 분석", icon: "chart", group: "sales", ownerOnly: true },
   // 세일즈팀 + CEO/COO(승인권자)에게만 노출 — ErpApp에서 /erp/consult-docs/access로 판별

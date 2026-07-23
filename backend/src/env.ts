@@ -124,6 +124,9 @@ export const env = {
     trendSpreadsheetId:
       process.env.GOOGLE_SHEETS_TREND_SPREADSHEET_ID ??
       "1eC5L5oU_MNlnC7yyjupyZANJe4HN49DhUPjMULWS-a8",
+    marketingDashboardSpreadsheetId:
+      process.env.GOOGLE_SHEETS_MARKETING_DASHBOARD_SPREADSHEET_ID ??
+      "1UQyMDvSjXlQy1jzmP0_Rd4Fitcn4TJlsxlTJPvm72wI",
     dashboardSpreadsheetId:
       process.env.GOOGLE_SHEETS_DASHBOARD_SPREADSHEET_ID ??
       "1MCpTNTj9npiNpHV9_HxnOtGfO7nnY7sdbVJoWzUFvzc",

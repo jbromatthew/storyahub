@@ -5410,7 +5410,7 @@ function DrillGoalTable({ title, labelHeader, items, editable, draft, onChange, 
   );
 }
 
-export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGoals, currentChannelGoals, onSaveGoals, saving, planList }) {
+export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGoals, currentChannelGoals, onSaveGoals, saving, planList, readOnly = false }) {
   const summary = detail?.summary;
   const industryGoal = summary?.goal || 0;
   const [editing, setEditing] = useState(false);
@@ -5474,6 +5474,7 @@ export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGo
             {detail.inquiry.rate != null ? ` · ${formatDashRate(detail.inquiry.rate)}` : ""}
           </span>
         )}
+        {!readOnly && (
         <div style={{ marginLeft: "auto" }}>
           {editing ? (
             <span className="row" style={{ gap: 6 }}>
@@ -5484,13 +5485,14 @@ export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGo
             <button type="button" className="btn btn-ghost btn-sm" onClick={startEdit}>목표 편집</button>
           )}
         </div>
+        )}
       </div>
       {editing && (
         <div className="small" style={{ margin: "2px 0 10px", color: "var(--muted)", lineHeight: 1.5 }}>
           <strong>{industry}</strong> 업종 목표 <strong>{industryGoal}개</strong> 범위 안에서 요금제별·채널별 목표를 나눠 설정하세요.
         </div>
       )}
-      {!editing && industryGoal > 0 && !(detail?.plans || []).some((p) => p.goal > 0) && (
+      {!readOnly && !editing && industryGoal > 0 && !(detail?.plans || []).some((p) => p.goal > 0) && (
         <div className="small dash-goal-hint" style={{ marginBottom: 10 }}>
           업종 목표 <strong>{industryGoal}개</strong>가 아직 요금제별로 나눠져 있지 않아 아래 목표가 <strong>-</strong>로 보입니다.
           우측 상단 <strong>목표 편집</strong>으로 요금제·채널별 목표를 나눠 넣으세요.
@@ -5649,10 +5651,17 @@ function GaugeRing({ rate, size = 132 }) {
   );
 }
 
-// 세일즈 계기판 응답 캐시 (월별) — 재방문 시 즉시 표시 후 백그라운드 갱신
+// 세일즈/마케팅 계기판 응답 캐시 (variant+월별) — 재방문 시 즉시 표시 후 백그라운드 갱신
 const salesDashCache = new Map();
 
-export function SalesDashboardView() {
+// 마케팅 계기판 — 세일즈 계기판과 동일 UI를 신규문의 기준으로 (목표 읽기 전용)
+export function MarketingDashboardView() {
+  return <SalesDashboardView variant="marketing" />;
+}
+
+export function SalesDashboardView({ variant = "sales" } = {}) {
+  const isMkt = variant === "marketing";
+  const apiFn = isMkt ? api.erpMarketingDashboard : api.erpSalesDashboard;
   const [selectedMonth, setSelectedMonth] = useState(null);
   const [tab, setTab] = useState("industry");
   const [data, setData] = useState(null);
@@ -5666,7 +5675,7 @@ export function SalesDashboardView() {
   editModeRef.current = editMode;
 
   const load = useCallback(() => {
-    const cacheKey = selectedMonth || "";
+    const cacheKey = `${variant}:${selectedMonth || ""}`;
     const cached = salesDashCache.get(cacheKey);
     if (cached) {
       setData(cached);
@@ -5677,10 +5686,10 @@ export function SalesDashboardView() {
     }
     setDrillIndustry(null);
     setDimDrill(null);
-    return api.erpSalesDashboard({ month: selectedMonth || undefined })
+    return apiFn({ month: selectedMonth || undefined })
       .then((res) => {
         salesDashCache.set(cacheKey, res);
-        if (res.month) salesDashCache.set(res.month, res);
+        if (res.month) salesDashCache.set(`${variant}:${res.month}`, res);
         if (editModeRef.current) return; // 목표 편집 중이면 백그라운드 갱신으로 덮어쓰지 않음
         setData(res);
         setDraftGoals(cloneGoalOverrides(res));
@@ -5689,7 +5698,7 @@ export function SalesDashboardView() {
         if (!cached) notifyError(err);
       })
       .finally(() => setLoading(false));
-  }, [selectedMonth]);
+  }, [selectedMonth, variant, apiFn]);
 
   useEffect(() => {
     load();
@@ -5731,8 +5740,8 @@ export function SalesDashboardView() {
       industryChannelGoals: draftGoals.industryChannelGoals,
     })
       .then((res) => {
-        if (res.month) salesDashCache.set(res.month, res);
-        salesDashCache.set(selectedMonth || "", res);
+        if (res.month) salesDashCache.set(`${variant}:${res.month}`, res);
+        salesDashCache.set(`${variant}:${selectedMonth || ""}`, res);
         setData(res);
         setDraftGoals(cloneGoalOverrides(res));
         setEditMode(false);
@@ -5757,8 +5766,8 @@ export function SalesDashboardView() {
       industryChannelGoals: base.industryChannelGoals,
     })
       .then((res) => {
-        if (res.month) salesDashCache.set(res.month, res);
-        salesDashCache.set(selectedMonth || "", res);
+        if (res.month) salesDashCache.set(`${variant}:${res.month}`, res);
+        salesDashCache.set(`${variant}:${selectedMonth || ""}`, res);
         setData(res);
         setDraftGoals(cloneGoalOverrides(res));
         if (res.sheetSync?.ok) toastSuccess(`목표 저장 완료 · 시트에도 ${res.sheetSync.updated}칸 반영`);
@@ -5810,12 +5819,22 @@ export function SalesDashboardView() {
 
   return (
     <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
-      <div className="h-eyebrow">Sales</div>
-      <div className="h-title">세일즈 계기판</div>
+      <div className="h-eyebrow">{isMkt ? "Marketing" : "Sales"}</div>
+      <div className="h-title">{isMkt ? "마케팅 계기판" : "세일즈 계기판"}</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
-        월별 목표는 <strong>대시보드 시트</strong>에서 불러오고, 앱에서 수정하면 <strong>시트에도 자동 반영</strong>됩니다.
-        현황은 결제 주문 DB의 <strong>신규센터</strong> 건수입니다. <strong>업종·채널·요금제</strong> 항목을 누르면 하위 분해(요금제·채널·업종·주차별) 상세를 볼 수 있습니다.
-        {" "}<strong>당월 문의 목표</strong>는 대시보드 시트 상단에 <strong>‘문의 목표’</strong> 칸을 만들어 옆에 숫자를 넣으면 표시되고, 문의 현황은 문의 시트의 당월 신규문의 건수입니다.
+        {isMkt ? (
+          <>
+            월별 목표는 <strong>마케팅 대시보드 시트</strong>에서 불러오고, 현황은 문의 DB의 <strong>신규문의</strong> 건수입니다.
+            {" "}<strong>업종·채널·요금제</strong> 항목을 누르면 하위 분해(요금제·채널·업종·주차별) 상세를 볼 수 있습니다.
+            목표 수정은 시트에서 하면 됩니다 (1분 내 반영).
+          </>
+        ) : (
+          <>
+            월별 목표는 <strong>대시보드 시트</strong>에서 불러오고, 앱에서 수정하면 <strong>시트에도 자동 반영</strong>됩니다.
+            현황은 결제 주문 DB의 <strong>신규센터</strong> 건수입니다. <strong>업종·채널·요금제</strong> 항목을 누르면 하위 분해(요금제·채널·업종·주차별) 상세를 볼 수 있습니다.
+            {" "}<strong>당월 문의 목표</strong>는 대시보드 시트 상단에 <strong>‘문의 목표’</strong> 칸을 만들어 옆에 숫자를 넣으면 표시되고, 문의 현황은 문의 시트의 당월 신규문의 건수입니다.
+          </>
+        )}
         {data?.spreadsheetUrl && (
           <>{" "}<a href={data.spreadsheetUrl} target="_blank" rel="noreferrer">목표 시트</a></>
         )}
@@ -5823,7 +5842,7 @@ export function SalesDashboardView() {
           <> · <strong>앱 수정 목표 적용 중</strong></>
         )}
         {data?.syncedThrough && (
-          <> · 주문 동기화: <strong>{data.syncedThrough}</strong></>
+          <> · {isMkt ? "문의" : "주문"} 동기화: <strong>{data.syncedThrough}</strong></>
         )}
       </div>
 
@@ -5911,6 +5930,7 @@ export function SalesDashboardView() {
             </div>
           </div>
 
+          {!isMkt && (
           <div className="sales-toolbar" style={{ marginTop: 0 }}>
             {!editMode ? (
               <button type="button" className="btn btn-sm btn-ghost" onClick={startEdit}>목표 편집</button>
@@ -5923,6 +5943,7 @@ export function SalesDashboardView() {
               </>
             )}
           </div>
+          )}
 
           {(editMode ? draftWarnings : data.goalWarnings)?.length > 0 && (
             <div className="dash-goal-warn small">
@@ -5946,6 +5967,7 @@ export function SalesDashboardView() {
               currentChannelGoals={data?.goalOverrides?.industryChannelGoals?.[drillIndustry]}
               onSaveGoals={saveDrillGoals}
               saving={savingGoals}
+              readOnly={isMkt}
             />
           ) : dimDrill && activeDimDetail ? (
             <DashboardDimensionDrill
@@ -5956,7 +5978,7 @@ export function SalesDashboardView() {
           ) : (
           <>
           <div className="sales-tabs">
-            {DASHBOARD_TABS.map((t) => (
+            {DASHBOARD_TABS.filter((t) => !(isMkt && t.id === "industry-plan")).map((t) => (
               <button
                 key={t.id}
                 type="button"

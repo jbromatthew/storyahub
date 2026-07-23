@@ -329,6 +329,11 @@ export const api = {
     return req(`/erp/sales/dashboard?${p}`);
   },
   erpSalesDashboardGoals: (body) => req("/erp/sales/dashboard/goals", { method: "PUT", body }),
+  erpMarketingDashboard: ({ month } = {}) => {
+    const p = new URLSearchParams();
+    if (month) p.set("month", month);
+    return req(`/erp/sales/marketing-dashboard?${p}`);
+  },
   // 공사(견적) 관리 — 소유자 전용
   erpConstructionItems: () => req("/erp/construction/items"),
   erpConstructionCreateItem: (data) => req("/erp/construction/items", { method: "POST", body: data }),
