@@ -3492,6 +3492,13 @@ function AssigneeBadge({ name, compact = false, colorMap }) {
   );
 }
 
+// 업종 빠른 선택 그룹 — 클릭하면 소속 업종을 한 번에 선택/해제
+const INDUSTRY_QUICK_GROUPS = [
+  { label: "헬스/PT", members: ["헬스장", "PT샵"] },
+  { label: "스튜디오", members: ["필라테스", "요가", "바레", "폴댄스"] },
+  { label: "체육관", members: ["복싱", "주짓수", "유도", "합기도", "레슬링", "검도", "MMA", "크로스핏", "체육교실", "태권도"] },
+];
+
 function IndustryPicker({ industries, selected, onChange, fallback, allOption }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -3513,6 +3520,16 @@ function IndustryPicker({ industries, selected, onChange, fallback, allOption })
 
   const toggle = (name) => {
     onChange(selected.includes(name) ? selected.filter((n) => n !== name) : [...selected, name]);
+  };
+
+  // 빠른 그룹: 목록에 실제 존재하는 업종만 대상으로 전체 선택/해제 토글
+  const quickGroups = INDUSTRY_QUICK_GROUPS
+    .map((g) => ({ ...g, members: g.members.filter((m) => (industries || []).includes(m)) }))
+    .filter((g) => g.members.length > 0);
+  const groupOn = (g) => g.members.every((m) => selected.includes(m));
+  const toggleGroup = (g) => {
+    if (groupOn(g)) onChange(selected.filter((n) => !g.members.includes(n)));
+    else onChange([...new Set([...selected, ...g.members])]);
   };
 
   const summary = selected.length ? (
@@ -3539,6 +3556,21 @@ function IndustryPicker({ industries, selected, onChange, fallback, allOption })
             placeholder="업종 검색"
             autoFocus
           />
+          {quickGroups.length > 0 && !q.trim() && (
+            <div className="ipk-groups">
+              {quickGroups.map((g) => (
+                <button
+                  key={g.label}
+                  type="button"
+                  className={"ipk-group-chip" + (groupOn(g) ? " on" : "")}
+                  title={g.members.join(" · ")}
+                  onClick={() => toggleGroup(g)}
+                >
+                  {g.label}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="assignee-picker-list">
             {allOption && !q.trim() && (
               <button

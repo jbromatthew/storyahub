@@ -153,6 +153,10 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .toast-error .toast-icon{background:#EFC4B2;color:#7A2F1A;}
 .toast-success .toast-icon{background:#3E7A52;color:#fff;}
 .toast-info .toast-icon{background:var(--sand,#EFE9E1);color:var(--ink);}
+/* 업종 빠른 선택 그룹 칩 */
+.ipk-groups{display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px 4px;border-bottom:1px solid var(--line);}
+.ipk-group-chip{border:1px solid var(--line);background:#fff;border-radius:20px;padding:5px 12px;font-size:12.5px;font-weight:700;color:var(--ink);cursor:pointer;font-family:inherit;}
+.ipk-group-chip.on{background:var(--accent);border-color:var(--accent);color:#fff;}
 .status-pill{display:inline-flex;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;}
 .status-pill.wait{background:#FFF3E0;color:#E65100;}
 .status-pill.done{background:#E8F5E9;color:var(--ok);}
