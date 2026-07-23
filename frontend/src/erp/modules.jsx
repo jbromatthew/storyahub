@@ -7699,6 +7699,47 @@ export function DailyReportView() {
   const dayReports = byDate.get(selDay) || [];
   const mine = dayReports.find((r) => (r.authorEmail || "").toLowerCase() === myEmail);
 
+  // 내 보고가 없는 날은 직전 보고의 '내일 할 일'을 바로 보여준다 (이월)
+  useEffect(() => {
+    if (loading) return;
+    if (mine) { setPrevPlan(null); return; }
+    let alive = true;
+    api.erpDailyReportPrevPlan(selDay)
+      .then((r) => { if (alive) setPrevPlan(r.prev || null); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [selDay, mine, loading]);
+
+  // 즉시 저장 (체크박스 클릭 등) — 미체크 항목은 사유 유지한 채 '못한 일'로
+  const quickSave = (todoItems, planItems) => {
+    const cleanTodos = todoItems.map((t) => ({ ...t, text: t.text.trim() })).filter((t) => t.text);
+    return api.erpDailyReportSave(selDay, {
+      did: JSON.stringify(cleanTodos.map(({ text, done }) => ({ text, done }))),
+      missed: JSON.stringify(cleanTodos.filter((t) => !t.done).map((t) => ({ text: t.text, reason: (t.reason || "").trim() }))),
+      plan: JSON.stringify((planItems || []).map((p) => ({ text: (p.text || "").trim() })).filter((p) => p.text)),
+    })
+      .then(() => load())
+      .catch(notifyError);
+  };
+
+  // 이월 카드에서 체크: 그 상태 그대로 내 보고로 저장
+  const carriedItems = !mine && prevPlan?.plan ? parseChecklistItems(prevPlan.plan, { legacyDone: false }) : [];
+  const saveCarried = (toggleIdx) => {
+    const items = carriedItems.map((it, j) => ({ text: it.text, done: j === toggleIdx, reason: "" }));
+    quickSave(items, []).then(() => toastSuccess("이월된 할 일을 오늘 보고로 저장했어요"));
+  };
+
+  // 내 보고 카드에서 체크 토글 → 즉시 저장
+  const toggleMineItem = (r, idx) => {
+    const reasons = new Map(parseChecklistItems(r.missed).map((m) => [m.text, m.reason]));
+    const items = parseChecklistItems(r.did).map((t, j) => ({
+      text: t.text,
+      done: j === idx ? !t.done : t.done,
+      reason: reasons.get(t.text) || "",
+    }));
+    quickSave(items, parseChecklistItems(r.plan, { legacyDone: false }));
+  };
+
   const startEdit = () => {
     if (mine) {
       // 못한 일에 적힌 사유를 오늘 할 일 항목에 다시 붙인다
@@ -7884,7 +7925,28 @@ export function DailyReportView() {
             </div>
           )}
 
-          {!editing && dayReports.length === 0 && (
+          {!editing && !mine && carriedItems.length > 0 && (
+            <div className="card" style={{ marginTop: 12, padding: 16, borderStyle: "dashed" }}>
+              <div className="row" style={{ alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <strong>나</strong>
+                <span className="tag gray" style={{ fontSize: 11.5 }}>{fmtDayTitle(prevPlan.date)} ‘내일 할 일’ 이월 — 체크하면 바로 저장</span>
+              </div>
+              <div className="small" style={{ fontWeight: 800, marginBottom: 4 }}>▶ 오늘 무슨 일을 하였나?</div>
+              {carriedItems.map((it, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className="small"
+                  style={{ display: "block", background: "none", border: "none", padding: "2px 0", cursor: "pointer", lineHeight: 1.7, textAlign: "left", fontFamily: "inherit", color: "var(--ink)" }}
+                  onClick={() => saveCarried(i)}
+                >
+                  ⬜ {it.text}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {!editing && dayReports.length === 0 && carriedItems.length === 0 && (
             <div className="small" style={{ padding: "20px 4px", color: "var(--muted)" }}>이 날짜에 작성된 보고가 없습니다</div>
           )}
 
@@ -7901,14 +7963,24 @@ export function DailyReportView() {
               </div>
               {DAILY_QUESTIONS.map((q2) => {
                 const items = parseChecklistItems(r[q2.key], { legacyDone: q2.key === "did" });
+                const isMine = (r.authorEmail || "").toLowerCase() === myEmail;
+                const clickable = isMine && q2.key === "did";
                 return (
                   <div key={q2.key} style={{ marginBottom: 10 }}>
-                    <div className="small" style={{ fontWeight: 800, marginBottom: 4 }}>▶ {q2.label}</div>
+                    <div className="small" style={{ fontWeight: 800, marginBottom: 4 }}>
+                      ▶ {q2.label}
+                      {clickable && <span style={{ fontWeight: 500, color: "var(--muted)" }}> — 체크하면 바로 저장</span>}
+                    </div>
                     {items.length === 0 ? (
                       <div className="small" style={{ color: "var(--muted)" }}>－</div>
                     ) : (
                       items.map((it, i) => (
-                        <div key={i} className="small" style={{ lineHeight: 1.7 }}>
+                        <div
+                          key={i}
+                          className="small"
+                          style={{ lineHeight: 1.7, cursor: clickable ? "pointer" : undefined }}
+                          onClick={clickable ? () => toggleMineItem(r, i) : undefined}
+                        >
                           {q2.key === "did" ? (it.done ? "✅ " : "⬜ ") : q2.key === "plan" ? "⬜ " : "⚠️ "}
                           <span style={q2.key === "did" && !it.done ? { color: "var(--muted)" } : undefined}>{it.text}</span>
                           {q2.key === "missed" && it.reason && (
