@@ -1082,6 +1082,11 @@ export function startSalesDashboardWarmer(): void {
       const month = months.includes(cur) ? cur : months[0];
       if (month) invalidateSheetCache(`grid:${dashboardSpreadsheetId()}:${month}`);
       await getSalesDashboard(month);
+      // 마케팅 계기판도 같이 데워둔다
+      const mktMonths = await listMarketingMonths();
+      const mktMonth = mktMonths.includes(cur) ? cur : mktMonths[0];
+      if (mktMonth) invalidateSheetCache(`grid:${marketingSpreadsheetId()}:${mktMonth}`);
+      await getMarketingDashboard(mktMonth);
     } catch {
       // 워머 실패는 무시 — 다음 주기에 재시도, 실제 요청은 자체 조회로 동작
     }
