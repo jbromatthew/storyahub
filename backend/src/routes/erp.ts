@@ -1603,6 +1603,9 @@ erpRouter.patch("/construction/quotes/:id", async (req: AuthedRequest, res) => {
       ...(note !== undefined ? { note: note?.trim() || null } : {}),
       ...(startDate !== undefined ? { startDate: cstDate(startDate) } : {}),
       ...(endDate !== undefined ? { endDate: cstDate(endDate) } : {}),
+      ...(req.body?.siteCount !== undefined
+        ? { siteCount: Math.max(0, Math.floor(Number(req.body.siteCount) || 0)) }
+        : {}),
     },
     include: { apartment: true },
   });

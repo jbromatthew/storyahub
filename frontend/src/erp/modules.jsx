@@ -2128,6 +2128,18 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
   }, [typedQuotes]);
   useEffect(() => { load(); }, []);
 
+  // 리스트에서 개소 수 바로 입력 (blur 시 저장)
+  const saveSiteCount = (q, value) => {
+    const n = Math.max(0, Math.floor(Number(value) || 0));
+    if (n === (q.siteCount || 0)) return;
+    api.erpConstructionUpdateQuote(q.id, { siteCount: n })
+      .then((updated) => {
+        setQuotes((p) => p.map((x) => (x.id === updated.id ? updated : x)));
+        toastSuccess(`개소 ${n}개 저장`);
+      })
+      .catch(notifyError);
+  };
+
   // ---- 품목 단가 ----
   const addItem = async () => {
     if (!itemName.trim()) return notifyError(new Error("품명을 입력하세요"));
@@ -2651,6 +2663,7 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
               <thead>
                 <tr>
                   <th>현장 / 공사</th>
+                  <th className="shrink ctr">개소</th>
                   <th className="shrink ctr">상태</th>
                   <th className="shrink">공사기간</th>
                   <th className="shrink num">합계</th>
@@ -2670,6 +2683,19 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
                         <div className="cell-ttl">{q.apartment?.name || "(현장 미지정)"}</div>
                         <div className="cell-sub">{q.title || "—"} · {(q.lines || []).length}개 품목</div>
                       </td>
+                      <td className="shrink ctr" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          key={`${q.id}:${q.siteCount ?? 0}`}
+                          className="input"
+                          type="number"
+                          min="0"
+                          defaultValue={q.siteCount || ""}
+                          placeholder="0"
+                          style={{ width: 64, textAlign: "center", padding: "6px 4px" }}
+                          onBlur={(e) => saveSiteCount(q, e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+                        />
+                      </td>
                       <td className="shrink ctr"><span className={"cst-badge " + st.cls}>{st.label}</span></td>
                       <td className="shrink"><span className="cell-sub" style={{ margin: 0 }}>{q.startDate ? `${q.startDate}${q.endDate ? ` ~ ${q.endDate}` : " ~"}` : "—"}</span></td>
                       <td className="shrink num" style={{ fontWeight: 700 }}>{formatWon(t.total)}</td>
@@ -2678,7 +2704,7 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
                     </tr>
                   );
                 })}
-                {!filteredQuotes.length && <tr><td colSpan={6} className="erp-tbl-empty">{typedQuotes.length ? "조건에 맞는 공사가 없습니다." : "아직 공사 건이 없습니다. “새 견적”으로 시작하세요."}</td></tr>}
+                {!filteredQuotes.length && <tr><td colSpan={7} className="erp-tbl-empty">{typedQuotes.length ? "조건에 맞는 공사가 없습니다." : "아직 공사 건이 없습니다. “새 견적”으로 시작하세요."}</td></tr>}
               </tbody>
             </table>
           </div>
