@@ -7610,6 +7610,28 @@ const DAILY_QUESTIONS = [
   { key: "plan", label: "내일은 무슨 일을 할 것인가?" },
 ];
 
+/** 체크리스트 파싱 — JSON 형식([{text,done,reason}]) 우선, 옛 자유 텍스트는 줄 단위 변환 */
+function parseChecklistItems(raw, { legacyDone = true } = {}) {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    if (Array.isArray(v)) {
+      return v
+        .map((it) => ({
+          text: String(it?.text ?? "").trim(),
+          done: !!it?.done,
+          reason: typeof it?.reason === "string" ? it.reason : "",
+        }))
+        .filter((it) => it.text);
+    }
+  } catch { /* 옛 자유 텍스트 형식 */ }
+  return String(raw)
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((t) => ({ text: t.replace(/^[-•]\s*|^\d+\.\s*/, "").trim() || t, done: legacyDone, reason: "" }));
+}
+
 function dailyAuthorLabel(r) {
   const email = (r.authorEmail || "").toLowerCase();
   if (email.startsWith("david")) return "David";
@@ -7626,7 +7648,8 @@ export function DailyReportView() {
   const [selDay, setSelDay] = useState(todayStr);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({ did: "", missed: "", plan: "" });
+  const [todos, setTodos] = useState([]); // 오늘 할 일 [{text, done, reason}]
+  const [plans, setPlans] = useState([]); // 내일 할 일 [{text}]
   const [prevPlan, setPrevPlan] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -7677,23 +7700,38 @@ export function DailyReportView() {
   const mine = dayReports.find((r) => (r.authorEmail || "").toLowerCase() === myEmail);
 
   const startEdit = () => {
-    setDraft(mine ? { did: mine.did || "", missed: mine.missed || "", plan: mine.plan || "" } : { did: "", missed: "", plan: "" });
+    if (mine) {
+      // 못한 일에 적힌 사유를 오늘 할 일 항목에 다시 붙인다
+      const reasons = new Map(parseChecklistItems(mine.missed).map((m) => [m.text, m.reason]));
+      setTodos(parseChecklistItems(mine.did).map((t) => ({ ...t, reason: reasons.get(t.text) || t.reason || "" })));
+      setPlans(parseChecklistItems(mine.plan, { legacyDone: false }).map((p) => ({ text: p.text })));
+    } else {
+      setTodos([]);
+      setPlans([]);
+    }
     setPrevPlan(null);
     setEditing(true);
     api.erpDailyReportPrevPlan(selDay)
       .then((r) => {
         setPrevPlan(r.prev || null);
-        // 직전 보고의 '내일 할 일'을 오늘 첫 문항에 프리필 (비어있을 때만)
-        if (r.prev?.plan && !(mine?.did)) {
-          setDraft((d) => (d.did ? d : { ...d, did: r.prev.plan }));
+        // 직전 보고의 '내일 할 일' 체크리스트를 오늘 할 일로 프리필 (새 보고일 때만)
+        if (r.prev?.plan && !mine) {
+          const items = parseChecklistItems(r.prev.plan, { legacyDone: false });
+          if (items.length) setTodos((cur) => (cur.length ? cur : items.map((it) => ({ text: it.text, done: false, reason: "" }))));
         }
       })
       .catch(() => {});
   };
 
   const save = () => {
+    const cleanTodos = todos.map((t) => ({ ...t, text: t.text.trim() })).filter((t) => t.text);
+    const cleanPlans = plans.map((p) => p.text.trim()).filter(Boolean);
     setSaving(true);
-    api.erpDailyReportSave(selDay, draft)
+    api.erpDailyReportSave(selDay, {
+      did: JSON.stringify(cleanTodos.map(({ text, done }) => ({ text, done }))),
+      missed: JSON.stringify(cleanTodos.filter((t) => !t.done).map((t) => ({ text: t.text, reason: (t.reason || "").trim() }))),
+      plan: JSON.stringify(cleanPlans.map((text) => ({ text }))),
+    })
       .then(() => {
         toastSuccess("일일보고 저장 완료");
         setEditing(false);
@@ -7772,25 +7810,74 @@ export function DailyReportView() {
 
           {editing && (
             <div className="card" style={{ marginTop: 12, padding: 16 }}>
-              {prevPlan?.plan && (
+              {prevPlan?.plan && !mine && (
                 <div className="small dash-goal-hint" style={{ marginBottom: 12 }}>
-                  <strong>{fmtDayTitle(prevPlan.date)} 보고의 ‘내일 할 일’</strong> — 오늘 첫 문항에 채워뒀어요:
-                  <div style={{ whiteSpace: "pre-wrap", marginTop: 4 }}>{prevPlan.plan}</div>
+                  <strong>{fmtDayTitle(prevPlan.date)} 보고의 ‘내일 할 일’</strong>을 오늘 할 일로 가져왔어요.
                 </div>
               )}
-              {DAILY_QUESTIONS.map((q2) => (
-                <div key={q2.key} style={{ marginBottom: 14 }}>
-                  <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>▶ {q2.label}</div>
-                  <textarea
-                    className="input"
-                    style={{ width: "100%", minHeight: 88, resize: "vertical", lineHeight: 1.5 }}
-                    value={draft[q2.key]}
-                    onChange={(e) => setDraft((d) => ({ ...d, [q2.key]: e.target.value }))}
-                    placeholder="내용을 입력하세요"
+
+              <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>▶ 오늘 무슨 일을 하였나? <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 한 일은 체크</span></div>
+              {todos.map((t, i) => (
+                <div key={i} className="row" style={{ gap: 8, alignItems: "center", marginBottom: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={t.done}
+                    onChange={(e) => setTodos((p) => p.map((x, j) => (j === i ? { ...x, done: e.target.checked } : x)))}
+                    style={{ width: 18, height: 18, accentColor: "var(--accent)", flexShrink: 0 }}
                   />
+                  <input
+                    className="input"
+                    style={{ flex: 1, textDecoration: t.done ? "none" : undefined }}
+                    value={t.text}
+                    placeholder="할 일"
+                    onChange={(e) => setTodos((p) => p.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); setTodos((p) => [...p.slice(0, i + 1), { text: "", done: false, reason: "" }, ...p.slice(i + 1)]); }
+                    }}
+                  />
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => p.filter((_, j) => j !== i))}>✕</button>
                 </div>
               ))}
-              <div className="row" style={{ gap: 8, justifyContent: "flex-end" }}>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ marginBottom: 14 }} onClick={() => setTodos((p) => [...p, { text: "", done: false, reason: "" }])}>+ 항목 추가</button>
+
+              {todos.some((t) => t.text.trim() && !t.done) && (
+                <div style={{ marginBottom: 14 }}>
+                  <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>▶ 오늘 무슨 일을 했어야 했는데 못했나? <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 체크 안 된 항목, 사유를 적어주세요</span></div>
+                  {todos.map((t, i) => (!t.done && t.text.trim() ? (
+                    <div key={i} className="row" style={{ gap: 8, alignItems: "center", marginBottom: 6 }}>
+                      <span className="small" style={{ flex: "0 1 auto", minWidth: 120, fontWeight: 600 }}>⬜ {t.text}</span>
+                      <input
+                        className="input"
+                        style={{ flex: 1 }}
+                        value={t.reason || ""}
+                        placeholder="사유"
+                        onChange={(e) => setTodos((p) => p.map((x, j) => (j === i ? { ...x, reason: e.target.value } : x)))}
+                      />
+                    </div>
+                  ) : null))}
+                </div>
+              )}
+
+              <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>▶ 내일은 무슨 일을 할 것인가? <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 다음 보고의 오늘 할 일로 자동 이월</span></div>
+              {plans.map((p2, i) => (
+                <div key={i} className="row" style={{ gap: 8, alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ flexShrink: 0 }}>⬜</span>
+                  <input
+                    className="input"
+                    style={{ flex: 1 }}
+                    value={p2.text}
+                    placeholder="내일 할 일"
+                    onChange={(e) => setPlans((p) => p.map((x, j) => (j === i ? { text: e.target.value } : x)))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); setPlans((p) => [...p.slice(0, i + 1), { text: "" }, ...p.slice(i + 1)]); }
+                    }}
+                  />
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPlans((p) => p.filter((_, j) => j !== i))}>✕</button>
+                </div>
+              ))}
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPlans((p) => [...p, { text: "" }])}>+ 항목 추가</button>
+
+              <div className="row" style={{ gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)} disabled={saving}>취소</button>
                 <button type="button" className="btn btn-accent btn-sm" onClick={save} disabled={saving}>{saving ? "저장 중…" : "저장"}</button>
               </div>
@@ -7812,14 +7899,27 @@ export function DailyReportView() {
                   {new Date(r.updatedAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 수정
                 </span>
               </div>
-              {DAILY_QUESTIONS.map((q2) => (
-                <div key={q2.key} style={{ marginBottom: 10 }}>
-                  <div className="small" style={{ fontWeight: 800, marginBottom: 4 }}>▶ {q2.label}</div>
-                  <div className="small" style={{ whiteSpace: "pre-wrap", lineHeight: 1.6, color: r[q2.key] ? "var(--ink)" : "var(--muted)" }}>
-                    {r[q2.key] || "－"}
+              {DAILY_QUESTIONS.map((q2) => {
+                const items = parseChecklistItems(r[q2.key], { legacyDone: q2.key === "did" });
+                return (
+                  <div key={q2.key} style={{ marginBottom: 10 }}>
+                    <div className="small" style={{ fontWeight: 800, marginBottom: 4 }}>▶ {q2.label}</div>
+                    {items.length === 0 ? (
+                      <div className="small" style={{ color: "var(--muted)" }}>－</div>
+                    ) : (
+                      items.map((it, i) => (
+                        <div key={i} className="small" style={{ lineHeight: 1.7 }}>
+                          {q2.key === "did" ? (it.done ? "✅ " : "⬜ ") : q2.key === "plan" ? "⬜ " : "⚠️ "}
+                          <span style={q2.key === "did" && !it.done ? { color: "var(--muted)" } : undefined}>{it.text}</span>
+                          {q2.key === "missed" && it.reason && (
+                            <span style={{ color: "var(--muted)" }}> — 사유: {it.reason}</span>
+                          )}
+                        </div>
+                      ))
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ))}
         </div>
