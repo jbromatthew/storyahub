@@ -3492,7 +3492,7 @@ function AssigneeBadge({ name, compact = false, colorMap }) {
   );
 }
 
-function IndustryPicker({ industries, selected, onChange, fallback }) {
+function IndustryPicker({ industries, selected, onChange, fallback, allOption }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const rootRef = useRef(null);
@@ -3540,6 +3540,16 @@ function IndustryPicker({ industries, selected, onChange, fallback }) {
             autoFocus
           />
           <div className="assignee-picker-list">
+            {allOption && !q.trim() && (
+              <button
+                type="button"
+                className={"assignee-picker-row" + (!selected.length ? " on" : "")}
+                onClick={() => { onChange([]); setOpen(false); }}
+              >
+                <span style={{ fontWeight: 700 }}>{allOption}</span>
+                {!selected.length && <span className="assignee-picker-check">✓</span>}
+              </button>
+            )}
             {filtered.map((name) => (
               <button
                 key={name}
@@ -4497,7 +4507,8 @@ export function PaymentRateView() {
             industries={meta?.industries || []}
             selected={selectedIndustries}
             onChange={setSelectedIndustries}
-            fallback="전체"
+            fallback="전체 업종"
+            allOption="전체 업종"
           />
           <AssigneePicker
             assignees={meta?.assignees || []}
