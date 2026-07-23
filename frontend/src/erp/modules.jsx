@@ -3522,14 +3522,15 @@ function IndustryPicker({ industries, selected, onChange, fallback, allOption })
     onChange(selected.includes(name) ? selected.filter((n) => n !== name) : [...selected, name]);
   };
 
-  // 빠른 그룹: 목록에 실제 존재하는 업종만 대상으로 전체 선택/해제 토글
+  // 빠른 그룹: 누르면 그 그룹 업종들만 선택 (기존 선택은 대체)
   const quickGroups = INDUSTRY_QUICK_GROUPS
     .map((g) => ({ ...g, members: g.members.filter((m) => (industries || []).includes(m)) }))
     .filter((g) => g.members.length > 0);
-  const groupOn = (g) => g.members.every((m) => selected.includes(m));
-  const toggleGroup = (g) => {
-    if (groupOn(g)) onChange(selected.filter((n) => !g.members.includes(n)));
-    else onChange([...new Set([...selected, ...g.members])]);
+  const groupOn = (g) =>
+    selected.length === g.members.length && g.members.every((m) => selected.includes(m));
+  const pickGroup = (g) => {
+    onChange([...g.members]);
+    setOpen(false);
   };
 
   const summary = selected.length ? (
@@ -3564,7 +3565,7 @@ function IndustryPicker({ industries, selected, onChange, fallback, allOption })
                   type="button"
                   className={"ipk-group-chip" + (groupOn(g) ? " on" : "")}
                   title={g.members.join(" · ")}
-                  onClick={() => toggleGroup(g)}
+                  onClick={() => pickGroup(g)}
                 >
                   {g.label}
                 </button>
