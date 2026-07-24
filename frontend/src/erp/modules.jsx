@@ -6,7 +6,7 @@ import { notifyError, toastSuccess } from "../toast.js";
 import { confirmAction } from "../confirm.js";
 import { StatViz, seriesColor } from "./charts.jsx";
 import { BROJ_SEAL, BROJ_LOGO } from "./brojSeal.js";
-import { pickImageFile, uploadFile, mediaUrl, isPickCancelled, compressImageToJpeg } from "../api/upload.js";
+import { pickImageFile, pickAnyFile, uploadFile, mediaUrl, isPickCancelled, compressImageToJpeg } from "../api/upload.js";
 
 const STATUS_LABEL = {
   draft: "임시저장", submitted: "상신", in_progress: "진행중",
@@ -7636,7 +7636,7 @@ const DAILY_QUESTIONS = [
   { key: "plan", label: "내일은 무슨 일을 할 것인가?" },
 ];
 
-/** 체크리스트 파싱 — JSON 형식([{text,done,reason}]) 우선, 옛 자유 텍스트는 줄 단위 변환 */
+/** 체크리스트 파싱 — JSON 형식([{id,text,done,reason}]) 우선, 옛 자유 텍스트는 줄 단위 변환 */
 function parseChecklistItems(raw, { legacyDone = true } = {}) {
   if (!raw) return [];
   try {
@@ -7644,6 +7644,7 @@ function parseChecklistItems(raw, { legacyDone = true } = {}) {
     if (Array.isArray(v)) {
       return v
         .map((it) => ({
+          id: typeof it?.id === "string" ? it.id : "",
           text: String(it?.text ?? "").trim(),
           done: !!it?.done,
           reason: typeof it?.reason === "string" ? it.reason : "",
@@ -7655,7 +7656,16 @@ function parseChecklistItems(raw, { legacyDone = true } = {}) {
     .split("\n")
     .map((s) => s.trim())
     .filter(Boolean)
-    .map((t) => ({ text: t.replace(/^[-•]\s*|^\d+\.\s*/, "").trim() || t, done: legacyDone, reason: "" }));
+    .map((t) => ({ id: "", text: t.replace(/^[-•]\s*|^\d+\.\s*/, "").trim() || t, done: legacyDone, reason: "" }));
+}
+
+function checklistItemId() {
+  return `it_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** 코멘트 앵커 키 — item id가 있으면 그걸, 없으면 텍스트 기반 */
+function checklistAnchor(it) {
+  return it.id || `t:${it.text}`;
 }
 
 function dailyAuthorLabel(r) {
@@ -7663,6 +7673,145 @@ function dailyAuthorLabel(r) {
   if (email.startsWith("david")) return "David";
   if (email.startsWith("matthew")) return "Matthew";
   return r.authorName || email;
+}
+
+function openDailyFile(f) {
+  api.erpDailyCommentFileUrl(f.key)
+    .then(({ url }) => window.open(url, "_blank", "noopener,noreferrer"))
+    .catch(notifyError);
+}
+
+const DAILY_SECTION_LABELS = { did: "오늘 한 일", missed: "못한 일", plan: "내일 할 일" };
+
+/** 항목 하나에 대한 코멘트 스레드 박스 (루트 + 답글 + 작성) */
+function DailyThreadBox({ report, section, item, threads, myEmail, onChanged, onClose }) {
+  const [body, setBody] = useState("");
+  const [files, setFiles] = useState([]);
+  const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const activeRoot = threads.find((t) => !t.root.resolved);
+
+  const attach = async () => {
+    try {
+      const file = await pickAnyFile();
+      setUploading(true);
+      const key = await uploadFile(file);
+      setFiles((p) => [...p, { key, name: file.name || "파일" }]);
+    } catch (e) {
+      if (!isPickCancelled(e)) notifyError(e);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const submit = () => {
+    if (!body.trim() && !files.length) return;
+    setSending(true);
+    api.erpDailyCommentAdd({
+      reportId: report.id,
+      section,
+      itemId: checklistAnchor(item),
+      itemText: item.text,
+      body,
+      files,
+      parentId: activeRoot ? activeRoot.root.id : undefined,
+    })
+      .then(() => {
+        setBody("");
+        setFiles([]);
+        onChanged();
+      })
+      .catch(notifyError)
+      .finally(() => setSending(false));
+  };
+
+  const resolveThread = (rootId, resolved) => {
+    api.erpDailyCommentResolve(rootId, resolved)
+      .then(() => { toastSuccess(resolved ? "스레드를 해결 처리했어요" : "스레드를 다시 열었어요"); onChanged(); })
+      .catch(notifyError);
+  };
+
+  const removeComment = async (c) => {
+    if (!(await confirmAction("코멘트 삭제", c.parentId ? "이 답글을 삭제할까요?" : "스레드 전체(답글 포함)를 삭제할까요?"))) return;
+    api.erpDailyCommentDelete(c.id).then(onChanged).catch(notifyError);
+  };
+
+  const renderComment = (c, isRoot) => (
+    <div key={c.id} style={{ marginTop: isRoot ? 0 : 8, marginLeft: isRoot ? 0 : 18 }}>
+      <div className="row" style={{ gap: 6, alignItems: "center" }}>
+        <strong className="small">{dailyAuthorLabel(c)}</strong>
+        <span className="small" style={{ color: "var(--muted)", fontSize: 11.5 }}>
+          {new Date(c.createdAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+        </span>
+        {(c.authorEmail || "").toLowerCase() === myEmail && (
+          <button type="button" className="btn btn-ghost btn-sm" style={{ padding: "0 6px", fontSize: 11.5 }} onClick={() => removeComment(c)}>삭제</button>
+        )}
+      </div>
+      {c.body && <div className="small" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55, marginTop: 2 }}>{c.body}</div>}
+      {(c.files || []).length > 0 && (
+        <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+          {c.files.map((f, i) => (
+            <button key={i} type="button" className="tag gray" style={{ cursor: "pointer", fontSize: 11.5 }} onClick={() => openDailyFile(f)}>
+              📎 {f.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div style={{ margin: "8px 0 12px 22px", padding: "12px 14px", background: "var(--sand, #F7F3EC)", borderRadius: 12, border: "1px solid var(--line)" }}>
+      <div className="row" style={{ alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <span className="small" style={{ fontWeight: 800 }}>💬 코멘트 — {item.text}</span>
+        <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: "auto", padding: "0 8px" }} onClick={onClose}>닫기 ✕</button>
+      </div>
+
+      {threads.map((t) => (
+        <div key={t.root.id} style={{ marginBottom: 12, opacity: t.root.resolved ? 0.55 : 1 }}>
+          {renderComment(t.root, true)}
+          {t.replies.map((c) => renderComment(c, false))}
+          <div className="row" style={{ gap: 6, marginTop: 6 }}>
+            {t.root.resolved ? (
+              <>
+                <span className="tag gray" style={{ fontSize: 11 }}>✔ 해결됨</span>
+                <button type="button" className="btn btn-ghost btn-sm" style={{ padding: "0 8px", fontSize: 11.5 }} onClick={() => resolveThread(t.root.id, false)}>다시 열기</button>
+              </>
+            ) : (
+              <button type="button" className="btn btn-ghost btn-sm" style={{ padding: "0 8px", fontSize: 11.5 }} onClick={() => resolveThread(t.root.id, true)}>✔ 해결 처리</button>
+            )}
+          </div>
+        </div>
+      ))}
+
+      <div style={{ marginTop: 8 }}>
+        <textarea
+          className="input"
+          style={{ width: "100%", minHeight: 56, resize: "vertical", lineHeight: 1.5 }}
+          placeholder={activeRoot ? "답글 달기…" : "코멘트 남기기…"}
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+        />
+        {files.length > 0 && (
+          <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+            {files.map((f, i) => (
+              <span key={i} className="tag gray" style={{ fontSize: 11.5 }}>
+                📎 {f.name}
+                <button type="button" style={{ border: "none", background: "none", cursor: "pointer", marginLeft: 4 }} onClick={() => setFiles((p) => p.filter((_, j) => j !== i))}>✕</button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="row" style={{ gap: 8, marginTop: 6, alignItems: "center" }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={attach} disabled={uploading}>{uploading ? "업로드 중…" : "📎 파일 첨부"}</button>
+          <button type="button" className="btn btn-accent btn-sm" style={{ marginLeft: "auto" }} onClick={submit} disabled={sending || (!body.trim() && !files.length)}>
+            {sending ? "등록 중…" : activeRoot ? "답글 등록" : "코멘트 등록"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function DailyReportView() {
@@ -7678,19 +7827,50 @@ export function DailyReportView() {
   const [plans, setPlans] = useState([]); // 내일 할 일 [{text}]
   const [prevPlan, setPrevPlan] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [comments, setComments] = useState([]);
+  const [openThreads, setOpenThreads] = useState([]);
+  const [openThreadKey, setOpenThreadKey] = useState(null); // `${reportId}|${section}|${anchor}`
 
   const monthStr = `${ym.y}-${String(ym.m).padStart(2, "0")}`;
 
+  const loadComments = useCallback(() => {
+    return api.erpDailyComments({ month: monthStr })
+      .then((r) => {
+        setComments(r.comments || []);
+        setOpenThreads(r.openThreads || []);
+      })
+      .catch(() => {});
+  }, [monthStr]);
+
   const load = useCallback(() => {
     setLoading(true);
-    api.erpDailyReports({ month: monthStr })
-      .then((r) => {
+    Promise.all([
+      api.erpDailyReports({ month: monthStr }).then((r) => {
         setReports(r.reports || []);
         setMyEmail((r.myEmail || "").toLowerCase());
-      })
+      }),
+      api.erpDailyComments({ month: monthStr }).then((r) => {
+        setComments(r.comments || []);
+        setOpenThreads(r.openThreads || []);
+      }).catch(() => {}),
+    ])
       .catch(notifyError)
       .finally(() => setLoading(false));
   }, [monthStr]);
+
+  // 코멘트 스레드: reportId|section|itemId → [{root, replies}]
+  const threadMap = useMemo(() => {
+    const roots = comments.filter((c) => !c.parentId);
+    const replies = comments.filter((c) => c.parentId);
+    const map = new Map();
+    for (const root of roots) {
+      const key = `${root.reportId}|${root.section}|${root.itemId}`;
+      const arr = map.get(key) || [];
+      arr.push({ root, replies: replies.filter((r) => r.parentId === root.id) });
+      map.set(key, arr);
+    }
+    return map;
+  }, [comments]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -7738,11 +7918,17 @@ export function DailyReportView() {
 
   // 즉시 저장 (체크박스 클릭 등) — 미체크 항목은 사유 유지한 채 '못한 일'로
   const quickSave = (todoItems, planItems) => {
-    const cleanTodos = todoItems.map((t) => ({ ...t, text: t.text.trim() })).filter((t) => t.text);
+    const cleanTodos = todoItems
+      .map((t) => ({ ...t, id: t.id || checklistItemId(), text: t.text.trim() }))
+      .filter((t) => t.text);
     return api.erpDailyReportSave(selDay, {
-      did: JSON.stringify(cleanTodos.map(({ text, done }) => ({ text, done }))),
-      missed: JSON.stringify(cleanTodos.filter((t) => !t.done).map((t) => ({ text: t.text, reason: (t.reason || "").trim() }))),
-      plan: JSON.stringify((planItems || []).map((p) => ({ text: (p.text || "").trim() })).filter((p) => p.text)),
+      did: JSON.stringify(cleanTodos.map(({ id, text, done }) => ({ id, text, done }))),
+      missed: JSON.stringify(cleanTodos.filter((t) => !t.done).map((t) => ({ id: t.id, text: t.text, reason: (t.reason || "").trim() }))),
+      plan: JSON.stringify(
+        (planItems || [])
+          .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim() }))
+          .filter((p) => p.text)
+      ),
     })
       .then(() => load())
       .catch(notifyError);
@@ -7791,13 +7977,17 @@ export function DailyReportView() {
   };
 
   const save = () => {
-    const cleanTodos = todos.map((t) => ({ ...t, text: t.text.trim() })).filter((t) => t.text);
-    const cleanPlans = plans.map((p) => p.text.trim()).filter(Boolean);
+    const cleanTodos = todos
+      .map((t) => ({ ...t, id: t.id || checklistItemId(), text: t.text.trim() }))
+      .filter((t) => t.text);
+    const cleanPlans = plans
+      .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim() }))
+      .filter((p) => p.text);
     setSaving(true);
     api.erpDailyReportSave(selDay, {
-      did: JSON.stringify(cleanTodos.map(({ text, done }) => ({ text, done }))),
-      missed: JSON.stringify(cleanTodos.filter((t) => !t.done).map((t) => ({ text: t.text, reason: (t.reason || "").trim() }))),
-      plan: JSON.stringify(cleanPlans.map((text) => ({ text }))),
+      did: JSON.stringify(cleanTodos.map(({ id, text, done }) => ({ id, text, done }))),
+      missed: JSON.stringify(cleanTodos.filter((t) => !t.done).map((t) => ({ id: t.id, text: t.text, reason: (t.reason || "").trim() }))),
+      plan: JSON.stringify(cleanPlans),
     })
       .then(() => {
         toastSuccess("일일보고 저장 완료");
@@ -7827,7 +8017,44 @@ export function DailyReportView() {
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
         날짜를 누르면 그날 보고가 아래에 보입니다. <strong>내일은 무슨 일을 할 것인가</strong>에 적은 내용은
         다음 보고 작성 시 <strong>오늘 무슨 일을 하였나</strong>에 자동으로 채워집니다.
+        각 항목의 💬 버튼으로 서로 코멘트·답글·파일을 남길 수 있습니다.
       </div>
+
+      {openThreads.length > 0 && (
+        <div className="card" style={{ marginTop: 14, padding: "12px 16px" }}>
+          <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>💬 열린 스레드 {openThreads.length}개</div>
+          {openThreads.map((t) => (
+            <div key={t.id} className="row" style={{ gap: 8, alignItems: "center", padding: "4px 0", flexWrap: "wrap", borderTop: "1px solid var(--line)" }}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ padding: "2px 8px", fontSize: 12, fontWeight: 700 }}
+                onClick={() => {
+                  const [yy, mm] = t.date.split("-").map(Number);
+                  setYm({ y: yy, m: mm });
+                  setSelDay(t.date);
+                  setOpenThreadKey(`${t.reportId}|${t.section}|${t.itemId}`);
+                  setEditing(false);
+                }}
+              >
+                {fmtDayTitle(t.date)} · {dailyAuthorLabel({ authorEmail: t.reportAuthorEmail, authorName: t.reportAuthorName })} · {DAILY_SECTION_LABELS[t.section] || t.section}
+              </button>
+              <span className="small" style={{ flex: 1, minWidth: 180 }}>
+                <strong>{t.itemText}</strong> — {dailyAuthorLabel(t)}: {(t.body || "📎 파일").slice(0, 60)}
+                {t.replyCount > 0 && <span style={{ color: "var(--muted)" }}> · 답글 {t.replyCount}</span>}
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ fontSize: 11.5 }}
+                onClick={() => api.erpDailyCommentResolve(t.id, true).then(() => { toastSuccess("스레드를 해결 처리했어요"); loadComments(); }).catch(notifyError)}
+              >
+                ✔ 해결
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="iscal" style={{ marginTop: 14 }}>
         <div className="iscal-hd">
@@ -8000,20 +8227,49 @@ export function DailyReportView() {
                     {items.length === 0 ? (
                       <div className="small" style={{ color: "var(--muted)" }}>－</div>
                     ) : (
-                      items.map((it, i) => (
-                        <div
-                          key={i}
-                          className="small"
-                          style={{ lineHeight: 1.7, cursor: clickable ? "pointer" : undefined }}
-                          onClick={clickable ? () => toggleMineItem(r, i) : undefined}
-                        >
-                          {q2.key === "did" ? (it.done ? "✅ " : "⬜ ") : q2.key === "plan" ? "⬜ " : "⚠️ "}
-                          <span style={q2.key === "did" && !it.done ? { color: "var(--muted)" } : undefined}>{it.text}</span>
-                          {q2.key === "missed" && it.reason && (
-                            <span style={{ color: "var(--muted)" }}> — 사유: {it.reason}</span>
-                          )}
-                        </div>
-                      ))
+                      items.map((it, i) => {
+                        const anchor = checklistAnchor(it);
+                        const tKey = `${r.id}|${q2.key}|${anchor}`;
+                        const threads = threadMap.get(tKey) || [];
+                        const cCount = threads.reduce((s, t) => s + 1 + t.replies.length, 0);
+                        const hasOpen = threads.some((t) => !t.root.resolved);
+                        return (
+                          <React.Fragment key={i}>
+                            <div className="small row" style={{ lineHeight: 1.7, alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                              <span
+                                style={{ cursor: clickable ? "pointer" : undefined }}
+                                onClick={clickable ? () => toggleMineItem(r, i) : undefined}
+                              >
+                                {q2.key === "did" ? (it.done ? "✅ " : "⬜ ") : q2.key === "plan" ? "⬜ " : "⚠️ "}
+                                <span style={q2.key === "did" && !it.done ? { color: "var(--muted)" } : undefined}>{it.text}</span>
+                                {q2.key === "missed" && it.reason && (
+                                  <span style={{ color: "var(--muted)" }}> — 사유: {it.reason}</span>
+                                )}
+                              </span>
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                style={{ padding: "0 7px", fontSize: 11.5, color: hasOpen ? "var(--accent-deep)" : cCount ? "var(--ink)" : "var(--muted)", fontWeight: hasOpen ? 800 : 600 }}
+                                title="코멘트"
+                                onClick={() => setOpenThreadKey(openThreadKey === tKey ? null : tKey)}
+                              >
+                                💬{cCount > 0 ? ` ${cCount}` : ""}
+                              </button>
+                            </div>
+                            {openThreadKey === tKey && (
+                              <DailyThreadBox
+                                report={r}
+                                section={q2.key}
+                                item={it}
+                                threads={threads}
+                                myEmail={myEmail}
+                                onChanged={loadComments}
+                                onClose={() => setOpenThreadKey(null)}
+                              />
+                            )}
+                          </React.Fragment>
+                        );
+                      })
                     )}
                   </div>
                 );

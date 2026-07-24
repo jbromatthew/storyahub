@@ -34,6 +34,7 @@ import {
   userCanApproveStep,
 } from "../services/approvalWorkflow.js";
 import { isErpOwner } from "../services/erpAccess.js";
+import { presignGet } from "../services/r2.js";
 
 export const erpRouter = Router();
 erpRouter.use(auth, requireAccess);
@@ -2146,4 +2147,157 @@ erpRouter.delete("/daily-reports/:date", async (req: AuthedRequest, res) => {
   const date = req.params.date;
   await prisma.erpDailyReport.deleteMany({ where: { date, authorEmail: a.email } });
   res.json({ ok: true });
+});
+
+/* ── 일일보고 항목별 코멘트 스레드 ── */
+
+type DailyCommentFile = { key: string; name: string };
+
+function sanitizeCommentFiles(raw: unknown): DailyCommentFile[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((f) => ({
+      key: typeof (f as Record<string, unknown>)?.key === "string" ? String((f as Record<string, unknown>).key) : "",
+      name: typeof (f as Record<string, unknown>)?.name === "string" ? String((f as Record<string, unknown>).name).slice(0, 200) : "파일",
+    }))
+    .filter((f) => f.key)
+    .slice(0, 10);
+}
+
+// 월별 코멘트 + 미해결 스레드(전체 기간)
+erpRouter.get("/daily-comments", async (req: AuthedRequest, res) => {
+  const a = await dailyAccess(req.userId!);
+  if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });
+  const month = typeof req.query.month === "string" ? req.query.month : "";
+  const monthReports = /^\d{4}-\d{2}$/.test(month)
+    ? await prisma.erpDailyReport.findMany({ where: { date: { startsWith: month } }, select: { id: true } })
+    : [];
+  const comments = monthReports.length
+    ? await prisma.erpDailyComment.findMany({
+        where: { reportId: { in: monthReports.map((r) => r.id) } },
+        orderBy: { createdAt: "asc" },
+      })
+    : [];
+
+  // 미해결 스레드 (루트 기준, 전체 기간)
+  const openRoots = await prisma.erpDailyComment.findMany({
+    where: { parentId: null, resolved: false },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+  const reportIds = [...new Set(openRoots.map((c) => c.reportId))];
+  const reports = reportIds.length
+    ? await prisma.erpDailyReport.findMany({
+        where: { id: { in: reportIds } },
+        select: { id: true, date: true, authorEmail: true, authorName: true },
+      })
+    : [];
+  const reportMap = new Map(reports.map((r) => [r.id, r]));
+  const replyCounts = await prisma.erpDailyComment.groupBy({
+    by: ["parentId"],
+    where: { parentId: { in: openRoots.map((c) => c.id) } },
+    _count: { _all: true },
+  }).catch(() => [] as Array<{ parentId: string | null; _count: { _all: number } }>);
+  const countMap = new Map(replyCounts.map((c) => [c.parentId, c._count._all]));
+  const openThreads = openRoots
+    .map((c) => {
+      const r = reportMap.get(c.reportId);
+      if (!r) return null;
+      return {
+        id: c.id,
+        reportId: c.reportId,
+        date: r.date,
+        reportAuthorEmail: r.authorEmail,
+        reportAuthorName: r.authorName,
+        section: c.section,
+        itemId: c.itemId,
+        itemText: c.itemText,
+        authorEmail: c.authorEmail,
+        authorName: c.authorName,
+        body: c.body,
+        replyCount: countMap.get(c.id) ?? 0,
+        createdAt: c.createdAt,
+      };
+    })
+    .filter(Boolean);
+
+  res.json({ comments, openThreads, myEmail: a.email });
+});
+
+// 코멘트/답글 등록
+erpRouter.post("/daily-comments", async (req: AuthedRequest, res) => {
+  const a = await dailyAccess(req.userId!);
+  if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const reportId = typeof b.reportId === "string" ? b.reportId : "";
+  const section = typeof b.section === "string" && ["did", "missed", "plan"].includes(b.section) ? b.section : "";
+  const itemId = typeof b.itemId === "string" ? b.itemId.slice(0, 200) : "";
+  const itemText = typeof b.itemText === "string" ? b.itemText.slice(0, 500) : "";
+  const body = typeof b.body === "string" ? b.body.slice(0, 10000) : "";
+  const parentId = typeof b.parentId === "string" && b.parentId ? b.parentId : null;
+  const files = sanitizeCommentFiles(b.files);
+  if (!reportId || !section || !itemId) return res.status(400).json({ error: "reportId/section/itemId 필요" });
+  if (!body.trim() && !files.length) return res.status(400).json({ error: "내용 또는 파일이 필요합니다" });
+  const report = await prisma.erpDailyReport.findUnique({ where: { id: reportId }, select: { id: true } });
+  if (!report) return res.status(404).json({ error: "보고를 찾을 수 없습니다" });
+  if (parentId) {
+    const parent = await prisma.erpDailyComment.findUnique({ where: { id: parentId }, select: { id: true, reportId: true } });
+    if (!parent || parent.reportId !== reportId) return res.status(400).json({ error: "잘못된 스레드" });
+  }
+  const comment = await prisma.erpDailyComment.create({
+    data: {
+      reportId,
+      section,
+      itemId,
+      itemText,
+      parentId,
+      authorEmail: a.email,
+      authorName: a.user?.name || a.email,
+      body: body.trim(),
+      files,
+    },
+  });
+  res.json({ comment });
+});
+
+// 스레드 해결/해제 (루트)
+erpRouter.post("/daily-comments/:id/resolve", async (req: AuthedRequest, res) => {
+  const a = await dailyAccess(req.userId!);
+  if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });
+  const resolved = !!(req.body as Record<string, unknown> | undefined)?.resolved;
+  const root = await prisma.erpDailyComment.findUnique({ where: { id: req.params.id } });
+  if (!root || root.parentId) return res.status(404).json({ error: "스레드를 찾을 수 없습니다" });
+  const comment = await prisma.erpDailyComment.update({ where: { id: root.id }, data: { resolved } });
+  res.json({ comment });
+});
+
+// 코멘트 삭제 (본인 것만, 루트 삭제 시 답글도 삭제)
+erpRouter.delete("/daily-comments/:id", async (req: AuthedRequest, res) => {
+  const a = await dailyAccess(req.userId!);
+  if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });
+  const c = await prisma.erpDailyComment.findUnique({ where: { id: req.params.id } });
+  if (!c) return res.status(404).json({ error: "코멘트를 찾을 수 없습니다" });
+  if (c.authorEmail !== a.email) return res.status(403).json({ error: "본인 코멘트만 삭제할 수 있습니다" });
+  await prisma.erpDailyComment.deleteMany({ where: { OR: [{ id: c.id }, { parentId: c.id }] } });
+  res.json({ ok: true });
+});
+
+// 첨부파일 열람 URL — 코멘트에 붙은 키만, CEO/COO 서로 열람 가능
+erpRouter.get("/daily-comments/file", async (req: AuthedRequest, res) => {
+  const a = await dailyAccess(req.userId!);
+  if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });
+  const key = String(req.query.key ?? "");
+  if (!key) return res.status(400).json({ error: "key 필요" });
+  const owner = await prisma.erpDailyComment.findFirst({
+    where: { files: { array_contains: [{ key }] } as never },
+    select: { id: true },
+  }).catch(() => null);
+  if (!owner) {
+    // JSON 배열 부분일치가 안 되는 경우 대비: 문자열 포함으로 재확인
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "ErpDailyComment" WHERE "files"::text LIKE ${"%" + key + "%"} LIMIT 1
+    `;
+    if (!rows.length) return res.status(404).json({ error: "파일을 찾을 수 없습니다" });
+  }
+  res.json({ url: await presignGet(key) });
 });

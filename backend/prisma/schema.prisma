@@ -828,3 +828,23 @@ model ErpDailyReport {
   @@unique([date, authorEmail])
   @@index([date])
 }
+
+// 일일보고 항목별 코멘트 스레드 (CEO/COO)
+model ErpDailyComment {
+  id          String   @id @default(cuid())
+  reportId    String
+  section     String   // did | missed | plan
+  itemId      String   // 항목 앵커 (item id 또는 텍스트 키)
+  itemText    String   // 항목 텍스트 스냅샷
+  parentId    String?  // null = 스레드 루트, 값 있으면 답글
+  authorEmail String
+  authorName  String
+  body        String   @default("")
+  files       Json     @default("[]") // [{key, name}]
+  resolved    Boolean  @default(false) // 루트에만 의미 (스레드 해결/숨김)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([reportId])
+  @@index([resolved])
+}

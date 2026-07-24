@@ -338,6 +338,15 @@ export const api = {
   erpDailyReportPrevPlan: (date) => req(`/erp/daily-reports/prev-plan?date=${encodeURIComponent(date)}`),
   erpDailyReportSave: (date, body) => req(`/erp/daily-reports/${date}`, { method: "PUT", body }),
   erpDailyReportDelete: (date) => req(`/erp/daily-reports/${date}`, { method: "DELETE" }),
+  erpDailyComments: ({ month } = {}) => {
+    const p = new URLSearchParams();
+    if (month) p.set("month", month);
+    return req(`/erp/daily-comments?${p}`);
+  },
+  erpDailyCommentAdd: (body) => req("/erp/daily-comments", { method: "POST", body }),
+  erpDailyCommentResolve: (id, resolved) => req(`/erp/daily-comments/${id}/resolve`, { method: "POST", body: { resolved } }),
+  erpDailyCommentDelete: (id) => req(`/erp/daily-comments/${id}`, { method: "DELETE" }),
+  erpDailyCommentFileUrl: (key) => req(`/erp/daily-comments/file?key=${encodeURIComponent(key)}`),
   erpMarketingDashboard: ({ month } = {}) => {
     const p = new URLSearchParams();
     if (month) p.set("month", month);
