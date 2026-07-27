@@ -5414,6 +5414,7 @@ function DrillGoalTable({ title, labelHeader, items, editable, draft, onChange, 
             <tr>
               <th className="label">{labelHeader}</th>
               <th>목표</th>
+              <th>직전월</th>
               <th>직전 3개월 평균</th>
               <th>현황</th>
               <th>달성률</th>
@@ -5440,6 +5441,7 @@ function DrillGoalTable({ title, labelHeader, items, editable, draft, onChange, 
                       />
                     ) : (row.goal || "-")}
                   </td>
+                  <td className="num" style={{ color: "var(--muted)" }}>{row.prev1 != null ? row.prev1 : "-"}</td>
                   <td className="num" style={{ color: "var(--muted)" }}>{row.avg3 != null ? row.avg3 : "-"}</td>
                   <td className="num">{row.actual}</td>
                   <td className="num" style={{ color: dashRateColor(goal > 0 ? rate : null), fontWeight: 700 }}>
@@ -5480,7 +5482,7 @@ export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGo
   const fullPlanItems = useMemo(() => {
     const base = detail?.plans || [];
     const master = planList?.length ? planList : base.map((p) => p.label);
-    return master.map((label) => base.find((p) => p.label === label) || { key: label, label, goal: 0, actual: 0, gap: 0, rate: null, avg3: 0 });
+    return master.map((label) => base.find((p) => p.label === label) || { key: label, label, goal: 0, actual: 0, gap: 0, rate: null, avg3: 0, prev1: 0 });
   }, [detail, planList]);
   const planItems = editing ? fullPlanItems : detail?.plans;
 
@@ -6227,6 +6229,7 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
                   <tr>
                     <th className="label">{section.label}</th>
                     <th>목표</th>
+                    {tab === "industry" && <th>직전월</th>}
                     {tab === "industry" && <th>직전 3개월 평균</th>}
                     <th>현황</th>
                     <th>달성률</th>
@@ -6266,6 +6269,9 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
                         ) : goal}
                       </td>
                       {tab === "industry" && (
+                        <td className="num" style={{ color: "var(--muted)" }}>{row.prev1 != null ? row.prev1 : "-"}</td>
+                      )}
+                      {tab === "industry" && (
                         <td className="num" style={{ color: "var(--muted)" }}>{row.avg3 != null ? row.avg3 : "-"}</td>
                       )}
                       <td className="num">{row.actual}</td>
@@ -6292,6 +6298,11 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
                   <tr style={{ background: "#FFF8F0" }}>
                     <td className="label">합계</td>
                     <td className="num">{tab === "industry" && editMode ? inboundGoal : section.total.goal}</td>
+                    {tab === "industry" && (
+                      <td className="num" style={{ color: "var(--muted)" }}>
+                        {section.items.reduce((s, r) => s + (r.prev1 || 0), 0)}
+                      </td>
+                    )}
                     {tab === "industry" && (
                       <td className="num" style={{ color: "var(--muted)" }}>
                         {Math.round(section.items.reduce((s, r) => s + (r.avg3 || 0), 0) * 10) / 10}
