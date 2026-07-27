@@ -1486,3 +1486,19 @@ export async function getMarketingDashboard(month?: string): Promise<SalesDashbo
     syncedThrough: latest?.sheetName ?? null,
   };
 }
+
+/** 시트 강제 재조회 — 캐시를 비우고 최신 시트/DB 기준으로 다시 계산 */
+export async function refreshSalesDashboard(month?: string): Promise<SalesDashboardData> {
+  invalidateSheetCache(`months:${dashboardSpreadsheetId()}`);
+  invalidateSheetCache(`grid:${dashboardSpreadsheetId()}`);
+  invalidateSheetCache("db:sales-order-lite");
+  invalidateSheetCache("db:sales-inquiry-lite");
+  return getSalesDashboard(month);
+}
+
+export async function refreshMarketingDashboard(month?: string): Promise<SalesDashboardData> {
+  invalidateSheetCache(`months:${marketingSpreadsheetId()}`);
+  invalidateSheetCache(`grid:${marketingSpreadsheetId()}`);
+  invalidateSheetCache("db:sales-inquiry-lite");
+  return getMarketingDashboard(month);
+}

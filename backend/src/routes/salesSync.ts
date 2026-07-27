@@ -34,10 +34,13 @@ import { getUnissuedTaxInvoices } from "../services/salesTaxInvoice.js";
 import {
   getSalesDashboard,
   getMarketingDashboard,
+  refreshSalesDashboard,
+  refreshMarketingDashboard,
   writeDashboardGoalsToSheet,
   listDashboardMonths,
   saveDashboardGoalOverrides,
 } from "../services/salesDashboard.js";
+import { adoptSheetGoals } from "../services/salesDashboardGoals.js";
 import { getSalesDaily } from "../services/salesDaily.js";
 
 export const salesSyncRouter = Router();
@@ -177,6 +180,28 @@ salesSyncRouter.get("/marketing-dashboard", async (req: AuthedRequest, res: Resp
   const month = typeof req.query.month === "string" ? req.query.month : undefined;
   try {
     res.json(await getMarketingDashboard(month));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// 시트 강제 재조회 — 캐시 무효화 + 해당 월의 앱 오버라이드를 시트 기준으로 정리
+salesSyncRouter.post("/dashboard/refresh", async (req: AuthedRequest, res: Response) => {
+  const month = typeof req.body?.month === "string" ? req.body.month : undefined;
+  try {
+    if (month) await adoptSheetGoals(month);
+    res.json(await refreshSalesDashboard(month));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
+salesSyncRouter.post("/marketing-dashboard/refresh", async (req: AuthedRequest, res: Response) => {
+  const month = typeof req.body?.month === "string" ? req.body.month : undefined;
+  try {
+    res.json(await refreshMarketingDashboard(month));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: msg });

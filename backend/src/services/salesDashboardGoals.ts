@@ -103,3 +103,16 @@ export function validateIndustryPlanGoals(data: DashboardGoalOverrides): string[
   }
   return warnings;
 }
+
+/** 시트 값을 기준으로 삼도록 앱 오버라이드를 비움 (시트에 안 쓰는 채널별 목표는 유지) */
+export async function adoptSheetGoals(month: string): Promise<void> {
+  const cur = await loadDashboardGoalOverrides(month);
+  const hasAny =
+    Object.keys(cur.industryGoals).length > 0 || Object.keys(cur.industryPlanGoals).length > 0;
+  if (!hasAny) return;
+  await saveDashboardGoalOverrides(month, {
+    industryGoals: {},
+    industryPlanGoals: {},
+    industryChannelGoals: cur.industryChannelGoals,
+  });
+}

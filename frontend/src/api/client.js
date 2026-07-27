@@ -352,6 +352,8 @@ export const api = {
     if (month) p.set("month", month);
     return req(`/erp/sales/marketing-dashboard?${p}`);
   },
+  erpSalesDashboardRefresh: (month) => req("/erp/sales/dashboard/refresh", { method: "POST", body: { month } }),
+  erpMarketingDashboardRefresh: (month) => req("/erp/sales/marketing-dashboard/refresh", { method: "POST", body: { month } }),
   // 공사(견적) 관리 — 소유자 전용
   erpConstructionItems: () => req("/erp/construction/items"),
   erpConstructionCreateItem: (data) => req("/erp/construction/items", { method: "POST", body: data }),

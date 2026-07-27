@@ -5732,6 +5732,7 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
   const [savingGoals, setSavingGoals] = useState(false);
   const [drillIndustry, setDrillIndustry] = useState(null);
   const [dimDrill, setDimDrill] = useState(null); // { dim: "channel"|"plan", key }
+  const [refreshing, setRefreshing] = useState(false);
   const editModeRef = useRef(editMode);
   editModeRef.current = editMode;
 
@@ -5920,6 +5921,28 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
               <option key={m} value={m}>{m.replace(/\.$/, "")}</option>
             ))}
           </select>
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost"
+            disabled={refreshing}
+            title="시트를 즉시 다시 읽어 목표·현황을 갱신합니다"
+            onClick={() => {
+              setRefreshing(true);
+              const fn = isMkt ? api.erpMarketingDashboardRefresh : api.erpSalesDashboardRefresh;
+              fn(data?.month || selectedMonth || undefined)
+                .then((res) => {
+                  salesDashCache.set(`${variant}:${selectedMonth || ""}`, res);
+                  if (res.month) salesDashCache.set(`${variant}:${res.month}`, res);
+                  setData(res);
+                  setDraftGoals(cloneGoalOverrides(res));
+                  toastSuccess("시트에서 다시 불러왔어요");
+                })
+                .catch(notifyError)
+                .finally(() => setRefreshing(false));
+            }}
+          >
+            {refreshing ? "동기화 중…" : "⟳ 시트 동기화"}
+          </button>
           <span className="small">시트에 월 탭을 추가하면 자동으로 목록에 뜹니다</span>
         </div>
       )}
