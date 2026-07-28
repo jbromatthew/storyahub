@@ -69,6 +69,7 @@ export default function IotQuotePage() {
   const [form, setForm] = useState({ centerName: "", industry: "", industryEtc: "", usesBroj: null, address: "", phone: "" });
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState("");
+  const [showPanelExample, setShowPanelExample] = useState(false);
 
   useEffect(() => {
     document.title = "브로제이 IoT 견적내기";
@@ -171,7 +172,29 @@ export default function IotQuotePage() {
             <div className="iq-field">
               <label>배전반 전등 스위치 (개)</label>
               <Counter value={panel} onChange={setPanel} />
-              <div className="hint">센터 배전반(두꺼비집)을 열면 보이는 <strong>전등 차단기 스위치 개수</strong>를 세어주세요. 예: "천정등 좌/우", "천정등 中" 라벨이 붙은 스위치들.</div>
+              <div className="hint">
+                센터 배전반(두꺼비집)을 열면 보이는 <strong>전등 차단기 스위치 개수</strong>를 세어주세요.
+                {" "}
+                <button
+                  type="button"
+                  onClick={() => setShowPanelExample((v) => !v)}
+                  style={{ border: "none", background: "none", padding: 0, color: "var(--accent-deep)", fontWeight: 800, cursor: "pointer", fontFamily: "inherit", fontSize: 12, textDecoration: "underline" }}
+                >
+                  {showPanelExample ? "예시 사진 닫기 ▲" : "📷 예시 사진 보기 ▼"}
+                </button>
+              </div>
+              {showPanelExample && (
+                <div style={{ marginTop: 10 }}>
+                  <img
+                    src="/iot-panel-example.png"
+                    alt="배전반 전등 스위치 예시"
+                    style={{ width: "100%", borderRadius: 12, border: "1px solid var(--line)", display: "block" }}
+                  />
+                  <div className="hint" style={{ marginTop: 6 }}>
+                    이렇게 <strong>"천정등 좌·우", "천정등 中"</strong>처럼 전등 라벨이 붙은 차단기 스위치가 각각 1개입니다. 이 사진이라면 <strong>2개</strong>예요.
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
