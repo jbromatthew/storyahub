@@ -353,6 +353,14 @@ export const api = {
     return req(`/erp/sales/marketing-dashboard?${p}`);
   },
   erpSalesDashboardRefresh: (month) => req("/erp/sales/dashboard/refresh", { method: "POST", body: { month } }),
+  // IoT 견적 리드
+  erpIotLeads: ({ status } = {}) => {
+    const p = new URLSearchParams();
+    if (status) p.set("status", status);
+    return req(`/erp/iot-leads?${p}`);
+  },
+  erpIotLeadUpdate: (id, body) => req(`/erp/iot-leads/${id}`, { method: "PATCH", body }),
+  erpIotLeadDelete: (id) => req(`/erp/iot-leads/${id}`, { method: "DELETE" }),
   erpMarketingDashboardRefresh: (month) => req("/erp/sales/marketing-dashboard/refresh", { method: "POST", body: { month } }),
   // 공사(견적) 관리 — 소유자 전용
   erpConstructionItems: () => req("/erp/construction/items"),

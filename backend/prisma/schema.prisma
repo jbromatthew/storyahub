@@ -848,3 +848,29 @@ model ErpDailyComment {
   @@index([reportId])
   @@index([resolved])
 }
+
+// IoT 견적 리드 — 고객이 공개 페이지에서 직접 견적 내고 상담 신청 (인스타 유입)
+model ErpIotLead {
+  id           String   @id @default(cuid())
+  centerName   String
+  industry     String   @default("")
+  usesBroj     Boolean  @default(false)
+  address      String   @default("")
+  phone        String
+  pyeong       Int      @default(0)
+  networkSize  String   @default("small") // small | medium | large
+  acCount      Int      @default(0)
+  speakerCount Int      @default(0)
+  panelCount   Int      @default(0)
+  supplyAmount Int      @default(0) // 공급가액
+  totalAmount  Int      @default(0) // VAT 포함
+  breakdown    Json     @default("[]") // [{label, qty, unitPrice, amount}]
+  status       String   @default("new") // new | contacted | done
+  memo         String?
+  source       String   @default("instagram")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([status])
+}

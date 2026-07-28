@@ -15,6 +15,7 @@ export const ERP_MODULES = [
   { id: "marketing-dashboard", label: "마케팅 계기판", icon: "gauge", group: "sales" },
   { id: "broj-dashboard", label: "브로제이 계기판", icon: "gauge", group: "sales", ownerOnly: true },
   { id: "sales-revenue", label: "매출 분석", icon: "chart", group: "sales", ownerOnly: true },
+  { id: "iot-leads", label: "IoT 견적 관리", icon: "board", group: "sales" },
   // 세일즈팀 + CEO/COO(승인권자)에게만 노출 — ErpApp에서 /erp/consult-docs/access로 판별
   { id: "consult-docs", label: "상담자료 컨펌", icon: "meet", group: "sales-docs", groupLabel: "세일즈 자료", consultGate: true },
   { id: "sales-tax-invoice", label: "세금계산서 미발행", icon: "board", group: "mgmt", groupLabel: "경영지원팀" },

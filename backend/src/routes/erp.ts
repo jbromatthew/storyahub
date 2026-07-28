@@ -2301,3 +2301,27 @@ erpRouter.get("/daily-comments/file", async (req: AuthedRequest, res) => {
   }
   res.json({ url: await presignGet(key) });
 });
+
+/* ===================== IoT 견적 리드 관리 ===================== */
+
+erpRouter.get("/iot-leads", async (req: AuthedRequest, res) => {
+  const status = typeof req.query.status === "string" ? req.query.status : "";
+  const where = status && ["new", "contacted", "done"].includes(status) ? { status } : {};
+  const leads = await prisma.erpIotLead.findMany({ where, orderBy: { createdAt: "desc" }, take: 500 });
+  res.json({ leads });
+});
+
+erpRouter.patch("/iot-leads/:id", async (req: AuthedRequest, res) => {
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const data: Record<string, unknown> = {};
+  if (typeof b.status === "string" && ["new", "contacted", "done"].includes(b.status)) data.status = b.status;
+  if (b.memo !== undefined) data.memo = typeof b.memo === "string" ? b.memo.slice(0, 2000) : null;
+  const lead = await prisma.erpIotLead.update({ where: { id: req.params.id }, data });
+  res.json({ lead });
+});
+
+erpRouter.delete("/iot-leads/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  await prisma.erpIotLead.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});

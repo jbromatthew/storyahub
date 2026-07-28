@@ -33,6 +33,7 @@ import { sharesRouter } from "./routes/shares.js";
 import { erpRouter } from "./routes/erp.js";
 import { salesSyncRouter } from "./routes/salesSync.js";
 import { constructionPublicRouter } from "./routes/constructionPublic.js";
+import { iotPublicRouter } from "./routes/iotPublic.js";
 import { startPurgeScheduler } from "./services/purge.js";
 import { startSalesDashboardWarmer } from "./services/salesDashboard.js";
 
@@ -78,6 +79,8 @@ app.use("/erp", erpRouter);
 app.use("/erp/sales", salesSyncRouter);
 // 무계정 공개 라우트 (현장 사진 업로드) — PIN + 토큰으로 보호
 app.use("/public/construction", shareLimiter, constructionPublicRouter);
+// 무계정 공개 라우트 (IoT 견적내기 — 인스타 유입)
+app.use("/public/iot", shareLimiter, iotPublicRouter);
 
 app.use((err: Error, _req: Request, res: Response, next: NextFunction) => {
   if (err.message === "CORS blocked") {

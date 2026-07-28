@@ -8398,3 +8398,165 @@ export function DailyReportView() {
     </div>
   );
 }
+
+/* ===================== IoT 견적 리드 관리 ===================== */
+
+const IOT_STATUS = [
+  { id: "new", label: "신규", cls: "orange" },
+  { id: "contacted", label: "연락완료", cls: "gray" },
+  { id: "done", label: "완료", cls: "green" },
+];
+
+const IOT_NET_LABEL = { small: "소 (~100평)", medium: "중 (~150평)", large: "대 (200평↑)" };
+
+export function IotLeadsView() {
+  const [leads, setLeads] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [expanded, setExpanded] = useState(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.erpIotLeads({ status: statusFilter || undefined })
+      .then((r) => setLeads(r.leads || []))
+      .catch(notifyError)
+      .finally(() => setLoading(false));
+  }, [statusFilter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const publicUrl = `${window.location.origin}/?iot=1`;
+
+  const setStatus = (lead, status) => {
+    api.erpIotLeadUpdate(lead.id, { status })
+      .then((r) => setLeads((p) => p.map((x) => (x.id === lead.id ? r.lead : x))))
+      .catch(notifyError);
+  };
+
+  const saveMemo = (lead, memo) => {
+    if ((memo || "") === (lead.memo || "")) return;
+    api.erpIotLeadUpdate(lead.id, { memo })
+      .then((r) => setLeads((p) => p.map((x) => (x.id === lead.id ? r.lead : x))))
+      .catch(notifyError);
+  };
+
+  const remove = async (lead) => {
+    if (!(await confirmAction("리드 삭제", `'${lead.centerName}' 견적 신청을 삭제할까요?`))) return;
+    api.erpIotLeadDelete(lead.id)
+      .then(() => setLeads((p) => p.filter((x) => x.id !== lead.id)))
+      .catch(notifyError);
+  };
+
+  const counts = useMemo(() => {
+    const m = { new: 0, contacted: 0, done: 0 };
+    for (const l of leads) m[l.status] = (m[l.status] || 0) + 1;
+    return m;
+  }, [leads]);
+
+  return (
+    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">IoT</div>
+      <div className="h-title">IoT 견적 관리</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.6 }}>
+        고객이 공개 페이지에서 직접 견적을 내고 상담 신청하면 여기에 쌓입니다. 인스타 프로필/스토리에 아래 링크를 걸어두세요.
+        <div className="row" style={{ gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <code style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: 8, padding: "6px 10px", fontSize: 12.5 }}>{publicUrl}</code>
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost"
+            onClick={() => { navigator.clipboard?.writeText(publicUrl); toastSuccess("링크를 복사했어요"); }}
+          >
+            복사
+          </button>
+          <a className="btn btn-sm btn-ghost" href={publicUrl} target="_blank" rel="noreferrer">미리보기 ↗</a>
+        </div>
+      </div>
+
+      <div className="sales-toolbar" style={{ marginTop: 14, gap: 8, alignItems: "center" }}>
+        {[["", "전체"], ...IOT_STATUS.map((s) => [s.id, s.label])].map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={"btn btn-sm " + (statusFilter === id ? "btn-accent" : "btn-ghost")}
+            onClick={() => setStatusFilter(id)}
+          >
+            {label}{id && counts[id] ? ` ${counts[id]}` : ""}
+          </button>
+        ))}
+        <span className="tag gray" style={{ marginLeft: "auto" }}>{leads.length}건</span>
+      </div>
+
+      {loading ? (
+        <div className="spinner" />
+      ) : (
+        <div className="erp-tbl-wrap" style={{ marginTop: 10 }}>
+          <table className="erp-tbl">
+            <thead>
+              <tr>
+                <th>신청일</th>
+                <th>센터 / 업종</th>
+                <th className="shrink">연락처</th>
+                <th className="shrink ctr">브로제이</th>
+                <th className="shrink ctr">평수 / 네트워크</th>
+                <th className="shrink ctr">AC·SPK·배전반</th>
+                <th className="shrink num">견적 (VAT포함)</th>
+                <th className="shrink ctr">상태</th>
+                <th className="shrink" />
+              </tr>
+            </thead>
+            <tbody>
+              {leads.map((l) => (
+                <React.Fragment key={l.id}>
+                  <tr className="clickable" onClick={() => setExpanded(expanded === l.id ? null : l.id)}>
+                    <td className="shrink"><span className="cell-sub" style={{ margin: 0 }}>{new Date(l.createdAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span></td>
+                    <td>
+                      <div className="cell-ttl">{l.centerName}</div>
+                      <div className="cell-sub">{l.industry || "-"}{l.address ? ` · ${l.address}` : ""}</div>
+                    </td>
+                    <td className="shrink"><a href={`tel:${l.phone}`} onClick={(e) => e.stopPropagation()}>{l.phone}</a></td>
+                    <td className="shrink ctr"><span className={"erp-badge " + (l.usesBroj ? "green" : "gray")}>{l.usesBroj ? "사용중" : "미사용"}</span></td>
+                    <td className="shrink ctr">{l.pyeong || "-"}평 · {IOT_NET_LABEL[l.networkSize] || l.networkSize}</td>
+                    <td className="shrink ctr">{l.acCount} · {l.speakerCount} · {l.panelCount}</td>
+                    <td className="shrink num" style={{ fontWeight: 800 }}>{(l.totalAmount || 0).toLocaleString()}원</td>
+                    <td className="shrink ctr" onClick={(e) => e.stopPropagation()}>
+                      <select className="input" style={{ padding: "5px 8px", fontSize: 12.5 }} value={l.status} onChange={(e) => setStatus(l, e.target.value)}>
+                        {IOT_STATUS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                      </select>
+                    </td>
+                    <td className="shrink" onClick={(e) => e.stopPropagation()}>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => remove(l)}>삭제</button>
+                    </td>
+                  </tr>
+                  {expanded === l.id && (
+                    <tr>
+                      <td colSpan={9} style={{ background: "var(--sand, #F7F3EC)", padding: "12px 16px" }}>
+                        <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>견적 내역 (공급가 {(l.supplyAmount || 0).toLocaleString()}원)</div>
+                        {(l.breakdown || []).map((r, i) => (
+                          <div key={i} className="small" style={{ lineHeight: 1.7 }}>
+                            {r.label}{r.qty > 1 ? ` × ${r.qty}` : ""} — {(r.amount || 0).toLocaleString()}원
+                          </div>
+                        ))}
+                        <div className="row" style={{ gap: 8, marginTop: 10, alignItems: "center" }}>
+                          <span className="small" style={{ fontWeight: 700, flexShrink: 0 }}>메모</span>
+                          <input
+                            className="input"
+                            style={{ flex: 1 }}
+                            defaultValue={l.memo || ""}
+                            placeholder="상담 메모"
+                            onBlur={(e) => saveMemo(l, e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+              {!leads.length && <tr><td colSpan={9} className="erp-tbl-empty">아직 견적 신청이 없습니다. 공개 링크를 인스타에 노출해보세요.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
