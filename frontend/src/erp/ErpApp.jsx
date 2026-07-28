@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import AuthScreen from "../components/AuthScreen.jsx";
 import KbEditor, { KbReadView } from "../components/KbEditor.jsx";
 import KnowledgeFeed from "../components/KnowledgeFeed.jsx";
@@ -151,6 +151,17 @@ export default function ErpApp() {
     if (boot !== "app") return;
     api.erpConsultAccess().then((a) => setConsultVisible(!!a?.visible)).catch(() => setConsultVisible(false));
   }, [boot]);
+
+  // 첫 화면 = 각자 볼 수 있는 첫 메뉴 (matthew·david는 일일보고, 그 외는 첫 노출 메뉴)
+  const initialTabSet = useRef(false);
+  useEffect(() => {
+    if (boot !== "app" || !user || initialTabSet.current) return;
+    initialTabSet.current = true;
+    const first = ERP_MODULES.find(
+      (m) => (!m.ownerOnly || user?.erpAccess?.isOwner) && (!m.execOnly || isErpExec(user)) && !m.consultGate
+    );
+    if (first) setTab(first.id);
+  }, [boot, user]);
 
   const loadKb = useCallback(async () => {
     const kb = await api.listKb();

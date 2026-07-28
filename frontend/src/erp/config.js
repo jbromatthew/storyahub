@@ -1,6 +1,5 @@
 export const ERP_MODULES = [
-  { id: "kb", label: "지식경영", icon: "book", group: "main" },
-  // CEO/COO 전용 — ErpApp에서 이메일로 필터
+  // CEO/COO 전용 — ErpApp에서 이메일로 필터. 첫 화면(오늘 할 일)이라 맨 앞.
   { id: "daily-report", label: "일일보고", icon: "meet", group: "main", execOnly: true },
   // 회의록 메뉴는 잠시 숨김 (라우트·컴포넌트는 그대로 유지)
   // { id: "meetings", label: "회의록", icon: "meet", group: "work" },
@@ -24,6 +23,7 @@ export const ERP_MODULES = [
   // { id: "construction-broj", label: "브로제이 공사관리", icon: "board", group: "construction", ownerOnly: true },
   { id: "vendors", label: "업체 관리", icon: "admin", group: "construction", ownerOnly: true },
   { id: "install-schedule", label: "설치일정 (브로제이)", icon: "board", group: "construction", ownerOnly: true },
+  { id: "kb", label: "지식경영", icon: "book", group: "kb", groupLabel: "지식" },
 ];
 
 export const ERP_ADMIN_MODULES = [
