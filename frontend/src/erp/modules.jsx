@@ -2436,7 +2436,7 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
             <div className="kbe-meta-h" style={{ margin: 0 }}>협력업체 재정산 (공사팀 지급)</div>
             <button type="button" className="btn btn-ghost btn-sm" onClick={addPayout}>+ 팀 지급 추가</button>
           </div>
-          <div className="small" style={{ color: "var(--muted)", margin: "6px 0 12px" }}>이 공사를 맡긴 공사팀에게 줄 금액을 팀별로 기록하세요. 지급 완료는 체크.</div>
+          <div className="small" style={{ color: "var(--muted)", margin: "6px 0 12px" }}>이 공사를 맡긴 공사팀에게 줄 금액을 팀별로 기록하세요 (<strong>부가세 포함가</strong>). 지급 완료는 체크.</div>
           {!(editing.payouts || []).length ? (
             <div className="small" style={{ color: "var(--muted)" }}>아직 지급 항목이 없습니다. “팀 지급 추가”로 넣으세요.</div>
           ) : (
@@ -2480,7 +2480,7 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
               <button type="button" className="btn btn-ghost btn-sm" onClick={addBlankMaterial}>직접 입력</button>
             </div>
           </div>
-          <div className="small" style={{ color: "var(--muted)", margin: "6px 0 12px" }}>이 공사에 들어간 부품을 재고에서 선택하면 매입 평균단가로 원가가 채워집니다. 마진 계산에 반영됩니다.</div>
+          <div className="small" style={{ color: "var(--muted)", margin: "6px 0 12px" }}>이 공사에 들어간 부품을 재고에서 선택하면 매입 평균단가로 원가가 채워집니다 (<strong>부가세 포함가</strong>로 입력). 마진 계산에 반영됩니다.</div>
           {!(editing.materials || []).length ? (
             <div className="small" style={{ color: "var(--muted)" }}>투입 부품이 없습니다. 위에서 추가하세요.</div>
           ) : (
@@ -2506,19 +2506,19 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
           )}
         </div>
 
-        {/* 수익(마진) 요약 */}
+        {/* 수익(마진) 요약 — 매출·팀 지급·부품 모두 부가세 포함가 기준 */}
         {(() => {
-          const revenue = quoteTotals(editing.lines).supply;
+          const revenue = quoteTotals(editing.lines).total;
           const payoutSum = (editing.payouts || []).reduce((a, p) => a + cstNum(p.amount), 0);
           const materialCost = (editing.materials || []).reduce((a, m) => a + cstNum(m.qty) * cstNum(m.unitCost), 0);
           const margin = revenue - payoutSum - materialCost;
           const rate = revenue > 0 ? (margin / revenue) * 100 : 0;
           return (
             <div className="card" style={{ marginTop: 16 }}>
-              <div className="kbe-meta-h" style={{ marginTop: 0 }}>수익(마진) 요약 <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>· 부가세 제외 기준</span></div>
+              <div className="kbe-meta-h" style={{ marginTop: 0 }}>수익(마진) 요약 <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>· 부가세 포함 기준 (팀 지급액·부품가도 포함가로 입력)</span></div>
               <table className="erp-tbl" style={{ minWidth: 0 }}>
                 <tbody>
-                  <tr><td>견적 공급가 (매출)</td><td className="num" style={{ fontWeight: 700 }}>{formatWon(revenue)}</td></tr>
+                  <tr><td>견적 합계 (매출 · VAT 포함)</td><td className="num" style={{ fontWeight: 700 }}>{formatWon(revenue)}</td></tr>
                   <tr><td style={{ color: "var(--muted)" }}>− 공사팀 정산</td><td className="num" style={{ color: "var(--accent-deep)" }}>−{formatWon(payoutSum)}</td></tr>
                   <tr><td style={{ color: "var(--muted)" }}>− 부품/자재 원가</td><td className="num" style={{ color: "var(--accent-deep)" }}>−{formatWon(materialCost)}</td></tr>
                   <tr style={{ borderTop: "2px solid var(--line)" }}>
