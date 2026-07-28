@@ -7682,6 +7682,7 @@ function parseChecklistItems(raw, { legacyDone = true } = {}) {
           text: String(it?.text ?? "").trim(),
           done: !!it?.done,
           reason: typeof it?.reason === "string" ? it.reason : "",
+          kind: it?.kind === "header" ? "header" : undefined,
         }))
         .filter((it) => it.text);
     }
@@ -7956,11 +7957,11 @@ export function DailyReportView() {
       .map((t) => ({ ...t, id: t.id || checklistItemId(), text: t.text.trim() }))
       .filter((t) => t.text);
     return api.erpDailyReportSave(selDay, {
-      did: JSON.stringify(cleanTodos.map(({ id, text, done }) => ({ id, text, done }))),
-      missed: JSON.stringify(cleanTodos.filter((t) => !t.done).map((t) => ({ id: t.id, text: t.text, reason: (t.reason || "").trim() }))),
+      did: JSON.stringify(cleanTodos.map(({ id, text, done, kind }) => ({ id, text, done, kind }))),
+      missed: JSON.stringify(cleanTodos.filter((t) => !t.done && t.kind !== "header").map((t) => ({ id: t.id, text: t.text, reason: (t.reason || "").trim() }))),
       plan: JSON.stringify(
         (planItems || [])
-          .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim() }))
+          .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim(), kind: p.kind }))
           .filter((p) => p.text)
       ),
     })
@@ -7971,7 +7972,13 @@ export function DailyReportView() {
   // 이월 카드에서 체크: 그 상태 그대로 내 보고로 저장
   const carriedItems = !mine && prevPlan?.plan ? parseChecklistItems(prevPlan.plan, { legacyDone: false }) : [];
   const saveCarried = (toggleIdx) => {
-    const items = carriedItems.map((it, j) => ({ text: it.text, done: j === toggleIdx, reason: "" }));
+    const items = carriedItems.map((it, j) => ({
+      id: it.id,
+      text: it.text,
+      done: it.kind === "header" ? false : j === toggleIdx,
+      reason: "",
+      kind: it.kind,
+    }));
     quickSave(items, []).then(() => toastSuccess("이월된 할 일을 오늘 보고로 저장했어요"));
   };
 
@@ -7979,9 +7986,11 @@ export function DailyReportView() {
   const toggleMineItem = (r, idx) => {
     const reasons = new Map(parseChecklistItems(r.missed).map((m) => [m.text, m.reason]));
     const items = parseChecklistItems(r.did).map((t, j) => ({
+      id: t.id,
       text: t.text,
-      done: j === idx ? !t.done : t.done,
+      done: t.kind === "header" ? false : j === idx ? !t.done : t.done,
       reason: reasons.get(t.text) || "",
+      kind: t.kind,
     }));
     quickSave(items, parseChecklistItems(r.plan, { legacyDone: false }));
   };
@@ -7991,7 +8000,7 @@ export function DailyReportView() {
       // 못한 일에 적힌 사유를 오늘 할 일 항목에 다시 붙인다
       const reasons = new Map(parseChecklistItems(mine.missed).map((m) => [m.text, m.reason]));
       setTodos(parseChecklistItems(mine.did).map((t) => ({ ...t, reason: reasons.get(t.text) || t.reason || "" })));
-      setPlans(parseChecklistItems(mine.plan, { legacyDone: false }).map((p) => ({ text: p.text })));
+      setPlans(parseChecklistItems(mine.plan, { legacyDone: false }).map((p) => ({ id: p.id, text: p.text, kind: p.kind })));
     } else {
       setTodos([]);
       setPlans([]);
@@ -8004,7 +8013,7 @@ export function DailyReportView() {
         // 직전 보고의 '내일 할 일' 체크리스트를 오늘 할 일로 프리필 (새 보고일 때만)
         if (r.prev?.plan && !mine) {
           const items = parseChecklistItems(r.prev.plan, { legacyDone: false });
-          if (items.length) setTodos((cur) => (cur.length ? cur : items.map((it) => ({ text: it.text, done: false, reason: "" }))));
+          if (items.length) setTodos((cur) => (cur.length ? cur : items.map((it) => ({ id: it.id, text: it.text, done: false, reason: "", kind: it.kind }))));
         }
       })
       .catch(() => {});
@@ -8015,12 +8024,12 @@ export function DailyReportView() {
       .map((t) => ({ ...t, id: t.id || checklistItemId(), text: t.text.trim() }))
       .filter((t) => t.text);
     const cleanPlans = plans
-      .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim() }))
+      .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim(), kind: p.kind }))
       .filter((p) => p.text);
     setSaving(true);
     api.erpDailyReportSave(selDay, {
-      did: JSON.stringify(cleanTodos.map(({ id, text, done }) => ({ id, text, done }))),
-      missed: JSON.stringify(cleanTodos.filter((t) => !t.done).map((t) => ({ id: t.id, text: t.text, reason: (t.reason || "").trim() }))),
+      did: JSON.stringify(cleanTodos.map(({ id, text, done, kind }) => ({ id, text, done, kind }))),
+      missed: JSON.stringify(cleanTodos.filter((t) => !t.done && t.kind !== "header").map((t) => ({ id: t.id, text: t.text, reason: (t.reason || "").trim() }))),
       plan: JSON.stringify(cleanPlans),
     })
       .then(() => {
@@ -8144,9 +8153,25 @@ export function DailyReportView() {
                 </div>
               )}
 
-              <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>▶ 오늘 무슨 일을 하였나? <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 한 일은 체크</span></div>
+              <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>▶ 오늘 무슨 일을 하였나? <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 한 일은 체크 · 대분류 아래에 체크리스트를 넣을 수 있어요</span></div>
               {todos.map((t, i) => (
-                <div key={i} className="row" style={{ gap: 8, alignItems: "center", marginBottom: 6 }}>
+                t.kind === "header" ? (
+                  <div key={i} className="row" style={{ gap: 8, alignItems: "center", margin: "10px 0 6px" }}>
+                    <span style={{ flexShrink: 0, fontWeight: 800 }}>▾</span>
+                    <input
+                      className="input"
+                      style={{ flex: 1, fontWeight: 800, background: "var(--sand, #F7F3EC)" }}
+                      value={t.text}
+                      placeholder="대분류 이름"
+                      onChange={(e) => setTodos((p) => p.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { e.preventDefault(); setTodos((p) => [...p.slice(0, i + 1), { text: "", done: false, reason: "" }, ...p.slice(i + 1)]); }
+                      }}
+                    />
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => p.filter((_, j) => j !== i))}>✕</button>
+                  </div>
+                ) : (
+                <div key={i} className="row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: todos.slice(0, i).some((x) => x.kind === "header") ? 22 : 0 }}>
                   <input
                     type="checkbox"
                     checked={t.done}
@@ -8165,13 +8190,17 @@ export function DailyReportView() {
                   />
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => p.filter((_, j) => j !== i))}>✕</button>
                 </div>
+                )
               ))}
-              <button type="button" className="btn btn-ghost btn-sm" style={{ marginBottom: 14 }} onClick={() => setTodos((p) => [...p, { text: "", done: false, reason: "" }])}>+ 항목 추가</button>
+              <div className="row" style={{ gap: 6, marginBottom: 14 }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => [...p, { text: "", done: false, reason: "" }])}>+ 항목 추가</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => [...p, { text: "", done: false, reason: "", kind: "header" }])}>+ 대분류 추가</button>
+              </div>
 
-              {todos.some((t) => t.text.trim() && !t.done) && (
+              {todos.some((t) => t.text.trim() && !t.done && t.kind !== "header") && (
                 <div style={{ marginBottom: 14 }}>
                   <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>▶ 오늘 무슨 일을 했어야 했는데 못했나? <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 체크 안 된 항목, 사유를 적어주세요</span></div>
-                  {todos.map((t, i) => (!t.done && t.text.trim() ? (
+                  {todos.map((t, i) => (!t.done && t.text.trim() && t.kind !== "header" ? (
                     <div key={i} className="row" style={{ gap: 8, alignItems: "center", marginBottom: 6 }}>
                       <span className="small" style={{ flex: "0 1 auto", minWidth: 120, fontWeight: 600 }}>⬜ {t.text}</span>
                       <input
@@ -8188,14 +8217,14 @@ export function DailyReportView() {
 
               <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>▶ 내일은 무슨 일을 할 것인가? <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 다음 보고의 오늘 할 일로 자동 이월</span></div>
               {plans.map((p2, i) => (
-                <div key={i} className="row" style={{ gap: 8, alignItems: "center", marginBottom: 6 }}>
-                  <span style={{ flexShrink: 0 }}>⬜</span>
+                <div key={i} className="row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: p2.kind === "header" ? 0 : (plans.slice(0, i).some((x) => x.kind === "header") ? 22 : 0), marginTop: p2.kind === "header" ? 10 : 0 }}>
+                  <span style={{ flexShrink: 0, fontWeight: p2.kind === "header" ? 800 : 400 }}>{p2.kind === "header" ? "▾" : "⬜"}</span>
                   <input
                     className="input"
-                    style={{ flex: 1 }}
+                    style={{ flex: 1, ...(p2.kind === "header" ? { fontWeight: 800, background: "var(--sand, #F7F3EC)" } : {}) }}
                     value={p2.text}
-                    placeholder="내일 할 일"
-                    onChange={(e) => setPlans((p) => p.map((x, j) => (j === i ? { text: e.target.value } : x)))}
+                    placeholder={p2.kind === "header" ? "대분류 이름" : "내일 할 일"}
+                    onChange={(e) => setPlans((p) => p.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") { e.preventDefault(); setPlans((p) => [...p.slice(0, i + 1), { text: "" }, ...p.slice(i + 1)]); }
                     }}
@@ -8203,7 +8232,10 @@ export function DailyReportView() {
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPlans((p) => p.filter((_, j) => j !== i))}>✕</button>
                 </div>
               ))}
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPlans((p) => [...p, { text: "" }])}>+ 항목 추가</button>
+              <div className="row" style={{ gap: 6 }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPlans((p) => [...p, { text: "" }])}>+ 항목 추가</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPlans((p) => [...p, { text: "", kind: "header" }])}>+ 대분류 추가</button>
+              </div>
 
               <div className="row" style={{ gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)} disabled={saving}>취소</button>
@@ -8220,15 +8252,19 @@ export function DailyReportView() {
               </div>
               <div className="small" style={{ fontWeight: 800, marginBottom: 4 }}>▶ 오늘 무슨 일을 하였나?</div>
               {carriedItems.map((it, i) => (
+                it.kind === "header" ? (
+                  <div key={i} className="small" style={{ fontWeight: 800, margin: "8px 0 2px" }}>▾ {it.text}</div>
+                ) : (
                 <button
                   key={i}
                   type="button"
                   className="small"
-                  style={{ display: "block", background: "none", border: "none", padding: "2px 0", cursor: "pointer", lineHeight: 1.7, textAlign: "left", fontFamily: "inherit", color: "var(--ink)" }}
+                  style={{ display: "block", background: "none", border: "none", padding: "2px 0", cursor: "pointer", lineHeight: 1.7, textAlign: "left", fontFamily: "inherit", color: "var(--ink)", marginLeft: carriedItems.slice(0, i).some((x) => x.kind === "header") ? 18 : 0 }}
                   onClick={() => saveCarried(i)}
                 >
                   ⬜ {it.text}
                 </button>
+                )
               ))}
             </div>
           )}
@@ -8262,6 +8298,12 @@ export function DailyReportView() {
                       <div className="small" style={{ color: "var(--muted)" }}>－</div>
                     ) : (
                       items.map((it, i) => {
+                        if (it.kind === "header") {
+                          return (
+                            <div key={i} className="small" style={{ fontWeight: 800, margin: "8px 0 2px" }}>▾ {it.text}</div>
+                          );
+                        }
+                        const indent = items.slice(0, i).some((x) => x.kind === "header");
                         const anchor = checklistAnchor(it);
                         const tKey = `${r.id}|${q2.key}|${anchor}`;
                         const threads = threadMap.get(tKey) || [];
@@ -8269,7 +8311,7 @@ export function DailyReportView() {
                         const hasOpen = threads.some((t) => !t.root.resolved);
                         return (
                           <React.Fragment key={i}>
-                            <div className="small row" style={{ lineHeight: 1.7, alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <div className="small row" style={{ lineHeight: 1.7, alignItems: "center", gap: 6, flexWrap: "wrap", marginLeft: indent ? 18 : 0 }}>
                               <span
                                 style={{ cursor: clickable ? "pointer" : undefined }}
                                 onClick={clickable ? () => toggleMineItem(r, i) : undefined}
