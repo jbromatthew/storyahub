@@ -1077,18 +1077,24 @@ export async function writeDashboardGoalsToSheet(
   for (const row of Object.values(overrides.industryPlanGoals)) {
     for (const [plan, v] of Object.entries(row)) planTotals[plan] = (planTotals[plan] ?? 0) + v;
   }
+  const ipSheet = parseIndustryPlanSheet(grid);
+  // 매트릭스 기준으로 관리 중이면, 지워진 요금제 합계도 0으로 명시해 옛 값이 남지 않게
+  if (Object.keys(overrides.industryPlanGoals).length && ipSheet.found) {
+    for (const plan of Object.keys(ipSheet.planRowIdx)) planTotals[plan] = planTotals[plan] ?? 0;
+  }
   collect(/^3\.요금제별/, planTotals);
 
   // '5. 업종X요금제' 매트릭스에 업종×요금제 목표 셀 단위 역기록
-  const ipSheet = parseIndustryPlanSheet(grid);
+  // 오버라이드에서 지워진 요금제는 시트 셀에 0을 써서 함께 지운다 (시트 우선 병합 때문에 옛 값이 되살아나는 것 방지)
   if (ipSheet.found) {
     for (const [ind, planGoals] of Object.entries(overrides.industryPlanGoals)) {
       const col = ipSheet.industryGoalCols[ind];
       if (col == null) continue;
-      for (const [plan, v] of Object.entries(planGoals)) {
-        const row = ipSheet.planRowIdx[plan];
-        if (row == null) continue;
-        updates.push({ range: `'${month}'!${colLetter(col)}${row + 1}`, value: v });
+      for (const [plan, row] of Object.entries(ipSheet.planRowIdx)) {
+        const v = planGoals[plan];
+        const sheetHad = (ipSheet.goals[ind]?.[plan] ?? 0) > 0;
+        if (v == null && !sheetHad) continue; // 양쪽 다 없으면 건드리지 않음
+        updates.push({ range: `'${month}'!${colLetter(col)}${row + 1}`, value: v ?? 0 });
       }
     }
   }
