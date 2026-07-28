@@ -4016,10 +4016,10 @@ function buildAssigneeCompareRows(assigneeTables, names, onlyWithData = true) {
 }
 
 function PlanMetricsCell({ metrics, firstOfGroup }) {
-  const style = firstOfGroup ? { borderLeft: "2px solid var(--line)" } : undefined;
-  if (!metrics) return <td className="num rate-plan-cell empty" style={style}>-</td>;
+  const cls = firstOfGroup ? " grp-border" : "";
+  if (!metrics) return <td className={"num rate-plan-cell empty" + cls}>-</td>;
   return (
-    <td className="rate-plan-cell" style={style}>
+    <td className={"rate-plan-cell" + cls}>
       {PLAN_CELL_METRICS.map((m) => (
         <div key={m.key} className={m.format === "percent" ? "pct" : ""}>
           <span className="lbl">{m.label}</span>
@@ -4042,7 +4042,7 @@ function SegCompareHead({ firstLabel, groupLabels, split, selGroups, onSelectGro
       <thead>
         <tr>
           <th className="plan-col">{firstLabel}</th>
-          {groupLabels.map((label, i) => <th key={label} {...thProps(i)}>{label}</th>)}
+          {groupLabels.map((label, i) => <th key={label} {...thProps(i)} className={thProps(i).className + " grp-border"}>{label}</th>)}
         </tr>
       </thead>
     );
@@ -4051,12 +4051,12 @@ function SegCompareHead({ firstLabel, groupLabels, split, selGroups, onSelectGro
     <thead>
       <tr>
         <th className="plan-col" rowSpan={2}>{firstLabel}</th>
-        {groupLabels.map((label, i) => <th key={label} colSpan={3} {...thProps(i)} style={{ borderLeft: "2px solid var(--line)" }}>{label}</th>)}
+        {groupLabels.map((label, i) => <th key={label} colSpan={3} {...thProps(i)} className={thProps(i).className + " grp-border"}>{label}</th>)}
       </tr>
       <tr>
         {groupLabels.map((label) => (
           <React.Fragment key={label}>
-            <th style={{ borderLeft: "2px solid var(--line)", fontWeight: 800 }}>전체</th>
+            <th className="grp-border" style={{ fontWeight: 800 }}>전체</th>
             <th>오가닉</th>
             <th>비오가닉</th>
           </React.Fragment>
@@ -4067,7 +4067,7 @@ function SegCompareHead({ firstLabel, groupLabels, split, selGroups, onSelectGro
 }
 
 function SegCompareCells({ byGroup, byGroupSegments, split }) {
-  if (!split) return byGroup.map((m, i) => <PlanMetricsCell key={i} metrics={m} />);
+  if (!split) return byGroup.map((m, i) => <PlanMetricsCell key={i} metrics={m} firstOfGroup />);
   return byGroup.map((_, i) => {
     const seg = byGroupSegments?.[i];
     return (
@@ -4721,7 +4721,7 @@ export function PaymentRateView() {
                   <tr>
                     {result.groups.map((g) => (
                       <React.Fragment key={g.id}>
-                        <th style={{ borderLeft: "2px solid var(--line)", fontWeight: 800 }}>전체</th>
+                        <th className="grp-border" style={{ fontWeight: 800 }}>전체</th>
                         <th>오가닉</th>
                         <th>비오가닉</th>
                       </React.Fragment>
@@ -4800,7 +4800,7 @@ export function PaymentRateView() {
                   선택한 기간·필터에 담당자별 집계 데이터가 없습니다. 비교군 월을 확인하거나 필터를 해제해 보세요.
                 </div>
               ) : (
-              <div className="rate-table-wrap rate-table-scroll">
+              <div className="rate-table-wrap rate-table-scroll rate-cmp-sticky">
                 <table className="rate-table rate-plan-compare">
                   <SegCompareHead firstLabel="담당자" groupLabels={groupLabels} split={splitSegments} selGroups={selGroups} onSelectGroup={toggleSelGroup} />
                   <tbody>
@@ -4820,7 +4820,7 @@ export function PaymentRateView() {
           {showPlans && planCompareRows.length > 0 && (
             <div className="rate-plan-block">
               <div className="rate-plan-title">요금제별 비교</div>
-              <div className="rate-table-wrap rate-table-scroll">
+              <div className="rate-table-wrap rate-table-scroll rate-cmp-sticky">
                 <table className="rate-table rate-plan-compare">
                   <SegCompareHead firstLabel="요금제" groupLabels={groupLabels} split={splitSegments} selGroups={selGroups} onSelectGroup={toggleSelGroup} />
                   <tbody>

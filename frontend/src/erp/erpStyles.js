@@ -153,6 +153,13 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .toast-error .toast-icon{background:#EFC4B2;color:#7A2F1A;}
 .toast-success .toast-icon{background:#3E7A52;color:#fff;}
 .toast-info .toast-icon{background:var(--sand,#EFE9E1);color:var(--ink);}
+/* 결제율 비교표: 헤더 상단 고정 + 비교군 경계 강조 */
+.rate-cmp-sticky{max-height:74vh;overflow:auto;}
+.rate-cmp-sticky thead th{position:sticky;top:0;z-index:4;}
+.rate-cmp-sticky thead tr:first-child th{height:40px;box-sizing:border-box;}
+.rate-cmp-sticky thead tr:nth-child(2) th{top:40px;}
+.rate-cmp-sticky thead th.plan-col{z-index:6;}
+.rate-table .grp-border{border-left:3px solid #C9AE8C !important;}
 /* 업종 빠른 선택 그룹 칩 */
 .ipk-groups{display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px 4px;border-bottom:1px solid var(--line);}
 .ipk-group-chip{border:1px solid var(--line);background:#fff;border-radius:20px;padding:5px 12px;font-size:12.5px;font-weight:700;color:var(--ink);cursor:pointer;font-family:inherit;}
