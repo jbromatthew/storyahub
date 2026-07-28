@@ -967,7 +967,8 @@ function mergeIndustryGoals(
 
 function buildIndustryPlanSection(
   overrides: DashboardGoalOverrides,
-  counts: MonthCounts
+  counts: MonthCounts,
+  industryGoalsMerged?: Map<string, number>
 ): IndustryPlanSection {
   const planLabels = sortLabels(
     [
@@ -987,6 +988,7 @@ function buildIndustryPlanSection(
         ...counts.byIndustry.keys(),
         ...Object.keys(overrides.industryGoals),
         ...Object.keys(overrides.industryPlanGoals),
+        ...(industryGoalsMerged ? industryGoalsMerged.keys() : []),
       ]),
     ],
     INDUSTRY_TYPES
@@ -997,7 +999,8 @@ function buildIndustryPlanSection(
   let totalActual = 0;
 
   for (const industry of industries) {
-    const industryGoal = overrides.industryGoals[industry] ?? 0;
+    // 앱 오버라이드 → 없으면 시트 업종별 목표 행 값 (배분 검증이 시트 목표도 보게)
+    const industryGoal = overrides.industryGoals[industry] ?? industryGoalsMerged?.get(industry) ?? 0;
     const planGoals = overrides.industryPlanGoals[industry] ?? {};
     const planGoalSum = sumIndustryPlanGoals(overrides.industryPlanGoals, industry);
     const actualMap = counts.byIndustryPlan.get(industry) ?? new Map<string, number>();
@@ -1200,7 +1203,7 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
   const planEff = planGoalsFromMatrix(planParsed, effOverrides.industryPlanGoals);
   const channelDrilldowns = buildDimensionDrilldowns("channel", counts, channelParsed, drillWeekLabels);
   const planDrilldowns = buildDimensionDrilldowns("plan", counts, planEff, drillWeekLabels);
-  const industryPlan = buildIndustryPlanSection(effOverrides, counts);
+  const industryPlan = buildIndustryPlanSection(effOverrides, counts, new Map(mergedIndustry.labels.map((l, i) => [l, mergedIndustry.goals[i] ?? 0])));
   const inboundGoal = mergedIndustry.goals.reduce((s, g) => s + g, 0);
   const totalGoal = summaryMeta.totalGoal || inboundGoal;
   const actual = counts.total;
@@ -1449,7 +1452,7 @@ export async function getMarketingDashboard(month?: string): Promise<SalesDashbo
   const planEff = planGoalsFromMatrix(planParsed, effOverrides.industryPlanGoals);
   const channelDrilldowns = buildDimensionDrilldowns("channel", counts, channelParsed, drillWeekLabels);
   const planDrilldowns = buildDimensionDrilldowns("plan", counts, planEff, drillWeekLabels);
-  const industryPlan = buildIndustryPlanSection(effOverrides, counts);
+  const industryPlan = buildIndustryPlanSection(effOverrides, counts, new Map(mergedIndustry.labels.map((l, i) => [l, mergedIndustry.goals[i] ?? 0])));
   const goalWarnings = validateIndustryPlanGoals(effOverrides);
   const goalsCustomized =
     Object.keys(goalOverrides.industryGoals).length > 0 ||
