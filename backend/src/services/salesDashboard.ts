@@ -932,6 +932,23 @@ function mergeIndustryPlanGoals(
   return out;
 }
 
+/**
+ * 요금제별 목표 = 업종X요금제 매트릭스 합 (매트릭스에 값이 하나라도 있으면 시트 '3. 요금제별' 목표 행보다 우선).
+ * 업종별 합과 요금제별 합이 항상 일치하도록 유지한다.
+ */
+function planGoalsFromMatrix(
+  parsed: { labels: string[]; goals: number[] },
+  industryPlanGoals: Record<string, Record<string, number>>
+): { labels: string[]; goals: number[] } {
+  const totals: Record<string, number> = {};
+  for (const row of Object.values(industryPlanGoals)) {
+    for (const [plan, v] of Object.entries(row)) totals[plan] = (totals[plan] ?? 0) + v;
+  }
+  if (!Object.keys(totals).length) return parsed;
+  const labels = sortLabels([...new Set([...parsed.labels, ...Object.keys(totals)])], PLAN_ORDER);
+  return { labels, goals: labels.map((l) => totals[l] ?? 0) };
+}
+
 function mergeIndustryGoals(
   sheetLabels: string[],
   sheetGoals: number[],
@@ -1180,8 +1197,9 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
     prevMonthAvg
   );
   const drillWeekLabels = resolveWeekLabels(industryWeek ?? channelWeek ?? planWeek, counts);
+  const planEff = planGoalsFromMatrix(planParsed, effOverrides.industryPlanGoals);
   const channelDrilldowns = buildDimensionDrilldowns("channel", counts, channelParsed, drillWeekLabels);
-  const planDrilldowns = buildDimensionDrilldowns("plan", counts, planParsed, drillWeekLabels);
+  const planDrilldowns = buildDimensionDrilldowns("plan", counts, planEff, drillWeekLabels);
   const industryPlan = buildIndustryPlanSection(effOverrides, counts);
   const inboundGoal = mergedIndustry.goals.reduce((s, g) => s + g, 0);
   const totalGoal = summaryMeta.totalGoal || inboundGoal;
@@ -1242,7 +1260,7 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
     sections: [
       buildSection("channel", "채널별", channelParsed.labels, channelParsed.goals, counts.byChannel, []),
       industrySection,
-      buildSection("plan", "요금제별", planParsed.labels, planParsed.goals, counts.byPlan, PLAN_ORDER),
+      buildSection("plan", "요금제별", planEff.labels, planEff.goals, counts.byPlan, PLAN_ORDER),
     ],
     industryPlan,
     goalOverrides,
@@ -1428,8 +1446,9 @@ export async function getMarketingDashboard(month?: string): Promise<SalesDashbo
     prevMonthAvg
   );
   const drillWeekLabels = resolveWeekLabels(industryWeek ?? channelWeek ?? planWeek, counts);
+  const planEff = planGoalsFromMatrix(planParsed, effOverrides.industryPlanGoals);
   const channelDrilldowns = buildDimensionDrilldowns("channel", counts, channelParsed, drillWeekLabels);
-  const planDrilldowns = buildDimensionDrilldowns("plan", counts, planParsed, drillWeekLabels);
+  const planDrilldowns = buildDimensionDrilldowns("plan", counts, planEff, drillWeekLabels);
   const industryPlan = buildIndustryPlanSection(effOverrides, counts);
   const goalWarnings = validateIndustryPlanGoals(effOverrides);
   const goalsCustomized =
@@ -1493,7 +1512,7 @@ export async function getMarketingDashboard(month?: string): Promise<SalesDashbo
     sections: [
       buildSection("channel", "채널별", channelParsed.labels, channelParsed.goals, counts.byChannel, []),
       industrySection,
-      buildSection("plan", "요금제별", planParsed.labels, planParsed.goals, counts.byPlan, PLAN_ORDER),
+      buildSection("plan", "요금제별", planEff.labels, planEff.goals, counts.byPlan, PLAN_ORDER),
     ],
     industryPlan,
     goalOverrides,
