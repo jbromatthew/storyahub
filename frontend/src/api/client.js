@@ -362,6 +362,7 @@ export const api = {
   erpIotLeadUpdate: (id, body) => req(`/erp/iot-leads/${id}`, { method: "PATCH", body }),
   erpIotLeadDelete: (id) => req(`/erp/iot-leads/${id}`, { method: "DELETE" }),
   erpMarketingDashboardRefresh: (month) => req("/erp/sales/marketing-dashboard/refresh", { method: "POST", body: { month } }),
+  erpMarketingDashboardGoals: (body) => req("/erp/sales/marketing-dashboard/goals", { method: "PUT", body }),
   // 공사(견적) 관리 — 소유자 전용
   erpConstructionItems: () => req("/erp/construction/items"),
   erpConstructionCreateItem: (data) => req("/erp/construction/items", { method: "POST", body: data }),

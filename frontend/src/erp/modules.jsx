@@ -5723,6 +5723,7 @@ export function MarketingDashboardView() {
 export function SalesDashboardView({ variant = "sales" } = {}) {
   const isMkt = variant === "marketing";
   const apiFn = isMkt ? api.erpMarketingDashboard : api.erpSalesDashboard;
+  const goalsApiFn = isMkt ? api.erpMarketingDashboardGoals : api.erpSalesDashboardGoals;
   const [selectedMonth, setSelectedMonth] = useState(null);
   const [tab, setTab] = useState("industry");
   const [data, setData] = useState(null);
@@ -5795,7 +5796,7 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
   const saveGoals = () => {
     if (!data?.month) return;
     setSavingGoals(true);
-    api.erpSalesDashboardGoals({
+    goalsApiFn({
       month: data.month,
       industryGoals: draftGoals.industryGoals,
       industryPlanGoals: draftGoals.industryPlanGoals,
@@ -5821,7 +5822,7 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
     base.industryPlanGoals[industry] = planGoals;
     base.industryChannelGoals[industry] = channelGoals;
     setSavingGoals(true);
-    return api.erpSalesDashboardGoals({
+    return goalsApiFn({
       month: data.month,
       industryGoals: base.industryGoals,
       industryPlanGoals: base.industryPlanGoals,
@@ -5862,6 +5863,15 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
 
   const drillDetail = drillIndustry ? data?.industryDrilldowns?.[drillIndustry] : null;
 
+  // 요금제별 목표 합이 업종 목표와 다른 업종 (업종명 빨간 표시용)
+  const planMismatch = useMemo(() => {
+    const s = new Set();
+    for (const row of data?.industryPlan?.rows || []) {
+      if (row.industryGoal > 0 && row.planGoalSum !== row.industryGoal) s.add(row.industry);
+    }
+    return s;
+  }, [data]);
+
   const openIndustryDrill = (industry) => {
     if (editMode || !data?.industryDrilldowns?.[industry]) return;
     setDrillIndustry(industry);
@@ -5886,9 +5896,9 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
         {isMkt ? (
           <>
-            월별 목표는 <strong>마케팅 대시보드 시트</strong>에서 불러오고, 현황은 문의 DB의 <strong>신규문의</strong> 건수입니다.
+            월별 목표는 <strong>마케팅 대시보드 시트</strong>에서 불러오고, 앱에서 수정하면 <strong>시트에도 자동 반영</strong>됩니다.
+            현황은 문의 DB의 <strong>신규문의</strong> 건수입니다.
             {" "}<strong>업종·채널·요금제</strong> 항목을 누르면 하위 분해(요금제·채널·업종·주차별) 상세를 볼 수 있습니다.
-            목표 수정은 시트에서 하면 됩니다 (1분 내 반영).
           </>
         ) : (
           <>
@@ -6014,7 +6024,6 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
             </div>
           </div>
 
-          {!isMkt && (
           <div className="sales-toolbar" style={{ marginTop: 0 }}>
             {!editMode ? (
               <button type="button" className="btn btn-sm btn-ghost" onClick={startEdit}>목표 편집</button>
@@ -6027,7 +6036,6 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
               </>
             )}
           </div>
-          )}
 
           {(editMode ? draftWarnings : data.goalWarnings)?.length > 0 && (
             <div className="dash-goal-warn small">
@@ -6051,7 +6059,6 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
               currentChannelGoals={data?.goalOverrides?.industryChannelGoals?.[drillIndustry]}
               onSaveGoals={saveDrillGoals}
               saving={savingGoals}
-              readOnly={isMkt}
             />
           ) : dimDrill && activeDimDetail ? (
             <DashboardDimensionDrill
@@ -6062,7 +6069,7 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
           ) : (
           <>
           <div className="sales-tabs">
-            {DASHBOARD_TABS.filter((t) => !(isMkt && t.id === "industry-plan")).map((t) => (
+            {DASHBOARD_TABS.map((t) => (
               <button
                 key={t.id}
                 type="button"
@@ -6270,15 +6277,26 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
                     return (
                     <tr key={row.key} className={!editMode && ((tab === "industry" && data?.industryDrilldowns?.[row.label]) || ((tab === "channel" || tab === "plan") && dimDrillMap?.[row.label])) ? "dash-drill-row" : ""}>
                       <td className="label">
-                        {tab === "industry" && !editMode && data?.industryDrilldowns?.[row.label] ? (
-                          <button type="button" className="dash-drill-link" onClick={() => openIndustryDrill(row.label)}>
-                            {row.label}
-                          </button>
-                        ) : (tab === "channel" || tab === "plan") && !editMode && dimDrillMap?.[row.label] ? (
-                          <button type="button" className="dash-drill-link" onClick={() => openDimDrill(tab, row.label)}>
-                            {row.label}
-                          </button>
-                        ) : row.label}
+                        {(() => {
+                          const mismatch = tab === "industry" && planMismatch.has(row.label);
+                          const mismatchStyle = mismatch ? { color: "#C5221F", fontWeight: 800 } : undefined;
+                          const mismatchTitle = mismatch ? "요금제별 목표 합이 업종 목표와 다릅니다 — 드릴다운에서 배분을 맞춰주세요" : undefined;
+                          if (tab === "industry" && !editMode && data?.industryDrilldowns?.[row.label]) {
+                            return (
+                              <button type="button" className="dash-drill-link" style={mismatchStyle} title={mismatchTitle} onClick={() => openIndustryDrill(row.label)}>
+                                {row.label}{mismatch ? " ⚠" : ""}
+                              </button>
+                            );
+                          }
+                          if ((tab === "channel" || tab === "plan") && !editMode && dimDrillMap?.[row.label]) {
+                            return (
+                              <button type="button" className="dash-drill-link" onClick={() => openDimDrill(tab, row.label)}>
+                                {row.label}
+                              </button>
+                            );
+                          }
+                          return <span style={mismatchStyle} title={mismatchTitle}>{row.label}{mismatch ? " ⚠" : ""}</span>;
+                        })()}
                       </td>
                       <td className="num">
                         {editMode && tab === "industry" ? (

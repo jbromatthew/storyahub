@@ -1023,9 +1023,9 @@ function colLetter(i: number): string {
 /** 앱에서 수정한 목표를 대시보드 시트에 역기록 (업종별 목표 행 + 요금제별 목표 행) */
 export async function writeDashboardGoalsToSheet(
   month: string,
-  overrides: DashboardGoalOverrides
+  overrides: DashboardGoalOverrides,
+  spreadsheetId: string = dashboardSpreadsheetId()
 ): Promise<{ updated: number }> {
-  const spreadsheetId = dashboardSpreadsheetId();
   const grid = await fetchSheetGrid(spreadsheetId, month);
   const updates: Array<{ range: string; value: number }> = [];
 
@@ -1358,6 +1358,11 @@ const EMPTY_GOAL_OVERRIDES: DashboardGoalOverrides = {
   industryChannelGoals: {},
 };
 
+/** 마케팅 계기판 목표 오버라이드는 같은 테이블에 월 키 prefix로 분리 저장 */
+export function marketingGoalKey(month: string): string {
+  return `mkt:${month}`;
+}
+
 export async function getMarketingDashboard(month?: string): Promise<SalesDashboardData> {
   const spreadsheetId = marketingSpreadsheetId();
   const months = await listMarketingMonths();
@@ -1375,8 +1380,9 @@ export async function getMarketingDashboard(month?: string): Promise<SalesDashbo
     prevLabels.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
   }
 
-  const [grid, counts, prevAvg, prevMonthAvg, latest] = await Promise.all([
+  const [grid, goalOverrides, counts, prevAvg, prevMonthAvg, latest] = await Promise.all([
     fetchSheetGridCached(spreadsheetId, selectedMonth),
+    loadDashboardGoalOverrides(marketingGoalKey(selectedMonth)),
     loadInquiryMonthCounts(selectedMonth),
     loadPrevInquiryAvg(prevLabels),
     loadPrevInquiryAvg(prevLabels.slice(0, 1)),
@@ -1402,11 +1408,18 @@ export async function getMarketingDashboard(month?: string): Promise<SalesDashbo
   const remainingDays = findLabeledNumber(grid, /^잔여일$/) ?? null;
   const remainingBusinessDays = findLabeledNumber(grid, /^잔여영업일$/) ?? null;
 
+  // 세일즈 계기판과 동일: '5. 업종X요금제' 시트 매트릭스 우선 + DB 오버라이드 보충
+  const sheetIPG = parseIndustryPlanSheet(grid);
+  const effOverrides: DashboardGoalOverrides = {
+    ...goalOverrides,
+    industryPlanGoals: mergeIndustryPlanGoals(sheetIPG.goals, goalOverrides.industryPlanGoals),
+  };
+  const mergedIndustry = mergeIndustryGoals(industryParsed.labels, industryParsed.goals, goalOverrides);
+
   const weekly = buildWeeklyBreakdown(channelWeek, industryWeek, planWeek, counts);
-  const mergedIndustry = { labels: industryParsed.labels, goals: industryParsed.goals };
   const industryDrilldowns = buildIndustryDrilldowns(
     counts,
-    EMPTY_GOAL_OVERRIDES,
+    effOverrides,
     industryWeek,
     mergedIndustry,
     new Map(),
@@ -1417,8 +1430,14 @@ export async function getMarketingDashboard(month?: string): Promise<SalesDashbo
   const drillWeekLabels = resolveWeekLabels(industryWeek ?? channelWeek ?? planWeek, counts);
   const channelDrilldowns = buildDimensionDrilldowns("channel", counts, channelParsed, drillWeekLabels);
   const planDrilldowns = buildDimensionDrilldowns("plan", counts, planParsed, drillWeekLabels);
+  const industryPlan = buildIndustryPlanSection(effOverrides, counts);
+  const goalWarnings = validateIndustryPlanGoals(effOverrides);
+  const goalsCustomized =
+    Object.keys(goalOverrides.industryGoals).length > 0 ||
+    Object.keys(goalOverrides.industryPlanGoals).length > 0 ||
+    Object.keys(goalOverrides.industryChannelGoals).length > 0;
 
-  const inboundGoal = industryParsed.goals.reduce((s, g) => s + g, 0);
+  const inboundGoal = mergedIndustry.goals.reduce((s, g) => s + g, 0);
   const channelGoalSum = channelParsed.goals.reduce((s, g) => s + g, 0);
   const totalGoal = inboundGoal || channelGoalSum;
   const actual = counts.total;
@@ -1476,9 +1495,10 @@ export async function getMarketingDashboard(month?: string): Promise<SalesDashbo
       industrySection,
       buildSection("plan", "요금제별", planParsed.labels, planParsed.goals, counts.byPlan, PLAN_ORDER),
     ],
-    goalOverrides: EMPTY_GOAL_OVERRIDES,
-    goalWarnings: [],
-    goalsCustomized: false,
+    industryPlan,
+    goalOverrides,
+    goalWarnings,
+    goalsCustomized,
     weekly,
     industryDrilldowns,
     channelDrilldowns,

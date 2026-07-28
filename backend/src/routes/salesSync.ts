@@ -39,6 +39,7 @@ import {
   writeDashboardGoalsToSheet,
   listDashboardMonths,
   saveDashboardGoalOverrides,
+  marketingGoalKey,
 } from "../services/salesDashboard.js";
 import { adoptSheetGoals } from "../services/salesDashboardGoals.js";
 import { getSalesDaily } from "../services/salesDaily.js";
@@ -201,7 +202,41 @@ salesSyncRouter.post("/dashboard/refresh", async (req: AuthedRequest, res: Respo
 salesSyncRouter.post("/marketing-dashboard/refresh", async (req: AuthedRequest, res: Response) => {
   const month = typeof req.body?.month === "string" ? req.body.month : undefined;
   try {
+    if (month) await adoptSheetGoals(marketingGoalKey(month));
     res.json(await refreshMarketingDashboard(month));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// 마케팅 계기판 목표 저장 — 세일즈와 동일 (DB 저장 + 마케팅 시트 역기록)
+salesSyncRouter.put("/marketing-dashboard/goals", async (req: AuthedRequest, res: Response) => {
+  const parsed = dashboardGoalsBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "month과 목표 데이터가 필요합니다" });
+  }
+  try {
+    const overrides = {
+      industryGoals: parsed.data.industryGoals ?? {},
+      industryPlanGoals: parsed.data.industryPlanGoals ?? {},
+      industryChannelGoals: parsed.data.industryChannelGoals ?? {},
+    };
+    await saveDashboardGoalOverrides(marketingGoalKey(parsed.data.month), overrides, req.userId);
+    let sheetSync: { ok: boolean; updated?: number; error?: string };
+    try {
+      const r = await writeDashboardGoalsToSheet(
+        parsed.data.month,
+        overrides,
+        env.googleSheets.marketingDashboardSpreadsheetId
+      );
+      sheetSync = { ok: true, updated: r.updated };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      sheetSync = { ok: false, error: /permission|forbidden|403/i.test(msg) ? "시트 편집 권한 없음 — sheets-sync 서비스 계정을 편집자로 공유하세요" : msg };
+    }
+    const dash = await refreshMarketingDashboard(parsed.data.month);
+    res.json({ ...dash, sheetSync });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: msg });
