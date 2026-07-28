@@ -8537,9 +8537,22 @@ export function IotLeadsView() {
                     <td className="shrink ctr">{l.acCount} · {l.speakerCount} · {l.panelCount}</td>
                     <td className="shrink num" style={{ fontWeight: 800 }}>{(l.totalAmount || 0).toLocaleString()}원</td>
                     <td className="shrink ctr" onClick={(e) => e.stopPropagation()}>
-                      <select className="input" style={{ padding: "5px 8px", fontSize: 12.5 }} value={l.status} onChange={(e) => setStatus(l, e.target.value)}>
-                        {IOT_STATUS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-                      </select>
+                      {(() => {
+                        const idx = Math.max(0, IOT_STATUS.findIndex((s) => s.id === l.status));
+                        const cur = IOT_STATUS[idx];
+                        const next = IOT_STATUS[(idx + 1) % IOT_STATUS.length];
+                        return (
+                          <button
+                            type="button"
+                            className={"erp-badge " + cur.cls}
+                            style={{ cursor: "pointer", border: "none", fontFamily: "inherit", fontSize: 12 }}
+                            title={`클릭하면 '${next.label}'(으)로 변경`}
+                            onClick={() => setStatus(l, next.id)}
+                          >
+                            {cur.label} ›
+                          </button>
+                        );
+                      })()}
                     </td>
                     <td className="shrink" onClick={(e) => e.stopPropagation()}>
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => remove(l)}>삭제</button>
