@@ -8154,9 +8154,15 @@ export function DailyReportView() {
               )}
 
               <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>▶ 오늘 무슨 일을 하였나? <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 한 일은 체크 · 대분류 아래에 체크리스트를 넣을 수 있어요</span></div>
-              {todos.map((t, i) => (
-                t.kind === "header" ? (
-                  <div key={i} className="row" style={{ gap: 8, alignItems: "center", margin: "10px 0 6px" }}>
+              {todos[0]?.kind === "header" && (
+                <button type="button" className="btn btn-ghost btn-sm" style={{ marginBottom: 4, fontSize: 11.5 }} onClick={() => setTodos((p) => [{ text: "", done: false, reason: "" }, ...p])}>+ 분류 없는 항목</button>
+              )}
+              {todos.map((t, i) => {
+                const hasHeaders = todos.some((x) => x.kind === "header");
+                const groupEnds = hasHeaders && (i === todos.length - 1 || todos[i + 1]?.kind === "header");
+                const inGroup = todos.slice(0, i + 1).some((x) => x.kind === "header");
+                const row = t.kind === "header" ? (
+                  <div className="row" style={{ gap: 8, alignItems: "center", margin: "10px 0 6px" }}>
                     <span style={{ flexShrink: 0, fontWeight: 800 }}>▾</span>
                     <input
                       className="input"
@@ -8171,7 +8177,7 @@ export function DailyReportView() {
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => p.filter((_, j) => j !== i))}>✕</button>
                   </div>
                 ) : (
-                <div key={i} className="row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: todos.slice(0, i).some((x) => x.kind === "header") ? 22 : 0 }}>
+                <div className="row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: todos.slice(0, i).some((x) => x.kind === "header") ? 22 : 0 }}>
                   <input
                     type="checkbox"
                     checked={t.done}
@@ -8190,8 +8196,23 @@ export function DailyReportView() {
                   />
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => p.filter((_, j) => j !== i))}>✕</button>
                 </div>
-                )
-              ))}
+                );
+                return (
+                  <React.Fragment key={i}>
+                    {row}
+                    {groupEnds && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ marginLeft: inGroup ? 22 : 0, marginBottom: 6, fontSize: 11.5, color: "var(--muted)" }}
+                        onClick={() => setTodos((p) => [...p.slice(0, i + 1), { text: "", done: false, reason: "" }, ...p.slice(i + 1)])}
+                      >
+                        + 항목
+                      </button>
+                    )}
+                  </React.Fragment>
+                );
+              })}
               <div className="row" style={{ gap: 6, marginBottom: 14 }}>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => [...p, { text: "", done: false, reason: "" }])}>+ 항목 추가</button>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => [...p, { text: "", done: false, reason: "", kind: "header" }])}>+ 대분류 추가</button>
@@ -8216,8 +8237,16 @@ export function DailyReportView() {
               )}
 
               <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>▶ 내일은 무슨 일을 할 것인가? <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 다음 보고의 오늘 할 일로 자동 이월</span></div>
-              {plans.map((p2, i) => (
-                <div key={i} className="row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: p2.kind === "header" ? 0 : (plans.slice(0, i).some((x) => x.kind === "header") ? 22 : 0), marginTop: p2.kind === "header" ? 10 : 0 }}>
+              {plans[0]?.kind === "header" && (
+                <button type="button" className="btn btn-ghost btn-sm" style={{ marginBottom: 4, fontSize: 11.5 }} onClick={() => setPlans((p) => [{ text: "" }, ...p])}>+ 분류 없는 항목</button>
+              )}
+              {plans.map((p2, i) => {
+                const hasHeaders = plans.some((x) => x.kind === "header");
+                const groupEnds = hasHeaders && (i === plans.length - 1 || plans[i + 1]?.kind === "header");
+                const inGroup = plans.slice(0, i + 1).some((x) => x.kind === "header");
+                return (
+                <React.Fragment key={i}>
+                <div className="row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: p2.kind === "header" ? 0 : (plans.slice(0, i).some((x) => x.kind === "header") ? 22 : 0), marginTop: p2.kind === "header" ? 10 : 0 }}>
                   <span style={{ flexShrink: 0, fontWeight: p2.kind === "header" ? 800 : 400 }}>{p2.kind === "header" ? "▾" : "⬜"}</span>
                   <input
                     className="input"
@@ -8231,7 +8260,19 @@ export function DailyReportView() {
                   />
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPlans((p) => p.filter((_, j) => j !== i))}>✕</button>
                 </div>
-              ))}
+                {groupEnds && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ marginLeft: inGroup ? 22 : 0, marginBottom: 6, fontSize: 11.5, color: "var(--muted)" }}
+                    onClick={() => setPlans((p) => [...p.slice(0, i + 1), { text: "" }, ...p.slice(i + 1)])}
+                  >
+                    + 항목
+                  </button>
+                )}
+                </React.Fragment>
+                );
+              })}
               <div className="row" style={{ gap: 6 }}>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPlans((p) => [...p, { text: "" }])}>+ 항목 추가</button>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPlans((p) => [...p, { text: "", kind: "header" }])}>+ 대분류 추가</button>
