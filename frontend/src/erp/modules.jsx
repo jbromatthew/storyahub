@@ -1863,7 +1863,7 @@ function printConstructionQuote(quote, apartment) {
         <div class="h">적요</div>
         입금 계좌 : ${esc(s.account)}${period ? `<br/>공사 기간 : ${period}` : ""}${quote?.note ? `<br/>${esc(quote.note)}` : ""}
       </div>
-      <div class="stamp-name">위와 같이 견적합니다.<br/><b>${esc(s.company)}</b> (인)</div>
+      <div class="stamp-name">위와 같이 견적합니다.<br/><b>${esc(s.company)}</b></div>
     </div>
     <script>window.onload=function(){setTimeout(function(){window.print();},150);};</script>
   </body></html>`;
