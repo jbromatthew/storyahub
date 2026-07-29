@@ -64,6 +64,15 @@ export default function SiteUploadPage({ token }) {
   const pendingRef = useRef({ name: "", kind: "before" });
   const idRef = useRef(1);
 
+  const [siteMeta, setSiteMeta] = useState(null); // PIN 입력 전 현장(아파트) 미리보기
+
+  useEffect(() => {
+    fetch(`${API}/public/construction/site-upload/${token}/preview`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j?.apartmentName) setSiteMeta(j); })
+      .catch(() => {});
+  }, [token]);
+
   const verify = async () => {
     setErr(""); setBusy("verify");
     try { setInfo(await postInfo(token, pin.trim())); }
@@ -134,8 +143,10 @@ export default function SiteUploadPage({ token }) {
   if (!info) {
     return (
       <Shell>
-        <div style={{ fontSize: 22, fontWeight: 800, marginTop: 20 }}>현장 사진 업로드</div>
-        <div style={{ color: "#8C857A", marginTop: 8, lineHeight: 1.5, fontSize: 14 }}>담당자에게 받은 PIN을 입력하세요.</div>
+        <div style={{ fontSize: 13, color: "#8C857A", fontWeight: 700, marginTop: 20 }}>현장 사진 업로드</div>
+        <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{siteMeta?.apartmentName || "현장 확인 중…"}</div>
+        {siteMeta?.title && <div style={{ color: "#8C857A", marginTop: 2 }}>{siteMeta.title}</div>}
+        <div style={{ color: "#8C857A", marginTop: 10, lineHeight: 1.5, fontSize: 14 }}>담당자에게 받은 PIN을 입력하세요.</div>
         <input style={{ ...inp, marginTop: 20, textAlign: "center", letterSpacing: 6, fontSize: 22, fontWeight: 800 }} value={pin} onChange={(e) => setPin(e.target.value.replace(/[^\d]/g, ""))} inputMode="numeric" placeholder="PIN" onKeyDown={(e) => { if (e.key === "Enter") verify(); }} />
         {err && <div style={{ color: "#C5221F", marginTop: 12, fontSize: 14 }}>{err}</div>}
         <button style={{ ...btn("#DD5E39"), marginTop: 16 }} disabled={busy === "verify" || pin.length < 4} onClick={verify}>{busy === "verify" ? "확인 중…" : "확인"}</button>

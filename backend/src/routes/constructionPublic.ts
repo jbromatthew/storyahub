@@ -26,6 +26,19 @@ async function resolveShare(token: string, pin: string) {
   return quote;
 }
 
+// PIN 입력 전에도 어느 현장(아파트)인지 보여주기 위한 미리보기 (토큰만으로, 민감정보 없음)
+constructionPublicRouter.get("/site-upload/:token/preview", async (req: Request, res: Response) => {
+  const quote = await prisma.erpConstructionQuote.findUnique({
+    where: { shareToken: req.params.token },
+    include: { apartment: true },
+  });
+  if (!quote || !quote.shareEnabled) return res.status(404).json({ error: "링크가 유효하지 않습니다" });
+  if (quote.shareExpiresAt && quote.shareExpiresAt.getTime() < Date.now()) {
+    return res.status(410).json({ error: "만료된 링크입니다" });
+  }
+  res.json({ apartmentName: quote.apartment?.name ?? "(현장)", title: quote.title ?? null });
+});
+
 // PIN 확인 + 현장 정보 (기존 개소 목록)
 constructionPublicRouter.post("/site-upload/:token/info", async (req: Request, res: Response) => {
   const quote = await resolveShare(req.params.token, String(req.body?.pin ?? ""));
