@@ -23,7 +23,7 @@ export const ERP_MODULES = [
   // { id: "construction-broj", label: "브로제이 공사관리", icon: "board", group: "construction", ownerOnly: true },
   { id: "vendors", label: "업체 관리", icon: "admin", group: "construction", ownerOnly: true },
   { id: "install-schedule", label: "설치일정 (브로제이)", icon: "board", group: "construction", ownerOnly: true },
-  { id: "vendor-orders", label: "크라이저 발주", icon: "sales", group: "construction", ownerOnly: true },
+  { id: "vendor-orders", label: "크라이저 발주", icon: "sales", group: "bizsupport", groupLabel: "영업지원", ownerOnly: true },
   { id: "kb", label: "지식경영", icon: "book", group: "kb", groupLabel: "지식" },
 ];
 
