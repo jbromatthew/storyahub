@@ -874,3 +874,42 @@ model ErpIotLead {
   @@index([createdAt])
   @@index([status])
 }
+
+// 협력사(크라이저) 발주 포털 — 가입 없이 PIN으로 접근
+model ErpVendorPortal {
+  id        String   @id // "kreiser"
+  name      String
+  pin       String
+  active    Boolean  @default(true)
+  products  Json     @default("[]") // [{id, name, unitPrice, active}]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 발주 (브로제이 → 협력사) — 선금/잔금, 세금계산서, 부분 입고 히스토리 양사 공유
+model ErpVendorOrder {
+  id                 String    @id @default(cuid())
+  vendorId           String    @default("kreiser")
+  orderDate          String // YYYY-MM-DD
+  items              Json      @default("[]") // [{name, qty, unitPrice, amount}]
+  totalAmount        Int       @default(0)
+  prepayRate         Int       @default(30)
+  prepayAmount       Int       @default(0)
+  balanceAmount      Int       @default(0)
+  status             String    @default("requested") // requested | approved | done | cancelled
+  approvedAt         DateTime?
+  prepayRequestedAt  DateTime?
+  prepayPaidAt       DateTime?
+  prepayTaxDate      String?
+  balanceRequestedAt DateTime?
+  balancePaidAt      DateTime?
+  balanceTaxDate     String?
+  deliveries         Json      @default("[]") // [{date, name, qty, note, by}]
+  history            Json      @default("[]") // [{at, by, text}]
+  note               String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([vendorId, createdAt])
+  @@index([status])
+}

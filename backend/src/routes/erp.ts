@@ -35,6 +35,7 @@ import {
 } from "../services/approvalWorkflow.js";
 import { isErpOwner } from "../services/erpAccess.js";
 import { presignGet } from "../services/r2.js";
+import { getVendorPortal, sanitizeVendorItems, computeOrderAmounts, appendHistory, sanitizeDelivery } from "../services/vendorOrders.js";
 
 export const erpRouter = Router();
 erpRouter.use(auth, requireAccess);
@@ -2323,5 +2324,115 @@ erpRouter.patch("/iot-leads/:id", async (req: AuthedRequest, res) => {
 erpRouter.delete("/iot-leads/:id", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
   await prisma.erpIotLead.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
+/* ===================== 크라이저 발주 관리 (브로제이 측, 소유자 전용) ===================== */
+
+erpRouter.get("/vendor-orders", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const portal = await getVendorPortal();
+  const orders = await prisma.erpVendorOrder.findMany({
+    where: { vendorId: portal.id },
+    orderBy: { createdAt: "desc" },
+    take: 300,
+  });
+  res.json({ portal: { id: portal.id, name: portal.name, pin: portal.pin, active: portal.active, products: portal.products }, orders });
+});
+
+erpRouter.put("/vendor-orders/portal", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const portal = await getVendorPortal();
+  const data: Record<string, unknown> = {};
+  if (typeof b.pin === "string" && /^\d{4,8}$/.test(b.pin.trim())) data.pin = b.pin.trim();
+  if (typeof b.name === "string" && b.name.trim()) data.name = b.name.trim().slice(0, 50);
+  if (b.active !== undefined) data.active = !!b.active;
+  if (Array.isArray(b.products)) {
+    data.products = b.products
+      .map((p) => {
+        const o = (p ?? {}) as Record<string, unknown>;
+        return {
+          name: String(o.name ?? "").trim().slice(0, 100),
+          unitPrice: Math.max(0, Math.floor(Number(o.unitPrice) || 0)),
+        };
+      })
+      .filter((p) => p.name)
+      .slice(0, 100);
+  }
+  const updated = await prisma.erpVendorPortal.update({ where: { id: portal.id }, data: data as never });
+  res.json({ portal: { id: updated.id, name: updated.name, pin: updated.pin, active: updated.active, products: updated.products } });
+});
+
+erpRouter.post("/vendor-orders", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const items = sanitizeVendorItems(b.items);
+  if (!items.length) return res.status(400).json({ error: "제품과 수량을 입력하세요" });
+  const orderDate = typeof b.orderDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.orderDate) ? b.orderDate : new Date().toISOString().slice(0, 10);
+  const amounts = computeOrderAmounts(items, Number(b.prepayRate) || 30);
+  const portal = await getVendorPortal();
+  const order = await prisma.erpVendorOrder.create({
+    data: {
+      vendorId: portal.id,
+      orderDate,
+      items: items as never,
+      ...amounts,
+      note: typeof b.note === "string" ? b.note.trim().slice(0, 500) || null : null,
+      history: appendHistory([], "broj", `브로제이가 발주를 요청했습니다 (${items.map((i) => `${i.name} ×${i.qty}`).join(", ")})`) as never,
+    },
+  });
+  res.json({ order });
+});
+
+erpRouter.patch("/vendor-orders/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const order = await prisma.erpVendorOrder.findUnique({ where: { id: req.params.id } });
+  if (!order) return res.status(404).json({ error: "발주를 찾을 수 없습니다" });
+  let history = (Array.isArray(order.history) ? order.history : []) as never[];
+  const data: Record<string, unknown> = {};
+  const act = typeof b.action === "string" ? b.action : "";
+  const now = new Date();
+  if (act === "prepay-paid") { data.prepayPaidAt = now; history = appendHistory(history, "broj", "브로제이가 선금 입금을 완료 처리했습니다") as never[]; }
+  else if (act === "prepay-unpaid") { data.prepayPaidAt = null; history = appendHistory(history, "broj", "선금 입금 완료를 취소했습니다") as never[]; }
+  else if (act === "balance-paid") { data.balancePaidAt = now; history = appendHistory(history, "broj", "브로제이가 잔금 입금을 완료 처리했습니다") as never[]; }
+  else if (act === "balance-unpaid") { data.balancePaidAt = null; history = appendHistory(history, "broj", "잔금 입금 완료를 취소했습니다") as never[]; }
+  else if (act === "done") { data.status = "done"; history = appendHistory(history, "broj", "발주를 완료 처리했습니다") as never[]; }
+  else if (act === "cancel") { data.status = "cancelled"; history = appendHistory(history, "broj", "발주를 취소했습니다") as never[]; }
+  else if (act === "reopen") { data.status = order.approvedAt ? "approved" : "requested"; history = appendHistory(history, "broj", "발주를 다시 열었습니다") as never[]; }
+  if (b.note !== undefined) data.note = typeof b.note === "string" ? b.note.trim().slice(0, 500) || null : null;
+  if (Array.isArray(b.items) && order.status === "requested") {
+    const items = sanitizeVendorItems(b.items);
+    if (items.length) {
+      Object.assign(data, { items: items as never }, computeOrderAmounts(items, order.prepayRate));
+      history = appendHistory(history, "broj", "발주 내용을 수정했습니다") as never[];
+    }
+  }
+  data.history = history;
+  const updated = await prisma.erpVendorOrder.update({ where: { id: order.id }, data: data as never });
+  res.json({ order: updated });
+});
+
+erpRouter.post("/vendor-orders/:id/delivery", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const entry = sanitizeDelivery(req.body, "broj");
+  if (!entry) return res.status(400).json({ error: "날짜/제품/수량을 확인하세요" });
+  const order = await prisma.erpVendorOrder.findUnique({ where: { id: req.params.id } });
+  if (!order) return res.status(404).json({ error: "발주를 찾을 수 없습니다" });
+  const deliveries = [...(Array.isArray(order.deliveries) ? order.deliveries : []), entry].slice(-100);
+  const updated = await prisma.erpVendorOrder.update({
+    where: { id: order.id },
+    data: {
+      deliveries: deliveries as never,
+      history: appendHistory(order.history, "broj", `입고 기록: ${entry.date} ${entry.name} ${entry.qty}대${entry.note ? ` (${entry.note})` : ""}`) as never,
+    },
+  });
+  res.json({ order: updated });
+});
+
+erpRouter.delete("/vendor-orders/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  await prisma.erpVendorOrder.delete({ where: { id: req.params.id } });
   res.json({ ok: true });
 });

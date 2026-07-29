@@ -361,6 +361,13 @@ export const api = {
   },
   erpIotLeadUpdate: (id, body) => req(`/erp/iot-leads/${id}`, { method: "PATCH", body }),
   erpIotLeadDelete: (id) => req(`/erp/iot-leads/${id}`, { method: "DELETE" }),
+  // 크라이저 발주 (소유자 전용)
+  erpVendorOrders: () => req("/erp/vendor-orders"),
+  erpVendorPortalUpdate: (body) => req("/erp/vendor-orders/portal", { method: "PUT", body }),
+  erpVendorOrderCreate: (body) => req("/erp/vendor-orders", { method: "POST", body }),
+  erpVendorOrderUpdate: (id, body) => req(`/erp/vendor-orders/${id}`, { method: "PATCH", body }),
+  erpVendorOrderDelivery: (id, body) => req(`/erp/vendor-orders/${id}/delivery`, { method: "POST", body }),
+  erpVendorOrderDelete: (id) => req(`/erp/vendor-orders/${id}`, { method: "DELETE" }),
   erpMarketingDashboardRefresh: (month) => req("/erp/sales/marketing-dashboard/refresh", { method: "POST", body: { month } }),
   erpMarketingDashboardGoals: (body) => req("/erp/sales/marketing-dashboard/goals", { method: "PUT", body }),
   // 공사(견적) 관리 — 소유자 전용

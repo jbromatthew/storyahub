@@ -2113,6 +2113,10 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
   // ---- 협력업체(공사팀) ----
   // 팀별 재정산 집계 (전체 견적의 payouts)
   const typedQuotes = useMemo(() => quotes.filter((q) => (q.orderType || "아파트너") === orderType), [quotes, orderType]);
+  // 공사일정 캘린더
+  const today = new Date();
+  const [cstCalYm, setCstCalYm] = useState({ y: today.getFullYear(), m: today.getMonth() + 1 });
+  const [cstCalDay, setCstCalDay] = useState(null);
   const teamPayoutSummary = useMemo(() => {
     const map = new Map();
     for (const q of typedQuotes) {
@@ -2657,6 +2661,69 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
             <div className="cst-sum-card unsettled"><div className="lbl">미정산 금액</div><div className="val">{formatWon(quoteSummary.unsettled)}</div></div>
             <div className="cst-sum-card settled"><div className="lbl">정산 완료 금액</div><div className="val">{formatWon(quoteSummary.settled)}</div></div>
           </div>
+
+          {/* 공사일정 캘린더 — 공사기간(시작~종료) 표시, 호버로 참여 팀, 팀 클릭 → 정산 탭 */}
+          <div className="iscal" style={{ marginTop: 12 }}>
+            <div className="iscal-hd">
+              <button type="button" className="iscal-nav" onClick={() => setCstCalYm((p) => { const d = new Date(p.y, p.m - 2, 1); return { y: d.getFullYear(), m: d.getMonth() + 1 }; })}>◀</button>
+              <span>공사일정 {cstCalYm.y}년 {cstCalYm.m}월</span>
+              <button type="button" className="iscal-nav" onClick={() => setCstCalYm((p) => { const d = new Date(p.y, p.m, 1); return { y: d.getFullYear(), m: d.getMonth() + 1 }; })}>▶</button>
+            </div>
+            <div className="iscal-grid">
+              {["일", "월", "화", "수", "목", "금", "토"].map((d) => <div key={d} className="iscal-dow">{d}</div>)}
+              {(() => {
+                const first = new Date(cstCalYm.y, cstCalYm.m - 1, 1);
+                const days = new Date(cstCalYm.y, cstCalYm.m, 0).getDate();
+                const cells = Array(first.getDay()).fill(null);
+                for (let d = 1; d <= days; d++) cells.push(`${cstCalYm.y}-${String(cstCalYm.m).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+                const quotesOn = (day) => typedQuotes.filter((q) => q.startDate && q.startDate <= day && day <= (q.endDate || q.startDate));
+                return cells.map((d, i) => {
+                  if (!d) return <div key={`e${i}`} className="iscal-day empty" />;
+                  const qs = quotesOn(d);
+                  const hover = qs.map((q) => {
+                    const teams = [...new Set((q.payouts || []).map((p) => p.teamName).filter(Boolean))];
+                    return `${q.apartment?.name || "(현장 미지정)"}${teams.length ? ` — 팀: ${teams.join(", ")}` : ""}`;
+                  }).join("\n");
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      className={"iscal-day" + (qs.length ? " has" : "") + (cstCalDay === d ? " sel" : "") + (d === fmtDateYmd(today) ? " today" : "")}
+                      title={hover || undefined}
+                      onClick={() => setCstCalDay(cstCalDay === d ? null : d)}
+                    >
+                      <span className="d">{Number(d.slice(8))}</span>
+                      {qs.length > 0 && <span className="iscal-cnt">{qs.length}건</span>}
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+          {cstCalDay && (
+            <div className="card" style={{ marginTop: 8, padding: 14 }}>
+              <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>{cstCalDay} 진행 중인 공사</div>
+              {typedQuotes.filter((q) => q.startDate && q.startDate <= cstCalDay && cstCalDay <= (q.endDate || q.startDate)).map((q) => {
+                const teams = [...new Set((q.payouts || []).map((p) => p.teamName).filter(Boolean))];
+                return (
+                  <div key={q.id} className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", padding: "5px 0", borderTop: "1px dashed var(--line)" }}>
+                    <button type="button" className="dash-drill-link" style={{ fontWeight: 800 }} onClick={() => editQuote(q)}>{q.apartment?.name || "(현장 미지정)"}</button>
+                    <span className="small" style={{ color: "var(--muted)" }}>{q.startDate}{q.endDate ? ` ~ ${q.endDate}` : ""}</span>
+                    {teams.map((tn) => (
+                      <button key={tn} type="button" className="tag" style={{ background: "var(--accent-soft)", color: "var(--accent-deep)", cursor: "pointer", border: "none", fontFamily: "inherit", fontSize: 12 }}
+                        title="클릭하면 공사팀 정산 탭으로 이동" onClick={() => setTab("teams")}>
+                        {tn}
+                      </button>
+                    ))}
+                    {!teams.length && <span className="small" style={{ color: "var(--muted)" }}>배정된 팀 없음</span>}
+                  </div>
+                );
+              })}
+              {!typedQuotes.some((q) => q.startDate && q.startDate <= cstCalDay && cstCalDay <= (q.endDate || q.startDate)) && (
+                <div className="small" style={{ color: "var(--muted)" }}>이 날짜에 진행 중인 공사가 없습니다</div>
+              )}
+            </div>
+          )}
 
           <div className="erp-tbl-wrap">
             <table className="erp-tbl">
@@ -8588,6 +8655,278 @@ export function IotLeadsView() {
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ===================== 크라이저 발주 관리 (브로제이 측) ===================== */
+
+const VENDOR_STATUS = {
+  requested: { label: "승인 대기", cls: "orange" },
+  approved: { label: "진행 중", cls: "gray" },
+  done: { label: "완료", cls: "green" },
+  cancelled: { label: "취소", cls: "gray" },
+};
+
+function VendorPayLine({ label, amount, requestedAt, paidAt, taxDate, onPaid, onUnpaid }) {
+  return (
+    <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", padding: "6px 0", borderTop: "1px dashed var(--line)" }}>
+      <strong className="small" style={{ width: 36 }}>{label}</strong>
+      <span className="small" style={{ fontWeight: 800 }}>{formatWon(amount)}</span>
+      {paidAt ? (
+        <>
+          <span className="erp-badge green">입금 완료 · {new Date(paidAt).toLocaleDateString("ko-KR")}</span>
+          <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11.5 }} onClick={onUnpaid}>취소</button>
+        </>
+      ) : (
+        <>
+          {requestedAt && <span className="erp-badge orange">⚠ 입금 요청됨 · {new Date(requestedAt).toLocaleDateString("ko-KR")}</span>}
+          <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 12 }} onClick={onPaid}>입금 완료 처리</button>
+        </>
+      )}
+      <span className="small" style={{ marginLeft: "auto", color: "var(--muted)" }}>계산서: {taxDate || "미발행"}</span>
+    </div>
+  );
+}
+
+export function VendorOrdersView() {
+  const [portal, setPortal] = useState(null);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState({ orderDate: fmtDateYmd(new Date()), prepayRate: 30, items: [], note: "" });
+  const [showSettings, setShowSettings] = useState(false);
+  const [pinDraft, setPinDraft] = useState("");
+  const [productsDraft, setProductsDraft] = useState([]);
+  const [delivery, setDelivery] = useState(null);
+  const [openHistory, setOpenHistory] = useState(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.erpVendorOrders()
+      .then((r) => {
+        setPortal(r.portal);
+        setOrders(r.orders || []);
+        setPinDraft(r.portal?.pin || "");
+        setProductsDraft(Array.isArray(r.portal?.products) ? r.portal.products : []);
+      })
+      .catch(notifyError)
+      .finally(() => setLoading(false));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const publicUrl = `${window.location.origin}/?vendor=kreiser`;
+  const products = Array.isArray(portal?.products) ? portal.products : [];
+
+  const addItem = () => setDraft((d) => ({ ...d, items: [...d.items, { name: products[0]?.name || "", qty: "", unitPrice: products[0]?.unitPrice || "" }] }));
+  const setItem = (i, patch) => setDraft((d) => ({ ...d, items: d.items.map((x, j) => (j === i ? { ...x, ...patch } : x)) }));
+  const pickProduct = (i, name) => {
+    const p = products.find((x) => x.name === name);
+    setItem(i, { name, unitPrice: p?.unitPrice || "" });
+  };
+
+  const draftTotal = draft.items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unitPrice) || 0), 0);
+  const draftPrepay = Math.round(draftTotal * ((Number(draft.prepayRate) || 30) / 100));
+
+  const createOrder = () => {
+    api.erpVendorOrderCreate({
+      orderDate: draft.orderDate,
+      prepayRate: Number(draft.prepayRate) || 30,
+      items: draft.items.map((it) => ({ name: it.name, qty: Number(it.qty) || 0, unitPrice: Number(it.unitPrice) || 0 })),
+      note: draft.note,
+    })
+      .then(() => {
+        toastSuccess("발주 요청 완료 — 크라이저 포털에서 승인하면 진행됩니다");
+        setCreating(false);
+        setDraft({ orderDate: fmtDateYmd(new Date()), prepayRate: 30, items: [], note: "" });
+        load();
+      })
+      .catch(notifyError);
+  };
+
+  const orderAct = (o, action) => {
+    api.erpVendorOrderUpdate(o.id, { action })
+      .then((r) => setOrders((p) => p.map((x) => (x.id === o.id ? r.order : x))))
+      .catch(notifyError);
+  };
+
+  const removeOrder = async (o) => {
+    if (!(await confirmAction("발주 삭제", `${o.orderDate} 발주를 완전히 삭제할까요? 히스토리도 함께 사라집니다.`))) return;
+    api.erpVendorOrderDelete(o.id).then(() => load()).catch(notifyError);
+  };
+
+  const saveSettings = () => {
+    api.erpVendorPortalUpdate({ pin: pinDraft.trim(), products: productsDraft })
+      .then((r) => { setPortal(r.portal); toastSuccess("포털 설정 저장 완료"); })
+      .catch(notifyError);
+  };
+
+  return (
+    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40, maxWidth: 900 }}>
+      <div className="h-eyebrow">Purchase</div>
+      <div className="h-title">크라이저 발주</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.6 }}>
+        발주 요청 → 크라이저 승인 → 선금({portal ? "" : ""}기본 30%) → 출고/입고 → 잔금(70%) 흐름을 양사가 함께 봅니다.
+        크라이저는 아래 링크에서 <strong>가입 없이 PIN</strong>으로 접속해 승인·입금 요청·계산서 발행일·출고 기록을 남깁니다.
+        <div className="row" style={{ gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <code style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: 8, padding: "6px 10px", fontSize: 12.5 }}>{publicUrl}</code>
+          <button type="button" className="btn btn-sm btn-ghost" onClick={() => { navigator.clipboard?.writeText(publicUrl); toastSuccess("링크를 복사했어요"); }}>복사</button>
+          {portal && <span className="tag gray">PIN: <strong>{portal.pin}</strong></span>}
+          <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowSettings((v) => !v)}>{showSettings ? "설정 닫기" : "⚙ 포털 설정"}</button>
+        </div>
+      </div>
+
+      {showSettings && (
+        <div className="card" style={{ marginTop: 12, padding: 16 }}>
+          <div className="small" style={{ fontWeight: 800, marginBottom: 8 }}>포털 설정</div>
+          <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span className="small" style={{ fontWeight: 700 }}>접속 PIN</span>
+            <input className="input" style={{ maxWidth: 120, letterSpacing: 3, fontWeight: 800 }} value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/[^\d]/g, "").slice(0, 8))} />
+          </div>
+          <div className="small" style={{ fontWeight: 800, margin: "14px 0 6px" }}>제품 단가표 <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 발주 작성 시 선택 목록, 크라이저 포털에도 표시</span></div>
+          {productsDraft.map((p, i) => (
+            <div key={i} className="row" style={{ gap: 8, marginBottom: 6 }}>
+              <input className="input" style={{ flex: 2 }} placeholder="제품명" value={p.name} onChange={(e) => setProductsDraft((prev) => prev.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+              <input className="input" style={{ flex: 1, textAlign: "right" }} inputMode="numeric" placeholder="단가 (VAT포함)" value={p.unitPrice ? Number(p.unitPrice).toLocaleString() : ""} onChange={(e) => setProductsDraft((prev) => prev.map((x, j) => (j === i ? { ...x, unitPrice: Number(e.target.value.replace(/[^\d]/g, "")) || 0 } : x)))} />
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setProductsDraft((prev) => prev.filter((_, j) => j !== i))}>✕</button>
+            </div>
+          ))}
+          <div className="row" style={{ gap: 8, marginTop: 8 }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setProductsDraft((p) => [...p, { name: "", unitPrice: 0 }])}>+ 제품 추가</button>
+            <button type="button" className="btn btn-accent btn-sm" style={{ marginLeft: "auto" }} onClick={saveSettings}>설정 저장</button>
+          </div>
+        </div>
+      )}
+
+      <div className="sales-toolbar" style={{ marginTop: 14 }}>
+        <button type="button" className="btn btn-sm btn-accent" onClick={() => setCreating((v) => !v)}>{creating ? "작성 취소" : "+ 새 발주 요청"}</button>
+      </div>
+
+      {creating && (
+        <div className="card" style={{ marginTop: 10, padding: 16 }}>
+          <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <span className="small" style={{ fontWeight: 700 }}>발주일</span>
+            <input type="date" className="input" style={{ maxWidth: 150 }} value={draft.orderDate} onChange={(e) => setDraft((d) => ({ ...d, orderDate: e.target.value }))} />
+            <span className="small" style={{ fontWeight: 700 }}>선금 비율</span>
+            <input className="input" style={{ maxWidth: 70, textAlign: "right" }} inputMode="numeric" value={draft.prepayRate} onChange={(e) => setDraft((d) => ({ ...d, prepayRate: e.target.value.replace(/[^\d]/g, "") }))} />
+            <span className="small">%</span>
+          </div>
+          {draft.items.map((it, i) => (
+            <div key={i} className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+              {products.length ? (
+                <select className="input" style={{ flex: 2, minWidth: 160 }} value={it.name} onChange={(e) => pickProduct(i, e.target.value)}>
+                  <option value="">제품 선택</option>
+                  {products.map((p, j) => <option key={j} value={p.name}>{p.name}</option>)}
+                </select>
+              ) : (
+                <input className="input" style={{ flex: 2, minWidth: 160 }} placeholder="제품명" value={it.name} onChange={(e) => setItem(i, { name: e.target.value })} />
+              )}
+              <input className="input" style={{ flex: "0 0 80px", textAlign: "right" }} inputMode="numeric" placeholder="수량" value={it.qty} onChange={(e) => setItem(i, { qty: e.target.value.replace(/[^\d]/g, "") })} />
+              <input className="input" style={{ flex: "0 0 120px", textAlign: "right" }} inputMode="numeric" placeholder="단가" value={it.unitPrice ? Number(it.unitPrice).toLocaleString() : ""} onChange={(e) => setItem(i, { unitPrice: e.target.value.replace(/[^\d]/g, "") })} />
+              <span className="small" style={{ fontWeight: 700, alignSelf: "center" }}>= {formatWon((Number(it.qty) || 0) * (Number(it.unitPrice) || 0))}</span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDraft((d) => ({ ...d, items: d.items.filter((_, j) => j !== i) }))}>✕</button>
+            </div>
+          ))}
+          <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={addItem}>+ 제품 추가</button>
+          <input className="input" style={{ width: "100%", marginTop: 10 }} placeholder="메모 (선택)" value={draft.note} onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))} />
+          <div className="row" style={{ gap: 12, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <span className="small">합계 <strong>{formatWon(draftTotal)}</strong> · 선금 {draft.prepayRate || 30}% <strong>{formatWon(draftPrepay)}</strong> · 잔금 <strong>{formatWon(draftTotal - draftPrepay)}</strong></span>
+            <button type="button" className="btn btn-accent btn-sm" style={{ marginLeft: "auto" }} disabled={!draft.items.some((it) => it.name && Number(it.qty) > 0)} onClick={createOrder}>발주 요청 보내기</button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="spinner" />
+      ) : (
+        orders.map((o) => {
+          const st = VENDOR_STATUS[o.status] || VENDOR_STATUS.requested;
+          const items = Array.isArray(o.items) ? o.items : [];
+          const deliveries = Array.isArray(o.deliveries) ? o.deliveries : [];
+          const history = Array.isArray(o.history) ? o.history : [];
+          const deliveredByName = {};
+          for (const d of deliveries) deliveredByName[d.name] = (deliveredByName[d.name] || 0) + d.qty;
+          return (
+            <div key={o.id} className="card" style={{ marginTop: 12, padding: 16 }}>
+              <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <strong>발주 {o.orderDate}</strong>
+                <span className={"erp-badge " + st.cls}>{st.label}</span>
+                <span style={{ marginLeft: "auto", fontWeight: 800 }}>{formatWon(o.totalAmount)}</span>
+              </div>
+              <table className="erp-tbl" style={{ minWidth: 0, marginTop: 8 }}>
+                <tbody>
+                  {items.map((it, i) => (
+                    <tr key={i}>
+                      <td>{it.name}</td>
+                      <td className="num">{it.qty}대 × {formatWon(it.unitPrice)}</td>
+                      <td className="num" style={{ fontWeight: 700 }}>{formatWon(it.amount)}</td>
+                      <td className="num" style={{ fontSize: 12, color: (deliveredByName[it.name] || 0) >= it.qty ? "#0D7A3E" : "var(--muted)" }}>입고 {deliveredByName[it.name] || 0}/{it.qty}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {o.status !== "requested" && o.status !== "cancelled" && (
+                <div style={{ marginTop: 8 }}>
+                  <VendorPayLine label="선금" amount={o.prepayAmount} requestedAt={o.prepayRequestedAt} paidAt={o.prepayPaidAt} taxDate={o.prepayTaxDate}
+                    onPaid={() => orderAct(o, "prepay-paid")} onUnpaid={() => orderAct(o, "prepay-unpaid")} />
+                  <VendorPayLine label="잔금" amount={o.balanceAmount} requestedAt={o.balanceRequestedAt} paidAt={o.balancePaidAt} taxDate={o.balanceTaxDate}
+                    onPaid={() => orderAct(o, "balance-paid")} onUnpaid={() => orderAct(o, "balance-unpaid")} />
+                </div>
+              )}
+
+              <div className="row" style={{ gap: 6, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+                {o.status === "requested" && <span className="small" style={{ color: "var(--muted)" }}>크라이저 승인 대기 중…</span>}
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDelivery(delivery?.orderId === o.id ? null : { orderId: o.id, date: fmtDateYmd(new Date()), name: items[0]?.name || "", qty: "", note: "" })}>📦 입고 기록</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpenHistory(openHistory === o.id ? null : o.id)}>히스토리 {history.length}</button>
+                <span style={{ marginLeft: "auto" }} />
+                {o.status === "approved" && <button type="button" className="btn btn-ghost btn-sm" onClick={() => orderAct(o, "done")}>완료 처리</button>}
+                {(o.status === "requested" || o.status === "approved") && <button type="button" className="btn btn-ghost btn-sm" onClick={() => orderAct(o, "cancel")}>취소</button>}
+                {(o.status === "done" || o.status === "cancelled") && <button type="button" className="btn btn-ghost btn-sm" onClick={() => orderAct(o, "reopen")}>다시 열기</button>}
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeOrder(o)}>삭제</button>
+              </div>
+
+              {delivery?.orderId === o.id && (
+                <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                  <input type="date" className="input" style={{ flex: "0 0 145px" }} value={delivery.date} onChange={(e) => setDelivery((d) => ({ ...d, date: e.target.value }))} />
+                  <select className="input" style={{ flex: "1 1 150px" }} value={delivery.name} onChange={(e) => setDelivery((d) => ({ ...d, name: e.target.value }))}>
+                    {items.map((it, i) => <option key={i} value={it.name}>{it.name}</option>)}
+                  </select>
+                  <input className="input" style={{ flex: "0 0 80px" }} inputMode="numeric" placeholder="수량" value={delivery.qty} onChange={(e) => setDelivery((d) => ({ ...d, qty: e.target.value.replace(/[^\d]/g, "") }))} />
+                  <input className="input" style={{ flex: "1 1 130px" }} placeholder="메모 (선택)" value={delivery.note} onChange={(e) => setDelivery((d) => ({ ...d, note: e.target.value }))} />
+                  <button type="button" className="btn btn-accent btn-sm" disabled={!delivery.qty} onClick={() => {
+                    api.erpVendorOrderDelivery(o.id, { date: delivery.date, name: delivery.name, qty: Number(delivery.qty), note: delivery.note })
+                      .then((r) => { setOrders((p) => p.map((x) => (x.id === o.id ? r.order : x))); setDelivery(null); toastSuccess("입고 기록 저장"); })
+                      .catch(notifyError);
+                  }}>저장</button>
+                </div>
+              )}
+
+              {deliveries.length > 0 && (
+                <div style={{ marginTop: 6 }}>
+                  {deliveries.map((d, i) => (
+                    <div key={i} className="small" style={{ padding: "2px 0", color: "var(--muted)" }}>
+                      📦 {d.date} · {d.name} <strong style={{ color: "var(--ink)" }}>{d.qty}대</strong>{d.note ? ` · ${d.note}` : ""} ({d.by === "broj" ? "브로제이" : "크라이저"})
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {openHistory === o.id && (
+                <div style={{ background: "var(--sand, #F7F3EC)", borderRadius: 10, padding: "8px 12px", marginTop: 8 }}>
+                  {[...history].reverse().map((h, i) => (
+                    <div key={i} className="small" style={{ padding: "2px 0" }}>
+                      <span style={{ color: "var(--muted)" }}>{new Date(h.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span> · {h.text}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {o.note && <div className="small" style={{ color: "var(--muted)", marginTop: 6 }}>메모: {o.note}</div>}
+            </div>
+          );
+        })
+      )}
+      {!loading && !orders.length && <div className="small" style={{ textAlign: "center", padding: 30, color: "var(--muted)" }}>발주 내역이 없습니다. 새 발주 요청으로 시작하세요.</div>}
     </div>
   );
 }
