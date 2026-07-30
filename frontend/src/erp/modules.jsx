@@ -1881,15 +1881,19 @@ function printConstructionQuote(quote, apartment) {
 }
 
 // 견적서를 바로 PDF 파일로 다운로드 (인쇄 대화상자 없이)
+// html2canvas는 별도 문서(head)의 스타일을 복제하지 못하므로, 스타일을 콘텐츠 안에 넣어 본문에서 렌더링한다.
 async function downloadConstructionQuotePdf(quote, apartment) {
   const html = buildConstructionQuoteHtml(quote, apartment, { autoPrint: false });
-  const iframe = document.createElement("iframe");
-  iframe.style.cssText = "position:fixed;left:-10000px;top:0;width:820px;height:1160px;border:0;";
-  document.body.appendChild(iframe);
+  const css = (html.match(/<style>([\s\S]*?)<\/style>/) || [])[1] || "";
+  const bodyInner = (html.match(/<body>([\s\S]*?)<\/body>/) || [])[1] || "";
+  const scopedCss = css
+    .replace(/:root\{/g, ".quote-pdf-root{")
+    .replace(/body\{/g, ".quote-pdf-root{");
+  const holder = document.createElement("div");
+  holder.style.cssText = "position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;";
+  holder.innerHTML = `<style>${scopedCss}</style><div class="quote-pdf-root" style="background:#fff;">${bodyInner}</div>`;
+  document.body.appendChild(holder);
   try {
-    iframe.contentDocument.open();
-    iframe.contentDocument.write(html);
-    iframe.contentDocument.close();
     await new Promise((r) => setTimeout(r, 400)); // 폰트·이미지 렌더 대기
     const { default: html2pdf } = await import("html2pdf.js");
     const name = `브로제이_견적서_${(apartment?.name || quote?.title || "무제").replace(/[\/:*?"<>|\s]+/g, "_")}.pdf`;
@@ -1898,16 +1902,16 @@ async function downloadConstructionQuotePdf(quote, apartment) {
         margin: 0,
         filename: name,
         image: { type: "jpeg", quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true, windowWidth: 820 },
+        html2canvas: { scale: 2, useCORS: true, windowWidth: 794 },
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
         pagebreak: { mode: ["css", "legacy"] },
       })
-      .from(iframe.contentDocument.body)
+      .from(holder.querySelector(".quote-pdf-root"))
       .save();
   } catch (e) {
     notifyError(new Error("PDF 생성에 실패했어요: " + (e?.message || e)));
   } finally {
-    iframe.remove();
+    holder.remove();
   }
 }
 
