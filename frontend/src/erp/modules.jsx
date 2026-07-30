@@ -1765,7 +1765,7 @@ function quoteDateStr(quote) {
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-function printConstructionQuote(quote, apartment) {
+function buildConstructionQuoteHtml(quote, apartment, { autoPrint = true } = {}) {
   const lines = quote?.lines || [];
   const t = quoteTotals(lines);
   const s = QUOTE_SUPPLIER;
@@ -1865,14 +1865,50 @@ function printConstructionQuote(quote, apartment) {
       </div>
       <div class="stamp-name">위와 같이 견적합니다.<br/><b>${esc(s.company)}</b></div>
     </div>
-    <script>window.onload=function(){setTimeout(function(){window.print();},150);};</script>
+    ${autoPrint ? '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print();},150);};</scr' + 'ipt>' : ""}
   </body></html>`;
 
+  return html;
+}
+
+function printConstructionQuote(quote, apartment) {
+  const html = buildConstructionQuoteHtml(quote, apartment, { autoPrint: true });
   const w = window.open("", "_blank", "width=900,height=1100");
   if (!w) { notifyError(new Error("팝업이 차단되었습니다. 브라우저에서 팝업을 허용해 주세요.")); return; }
   w.document.open();
   w.document.write(html);
   w.document.close();
+}
+
+// 견적서를 바로 PDF 파일로 다운로드 (인쇄 대화상자 없이)
+async function downloadConstructionQuotePdf(quote, apartment) {
+  const html = buildConstructionQuoteHtml(quote, apartment, { autoPrint: false });
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = "position:fixed;left:-10000px;top:0;width:820px;height:1160px;border:0;";
+  document.body.appendChild(iframe);
+  try {
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(html);
+    iframe.contentDocument.close();
+    await new Promise((r) => setTimeout(r, 400)); // 폰트·이미지 렌더 대기
+    const { default: html2pdf } = await import("html2pdf.js");
+    const name = `브로제이_견적서_${(apartment?.name || quote?.title || "무제").replace(/[\/:*?"<>|\s]+/g, "_")}.pdf`;
+    await html2pdf()
+      .set({
+        margin: 0,
+        filename: name,
+        image: { type: "jpeg", quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true, windowWidth: 820 },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: ["css", "legacy"] },
+      })
+      .from(iframe.contentDocument.body)
+      .save();
+  } catch (e) {
+    notifyError(new Error("PDF 생성에 실패했어요: " + (e?.message || e)));
+  } finally {
+    iframe.remove();
+  }
 }
 
 // 현장 사진 한 칸 (공사전/공사후) — 업로드/썸네일/다운로드/삭제
@@ -2320,7 +2356,8 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>← 견적 목록</button>
           <div className="row" style={{ gap: 6 }}>
             {editing.id && <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={deleteQuote}>삭제</button>}
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => printConstructionQuote(editing, apts.find((a) => a.id === editing.apartmentId))}>PDF / 인쇄</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => printConstructionQuote(editing, apts.find((a) => a.id === editing.apartmentId))}>인쇄</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => { toastSuccess("PDF 생성 중…"); downloadConstructionQuotePdf(editing, apts.find((a) => a.id === editing.apartmentId)); }}>⬇ PDF 다운로드</button>
             <button type="button" className="btn btn-accent btn-sm" onClick={saveQuote} disabled={busy}>{busy ? "저장 중…" : "저장"}</button>
           </div>
         </div>
