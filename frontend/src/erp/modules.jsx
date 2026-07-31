@@ -8983,7 +8983,10 @@ export function VendorOrdersView() {
                       <td className="shrink num" style={{ fontWeight: 800 }}>{formatWon(o.totalAmount)}</td>
                       <td className="shrink ctr">{payBadge(o.prepayRequestedAt, o.prepayPaidAt, o.prepayVerified)}</td>
                       <td className="shrink ctr">{payBadge(o.balanceRequestedAt, o.balancePaidAt, o.balanceVerified)}</td>
-                      <td className="shrink ctr" style={{ color: totalDelivered >= totalQty && totalQty > 0 ? "#0D7A3E" : "var(--muted)", fontWeight: 700 }}>{totalDelivered}/{totalQty}</td>
+                      <td className="shrink ctr" style={{ color: totalDelivered >= totalQty && totalQty > 0 ? "#0D7A3E" : "var(--muted)", fontWeight: 700 }}>
+                        {totalDelivered}/{totalQty}
+                        {o.expectedDelivery && <div style={{ fontSize: 10.5, fontWeight: 600, color: "#1A5DAB" }}>예상 {o.expectedDelivery.slice(5)}</div>}
+                      </td>
                       <td className="shrink ctr"><span className={"erp-badge " + st.cls}>{st.label}</span></td>
                     </tr>
                     {open && (
@@ -9016,7 +9019,8 @@ export function VendorOrdersView() {
                           )}
 
                           <div className="row" style={{ gap: 6, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
-                            {o.status === "requested" && <span className="small" style={{ color: "var(--muted)" }}>크라이저 승인 대기 중…</span>}
+                            {o.status === "requested" && <span className="small" style={{ color: "var(--muted)" }}>크라이저 승인 대기 중… (승인 시 예상 입고일 입력)</span>}
+                            {o.expectedDelivery && <span className="erp-badge" style={{ background: "#E8F1FB", color: "#1A5DAB" }}>예상 입고일 {o.expectedDelivery}</span>}
                             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDelivery(delivery?.orderId === o.id ? null : { orderId: o.id, date: fmtDateYmd(new Date()), name: items[0]?.name || "", qty: "", note: "" })}>📦 입고 기록</button>
                             <span style={{ marginLeft: "auto" }} />
                             {o.status === "approved" && <button type="button" className="btn btn-ghost btn-sm" onClick={() => orderAct(o, "done")}>완료 처리</button>}

@@ -47,6 +47,10 @@ vendorPublicRouter.post("/:vendorId/orders", async (req: Request, res: Response)
 vendorPublicRouter.post("/:vendorId/orders/:id/approve", async (req: Request, res: Response) => {
   const portal = await auth(req, res);
   if (!portal) return;
+  const expectedDelivery = String((req.body as Record<string, unknown>)?.expectedDelivery ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(expectedDelivery)) {
+    return res.status(400).json({ error: "예상 입고일을 입력하세요 (YYYY-MM-DD)" });
+  }
   const order = await prisma.erpVendorOrder.findFirst({ where: { id: req.params.id, vendorId: portal.id } });
   if (!order) return res.status(404).json({ error: "발주를 찾을 수 없습니다" });
   if (order.status !== "requested") return res.status(400).json({ error: "승인 대기 상태가 아닙니다" });
@@ -55,7 +59,8 @@ vendorPublicRouter.post("/:vendorId/orders/:id/approve", async (req: Request, re
     data: {
       status: "approved",
       approvedAt: new Date(),
-      history: appendHistory(order.history, "vendor", `${portal.name}가 발주를 승인했습니다`),
+      expectedDelivery,
+      history: appendHistory(order.history, "vendor", `${portal.name}가 발주를 승인했습니다 (예상 입고일 ${expectedDelivery})`),
     },
   });
   res.json({ order: updated });

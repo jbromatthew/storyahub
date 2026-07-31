@@ -898,6 +898,7 @@ model ErpVendorOrder {
   balanceAmount      Int       @default(0)
   status             String    @default("requested") // requested | approved | done | cancelled
   approvedAt         DateTime?
+  expectedDelivery   String? // 크라이저가 승인 시 입력한 예상 입고일 (YYYY-MM-DD)
   prepayRequestedAt  DateTime?
   prepayPaidAt       DateTime?
   prepayTaxDate      String?

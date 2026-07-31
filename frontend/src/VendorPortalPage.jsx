@@ -89,6 +89,7 @@ export default function VendorPortalPage({ vendorId }) {
   const [q, setQ] = useState("");
   const [delivery, setDelivery] = useState(null); // {orderId, date, name, qty, note}
   const [claim, setClaim] = useState(null); // {orderId, kind, taxDate, taxNo, dates}
+  const [approving, setApproving] = useState(null); // {orderId, date}
 
   useEffect(() => {
     document.title = "브로제이 발주 포털";
@@ -283,10 +284,28 @@ export default function VendorPortalPage({ vendorId }) {
                         </table>
 
                         {o.status === "requested" && (
-                          <button type="button" style={{ ...btn("#2D6A3F"), width: "100%", marginTop: 12, padding: 12 }} disabled={busy === `ap${o.id}`}
-                            onClick={() => act(() => post(`${vendorId}/orders/${o.id}/approve`, { pin: pin.trim() }), `ap${o.id}`)}>
-                            ✔ 발주 승인
-                          </button>
+                          approving?.orderId === o.id ? (
+                            <div style={{ background: "#FAF6EF", borderRadius: 10, padding: "12px 14px", marginTop: 12, border: "1px solid #EFE7DA" }}>
+                              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>발주 승인 — 예상 입고일을 알려주세요</div>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                                <span style={{ fontSize: 12.5, fontWeight: 700 }}>예상 입고일</span>
+                                <input type="date" style={{ ...inp, padding: "7px 9px" }} value={approving.date} onChange={(e) => setApproving((a) => ({ ...a, date: e.target.value }))} />
+                                <button type="button" style={{ ...btn("#2D6A3F"), flex: 1, minWidth: 140 }} disabled={!approving.date || busy === `ap${o.id}`}
+                                  onClick={() => act(async () => {
+                                    await post(`${vendorId}/orders/${o.id}/approve`, { pin: pin.trim(), expectedDelivery: approving.date });
+                                    setApproving(null);
+                                  }, `ap${o.id}`)}>
+                                  {busy === `ap${o.id}` ? "승인 중…" : "✔ 승인 확정"}
+                                </button>
+                                <button type="button" style={btnGhost} onClick={() => setApproving(null)}>취소</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button type="button" style={{ ...btn("#2D6A3F"), width: "100%", marginTop: 12, padding: 12 }}
+                              onClick={() => setApproving({ orderId: o.id, date: "" })}>
+                              ✔ 발주 승인 (예상 입고일 입력)
+                            </button>
+                          )
                         )}
 
                         {o.status !== "requested" && o.status !== "cancelled" && (
@@ -307,8 +326,9 @@ export default function VendorPortalPage({ vendorId }) {
                             {claim?.orderId === o.id && claim.kind === "balance" && claimForm}
 
                             <div style={{ marginTop: 10, borderTop: "1px dashed #E8E0D4", paddingTop: 8 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                 <strong style={{ fontSize: 13 }}>출고 기록</strong>
+                                {o.expectedDelivery && <span style={badge("#E8F1FB", "#1A5DAB")}>예상 입고일 {o.expectedDelivery}</span>}
                                 <button type="button" style={{ ...btnGhost, padding: "5px 10px", fontSize: 12 }}
                                   onClick={() => setDelivery(delivery?.orderId === o.id ? null : { orderId: o.id, date: todayStr(), name: items[0]?.name || "", qty: "", note: "" })}>
                                   + 기록 추가
