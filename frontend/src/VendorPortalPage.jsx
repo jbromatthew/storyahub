@@ -30,22 +30,29 @@ const STATUS_BADGE = {
   cancelled: ["#F1F1F1", "#777", "취소"],
 };
 
-function PayRow({ label, amount, requestedAt, paidAt, taxDate, onRequest, onTaxDate, busy }) {
+function PayRow({ label, kind, amount, requestedAt, paidAt, taxDate, taxNo, verified, deliveryDates, onOpenClaim, claiming }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 0", borderTop: "1px dashed #E8E0D4" }}>
-      <strong style={{ width: 40 }}>{label}</strong>
-      <span style={{ fontWeight: 800 }}>{won(amount)}</span>
-      {paidAt ? (
-        <span style={badge("#E8F5E9", "#2D6A3F")}>입금 완료 · {new Date(paidAt).toLocaleDateString("ko-KR")}</span>
-      ) : requestedAt ? (
-        <span style={badge("#FFF3E0", "#B26A00")}>입금 요청됨 · {new Date(requestedAt).toLocaleDateString("ko-KR")}</span>
-      ) : (
-        <button type="button" style={btn("#DD5E39")} disabled={busy} onClick={onRequest}>💰 {label} 입금 요청</button>
+    <div style={{ padding: "8px 0", borderTop: "1px dashed #E8E0D4" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <strong style={{ width: 40 }}>{label}</strong>
+        <span style={{ fontWeight: 800 }}>{won(amount)}</span>
+        {paidAt ? (
+          <span style={badge("#E8F5E9", "#2D6A3F")}>입금 완료 · {new Date(paidAt).toLocaleDateString("ko-KR")}</span>
+        ) : requestedAt ? (
+          <span style={badge("#FFF3E0", "#B26A00")}>청구됨 · 입금 대기</span>
+        ) : (
+          <button type="button" style={btn("#DD5E39")} onClick={onOpenClaim}>💰 {label} 청구 신청{claiming ? " 닫기" : ""}</button>
+        )}
+        {requestedAt && !paidAt && (
+          <span style={verified ? badge("#E8F1FB", "#1A5DAB") : badge("#F1F1F1", "#777")}>{verified ? "브로제이 계산서 확인 ✓" : "브로제이 확인 대기"}</span>
+        )}
+      </div>
+      {(taxDate || taxNo) && (
+        <div style={{ fontSize: 12.5, color: "#5A544A", marginTop: 4 }}>
+          🧾 세금계산서 {taxDate || "-"}{taxNo ? ` · 승인번호 ${taxNo}` : ""}
+          {kind === "balance" && (deliveryDates || []).length > 0 && ` · 납품일 ${(deliveryDates || []).join(", ")}`}
+        </div>
       )}
-      <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
-        계산서
-        <input type="date" style={{ ...inp, padding: "5px 8px", fontSize: 12.5 }} value={taxDate || ""} onChange={(e) => onTaxDate(e.target.value)} />
-      </span>
     </div>
   );
 }
@@ -59,6 +66,7 @@ export default function VendorPortalPage({ vendorId }) {
   const [showProducts, setShowProducts] = useState(false);
   const [delivery, setDelivery] = useState(null); // {orderId, date, name, qty, note}
   const [openHistory, setOpenHistory] = useState(null);
+  const [claim, setClaim] = useState(null); // {orderId, kind, taxDate, taxNo, dates: [""]}
 
   useEffect(() => {
     document.title = "브로제이 발주 포털";
@@ -177,17 +185,52 @@ export default function VendorPortalPage({ vendorId }) {
             {o.status !== "requested" && o.status !== "cancelled" && (
               <div style={{ marginTop: 10 }}>
                 <PayRow
-                  label="선금" amount={o.prepayAmount} requestedAt={o.prepayRequestedAt} paidAt={o.prepayPaidAt} taxDate={o.prepayTaxDate}
-                  busy={busy === `pr${o.id}`}
-                  onRequest={() => act(() => post(`${vendorId}/orders/${o.id}/request-payment`, { pin: pin.trim(), kind: "prepay" }), `pr${o.id}`)}
-                  onTaxDate={(d) => act(() => post(`${vendorId}/orders/${o.id}/tax-date`, { pin: pin.trim(), kind: "prepay", date: d }), `pt${o.id}`)}
+                  label="선금" kind="prepay" amount={o.prepayAmount} requestedAt={o.prepayRequestedAt} paidAt={o.prepayPaidAt}
+                  taxDate={o.prepayTaxDate} taxNo={o.prepayTaxNo} verified={o.prepayVerified}
+                  claiming={claim?.orderId === o.id && claim?.kind === "prepay"}
+                  onOpenClaim={() => setClaim(claim?.orderId === o.id && claim?.kind === "prepay" ? null : { orderId: o.id, kind: "prepay", taxDate: new Date().toISOString().slice(0, 10), taxNo: "", dates: [] })}
                 />
                 <PayRow
-                  label="잔금" amount={o.balanceAmount} requestedAt={o.balanceRequestedAt} paidAt={o.balancePaidAt} taxDate={o.balanceTaxDate}
-                  busy={busy === `br${o.id}`}
-                  onRequest={() => act(() => post(`${vendorId}/orders/${o.id}/request-payment`, { pin: pin.trim(), kind: "balance" }), `br${o.id}`)}
-                  onTaxDate={(d) => act(() => post(`${vendorId}/orders/${o.id}/tax-date`, { pin: pin.trim(), kind: "balance", date: d }), `bt${o.id}`)}
+                  label="잔금" kind="balance" amount={o.balanceAmount} requestedAt={o.balanceRequestedAt} paidAt={o.balancePaidAt}
+                  taxDate={o.balanceTaxDate} taxNo={o.balanceTaxNo} verified={o.balanceVerified} deliveryDates={o.balanceDeliveryDates}
+                  claiming={claim?.orderId === o.id && claim?.kind === "balance"}
+                  onOpenClaim={() => setClaim(claim?.orderId === o.id && claim?.kind === "balance" ? null : { orderId: o.id, kind: "balance", taxDate: new Date().toISOString().slice(0, 10), taxNo: "", dates: [new Date().toISOString().slice(0, 10)] })}
                 />
+
+                {claim?.orderId === o.id && (
+                  <div style={{ background: "#FAF6EF", borderRadius: 10, padding: "12px 14px", marginTop: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>{claim.kind === "prepay" ? "선금" : "잔금"} 청구 신청</div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 700 }}>계산서 발행일</span>
+                      <input type="date" style={{ ...inp, padding: "7px 9px" }} value={claim.taxDate} onChange={(e) => setClaim((c) => ({ ...c, taxDate: e.target.value }))} />
+                      <span style={{ fontSize: 12.5, fontWeight: 700 }}>승인번호</span>
+                      <input style={{ ...inp, flex: "1 1 180px", padding: "7px 9px" }} placeholder="세금계산서 승인번호" value={claim.taxNo} onChange={(e) => setClaim((c) => ({ ...c, taxNo: e.target.value }))} />
+                    </div>
+                    {claim.kind === "balance" && (
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>최종 납품일자 <span style={{ fontWeight: 500, color: "#8A7E6F" }}>— 나눠서 납품했으면 날짜를 추가하세요</span></div>
+                        {claim.dates.map((d, i) => (
+                          <div key={i} style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+                            <input type="date" style={{ ...inp, padding: "7px 9px" }} value={d} onChange={(e) => setClaim((c) => ({ ...c, dates: c.dates.map((x, j) => (j === i ? e.target.value : x)) }))} />
+                            {claim.dates.length > 1 && <button type="button" style={{ ...btn("#fff", "#8A7E6F"), border: "1px solid #E3DED4", padding: "6px 10px" }} onClick={() => setClaim((c) => ({ ...c, dates: c.dates.filter((_, j) => j !== i) }))}>✕</button>}
+                          </div>
+                        ))}
+                        <button type="button" style={{ ...btn("#fff", "#2A2118"), border: "1px solid #E3DED4", padding: "6px 10px", fontSize: 12 }} onClick={() => setClaim((c) => ({ ...c, dates: [...c.dates, ""] }))}>+ 납품일 추가</button>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      style={{ ...btn("#DD5E39"), width: "100%", marginTop: 10 }}
+                      disabled={busy === `cl${o.id}` || !claim.taxDate || !claim.taxNo.trim() || (claim.kind === "balance" && !claim.dates.some((d) => d))}
+                      onClick={() => act(async () => {
+                        await post(`${vendorId}/orders/${o.id}/request-payment`, { pin: pin.trim(), kind: claim.kind, taxDate: claim.taxDate, taxNo: claim.taxNo.trim(), deliveryDates: claim.dates.filter(Boolean) });
+                        setClaim(null);
+                      }, `cl${o.id}`)}
+                    >
+                      {busy === `cl${o.id}` ? "신청 중…" : "청구 신청하기"}
+                    </button>
+                  </div>
+                )}
 
                 <div style={{ marginTop: 10, borderTop: "1px dashed #E8E0D4", paddingTop: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

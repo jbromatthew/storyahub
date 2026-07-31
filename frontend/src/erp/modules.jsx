@@ -8709,23 +8709,35 @@ const VENDOR_STATUS = {
   cancelled: { label: "취소", cls: "gray" },
 };
 
-function VendorPayLine({ label, amount, requestedAt, paidAt, taxDate, onPaid, onUnpaid }) {
+function VendorPayLine({ label, kind, amount, requestedAt, paidAt, taxDate, taxNo, verified, deliveryDates, onPaid, onUnpaid, onVerify, onUnverify }) {
   return (
-    <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", padding: "6px 0", borderTop: "1px dashed var(--line)" }}>
-      <strong className="small" style={{ width: 36 }}>{label}</strong>
-      <span className="small" style={{ fontWeight: 800 }}>{formatWon(amount)}</span>
-      {paidAt ? (
-        <>
-          <span className="erp-badge green">입금 완료 · {new Date(paidAt).toLocaleDateString("ko-KR")}</span>
-          <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11.5 }} onClick={onUnpaid}>취소</button>
-        </>
-      ) : (
-        <>
-          {requestedAt && <span className="erp-badge orange">⚠ 입금 요청됨 · {new Date(requestedAt).toLocaleDateString("ko-KR")}</span>}
-          <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 12 }} onClick={onPaid}>입금 완료 처리</button>
-        </>
+    <div style={{ padding: "6px 0", borderTop: "1px dashed var(--line)" }}>
+      <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <strong className="small" style={{ width: 36 }}>{label}</strong>
+        <span className="small" style={{ fontWeight: 800 }}>{formatWon(amount)}</span>
+        {paidAt ? (
+          <>
+            <span className="erp-badge green">입금 완료 · {new Date(paidAt).toLocaleDateString("ko-KR")}</span>
+            <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11.5 }} onClick={onUnpaid}>취소</button>
+          </>
+        ) : (
+          <>
+            {requestedAt && <span className="erp-badge orange">⚠ 청구됨 · {new Date(requestedAt).toLocaleDateString("ko-KR")}</span>}
+            {requestedAt && (
+              verified
+                ? <button type="button" className="erp-badge" style={{ background: "#E8F1FB", color: "#1A5DAB", border: "none", cursor: "pointer", fontFamily: "inherit" }} title="클릭하면 확인 취소" onClick={onUnverify}>계산서 확인 ✓</button>
+                : <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 12 }} onClick={onVerify}>🧾 계산서 확인(더블체크)</button>
+            )}
+            <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 12 }} onClick={onPaid}>입금 완료 처리</button>
+          </>
+        )}
+      </div>
+      {(taxDate || taxNo || (deliveryDates || []).length > 0) && (
+        <div className="small" style={{ color: "var(--muted)", marginTop: 3 }}>
+          🧾 계산서 {taxDate || "미발행"}{taxNo ? ` · 승인번호 ${taxNo}` : ""}
+          {kind === "balance" && (deliveryDates || []).length > 0 && ` · 납품일 ${(deliveryDates || []).join(", ")}`}
+        </div>
       )}
-      <span className="small" style={{ marginLeft: "auto", color: "var(--muted)" }}>계산서: {taxDate || "미발행"}</span>
     </div>
   );
 }
@@ -8839,8 +8851,40 @@ export function VendorOrdersView() {
         </div>
       )}
 
+      {(() => {
+        const pending = [];
+        for (const o of orders) {
+          if (o.status === "cancelled") continue;
+          if (o.prepayRequestedAt && !o.prepayPaidAt) pending.push({ o, kind: "prepay", label: "선금", amount: o.prepayAmount, taxDate: o.prepayTaxDate, taxNo: o.prepayTaxNo, verified: o.prepayVerified });
+          if (o.balanceRequestedAt && !o.balancePaidAt) pending.push({ o, kind: "balance", label: "잔금", amount: o.balanceAmount, taxDate: o.balanceTaxDate, taxNo: o.balanceTaxNo, verified: o.balanceVerified, dates: o.balanceDeliveryDates });
+        }
+        if (!pending.length) return null;
+        const total = pending.reduce((s2, p2) => s2 + (p2.amount || 0), 0);
+        return (
+          <div className="card" style={{ marginTop: 14, padding: "12px 16px", borderLeft: "4px solid var(--accent)" }}>
+            <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>💰 입금 대기 청구 {pending.length}건 · 합계 {formatWon(total)} <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 경영지원팀: 계산서 더블체크 후 입금 처리</span></div>
+            {pending.map((p2, i) => (
+              <div key={i} className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", padding: "5px 0", borderTop: "1px solid var(--line)" }}>
+                <strong className="small">발주 {p2.o.orderDate}</strong>
+                <span className="erp-badge orange">{p2.label}</span>
+                <span className="small" style={{ fontWeight: 800 }}>{formatWon(p2.amount)}</span>
+                <span className="small" style={{ color: "var(--muted)" }}>
+                  🧾 {p2.taxDate || "계산서 미입력"}{p2.taxNo ? ` · ${p2.taxNo}` : ""}{(p2.dates || []).length ? ` · 납품 ${(p2.dates || []).join(", ")}` : ""}
+                </span>
+                <span style={{ marginLeft: "auto" }} />
+                {p2.verified
+                  ? <span className="erp-badge" style={{ background: "#E8F1FB", color: "#1A5DAB" }}>확인 ✓</span>
+                  : <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11.5 }} onClick={() => orderAct(p2.o, `${p2.kind}-verify`)}>계산서 확인</button>}
+                <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 11.5 }} onClick={() => orderAct(p2.o, `${p2.kind}-paid`)}>입금 완료</button>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       <div className="sales-toolbar" style={{ marginTop: 14 }}>
         <button type="button" className="btn btn-sm btn-accent" onClick={() => setCreating((v) => !v)}>{creating ? "작성 취소" : "+ 새 발주 요청"}</button>
+        <span className="small" style={{ color: "var(--muted)", alignSelf: "center" }}>발주 요청: 세일즈팀 · 입금/계산서 확인: 경영지원팀</span>
       </div>
 
       {creating && (
@@ -8909,10 +8953,14 @@ export function VendorOrdersView() {
 
               {o.status !== "requested" && o.status !== "cancelled" && (
                 <div style={{ marginTop: 8 }}>
-                  <VendorPayLine label="선금" amount={o.prepayAmount} requestedAt={o.prepayRequestedAt} paidAt={o.prepayPaidAt} taxDate={o.prepayTaxDate}
-                    onPaid={() => orderAct(o, "prepay-paid")} onUnpaid={() => orderAct(o, "prepay-unpaid")} />
-                  <VendorPayLine label="잔금" amount={o.balanceAmount} requestedAt={o.balanceRequestedAt} paidAt={o.balancePaidAt} taxDate={o.balanceTaxDate}
-                    onPaid={() => orderAct(o, "balance-paid")} onUnpaid={() => orderAct(o, "balance-unpaid")} />
+                  <VendorPayLine label="선금" kind="prepay" amount={o.prepayAmount} requestedAt={o.prepayRequestedAt} paidAt={o.prepayPaidAt}
+                    taxDate={o.prepayTaxDate} taxNo={o.prepayTaxNo} verified={o.prepayVerified}
+                    onPaid={() => orderAct(o, "prepay-paid")} onUnpaid={() => orderAct(o, "prepay-unpaid")}
+                    onVerify={() => orderAct(o, "prepay-verify")} onUnverify={() => orderAct(o, "prepay-unverify")} />
+                  <VendorPayLine label="잔금" kind="balance" amount={o.balanceAmount} requestedAt={o.balanceRequestedAt} paidAt={o.balancePaidAt}
+                    taxDate={o.balanceTaxDate} taxNo={o.balanceTaxNo} verified={o.balanceVerified} deliveryDates={o.balanceDeliveryDates}
+                    onPaid={() => orderAct(o, "balance-paid")} onUnpaid={() => orderAct(o, "balance-unpaid")}
+                    onVerify={() => orderAct(o, "balance-verify")} onUnverify={() => orderAct(o, "balance-unverify")} />
                 </div>
               )}
 

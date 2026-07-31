@@ -901,9 +901,14 @@ model ErpVendorOrder {
   prepayRequestedAt  DateTime?
   prepayPaidAt       DateTime?
   prepayTaxDate      String?
+  prepayTaxNo        String? // 세금계산서 승인번호
+  prepayVerified     Boolean   @default(false) // 브로제이(경영지원) 계산서 더블체크
   balanceRequestedAt DateTime?
   balancePaidAt      DateTime?
   balanceTaxDate     String?
+  balanceTaxNo       String?
+  balanceVerified    Boolean   @default(false)
+  balanceDeliveryDates Json    @default("[]") // 잔금 청구 시 최종 납품일자들 (분할 납품 가능)
   deliveries         Json      @default("[]") // [{date, name, qty, note, by}]
   history            Json      @default("[]") // [{at, by, text}]
   note               String?

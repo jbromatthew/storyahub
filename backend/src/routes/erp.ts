@@ -2424,6 +2424,10 @@ erpRouter.patch("/vendor-orders/:id", async (req: AuthedRequest, res) => {
   else if (act === "done") { data.status = "done"; history = appendHistory(history, "broj", "발주를 완료 처리했습니다") as never[]; }
   else if (act === "cancel") { data.status = "cancelled"; history = appendHistory(history, "broj", "발주를 취소했습니다") as never[]; }
   else if (act === "reopen") { data.status = order.approvedAt ? "approved" : "requested"; history = appendHistory(history, "broj", "발주를 다시 열었습니다") as never[]; }
+  else if (act === "prepay-verify") { data.prepayVerified = true; history = appendHistory(history, "broj", "경영지원이 선금 세금계산서를 확인(더블체크)했습니다") as never[]; }
+  else if (act === "prepay-unverify") { data.prepayVerified = false; history = appendHistory(history, "broj", "선금 세금계산서 확인을 취소했습니다") as never[]; }
+  else if (act === "balance-verify") { data.balanceVerified = true; history = appendHistory(history, "broj", "경영지원이 잔금 세금계산서를 확인(더블체크)했습니다") as never[]; }
+  else if (act === "balance-unverify") { data.balanceVerified = false; history = appendHistory(history, "broj", "잔금 세금계산서 확인을 취소했습니다") as never[]; }
   else if (act === "force-approve" && order.status === "requested") {
     data.status = "approved";
     data.approvedAt = now;

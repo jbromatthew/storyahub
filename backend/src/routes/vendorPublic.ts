@@ -61,20 +61,46 @@ vendorPublicRouter.post("/:vendorId/orders/:id/approve", async (req: Request, re
   res.json({ order: updated });
 });
 
-// 선금/잔금 입금 요청
+// 선금/잔금 청구 신청 — 세금계산서 발행일자+승인번호 필수, 잔금은 최종 납품일자(분할 가능)까지
 vendorPublicRouter.post("/:vendorId/orders/:id/request-payment", async (req: Request, res: Response) => {
   const portal = await auth(req, res);
   if (!portal) return;
-  const kind = (req.body as Record<string, unknown>)?.kind === "balance" ? "balance" : "prepay";
+  const b = req.body as Record<string, unknown>;
+  const kind = b?.kind === "balance" ? "balance" : "prepay";
+  const taxDate = String(b?.taxDate ?? "").trim();
+  const taxNo = String(b?.taxNo ?? "").trim().slice(0, 40);
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRe.test(taxDate)) return res.status(400).json({ error: "세금계산서 발행일자를 입력하세요 (YYYY-MM-DD)" });
+  if (!taxNo) return res.status(400).json({ error: "세금계산서 승인번호를 입력하세요" });
+  const deliveryDates = (Array.isArray(b?.deliveryDates) ? b.deliveryDates : [])
+    .map((d) => String(d ?? "").trim())
+    .filter((d) => dateRe.test(d))
+    .slice(0, 20);
+  if (kind === "balance" && !deliveryDates.length) {
+    return res.status(400).json({ error: "최종 납품일자를 1개 이상 입력하세요 (분할 납품 시 여러 날짜)" });
+  }
   const order = await prisma.erpVendorOrder.findFirst({ where: { id: req.params.id, vendorId: portal.id } });
   if (!order) return res.status(404).json({ error: "발주를 찾을 수 없습니다" });
-  if (order.status === "requested") return res.status(400).json({ error: "발주 승인 후 요청할 수 있습니다" });
+  if (order.status === "requested") return res.status(400).json({ error: "발주 승인 후 청구할 수 있습니다" });
   const label = kind === "prepay" ? "선금" : "잔금";
+  const histText =
+    `${portal.name}가 ${label} 청구를 신청했습니다 — 계산서 ${taxDate} · 승인번호 ${taxNo}` +
+    (kind === "balance" ? ` · 납품일 ${deliveryDates.join(", ")}` : "");
   const data: Record<string, unknown> = {
-    history: appendHistory(order.history, "vendor", `${portal.name}가 ${label} 입금을 요청했습니다`),
+    history: appendHistory(order.history, "vendor", histText),
   };
-  if (kind === "prepay") data.prepayRequestedAt = new Date();
-  else data.balanceRequestedAt = new Date();
+  if (kind === "prepay") {
+    data.prepayRequestedAt = new Date();
+    data.prepayTaxDate = taxDate;
+    data.prepayTaxNo = taxNo;
+    data.prepayVerified = false;
+  } else {
+    data.balanceRequestedAt = new Date();
+    data.balanceTaxDate = taxDate;
+    data.balanceTaxNo = taxNo;
+    data.balanceVerified = false;
+    data.balanceDeliveryDates = deliveryDates;
+  }
   const updated = await prisma.erpVendorOrder.update({ where: { id: order.id }, data: data as never });
   res.json({ order: updated });
 });
@@ -89,16 +115,17 @@ vendorPublicRouter.post("/:vendorId/orders/:id/tax-date", async (req: Request, r
   if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "날짜 형식은 YYYY-MM-DD" });
   const order = await prisma.erpVendorOrder.findFirst({ where: { id: req.params.id, vendorId: portal.id } });
   if (!order) return res.status(404).json({ error: "발주를 찾을 수 없습니다" });
+  const taxNo = typeof b?.taxNo === "string" ? b.taxNo.trim().slice(0, 40) : undefined;
   const label = kind === "prepay" ? "선금" : "잔금";
   const data: Record<string, unknown> = {
     history: appendHistory(
       order.history,
       "vendor",
-      date ? `${label} 세금계산서 발행일 기록: ${date}` : `${label} 세금계산서 발행일을 지웠습니다`
+      date ? `${label} 세금계산서 정보 수정: ${date}${taxNo ? ` · 승인번호 ${taxNo}` : ""}` : `${label} 세금계산서 발행일을 지웠습니다`
     ),
   };
-  if (kind === "prepay") data.prepayTaxDate = date || null;
-  else data.balanceTaxDate = date || null;
+  if (kind === "prepay") { data.prepayTaxDate = date || null; if (taxNo !== undefined) data.prepayTaxNo = taxNo || null; }
+  else { data.balanceTaxDate = date || null; if (taxNo !== undefined) data.balanceTaxNo = taxNo || null; }
   const updated = await prisma.erpVendorOrder.update({ where: { id: order.id }, data: data as never });
   res.json({ order: updated });
 });
