@@ -2401,6 +2401,20 @@ erpRouter.patch("/vendor-orders/:id", async (req: AuthedRequest, res) => {
   else if (act === "done") { data.status = "done"; history = appendHistory(history, "broj", "발주를 완료 처리했습니다") as never[]; }
   else if (act === "cancel") { data.status = "cancelled"; history = appendHistory(history, "broj", "발주를 취소했습니다") as never[]; }
   else if (act === "reopen") { data.status = order.approvedAt ? "approved" : "requested"; history = appendHistory(history, "broj", "발주를 다시 열었습니다") as never[]; }
+  else if (act === "force-approve" && order.status === "requested") {
+    data.status = "approved";
+    data.approvedAt = now;
+    history = appendHistory(history, "broj", "브로제이가 기존 진행 건으로 승인 처리했습니다") as never[];
+  }
+  const taxRe = /^\d{4}-\d{2}-\d{2}$/;
+  if (typeof b.prepayTaxDate === "string" && (b.prepayTaxDate === "" || taxRe.test(b.prepayTaxDate))) {
+    data.prepayTaxDate = b.prepayTaxDate || null;
+    if (b.prepayTaxDate) history = appendHistory(history, "broj", `선금 세금계산서 발행일 기록: ${b.prepayTaxDate}`) as never[];
+  }
+  if (typeof b.balanceTaxDate === "string" && (b.balanceTaxDate === "" || taxRe.test(b.balanceTaxDate))) {
+    data.balanceTaxDate = b.balanceTaxDate || null;
+    if (b.balanceTaxDate) history = appendHistory(history, "broj", `잔금 세금계산서 발행일 기록: ${b.balanceTaxDate}`) as never[];
+  }
   if (b.note !== undefined) data.note = typeof b.note === "string" ? b.note.trim().slice(0, 500) || null : null;
   if (Array.isArray(b.items) && order.status === "requested") {
     const items = sanitizeVendorItems(b.items);
