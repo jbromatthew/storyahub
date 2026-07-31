@@ -8752,7 +8752,7 @@ export function VendorOrdersView() {
   const [pinDraft, setPinDraft] = useState("");
   const [productsDraft, setProductsDraft] = useState([]);
   const [delivery, setDelivery] = useState(null);
-  const [openHistory, setOpenHistory] = useState(null);
+  const [expandedOrder, setExpandedOrder] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -8924,98 +8924,135 @@ export function VendorOrdersView() {
       {loading ? (
         <div className="spinner" />
       ) : (
-        orders.map((o) => {
-          const st = VENDOR_STATUS[o.status] || VENDOR_STATUS.requested;
-          const items = Array.isArray(o.items) ? o.items : [];
-          const deliveries = Array.isArray(o.deliveries) ? o.deliveries : [];
-          const history = Array.isArray(o.history) ? o.history : [];
-          const deliveredByName = {};
-          for (const d of deliveries) deliveredByName[d.name] = (deliveredByName[d.name] || 0) + d.qty;
-          return (
-            <div key={o.id} className="card" style={{ marginTop: 12, padding: 16 }}>
-              <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <strong>발주 {o.orderDate}</strong>
-                <span className={"erp-badge " + st.cls}>{st.label}</span>
-                <span style={{ marginLeft: "auto", fontWeight: 800 }}>{formatWon(o.totalAmount)}</span>
-              </div>
-              <table className="erp-tbl" style={{ minWidth: 0, marginTop: 8 }}>
-                <tbody>
-                  {items.map((it, i) => (
-                    <tr key={i}>
-                      <td>{it.name}</td>
-                      <td className="num">{it.qty}대 × {formatWon(it.unitPrice)}</td>
-                      <td className="num" style={{ fontWeight: 700 }}>{formatWon(it.amount)}</td>
-                      <td className="num" style={{ fontSize: 12, color: (deliveredByName[it.name] || 0) >= it.qty ? "#0D7A3E" : "var(--muted)" }}>입고 {deliveredByName[it.name] || 0}/{it.qty}</td>
+        <div className="erp-tbl-wrap" style={{ marginTop: 12 }}>
+          <table className="erp-tbl">
+            <thead>
+              <tr>
+                <th className="shrink">발주일</th>
+                <th>제품</th>
+                <th className="shrink num">합계</th>
+                <th className="shrink ctr">선금</th>
+                <th className="shrink ctr">잔금</th>
+                <th className="shrink ctr">입고</th>
+                <th className="shrink ctr">상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((o) => {
+                const st = VENDOR_STATUS[o.status] || VENDOR_STATUS.requested;
+                const items = Array.isArray(o.items) ? o.items : [];
+                const deliveries = Array.isArray(o.deliveries) ? o.deliveries : [];
+                const history = Array.isArray(o.history) ? o.history : [];
+                const deliveredByName = {};
+                for (const d of deliveries) deliveredByName[d.name] = (deliveredByName[d.name] || 0) + d.qty;
+                const totalQty = items.reduce((s2, it) => s2 + it.qty, 0);
+                const totalDelivered = deliveries.reduce((s2, d) => s2 + d.qty, 0);
+                const payBadge = (requestedAt, paidAt, verified) => paidAt
+                  ? <span className="erp-badge green">완료</span>
+                  : requestedAt
+                    ? <span className="erp-badge orange">청구됨{verified ? " ✓" : ""}</span>
+                    : <span style={{ color: "var(--muted)" }}>—</span>;
+                const open = expandedOrder === o.id;
+                return (
+                  <React.Fragment key={o.id}>
+                    <tr className="clickable" onClick={() => setExpandedOrder(open ? null : o.id)}>
+                      <td className="shrink" style={{ fontWeight: 700 }}>{o.orderDate}</td>
+                      <td>
+                        <div className="cell-ttl">{items.map((it) => `${it.name} ×${it.qty}`).join(", ") || "-"}</div>
+                        {o.note && <div className="cell-sub">{o.note}</div>}
+                      </td>
+                      <td className="shrink num" style={{ fontWeight: 800 }}>{formatWon(o.totalAmount)}</td>
+                      <td className="shrink ctr">{payBadge(o.prepayRequestedAt, o.prepayPaidAt, o.prepayVerified)}</td>
+                      <td className="shrink ctr">{payBadge(o.balanceRequestedAt, o.balancePaidAt, o.balanceVerified)}</td>
+                      <td className="shrink ctr" style={{ color: totalDelivered >= totalQty && totalQty > 0 ? "#0D7A3E" : "var(--muted)", fontWeight: 700 }}>{totalDelivered}/{totalQty}</td>
+                      <td className="shrink ctr"><span className={"erp-badge " + st.cls}>{st.label}</span></td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                    {open && (
+                      <tr>
+                        <td colSpan={7} style={{ background: "var(--sand, #F7F3EC)", padding: "12px 16px" }}>
+                          <table className="erp-tbl" style={{ minWidth: 0, background: "#fff" }}>
+                            <tbody>
+                              {items.map((it, i) => (
+                                <tr key={i}>
+                                  <td>{it.name}</td>
+                                  <td className="num">{it.qty}대 × {formatWon(it.unitPrice)}</td>
+                                  <td className="num" style={{ fontWeight: 700 }}>{formatWon(it.amount)}</td>
+                                  <td className="num" style={{ fontSize: 12, color: (deliveredByName[it.name] || 0) >= it.qty ? "#0D7A3E" : "var(--muted)" }}>입고 {deliveredByName[it.name] || 0}/{it.qty}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
 
-              {o.status !== "requested" && o.status !== "cancelled" && (
-                <div style={{ marginTop: 8 }}>
-                  <VendorPayLine label="선금" kind="prepay" amount={o.prepayAmount} requestedAt={o.prepayRequestedAt} paidAt={o.prepayPaidAt}
-                    taxDate={o.prepayTaxDate} taxNo={o.prepayTaxNo} verified={o.prepayVerified}
-                    onPaid={() => orderAct(o, "prepay-paid")} onUnpaid={() => orderAct(o, "prepay-unpaid")}
-                    onVerify={() => orderAct(o, "prepay-verify")} onUnverify={() => orderAct(o, "prepay-unverify")} />
-                  <VendorPayLine label="잔금" kind="balance" amount={o.balanceAmount} requestedAt={o.balanceRequestedAt} paidAt={o.balancePaidAt}
-                    taxDate={o.balanceTaxDate} taxNo={o.balanceTaxNo} verified={o.balanceVerified} deliveryDates={o.balanceDeliveryDates}
-                    onPaid={() => orderAct(o, "balance-paid")} onUnpaid={() => orderAct(o, "balance-unpaid")}
-                    onVerify={() => orderAct(o, "balance-verify")} onUnverify={() => orderAct(o, "balance-unverify")} />
-                </div>
-              )}
+                          {o.status !== "requested" && o.status !== "cancelled" && (
+                            <div style={{ marginTop: 8 }}>
+                              <VendorPayLine label="선금" kind="prepay" amount={o.prepayAmount} requestedAt={o.prepayRequestedAt} paidAt={o.prepayPaidAt}
+                                taxDate={o.prepayTaxDate} taxNo={o.prepayTaxNo} verified={o.prepayVerified}
+                                onPaid={() => orderAct(o, "prepay-paid")} onUnpaid={() => orderAct(o, "prepay-unpaid")}
+                                onVerify={() => orderAct(o, "prepay-verify")} onUnverify={() => orderAct(o, "prepay-unverify")} />
+                              <VendorPayLine label="잔금" kind="balance" amount={o.balanceAmount} requestedAt={o.balanceRequestedAt} paidAt={o.balancePaidAt}
+                                taxDate={o.balanceTaxDate} taxNo={o.balanceTaxNo} verified={o.balanceVerified} deliveryDates={o.balanceDeliveryDates}
+                                onPaid={() => orderAct(o, "balance-paid")} onUnpaid={() => orderAct(o, "balance-unpaid")}
+                                onVerify={() => orderAct(o, "balance-verify")} onUnverify={() => orderAct(o, "balance-unverify")} />
+                            </div>
+                          )}
 
-              <div className="row" style={{ gap: 6, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
-                {o.status === "requested" && <span className="small" style={{ color: "var(--muted)" }}>크라이저 승인 대기 중…</span>}
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDelivery(delivery?.orderId === o.id ? null : { orderId: o.id, date: fmtDateYmd(new Date()), name: items[0]?.name || "", qty: "", note: "" })}>📦 입고 기록</button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpenHistory(openHistory === o.id ? null : o.id)}>히스토리 {history.length}</button>
-                <span style={{ marginLeft: "auto" }} />
-                {o.status === "approved" && <button type="button" className="btn btn-ghost btn-sm" onClick={() => orderAct(o, "done")}>완료 처리</button>}
-                {(o.status === "requested" || o.status === "approved") && <button type="button" className="btn btn-ghost btn-sm" onClick={() => orderAct(o, "cancel")}>취소</button>}
-                {(o.status === "done" || o.status === "cancelled") && <button type="button" className="btn btn-ghost btn-sm" onClick={() => orderAct(o, "reopen")}>다시 열기</button>}
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeOrder(o)}>삭제</button>
-              </div>
+                          <div className="row" style={{ gap: 6, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+                            {o.status === "requested" && <span className="small" style={{ color: "var(--muted)" }}>크라이저 승인 대기 중…</span>}
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDelivery(delivery?.orderId === o.id ? null : { orderId: o.id, date: fmtDateYmd(new Date()), name: items[0]?.name || "", qty: "", note: "" })}>📦 입고 기록</button>
+                            <span style={{ marginLeft: "auto" }} />
+                            {o.status === "approved" && <button type="button" className="btn btn-ghost btn-sm" onClick={() => orderAct(o, "done")}>완료 처리</button>}
+                            {(o.status === "requested" || o.status === "approved") && <button type="button" className="btn btn-ghost btn-sm" onClick={() => orderAct(o, "cancel")}>취소</button>}
+                            {(o.status === "done" || o.status === "cancelled") && <button type="button" className="btn btn-ghost btn-sm" onClick={() => orderAct(o, "reopen")}>다시 열기</button>}
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeOrder(o)}>삭제</button>
+                          </div>
 
-              {delivery?.orderId === o.id && (
-                <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                  <input type="date" className="input" style={{ flex: "0 0 145px" }} value={delivery.date} onChange={(e) => setDelivery((d) => ({ ...d, date: e.target.value }))} />
-                  <select className="input" style={{ flex: "1 1 150px" }} value={delivery.name} onChange={(e) => setDelivery((d) => ({ ...d, name: e.target.value }))}>
-                    {items.map((it, i) => <option key={i} value={it.name}>{it.name}</option>)}
-                  </select>
-                  <input className="input" style={{ flex: "0 0 80px" }} inputMode="numeric" placeholder="수량" value={delivery.qty} onChange={(e) => setDelivery((d) => ({ ...d, qty: e.target.value.replace(/[^\d]/g, "") }))} />
-                  <input className="input" style={{ flex: "1 1 130px" }} placeholder="메모 (선택)" value={delivery.note} onChange={(e) => setDelivery((d) => ({ ...d, note: e.target.value }))} />
-                  <button type="button" className="btn btn-accent btn-sm" disabled={!delivery.qty} onClick={() => {
-                    api.erpVendorOrderDelivery(o.id, { date: delivery.date, name: delivery.name, qty: Number(delivery.qty), note: delivery.note })
-                      .then((r) => { setOrders((p) => p.map((x) => (x.id === o.id ? r.order : x))); setDelivery(null); toastSuccess("입고 기록 저장"); })
-                      .catch(notifyError);
-                  }}>저장</button>
-                </div>
-              )}
+                          {delivery?.orderId === o.id && (
+                            <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                              <input type="date" className="input" style={{ flex: "0 0 145px" }} value={delivery.date} onChange={(e) => setDelivery((d) => ({ ...d, date: e.target.value }))} />
+                              <select className="input" style={{ flex: "1 1 150px" }} value={delivery.name} onChange={(e) => setDelivery((d) => ({ ...d, name: e.target.value }))}>
+                                {items.map((it, i) => <option key={i} value={it.name}>{it.name}</option>)}
+                              </select>
+                              <input className="input" style={{ flex: "0 0 80px" }} inputMode="numeric" placeholder="수량" value={delivery.qty} onChange={(e) => setDelivery((d) => ({ ...d, qty: e.target.value.replace(/[^\d]/g, "") }))} />
+                              <input className="input" style={{ flex: "1 1 130px" }} placeholder="메모 (선택)" value={delivery.note} onChange={(e) => setDelivery((d) => ({ ...d, note: e.target.value }))} />
+                              <button type="button" className="btn btn-accent btn-sm" disabled={!delivery.qty} onClick={() => {
+                                api.erpVendorOrderDelivery(o.id, { date: delivery.date, name: delivery.name, qty: Number(delivery.qty), note: delivery.note })
+                                  .then((r) => { setOrders((p) => p.map((x) => (x.id === o.id ? r.order : x))); setDelivery(null); toastSuccess("입고 기록 저장"); })
+                                  .catch(notifyError);
+                              }}>저장</button>
+                            </div>
+                          )}
 
-              {deliveries.length > 0 && (
-                <div style={{ marginTop: 6 }}>
-                  {deliveries.map((d, i) => (
-                    <div key={i} className="small" style={{ padding: "2px 0", color: "var(--muted)" }}>
-                      📦 {d.date} · {d.name} <strong style={{ color: "var(--ink)" }}>{d.qty}대</strong>{d.note ? ` · ${d.note}` : ""} ({d.by === "broj" ? "브로제이" : "크라이저"})
-                    </div>
-                  ))}
-                </div>
-              )}
+                          {deliveries.length > 0 && (
+                            <div style={{ marginTop: 6 }}>
+                              {deliveries.map((d, i) => (
+                                <div key={i} className="small" style={{ padding: "2px 0", color: "var(--muted)" }}>
+                                  📦 {d.date} · {d.name} <strong style={{ color: "var(--ink)" }}>{d.qty}대</strong>{d.note ? ` · ${d.note}` : ""} ({d.by === "broj" ? "브로제이" : "크라이저"})
+                                </div>
+                              ))}
+                            </div>
+                          )}
 
-              {openHistory === o.id && (
-                <div style={{ background: "var(--sand, #F7F3EC)", borderRadius: 10, padding: "8px 12px", marginTop: 8 }}>
-                  {[...history].reverse().map((h, i) => (
-                    <div key={i} className="small" style={{ padding: "2px 0" }}>
-                      <span style={{ color: "var(--muted)" }}>{new Date(h.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span> · {h.text}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {o.note && <div className="small" style={{ color: "var(--muted)", marginTop: 6 }}>메모: {o.note}</div>}
-            </div>
-          );
-        })
+                          {history.length > 0 && (
+                            <div style={{ background: "#fff", borderRadius: 10, padding: "8px 12px", marginTop: 8 }}>
+                              <div className="small" style={{ fontWeight: 800, marginBottom: 4 }}>히스토리</div>
+                              {[...history].reverse().map((h, i) => (
+                                <div key={i} className="small" style={{ padding: "2px 0" }}>
+                                  <span style={{ color: "var(--muted)" }}>{new Date(h.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span> · {h.text}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+              {!orders.length && <tr><td colSpan={7} className="erp-tbl-empty">발주 내역이 없습니다. 새 발주 요청으로 시작하세요.</td></tr>}
+            </tbody>
+          </table>
+        </div>
       )}
-      {!loading && !orders.length && <div className="small" style={{ textAlign: "center", padding: 30, color: "var(--muted)" }}>발주 내역이 없습니다. 새 발주 요청으로 시작하세요.</div>}
     </div>
   );
 }
