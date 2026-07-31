@@ -8710,6 +8710,8 @@ const VENDOR_STATUS = {
 };
 
 function VendorPayLine({ label, kind, amount, requestedAt, paidAt, taxDate, taxNo, verified, deliveryDates, onPaid, onUnpaid, onVerify, onUnverify }) {
+  const [payOpen, setPayOpen] = useState(false);
+  const [payDate, setPayDate] = useState(fmtDateYmd(new Date()));
   return (
     <div style={{ padding: "6px 0", borderTop: "1px dashed var(--line)" }}>
       <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -8728,7 +8730,15 @@ function VendorPayLine({ label, kind, amount, requestedAt, paidAt, taxDate, taxN
                 ? <button type="button" className="erp-badge" style={{ background: "#E8F1FB", color: "#1A5DAB", border: "none", cursor: "pointer", fontFamily: "inherit" }} title="클릭하면 확인 취소" onClick={onUnverify}>계산서 확인 ✓</button>
                 : <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 12 }} onClick={onVerify}>🧾 계산서 확인(더블체크)</button>
             )}
-            <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 12 }} onClick={onPaid}>입금 완료 처리</button>
+            {payOpen ? (
+              <span className="row" style={{ gap: 6, alignItems: "center" }}>
+                <input type="date" className="input" style={{ padding: "5px 8px", fontSize: 12.5 }} value={payDate} onChange={(e) => setPayDate(e.target.value)} />
+                <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 12 }} onClick={() => { onPaid(payDate); setPayOpen(false); }}>입금 확정</button>
+                <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 12 }} onClick={() => setPayOpen(false)}>취소</button>
+              </span>
+            ) : (
+              <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 12 }} onClick={() => setPayOpen(true)}>입금 완료 처리</button>
+            )}
           </>
         )}
       </div>
@@ -8753,6 +8763,7 @@ export function VendorOrdersView() {
   const [productsDraft, setProductsDraft] = useState([]);
   const [delivery, setDelivery] = useState(null);
   const [expandedOrder, setExpandedOrder] = useState(null);
+  const [panelPay, setPanelPay] = useState(null); // 입금 대기 패널 입금일 입력
 
   const load = useCallback(() => {
     setLoading(true);
@@ -8797,8 +8808,8 @@ export function VendorOrdersView() {
       .catch(notifyError);
   };
 
-  const orderAct = (o, action) => {
-    api.erpVendorOrderUpdate(o.id, { action })
+  const orderAct = (o, action, extra = {}) => {
+    api.erpVendorOrderUpdate(o.id, { action, ...extra })
       .then((r) => setOrders((p) => p.map((x) => (x.id === o.id ? r.order : x))))
       .catch(notifyError);
   };
@@ -8875,7 +8886,15 @@ export function VendorOrdersView() {
                 {p2.verified
                   ? <span className="erp-badge" style={{ background: "#E8F1FB", color: "#1A5DAB" }}>확인 ✓</span>
                   : <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11.5 }} onClick={() => orderAct(p2.o, `${p2.kind}-verify`)}>계산서 확인</button>}
-                <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 11.5 }} onClick={() => orderAct(p2.o, `${p2.kind}-paid`)}>입금 완료</button>
+                {panelPay?.orderId === p2.o.id && panelPay?.kind === p2.kind ? (
+                  <>
+                    <input type="date" className="input" style={{ padding: "4px 8px", fontSize: 12 }} value={panelPay.date} onChange={(e) => setPanelPay((x) => ({ ...x, date: e.target.value }))} />
+                    <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 11.5 }} onClick={() => { orderAct(p2.o, `${p2.kind}-paid`, { paidDate: panelPay.date }); setPanelPay(null); }}>확정</button>
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11.5 }} onClick={() => setPanelPay(null)}>취소</button>
+                  </>
+                ) : (
+                  <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 11.5 }} onClick={() => setPanelPay({ orderId: p2.o.id, kind: p2.kind, date: fmtDateYmd(new Date()) })}>입금 완료</button>
+                )}
               </div>
             ))}
           </div>
@@ -8987,11 +9006,11 @@ export function VendorOrdersView() {
                             <div style={{ marginTop: 8 }}>
                               <VendorPayLine label="선금" kind="prepay" amount={o.prepayAmount} requestedAt={o.prepayRequestedAt} paidAt={o.prepayPaidAt}
                                 taxDate={o.prepayTaxDate} taxNo={o.prepayTaxNo} verified={o.prepayVerified}
-                                onPaid={() => orderAct(o, "prepay-paid")} onUnpaid={() => orderAct(o, "prepay-unpaid")}
+                                onPaid={(d) => orderAct(o, "prepay-paid", { paidDate: d })} onUnpaid={() => orderAct(o, "prepay-unpaid")}
                                 onVerify={() => orderAct(o, "prepay-verify")} onUnverify={() => orderAct(o, "prepay-unverify")} />
                               <VendorPayLine label="잔금" kind="balance" amount={o.balanceAmount} requestedAt={o.balanceRequestedAt} paidAt={o.balancePaidAt}
                                 taxDate={o.balanceTaxDate} taxNo={o.balanceTaxNo} verified={o.balanceVerified} deliveryDates={o.balanceDeliveryDates}
-                                onPaid={() => orderAct(o, "balance-paid")} onUnpaid={() => orderAct(o, "balance-unpaid")}
+                                onPaid={(d) => orderAct(o, "balance-paid", { paidDate: d })} onUnpaid={() => orderAct(o, "balance-unpaid")}
                                 onVerify={() => orderAct(o, "balance-verify")} onUnverify={() => orderAct(o, "balance-unverify")} />
                             </div>
                           )}

@@ -2417,9 +2417,13 @@ erpRouter.patch("/vendor-orders/:id", async (req: AuthedRequest, res) => {
   const data: Record<string, unknown> = {};
   const act = typeof b.action === "string" ? b.action : "";
   const now = new Date();
-  if (act === "prepay-paid") { data.prepayPaidAt = now; history = appendHistory(history, "broj", "브로제이가 선금 입금을 완료 처리했습니다") as never[]; }
+  // 입금일 직접 입력 (없으면 오늘)
+  const paidDateStr = typeof b.paidDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.paidDate) ? b.paidDate : null;
+  const paidAt = paidDateStr ? new Date(`${paidDateStr}T09:00:00+09:00`) : now;
+  const paidLabel = paidDateStr || now.toISOString().slice(0, 10);
+  if (act === "prepay-paid") { data.prepayPaidAt = paidAt; history = appendHistory(history, "broj", `브로제이가 선금 입금을 완료했습니다 (입금일 ${paidLabel})`) as never[]; }
   else if (act === "prepay-unpaid") { data.prepayPaidAt = null; history = appendHistory(history, "broj", "선금 입금 완료를 취소했습니다") as never[]; }
-  else if (act === "balance-paid") { data.balancePaidAt = now; history = appendHistory(history, "broj", "브로제이가 잔금 입금을 완료 처리했습니다") as never[]; }
+  else if (act === "balance-paid") { data.balancePaidAt = paidAt; history = appendHistory(history, "broj", `브로제이가 잔금 입금을 완료했습니다 (입금일 ${paidLabel})`) as never[]; }
   else if (act === "balance-unpaid") { data.balancePaidAt = null; history = appendHistory(history, "broj", "잔금 입금 완료를 취소했습니다") as never[]; }
   else if (act === "done") { data.status = "done"; history = appendHistory(history, "broj", "발주를 완료 처리했습니다") as never[]; }
   else if (act === "cancel") { data.status = "cancelled"; history = appendHistory(history, "broj", "발주를 취소했습니다") as never[]; }
