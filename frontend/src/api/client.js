@@ -363,6 +363,7 @@ export const api = {
   erpIotLeadDelete: (id) => req(`/erp/iot-leads/${id}`, { method: "DELETE" }),
   // 크라이저 발주 (소유자 전용)
   erpVendorOrders: () => req("/erp/vendor-orders"),
+  erpVendorOrdersAccess: () => req("/erp/vendor-orders/access"),
   erpVendorPortalUpdate: (body) => req("/erp/vendor-orders/portal", { method: "PUT", body }),
   erpVendorOrderCreate: (body) => req("/erp/vendor-orders", { method: "POST", body }),
   erpVendorOrderUpdate: (id, body) => req(`/erp/vendor-orders/${id}`, { method: "PATCH", body }),

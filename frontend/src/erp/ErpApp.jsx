@@ -43,7 +43,7 @@ function erpModuleLabel(id) {
 
 function ErpNav({ tab, kbView, onSelect, onLogout, user, hiddenIds, collapsedGroups, onToggleGroup }) {
   const showAdmin = canAccessErpAdmin(user);
-  const items = ERP_MODULES.filter((m) => (!m.ownerOnly || user?.erpAccess?.isOwner) && (!m.execOnly || isErpExec(user)) && !(m.consultGate && !hiddenIds?.consultVisible));
+  const items = ERP_MODULES.filter((m) => (!m.ownerOnly || user?.erpAccess?.isOwner) && (!m.execOnly || isErpExec(user)) && !(m.consultGate && !hiddenIds?.consultVisible) && !(m.vendorGate && !hiddenIds?.vendorVisible));
   // 그룹 헤더가 있는 그룹만 접기 대상 (지식경영 등 헤더 없는 항목은 항상 표시)
   const collapsibleGroups = new Set(items.filter((m) => m.groupLabel).map((m) => m.group));
   const isClosed = (g) => collapsibleGroups.has(g) && (collapsedGroups || []).includes(g);
@@ -147,9 +147,12 @@ export default function ErpApp() {
   const [fileViewer, setFileViewer] = useState(null);
   const [consultVisible, setConsultVisible] = useState(false); // 상담자료 컨펌 메뉴 노출 (세일즈팀·CEO·COO)
 
+  const [vendorVisible, setVendorVisible] = useState(false); // 크라이저 발주 (소유자·경영지원·세일즈)
+
   useEffect(() => {
     if (boot !== "app") return;
     api.erpConsultAccess().then((a) => setConsultVisible(!!a?.visible)).catch(() => setConsultVisible(false));
+    api.erpVendorOrdersAccess().then((a) => setVendorVisible(!!a?.visible)).catch(() => setVendorVisible(false));
   }, [boot]);
 
   // 첫 화면 = 각자 볼 수 있는 첫 메뉴 (matthew·david는 일일보고, 그 외는 첫 노출 메뉴)
@@ -373,7 +376,7 @@ export default function ErpApp() {
               </button>
             </div>
             <nav className="app-sidenav">
-              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} user={user} hiddenIds={{ consultVisible }} collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup} />
+              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} user={user} hiddenIds={{ consultVisible, vendorVisible }} collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup} />
             </nav>
             <div className="app-sidebar-foot" style={{ fontSize: 12, color: "var(--muted)", padding: "12px 10px" }}>
               <div>지식경영 · 회의록 · OKR · 문의/결제</div>
@@ -423,7 +426,7 @@ export default function ErpApp() {
               </button>
             </div>
             <nav className="mobile-drawer-nav">
-              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} onLogout={handleLogout} user={user} hiddenIds={{ consultVisible }} collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup} />
+              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} onLogout={handleLogout} user={user} hiddenIds={{ consultVisible, vendorVisible }} collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup} />
             </nav>
           </aside>
         </>

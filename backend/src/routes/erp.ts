@@ -2327,10 +2327,33 @@ erpRouter.delete("/iot-leads/:id", async (req: AuthedRequest, res) => {
   res.json({ ok: true });
 });
 
-/* ===================== 크라이저 발주 관리 (브로제이 측, 소유자 전용) ===================== */
+/* ===================== 크라이저 발주 관리 (브로제이 측) =====================
+   접근: 소유자 + 경영지원팀 + 세일즈팀. 포털 설정·삭제는 소유자만. */
+
+async function vendorOrderAccess(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+  if (isErpOwner(user?.email)) return true;
+  const email = (user?.email || "").trim().toLowerCase();
+  const emp = await prisma.erpEmployee.findFirst({
+    where: { OR: [{ userId }, { email }] },
+    include: { department: true },
+  });
+  const dept = emp?.department?.name || "";
+  return /세일즈|영업|sales|경영지원|경영/i.test(dept);
+}
+
+async function requireVendorAccess(req: AuthedRequest, res: Response): Promise<boolean> {
+  if (await vendorOrderAccess(req.userId!)) return true;
+  res.status(403).json({ error: "경영지원팀·세일즈팀 전용 메뉴입니다" });
+  return false;
+}
+
+erpRouter.get("/vendor-orders/access", async (req: AuthedRequest, res) => {
+  res.json({ visible: await vendorOrderAccess(req.userId!) });
+});
 
 erpRouter.get("/vendor-orders", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  if (!(await requireVendorAccess(req, res))) return;
   const portal = await getVendorPortal();
   const orders = await prisma.erpVendorOrder.findMany({
     where: { vendorId: portal.id },
@@ -2365,7 +2388,7 @@ erpRouter.put("/vendor-orders/portal", async (req: AuthedRequest, res) => {
 });
 
 erpRouter.post("/vendor-orders", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  if (!(await requireVendorAccess(req, res))) return;
   const b = (req.body ?? {}) as Record<string, unknown>;
   const items = sanitizeVendorItems(b.items);
   if (!items.length) return res.status(400).json({ error: "제품과 수량을 입력하세요" });
@@ -2386,7 +2409,7 @@ erpRouter.post("/vendor-orders", async (req: AuthedRequest, res) => {
 });
 
 erpRouter.patch("/vendor-orders/:id", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  if (!(await requireVendorAccess(req, res))) return;
   const b = (req.body ?? {}) as Record<string, unknown>;
   const order = await prisma.erpVendorOrder.findUnique({ where: { id: req.params.id } });
   if (!order) return res.status(404).json({ error: "발주를 찾을 수 없습니다" });
@@ -2429,7 +2452,7 @@ erpRouter.patch("/vendor-orders/:id", async (req: AuthedRequest, res) => {
 });
 
 erpRouter.post("/vendor-orders/:id/delivery", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  if (!(await requireVendorAccess(req, res))) return;
   const entry = sanitizeDelivery(req.body, "broj");
   if (!entry) return res.status(400).json({ error: "날짜/제품/수량을 확인하세요" });
   const order = await prisma.erpVendorOrder.findUnique({ where: { id: req.params.id } });
