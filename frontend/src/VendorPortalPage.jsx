@@ -94,15 +94,29 @@ export default function VendorPortalPage({ vendorId }) {
   useEffect(() => {
     document.title = "브로제이 발주 포털";
     fetch(`${API}/public/vendor/${vendorId}/preview`).then((r) => (r.ok ? r.json() : null)).then((j) => j?.name && setName(j.name)).catch(() => {});
+    // 같은 탭에서는 PIN 재입력 없이 자동 접속
+    try {
+      const saved = sessionStorage.getItem(`vendor_pin_${vendorId}`);
+      if (saved) {
+        setPin(saved);
+        post(`${vendorId}/orders`, { pin: saved }).then(setData).catch(() => sessionStorage.removeItem(`vendor_pin_${vendorId}`));
+      }
+    } catch { /* ignore */ }
   }, [vendorId]);
 
-  const load = async () => {
-    const j = await post(`${vendorId}/orders`, { pin: pin.trim() });
+  const load = async (p = pin) => {
+    const j = await post(`${vendorId}/orders`, { pin: p.trim() });
     setData(j);
+    try { sessionStorage.setItem(`vendor_pin_${vendorId}`, p.trim()); } catch { /* ignore */ }
   };
 
   const verify = async () => {
     setErr(""); setBusy("verify");
+    try { await load(); } catch (e) { setErr(e.message); } finally { setBusy(""); }
+  };
+
+  const refresh = async () => {
+    setErr(""); setBusy("refresh");
     try { await load(); } catch (e) { setErr(e.message); } finally { setBusy(""); }
   };
 
@@ -226,6 +240,9 @@ export default function VendorPortalPage({ vendorId }) {
           </button>
         ))}
         <input style={{ ...inp, flex: "1 1 150px", padding: "8px 12px", fontSize: 13 }} placeholder="🔍 제품·날짜 검색" value={q} onChange={(e) => setQ(e.target.value)} />
+        <button type="button" style={{ ...btnGhost, padding: "7px 12px", fontSize: 12.5 }} disabled={busy === "refresh"} onClick={refresh} title="최신 내역 다시 불러오기">
+          {busy === "refresh" ? "새로고침 중…" : "⟳ 새로고침"}
+        </button>
       </div>
 
       {err && <div style={{ color: "#C5221F", marginTop: 12, fontSize: 14, fontWeight: 700 }}>{err}</div>}
