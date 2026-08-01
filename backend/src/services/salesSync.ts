@@ -52,6 +52,9 @@ async function replaceMonthRows(
   const now = new Date();
 
   return prisma.$transaction(async (tx) => {
+    // 같은 월을 동시에 동기화하면 (deleteMany→createMany가 겹쳐) unique 충돌이 나므로
+    // 트랜잭션 단위 advisory lock으로 직렬화한다. (커밋 시 자동 해제)
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`sales-sync:${kind}:${spreadsheetId}:${sheetName}`}, 0))`;
     let deleted = 0;
     const chunkSize = 500;
 
@@ -124,6 +127,7 @@ async function syncInquiryRawSheet(
   let deleted = 0;
 
   await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`sales-sync-raw:inquiry:${spreadsheetId}`}, 0))`;
     const existingMonths = await tx.erpSalesInquiry.findMany({
       where: { spreadsheetId },
       select: { sheetName: true },
@@ -217,6 +221,7 @@ async function syncOrderRawSheet(
   let deleted = 0;
 
   await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`sales-sync-raw:order:${spreadsheetId}`}, 0))`;
     const existingMonths = await tx.erpSalesOrder.findMany({
       where: { spreadsheetId },
       select: { sheetName: true },
