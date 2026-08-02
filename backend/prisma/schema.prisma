@@ -730,6 +730,7 @@ model ErpConstructionQuote {
   note             String?
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
+  stockMoves       ErpConstructionStockMove[]
 
   @@index([status])
 }
@@ -768,6 +769,8 @@ model ErpConstructionStockMove {
   id           String               @id @default(cuid())
   stockId      String
   stock        ErpConstructionStock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  quoteId      String?              // 공사 확정 자동 차감 출처 견적 (수동 기록은 null)
+  quote        ErpConstructionQuote? @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   date         String               // YYYY-MM-DD
   kind         String               @default("in") // in(입고/매입) | out(출고/사용)
   qty          Int                  @default(0)
@@ -777,6 +780,7 @@ model ErpConstructionStockMove {
   createdAt    DateTime             @default(now())
 
   @@index([stockId])
+  @@index([quoteId])
 }
 
 // 상담자료(매크로) 컨펌 — 세일즈팀 등록, CEO/COO 승인 체크

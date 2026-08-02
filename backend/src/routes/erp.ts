@@ -1553,6 +1553,44 @@ erpRouter.delete("/construction/teams/:id", async (req: AuthedRequest, res) => {
   res.json({ ok: true });
 });
 
+// 공사 확정(이후 단계 포함)이면 부품 투입 수량만큼 재고 out 이동을 자동 생성한다.
+// 견적의 자동 이동을 전부 지우고 다시 만드는 방식이라 수량 수정·확정 취소에도 재고가 맞는다.
+const STOCK_DEDUCT_STATUSES = new Set(["confirmed", "ongoing", "done", "billing", "settled"]);
+async function syncQuoteStockMoves(quoteId: string) {
+  const quote = await prisma.erpConstructionQuote.findUnique({
+    where: { id: quoteId },
+    include: { apartment: true },
+  });
+  if (!quote) return;
+  await prisma.$transaction(async (tx) => {
+    await tx.erpConstructionStockMove.deleteMany({ where: { quoteId } });
+    if (!STOCK_DEDUCT_STATUSES.has(quote.status)) return;
+    const materials = (Array.isArray(quote.materials) ? quote.materials : []) as Array<{
+      stockId?: string | null; name?: string; qty?: number;
+    }>;
+    const stockIds = [...new Set(materials.map((m) => m?.stockId).filter((v): v is string => !!v))];
+    if (!stockIds.length) return;
+    const stocks = await tx.erpConstructionStock.findMany({
+      where: { id: { in: stockIds } },
+      select: { id: true },
+    });
+    const valid = new Set(stocks.map((s) => s.id));
+    const date = quote.startDate || new Date().toISOString().slice(0, 10);
+    const label = quote.apartment?.name || quote.title || "공사";
+    const rows = materials
+      .filter((m) => m?.stockId && valid.has(m.stockId) && Math.round(Number(m.qty) || 0) > 0)
+      .map((m) => ({
+        stockId: m.stockId as string,
+        quoteId,
+        date,
+        kind: "out",
+        qty: Math.round(Number(m.qty) || 0),
+        memo: `공사 확정 자동 차감 — ${label}`,
+      }));
+    if (rows.length) await tx.erpConstructionStockMove.createMany({ data: rows });
+  });
+}
+
 erpRouter.get("/construction/quotes", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
   const quotes = await prisma.erpConstructionQuote.findMany({
@@ -1583,6 +1621,7 @@ erpRouter.post("/construction/quotes", async (req: AuthedRequest, res) => {
     },
     include: { apartment: true },
   });
+  await syncQuoteStockMoves(quote.id);
   res.json(quote);
 });
 
@@ -1611,6 +1650,11 @@ erpRouter.patch("/construction/quotes/:id", async (req: AuthedRequest, res) => {
     },
     include: { apartment: true },
   });
+  // 재고 자동 차감에 영향을 주는 값이 바뀐 경우만 재계산
+  if (status !== undefined || materials !== undefined || startDate !== undefined ||
+      apartmentId !== undefined || title !== undefined) {
+    await syncQuoteStockMoves(quote.id);
+  }
   res.json(quote);
 });
 
@@ -1710,6 +1754,11 @@ erpRouter.post("/construction/stocks/:id/moves", async (req: AuthedRequest, res)
 
 erpRouter.delete("/construction/stock-moves/:id", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
+  const move = await prisma.erpConstructionStockMove.findUnique({ where: { id: req.params.id } });
+  if (!move) return res.json({ ok: true });
+  if (move.quoteId) {
+    return res.status(400).json({ error: "공사 확정 자동 차감 기록입니다. 견적의 부품 투입에서 수정하세요." });
+  }
   await prisma.erpConstructionStockMove.delete({ where: { id: req.params.id } });
   res.json({ ok: true });
 });

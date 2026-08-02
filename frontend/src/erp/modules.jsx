@@ -2525,7 +2525,7 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
               <button type="button" className="btn btn-ghost btn-sm" onClick={addBlankMaterial}>직접 입력</button>
             </div>
           </div>
-          <div className="small" style={{ color: "var(--muted)", margin: "6px 0 12px" }}>이 공사에 들어간 부품을 재고에서 선택하면 매입 평균단가로 원가가 채워집니다 (<strong>부가세 포함가</strong>로 입력). 마진 계산에 반영됩니다.</div>
+          <div className="small" style={{ color: "var(--muted)", margin: "6px 0 12px" }}>이 공사에 들어간 부품을 재고에서 선택하면 매입 평균단가로 원가가 채워집니다 (<strong>부가세 포함가</strong>로 입력). 마진 계산에 반영됩니다. <strong>공사 확정</strong> 단계가 되면 투입 수량만큼 재고에서 자동 출고(차감)되고, 수량을 고치거나 확정을 취소하면 재고도 함께 맞춰집니다.</div>
           {!(editing.materials || []).length ? (
             <div className="small" style={{ color: "var(--muted)" }}>투입 부품이 없습니다. 위에서 추가하세요.</div>
           ) : (
@@ -2923,8 +2923,12 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
                 <div style={{ marginTop: 10 }}>
                   {s.moves.map((m) => (
                     <div key={m.id} className="row between" style={{ padding: "7px 2px", borderTop: "1px solid var(--line-soft,#F3EFE9)", fontSize: 13 }}>
-                      <span>{m.date} · <strong style={{ color: m.kind === "in" ? "#0D7A3E" : "var(--accent-deep)" }}>{m.kind === "in" ? "입고" : "출고"} {m.qty.toLocaleString()}{s.unit}</strong>{m.unitPrice ? ` · 단가 ${m.unitPrice.toLocaleString()}${m.vatSeparate ? " (VAT별도)" : ""}` : ""}</span>
-                      <button type="button" className="cst-x" onClick={() => deleteMove(m.id)}>✕</button>
+                      <span>
+                        {m.date} · <strong style={{ color: m.kind === "in" ? "#0D7A3E" : "var(--accent-deep)" }}>{m.kind === "in" ? "입고" : "출고"} {m.qty.toLocaleString()}{s.unit}</strong>{m.unitPrice ? ` · 단가 ${m.unitPrice.toLocaleString()}${m.vatSeparate ? " (VAT별도)" : ""}` : ""}
+                        {m.quoteId ? <span className="pill" style={{ marginLeft: 6, fontSize: 11, padding: "1px 7px", background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 999 }}>공사 자동</span> : null}
+                        {m.memo ? <span style={{ color: "var(--muted)" }}> · {m.memo}</span> : null}
+                      </span>
+                      {m.quoteId ? null : <button type="button" className="cst-x" onClick={() => deleteMove(m.id)}>✕</button>}
                     </div>
                   ))}
                 </div>
