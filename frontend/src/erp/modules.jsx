@@ -6825,10 +6825,13 @@ function installSettleCalc(row) {
   const region = String(row.region || "").trim() || "지방"; // 지역 미지정 시 지방 단가
   const parts = [];
   const unknown = [];
-  let iot = /iot/i.test(String(row.plan || ""));
+  const iotHint = /iot|아이오티/i.test(String(row.plan || ""));
+  let iotUnparsed = false; // 장비명이 'IoT'뿐이라 계산 불가
+  let needElectrician = false; // 릴레이(배전반) 설치 시 전기기사 자동 추가
+  let hasElectrician = false;
 
-  if (/^A\.?S$/i.test(type)) return { total: 80000, parts: [{ label: "A.S 방문", amount: 80000 }], iot, unknown };
-  if (/통화소통|전화소통/.test(type)) return { total: 10000, parts: [{ label: "통화소통", amount: 10000 }], iot, unknown };
+  if (/^A\.?S$/i.test(type)) return { total: 80000, parts: [{ label: "A.S 방문", amount: 80000 }], iot: false, unknown };
+  if (/통화소통|전화소통/.test(type)) return { total: 10000, parts: [{ label: "통화소통", amount: 10000 }], iot: false, unknown };
 
   const items = [1, 2, 3].map((i) => {
     const name = String(row[`kiosk${i}`] || "").trim();
@@ -6839,7 +6842,16 @@ function installSettleCalc(row) {
   const mainUnits = []; // 70% 규칙 대상 (키오스크 본체)
   for (const it of items) {
     const n = it.name;
-    if (/iot|아이오티/i.test(n)) { iot = true; continue; }
+    // IoT 제품 — 설치팀 지급 단가(설치가격) × 수량
+    if (/허브|에어컨/.test(n)) { parts.push({ label: `${n} ×${it.qty} (IoT 설치비 4만)`, amount: 40000 * it.qty }); continue; }
+    if (/릴레이|배전반/.test(n)) { needElectrician = true; parts.push({ label: `${n} ×${it.qty} (IoT 설치비 14만)`, amount: 140000 * it.qty }); continue; }
+    if (/플러그/.test(n)) { parts.push({ label: `${n} ×${it.qty} (IoT 설치비 9천)`, amount: 9000 * it.qty }); continue; }
+    if (/전기기사/.test(n)) { hasElectrician = true; parts.push({ label: `${n} ×${it.qty}`, amount: 300000 * it.qty }); continue; }
+    if (/네트워크\s*\(?대|네트워크대/.test(n)) { parts.push({ label: `${n} ×${it.qty} (IoT)`, amount: 300000 * it.qty }); continue; }
+    if (/네트워크\s*\(?중|네트워크중/.test(n)) { parts.push({ label: `${n} ×${it.qty} (IoT)`, amount: 250000 * it.qty }); continue; }
+    if (/네트워크\s*\(?소|네트워크소/.test(n)) { parts.push({ label: `${n} ×${it.qty} (IoT)`, amount: 200000 * it.qty }); continue; }
+    if (/스피커/.test(n)) { parts.push({ label: `${n} ×${it.qty} (IoT 설치비 7만)`, amount: 70000 * it.qty }); continue; }
+    if (/iot|아이오티/i.test(n)) { iotUnparsed = true; continue; }
     if (/통화소통|전화소통/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 10000 * it.qty }); continue; }
     if (/스크린/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 500000 * it.qty }); continue; }
     if (/프로그/.test(n)) { parts.push({ label: `${n} ×${it.qty} (타석당)`, amount: 22000 * it.qty }); continue; }
@@ -6864,12 +6876,19 @@ function installSettleCalc(row) {
     parts.push({ label: `${u.name} (${region}${idx > 0 ? " · 추가 70%" : ""})`, amount: idx === 0 ? u.unit : Math.round(u.unit * 0.7) });
   });
 
+  // 릴레이(배전반) 설치에는 전기기사 1회 자동 포함 (별도 입력 시 중복 방지)
+  if (needElectrician && !hasElectrician) {
+    parts.push({ label: "전기기사 (배전반 설치)", amount: 300000 });
+  }
+
   if (/제주/.test(String(row.address || ""))) {
     const m = row.installDate ? Number(String(row.installDate).slice(5, 7)) : 0;
     const high = m >= 4 && m <= 10;
     parts.push({ label: `제주 출장비 (${high ? "성수기 4~10월" : "비수기 11~3월"})`, amount: high ? 500000 : 350000 });
   }
 
+  // 장비를 하나도 해석하지 못한 IoT 건만 'IoT 계산기 별도 계산' 안내
+  const iot = (iotHint || iotUnparsed) && !parts.length;
   return { total: parts.reduce((a, p) => a + p.amount, 0), parts, iot, unknown };
 }
 
@@ -7113,7 +7132,7 @@ export function InstallScheduleView() {
               <button type="button" className="btn btn-sm btn-ghost" disabled={bulkBusy} onClick={bulkFillSettle}>{bulkBusy ? "채우는 중…" : "빈 정산 자동 채우기"}</button>
             </div>
             <div className="small" style={{ color: "var(--muted)", margin: "6px 0 10px", lineHeight: 1.6 }}>
-              단가: 키오스크 수도권 38만 / 지방 45만 · 32인치 42만 / 49만 · 2대 이상 추가분 70% · 통화소통 1만 · A.S 8만 · KSNET리더기 추가 8만 · 골프 스크린 50만 + 타석당 1.5만 + 프로그램 타석당 2.2만 · 제주 출장비 성수기 50만 / 비수기 35만 · <strong>IoT 건은 IoT 계산기로 별도 계산</strong>
+              단가: 키오스크 수도권 38만 / 지방 45만 · 32인치 42만 / 49만 · 2대 이상 추가분 70% · 통화소통 1만 · A.S 8만 · KSNET리더기 추가 8만 · 골프 스크린 50만 + 타석당 1.5만 + 프로그램 타석당 2.2만 · 제주 출장비 성수기 50만 / 비수기 35만 · <strong>IoT 설치팀 지급</strong>: 에어컨허브 4만 · 릴레이(배전반) 14만 + 전기기사 30만 · 스피커 7만 · 플러그 9천 · 네트워크 대 30만 / 중 25만 / 소 20만
             </div>
             <div className="erp-tbl-wrap">
               <table className="erp-tbl">
