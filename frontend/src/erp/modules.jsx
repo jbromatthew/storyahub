@@ -6888,6 +6888,7 @@ export function InstallScheduleView() {
   const [tabs, setTabs] = useState(null);
   const [importing, setImporting] = useState("");
   const [settleOpen, setSettleOpen] = useState(false);
+  const [settleTeam, setSettleTeam] = useState(null); // 팀별 정산 상세: 선택한 팀만 (null = 전체)
   const [bulkBusy, setBulkBusy] = useState(false);
 
   const rangeMonth = range[0] ? range[0].slice(0, 7).replace("-", ".") : currentInstallMonth();
@@ -7121,8 +7122,9 @@ export function InstallScheduleView() {
                 </thead>
                 <tbody>
                   {settleSummary.map((g) => (
-                    <tr key={g.team}>
-                      <td><div className="cell-ttl">{g.team}</div></td>
+                    <tr key={g.team} style={{ cursor: "pointer", background: settleTeam === g.team ? "var(--accent-soft)" : undefined }}
+                      onClick={() => setSettleTeam(settleTeam === g.team ? null : g.team)}>
+                      <td><div className="cell-ttl">{g.team}{settleTeam === g.team ? " ▾" : ""}</div></td>
                       <td className="num">{g.count}</td>
                       <td className="num">{formatWon(g.auto)}</td>
                       <td className="num">{g.final ? formatWon(g.final) : "—"}</td>
@@ -7143,6 +7145,52 @@ export function InstallScheduleView() {
                     </tr>
                   )}
                   {!settleSummary.length && <tr><td colSpan={6} className="erp-tbl-empty">표시 중인 설치 건이 없습니다</td></tr>}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 건별 산출 내역 — 어떤 건에 어떤 기준으로 얼마가 계산됐는지 */}
+            <div className="row between" style={{ alignItems: "center", marginTop: 14, flexWrap: "wrap", gap: 8 }}>
+              <div className="kbe-meta-h" style={{ margin: 0 }}>
+                건별 산출 내역 {settleTeam ? <span className="small" style={{ fontWeight: 500 }}>· {settleTeam}만 표시</span> : null}
+              </div>
+              {settleTeam && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setSettleTeam(null)}>전체 보기 ✕</button>}
+            </div>
+            <div className="small" style={{ color: "var(--muted)", margin: "4px 0 8px" }}>팀 행을 클릭하면 해당 팀 건만 표시됩니다. 최종 정산이 자동계산과 다르면 <strong>수동</strong> 표시가 붙습니다.</div>
+            <div className="erp-tbl-wrap">
+              <table className="erp-tbl">
+                <thead>
+                  <tr><th>시공일</th><th>설치팀</th><th>센터명</th><th>구분</th><th>지역</th><th>산출 기준 (내역)</th><th className="num">자동계산</th><th className="num">최종 정산</th><th className="shrink"></th></tr>
+                </thead>
+                <tbody>
+                  {tableRows.filter((r) => !settleTeam || (String(r.team || "").trim() || "(팀 미지정)") === settleTeam).map((r) => {
+                    const c = installSettleCalc(r);
+                    const final = Number(r.finalSettle) || 0;
+                    const manual = final && !c.iot && final !== c.total;
+                    return (
+                      <tr key={r.id}>
+                        <td style={{ whiteSpace: "nowrap" }}>{r.installDate || "미정"}</td>
+                        <td style={{ whiteSpace: "nowrap" }}>{r.team || "—"}</td>
+                        <td><div className="cell-ttl">{r.centerName || "—"}</div></td>
+                        <td style={{ whiteSpace: "nowrap" }}>{r.type || "—"}</td>
+                        <td style={{ whiteSpace: "nowrap" }}>{r.region || "지방*"}</td>
+                        <td className="small" style={{ lineHeight: 1.5, minWidth: 240 }}>
+                          {c.iot && <span style={{ color: "var(--accent-deep)", fontWeight: 700 }}>IoT — IoT 계산기로 별도 계산</span>}
+                          {!c.iot && c.parts.map((p, i) => (
+                            <span key={i} style={{ whiteSpace: "nowrap" }}>{i > 0 ? " + " : ""}{p.label} {formatWon(p.amount)}</span>
+                          ))}
+                          {!c.iot && !c.parts.length && <span style={{ color: "var(--muted)" }}>장비 정보 없음</span>}
+                          {c.unknown.length > 0 && <span style={{ color: "var(--accent-deep)" }}> · 단가 미확인: {c.unknown.join(", ")}</span>}
+                        </td>
+                        <td className="num" style={{ whiteSpace: "nowrap" }}>{c.iot ? "—" : formatWon(c.total)}</td>
+                        <td className="num" style={{ whiteSpace: "nowrap", fontWeight: 700 }}>
+                          {final ? formatWon(final) : <span style={{ color: "var(--accent-deep)", fontWeight: 500 }}>미입력</span>}
+                          {manual ? <span className="tag gray" style={{ marginLeft: 6, fontSize: 11 }}>수동</span> : null}
+                        </td>
+                        <td><button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing({ ...r })}>수정</button></td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
