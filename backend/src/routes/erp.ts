@@ -1821,14 +1821,14 @@ function flattenInstall(row: {
 }
 
 erpRouter.get("/install-schedule/months", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  if (!(await requireVendorAccess(req, res))) return;
   const rows = await prisma.erpInstallSchedule.findMany({ select: { month: true }, distinct: ["month"] });
   const months = [...new Set(rows.map((r) => r.month))].sort((a, b) => b.localeCompare(a));
   res.json({ months });
 });
 
 erpRouter.get("/install-schedule", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  if (!(await requireVendorAccess(req, res))) return;
   const month = String(req.query.month ?? "").trim();
   const from = cstDate(req.query.from);
   const to = cstDate(req.query.to);
@@ -1855,7 +1855,7 @@ erpRouter.get("/install-schedule", async (req: AuthedRequest, res) => {
 });
 
 erpRouter.post("/install-schedule", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  if (!(await requireVendorAccess(req, res))) return;
   const body = (req.body ?? {}) as Record<string, unknown>;
   const row = await prisma.erpInstallSchedule.create({
     data: {
@@ -1870,7 +1870,7 @@ erpRouter.post("/install-schedule", async (req: AuthedRequest, res) => {
 });
 
 erpRouter.patch("/install-schedule/:id", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  if (!(await requireVendorAccess(req, res))) return;
   const body = (req.body ?? {}) as Record<string, unknown>;
   const existing = await prisma.erpInstallSchedule.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: "설치일정 행을 찾을 수 없습니다" });
@@ -1889,7 +1889,7 @@ erpRouter.patch("/install-schedule/:id", async (req: AuthedRequest, res) => {
 });
 
 erpRouter.delete("/install-schedule/:id", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  if (!(await requireVendorAccess(req, res))) return;
   await prisma.erpInstallSchedule.delete({ where: { id: req.params.id } });
   res.json({ ok: true });
 });
@@ -2049,7 +2049,7 @@ function installMonthFromTab(tab: string): string {
 }
 
 erpRouter.get("/install-schedule/sheet-tabs", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  if (!(await requireVendorAccess(req, res))) return;
   try {
     const titles = await listSheetTitles(INSTALL_SHEET_ID);
     // 월별 설치 탭만 (YYYY.MM.으로 시작) 최신순
@@ -2064,7 +2064,7 @@ erpRouter.get("/install-schedule/sheet-tabs", async (req: AuthedRequest, res) =>
 });
 
 erpRouter.post("/install-schedule/import", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  if (!(await requireVendorAccess(req, res))) return;
   const sheetName = String(req.body?.sheetName ?? "").trim();
   if (!sheetName) return res.status(400).json({ error: "가져올 시트 탭 이름이 필요합니다" });
 

@@ -6813,7 +6813,7 @@ function monthRangeOf(y, m) {
 export function InstallScheduleView() {
   const today = new Date();
   const [range, setRange] = useState(() => monthRangeOf(today.getFullYear(), today.getMonth() + 1)); // [from, to] — 둘 다 비면 전체
-  const [view, setView] = useState("list"); // list | cal
+  const [view, setView] = useState("cal"); // list | cal — 기본 캘린더
   const [calYm, setCalYm] = useState({ y: today.getFullYear(), m: today.getMonth() + 1 });
   const [selDay, setSelDay] = useState(null); // 캘린더에서 클릭한 날짜
   const [rows, setRows] = useState([]);
@@ -6904,9 +6904,11 @@ export function InstallScheduleView() {
   };
 
   const filtered = useMemo(() => {
+    // 센터명이 비어있는 행은 목록·캘린더에서 제외
+    const named = rows.filter((r) => String(r.centerName || "").trim());
     const kw = q.trim().toLowerCase();
-    if (!kw) return rows;
-    return rows.filter((r) => [r.centerName, r.address, r.phone, r.team, r.plan].some((v) => String(v || "").toLowerCase().includes(kw)));
+    if (!kw) return named;
+    return named.filter((r) => [r.centerName, r.address, r.phone, r.team, r.plan].some((v) => String(v || "").toLowerCase().includes(kw)));
   }, [rows, q]);
 
   // 구분별 건수 요약 (+ 날짜 미정)
