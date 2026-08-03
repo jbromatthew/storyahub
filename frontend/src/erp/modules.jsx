@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "../api/client.js";
 import { erpIcons as I } from "./icons.jsx";
 import { APPROVAL_BOXES, LEAVE_TYPES, LEAVE_POLICY, APPROVAL_CHAINS, FORM_CHAIN_HINT, EMPLOYEE_ROLES, REFUND_TYPES, PAYMENT_METHODS, REFUND_METHODS, EMPTY_REFUND_FORM } from "./config.js";
-import { notifyError, toastSuccess } from "../toast.js";
+import { notifyError, toastSuccess, toast } from "../toast.js";
 import { confirmAction } from "../confirm.js";
 import { StatViz, seriesColor } from "./charts.jsx";
 import { BROJ_SEAL, BROJ_LOGO } from "./brojSeal.js";
@@ -2316,9 +2316,15 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
       sitePhotos: (editing.sitePhotos || []).map((s) => ({ name: s.name || "", beforeKey: s.beforeKey || null, afterKey: s.afterKey || null })).filter((s) => s.name || s.beforeKey || s.afterKey),
     };
     try {
-      if (editing.id) await api.erpConstructionUpdateQuote(editing.id, payload);
-      else await api.erpConstructionCreateQuote(payload);
-      toastSuccess("저장했어요");
+      const saved = editing.id
+        ? await api.erpConstructionUpdateQuote(editing.id, payload)
+        : await api.erpConstructionCreateQuote(payload);
+      if (saved?.stockWarnings?.length) {
+        const detail = saved.stockWarnings.map((w) => `${w.name} ${-w.balance}개 부족`).join(", ");
+        toast(`재고가 부족합니다 — ${detail}. 재고를 주문하세요! (확정은 처리됐어요)`, { type: "error", duration: 8000 });
+      } else {
+        toastSuccess("저장했어요");
+      }
       setEditing(null); load();
     } catch (e) { notifyError(e); } finally { setBusy(false); }
   };

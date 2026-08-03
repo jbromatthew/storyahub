@@ -1556,23 +1556,25 @@ erpRouter.delete("/construction/teams/:id", async (req: AuthedRequest, res) => {
 // 공사 확정(이후 단계 포함)이면 부품 투입 수량만큼 재고 out 이동을 자동 생성한다.
 // 견적의 자동 이동을 전부 지우고 다시 만드는 방식이라 수량 수정·확정 취소에도 재고가 맞는다.
 const STOCK_DEDUCT_STATUSES = new Set(["confirmed", "ongoing", "done", "billing", "settled"]);
-async function syncQuoteStockMoves(quoteId: string) {
+// 차감 후 잔여가 마이너스인 품목 목록을 돌려준다 (확정은 막지 않고 경고만).
+type StockWarning = { name: string; needed: number; balance: number };
+async function syncQuoteStockMoves(quoteId: string): Promise<StockWarning[]> {
   const quote = await prisma.erpConstructionQuote.findUnique({
     where: { id: quoteId },
     include: { apartment: true },
   });
-  if (!quote) return;
-  await prisma.$transaction(async (tx) => {
+  if (!quote) return [];
+  return prisma.$transaction(async (tx) => {
     await tx.erpConstructionStockMove.deleteMany({ where: { quoteId } });
-    if (!STOCK_DEDUCT_STATUSES.has(quote.status)) return;
+    if (!STOCK_DEDUCT_STATUSES.has(quote.status)) return [];
     const materials = (Array.isArray(quote.materials) ? quote.materials : []) as Array<{
       stockId?: string | null; name?: string; qty?: number;
     }>;
     const stockIds = [...new Set(materials.map((m) => m?.stockId).filter((v): v is string => !!v))];
-    if (!stockIds.length) return;
+    if (!stockIds.length) return [];
     const stocks = await tx.erpConstructionStock.findMany({
       where: { id: { in: stockIds } },
-      select: { id: true },
+      include: { moves: { select: { kind: true, qty: true } } },
     });
     const valid = new Set(stocks.map((s) => s.id));
     const date = quote.startDate || new Date().toISOString().slice(0, 10);
@@ -1588,6 +1590,16 @@ async function syncQuoteStockMoves(quoteId: string) {
         memo: `공사 확정 자동 차감 — ${label}`,
       }));
     if (rows.length) await tx.erpConstructionStockMove.createMany({ data: rows });
+
+    const warnings: StockWarning[] = [];
+    for (const s of stocks) {
+      const needed = rows.filter((r) => r.stockId === s.id).reduce((a, r) => a + r.qty, 0);
+      if (!needed) continue;
+      const balance =
+        s.moves.reduce((a, m) => a + (m.kind === "out" ? -m.qty : m.qty), 0) - needed;
+      if (balance < 0) warnings.push({ name: s.name, needed, balance });
+    }
+    return warnings;
   });
 }
 
@@ -1621,8 +1633,8 @@ erpRouter.post("/construction/quotes", async (req: AuthedRequest, res) => {
     },
     include: { apartment: true },
   });
-  await syncQuoteStockMoves(quote.id);
-  res.json(quote);
+  const stockWarnings = await syncQuoteStockMoves(quote.id);
+  res.json({ ...quote, stockWarnings });
 });
 
 erpRouter.patch("/construction/quotes/:id", async (req: AuthedRequest, res) => {
@@ -1651,11 +1663,12 @@ erpRouter.patch("/construction/quotes/:id", async (req: AuthedRequest, res) => {
     include: { apartment: true },
   });
   // 재고 자동 차감에 영향을 주는 값이 바뀐 경우만 재계산
+  let stockWarnings: StockWarning[] = [];
   if (status !== undefined || materials !== undefined || startDate !== undefined ||
       apartmentId !== undefined || title !== undefined) {
-    await syncQuoteStockMoves(quote.id);
+    stockWarnings = await syncQuoteStockMoves(quote.id);
   }
-  res.json(quote);
+  res.json({ ...quote, stockWarnings });
 });
 
 erpRouter.delete("/construction/quotes/:id", async (req: AuthedRequest, res) => {
