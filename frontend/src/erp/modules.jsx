@@ -7160,13 +7160,21 @@ export function InstallScheduleView() {
             <div className="erp-tbl-wrap">
               <table className="erp-tbl">
                 <thead>
-                  <tr><th>시공일</th><th>설치팀</th><th>센터명</th><th>구분</th><th>지역</th><th>산출 기준 (내역)</th><th className="num">자동계산</th><th className="num">최종 정산</th><th className="shrink"></th></tr>
+                  <tr><th>시공일</th><th>설치팀</th><th>센터명</th><th>구분</th><th>지역</th><th>설치 장비</th><th>산출 기준 (내역)</th><th className="num">자동계산</th><th className="num">최종 정산</th><th className="shrink"></th></tr>
                 </thead>
                 <tbody>
                   {tableRows.filter((r) => !settleTeam || (String(r.team || "").trim() || "(팀 미지정)") === settleTeam).map((r) => {
                     const c = installSettleCalc(r);
                     const final = Number(r.finalSettle) || 0;
                     const manual = final && !c.iot && final !== c.total;
+                    const equips = [1, 2, 3]
+                      .map((i) => {
+                        const name = String(r[`kiosk${i}`] || "").trim();
+                        if (!name) return null;
+                        const qty = Math.max(1, Math.round(Number(r[`qty${i}`]) || 1));
+                        return `${name} ×${qty}`;
+                      })
+                      .filter(Boolean);
                     return (
                       <tr key={r.id}>
                         <td style={{ whiteSpace: "nowrap" }}>{r.installDate || "미정"}</td>
@@ -7174,6 +7182,9 @@ export function InstallScheduleView() {
                         <td><div className="cell-ttl">{r.centerName || "—"}</div></td>
                         <td style={{ whiteSpace: "nowrap" }}>{r.type || "—"}</td>
                         <td style={{ whiteSpace: "nowrap" }}>{r.region || "지방*"}</td>
+                        <td className="small" style={{ lineHeight: 1.5, minWidth: 140 }}>
+                          {equips.length ? equips.map((e, i) => <div key={i} style={{ whiteSpace: "nowrap" }}>{e}</div>) : <span style={{ color: "var(--muted)" }}>—</span>}
+                        </td>
                         <td className="small" style={{ lineHeight: 1.5, minWidth: 240 }}>
                           {c.iot && <span style={{ color: "var(--accent-deep)", fontWeight: 700 }}>IoT — IoT 계산기로 별도 계산</span>}
                           {!c.iot && c.parts.map((p, i) => (
