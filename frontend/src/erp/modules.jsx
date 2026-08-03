@@ -6747,7 +6747,7 @@ const INSTALL_GROUPS = ["기본 정보", "장비 · 설치", "고객 · 현장",
 const INSTALL_FIELDS = [
   { key: "installDate", label: "시공일", type: "date", w: 116, g: "기본 정보", cls: "c4" },
   { key: "team", label: "설치팀", type: "text", w: 96, g: "기본 정보", cls: "c4" },
-  { key: "type", label: "구분", type: "select", options: ["", "스마트상점", "신규설치", "통화소통", "A.S", "이전설치"], w: 92, g: "기본 정보", cls: "c4" },
+  { key: "type", label: "구분", type: "select", options: ["", "스마트상점", "신규설치", "이전설치", "업그레이드", "중고설치", "통화소통", "A.S"], w: 92, g: "기본 정보", cls: "c4" },
   { key: "plan", label: "요금제", type: "text", w: 96, g: "기본 정보", cls: "c4" },
   { key: "region", label: "지역", type: "select", options: ["", "지방", "수도권"], w: 80, g: "기본 정보", cls: "c4" },
   { key: "siteStatus", label: "현장상태", type: "select", options: ["", "정상운영", "인테리어"], w: 92, g: "기본 정보", cls: "c4" },
@@ -6810,6 +6810,69 @@ function monthRangeOf(y, m) {
   return [`${y}-${String(m).padStart(2, "0")}-01`, fmtDateYmd(new Date(y, m, 0))];
 }
 
+// ── 브로제이 설치 정산 단가 (공급가액) ──
+// 키오스크 본체: 수도권 380,000 / 지방 450,000 · 32인치 계열: 420,000 / 490,000 (신규·이전·업그레이드·스마트상점·중고설치 동일)
+// 2대 이상 설치 시 첫 대 100%, 추가 대수 제품가 70% · 통화소통 10,000 · A.S 80,000 · KSNET리더기 추가설치 80,000
+// 골프: 스크린 500,000 + 타석당 15,000 + 프로그램 타석당 22,000 · 제주 출장비 성수기(4~10월) 500,000 / 비수기 350,000
+function installKioskUnitPrice(name, region) {
+  const metro = region === "수도권";
+  if (/32\s*인치|32인/.test(String(name || ""))) return metro ? 420000 : 490000;
+  return metro ? 380000 : 450000;
+}
+
+function installSettleCalc(row) {
+  const type = String(row.type || "").trim();
+  const region = String(row.region || "").trim() || "지방"; // 지역 미지정 시 지방 단가
+  const parts = [];
+  const unknown = [];
+  let iot = /iot/i.test(String(row.plan || ""));
+
+  if (/^A\.?S$/i.test(type)) return { total: 80000, parts: [{ label: "A.S 방문", amount: 80000 }], iot, unknown };
+  if (/통화소통|전화소통/.test(type)) return { total: 10000, parts: [{ label: "통화소통", amount: 10000 }], iot, unknown };
+
+  const items = [1, 2, 3].map((i) => {
+    const name = String(row[`kiosk${i}`] || "").trim();
+    if (!name) return null;
+    return { name, qty: Math.max(1, Math.round(Number(row[`qty${i}`]) || 1)) };
+  }).filter(Boolean);
+
+  const mainUnits = []; // 70% 규칙 대상 (키오스크 본체)
+  for (const it of items) {
+    const n = it.name;
+    if (/iot|아이오티/i.test(n)) { iot = true; continue; }
+    if (/통화소통|전화소통/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 10000 * it.qty }); continue; }
+    if (/스크린/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 500000 * it.qty }); continue; }
+    if (/프로그/.test(n)) { parts.push({ label: `${n} ×${it.qty} (타석당)`, amount: 22000 * it.qty }); continue; }
+    if (/타석/.test(n)) { parts.push({ label: `${n} ×${it.qty} (타석당)`, amount: 15000 * it.qty }); continue; }
+    if (/골프/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 500000 * it.qty }); continue; }
+    if (/브라켓/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 70000 * it.qty }); continue; }
+    if (/데드볼트/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 100000 * it.qty }); continue; }
+    if (/공유기/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 53546 * it.qty }); continue; }
+    if (/락커/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 80000 * it.qty }); continue; }
+    if (/KSNET|리더기/i.test(n) && !/인치/.test(n)) { parts.push({ label: `${n} ×${it.qty} (추가설치)`, amount: 80000 * it.qty }); continue; }
+    if (/인치|티업기|QR|키오스크/i.test(n)) {
+      const unit = installKioskUnitPrice(n, region);
+      for (let k = 0; k < it.qty; k++) mainUnits.push({ name: n, unit });
+      continue;
+    }
+    unknown.push(n);
+  }
+
+  // 2대 이상: 단가 높은 것 100%, 나머지 70%
+  mainUnits.sort((a, b) => b.unit - a.unit);
+  mainUnits.forEach((u, idx) => {
+    parts.push({ label: `${u.name} (${region}${idx > 0 ? " · 추가 70%" : ""})`, amount: idx === 0 ? u.unit : Math.round(u.unit * 0.7) });
+  });
+
+  if (/제주/.test(String(row.address || ""))) {
+    const m = row.installDate ? Number(String(row.installDate).slice(5, 7)) : 0;
+    const high = m >= 4 && m <= 10;
+    parts.push({ label: `제주 출장비 (${high ? "성수기 4~10월" : "비수기 11~3월"})`, amount: high ? 500000 : 350000 });
+  }
+
+  return { total: parts.reduce((a, p) => a + p.amount, 0), parts, iot, unknown };
+}
+
 export function InstallScheduleView() {
   const today = new Date();
   const [range, setRange] = useState(() => monthRangeOf(today.getFullYear(), today.getMonth() + 1)); // [from, to] — 둘 다 비면 전체
@@ -6824,6 +6887,8 @@ export function InstallScheduleView() {
   const [importOpen, setImportOpen] = useState(false);
   const [tabs, setTabs] = useState(null);
   const [importing, setImporting] = useState("");
+  const [settleOpen, setSettleOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const rangeMonth = range[0] ? range[0].slice(0, 7).replace("-", ".") : currentInstallMonth();
 
@@ -6936,6 +7001,48 @@ export function InstallScheduleView() {
     [filtered, view, selDay]
   );
 
+  // 팀별 정산 요약 (표시 중인 기간·검색 기준)
+  const settleSummary = useMemo(() => {
+    const by = new Map();
+    for (const r of tableRows) {
+      const team = String(r.team || "").trim() || "(팀 미지정)";
+      const c = installSettleCalc(r);
+      const final = Number(r.finalSettle) || 0;
+      const g = by.get(team) || { team, count: 0, auto: 0, final: 0, iot: 0, missing: 0 };
+      g.count++;
+      g.auto += c.iot ? 0 : c.total;
+      if (final) g.final += final; else g.missing++;
+      if (c.iot) g.iot++;
+      by.set(team, g);
+    }
+    return [...by.values()].sort((a, b) => (b.final || b.auto) - (a.final || a.auto));
+  }, [tableRows]);
+
+  // 최종 정산이 비어있는 건을 자동계산 금액으로 일괄 채우기 (IoT·미확인 건 제외)
+  const bulkFillSettle = async () => {
+    const targets = tableRows.filter((r) => {
+      if (Number(r.finalSettle)) return false;
+      const c = installSettleCalc(r);
+      return !c.iot && c.total > 0;
+    });
+    if (!targets.length) { toastSuccess("채울 대상이 없습니다 (모두 입력됨 또는 IoT 건)"); return; }
+    const ok = await confirmAction(
+      `최종 정산이 비어있는 ${targets.length}건을 자동계산 금액으로 채울까요?`,
+      "이미 입력된 건과 IoT 건은 건드리지 않습니다. 기본금·최종 정산에 공급가액이 들어갑니다."
+    );
+    if (!ok) return;
+    setBulkBusy(true);
+    try {
+      for (const r of targets) {
+        const c = installSettleCalc(r);
+        await api.erpInstallScheduleUpdate(r.id, { baseFee: c.total, finalSettle: c.total });
+      }
+      toastSuccess(`${targets.length}건 채웠습니다`);
+      await loadRows(range);
+    } catch (e) { notifyError(e); }
+    finally { setBulkBusy(false); }
+  };
+
   // 캘린더 셀 (앞쪽 빈 칸 + 날짜들)
   const calCells = useMemo(() => {
     const first = new Date(calYm.y, calYm.m - 1, 1);
@@ -6987,12 +7094,61 @@ export function InstallScheduleView() {
       <div className="sales-toolbar" style={{ marginTop: 10, gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <button type="button" className="btn btn-sm btn-accent" onClick={() => setEditing(emptyInstallRow(rangeMonth))}>+ 설치 건 추가</button>
         <button type="button" className="btn btn-sm btn-ghost" onClick={openImport}>⭳ 시트에서 가져오기</button>
+        <button type="button" className={"btn btn-sm " + (settleOpen ? "btn-accent" : "btn-ghost")} onClick={() => setSettleOpen((v) => !v)}>₩ 팀별 정산</button>
         <input className="input" style={{ maxWidth: 240, flex: "0 1 240px" }} placeholder="🔍 센터명·주소·연락처 검색" value={q} onChange={(e) => setQ(e.target.value)} />
         {view === "cal" && selDay && (
           <button type="button" className="btn btn-sm btn-ghost" onClick={() => setSelDay(null)}>{selDay} 선택 해제 ✕</button>
         )}
         <span className="tag gray" style={{ marginLeft: "auto" }}>{tableRows.length}건 표시</span>
       </div>
+
+      {settleOpen && !loading && (() => {
+        const tAuto = settleSummary.reduce((a, g) => a + g.auto, 0);
+        const tFinal = settleSummary.reduce((a, g) => a + g.final, 0);
+        return (
+          <div className="card" style={{ marginTop: 10 }}>
+            <div className="row between" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+              <div className="kbe-meta-h" style={{ margin: 0 }}>팀별 정산 요약 <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>· 표시 중인 {tableRows.length}건 기준 · 공급가액</span></div>
+              <button type="button" className="btn btn-sm btn-ghost" disabled={bulkBusy} onClick={bulkFillSettle}>{bulkBusy ? "채우는 중…" : "빈 정산 자동 채우기"}</button>
+            </div>
+            <div className="small" style={{ color: "var(--muted)", margin: "6px 0 10px", lineHeight: 1.6 }}>
+              단가: 키오스크 수도권 38만 / 지방 45만 · 32인치 42만 / 49만 · 2대 이상 추가분 70% · 통화소통 1만 · A.S 8만 · KSNET리더기 추가 8만 · 골프 스크린 50만 + 타석당 1.5만 + 프로그램 타석당 2.2만 · 제주 출장비 성수기 50만 / 비수기 35만 · <strong>IoT 건은 IoT 계산기로 별도 계산</strong>
+            </div>
+            <div className="erp-tbl-wrap">
+              <table className="erp-tbl">
+                <thead>
+                  <tr><th>설치팀</th><th className="num">건수</th><th className="num">자동계산 합</th><th className="num">최종 정산 합 (입력)</th><th className="num">VAT 포함</th><th>비고</th></tr>
+                </thead>
+                <tbody>
+                  {settleSummary.map((g) => (
+                    <tr key={g.team}>
+                      <td><div className="cell-ttl">{g.team}</div></td>
+                      <td className="num">{g.count}</td>
+                      <td className="num">{formatWon(g.auto)}</td>
+                      <td className="num">{g.final ? formatWon(g.final) : "—"}</td>
+                      <td className="num">{g.final ? formatWon(Math.round(g.final * 1.1)) : "—"}</td>
+                      <td className="small" style={{ color: "var(--muted)" }}>
+                        {[g.missing ? `미입력 ${g.missing}건` : "", g.iot ? `IoT ${g.iot}건` : ""].filter(Boolean).join(" · ") || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  {settleSummary.length > 1 && (
+                    <tr style={{ fontWeight: 700 }}>
+                      <td>합계</td>
+                      <td className="num">{tableRows.length}</td>
+                      <td className="num">{formatWon(tAuto)}</td>
+                      <td className="num">{tFinal ? formatWon(tFinal) : "—"}</td>
+                      <td className="num">{tFinal ? formatWon(Math.round(tFinal * 1.1)) : "—"}</td>
+                      <td></td>
+                    </tr>
+                  )}
+                  {!settleSummary.length && <tr><td colSpan={6} className="erp-tbl-empty">표시 중인 설치 건이 없습니다</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {view === "cal" && !loading && (
         <div className="iscal">
@@ -7111,6 +7267,26 @@ export function InstallScheduleView() {
                       </label>
                     ))}
                   </div>
+                  {g === "정산 · 서류" && (() => {
+                    const c = installSettleCalc(editing);
+                    return (
+                      <div style={{ marginTop: 10, padding: "10px 12px", background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 10 }}>
+                        <div className="small" style={{ fontWeight: 700, marginBottom: 6 }}>정산 자동계산 (공급가액)</div>
+                        {c.iot && <div className="small" style={{ color: "var(--accent-deep)", marginBottom: 4 }}>⚠ IoT 건 — 정산금액은 IoT 계산기로 별도 계산하세요.</div>}
+                        {c.parts.map((p, i) => (
+                          <div key={i} className="row between small" style={{ padding: "2px 0" }}><span>{p.label}</span><span>{formatWon(p.amount)}</span></div>
+                        ))}
+                        {c.unknown.length > 0 && <div className="small" style={{ color: "var(--accent-deep)", marginTop: 4 }}>단가 미확인: {c.unknown.join(", ")} (직접 입력 필요)</div>}
+                        <div className="row between small" style={{ marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--line)", fontWeight: 700 }}>
+                          <span>합계 {formatWon(c.total)} <span style={{ fontWeight: 500, color: "var(--muted)" }}>(VAT 포함 {formatWon(Math.round(c.total * 1.1))})</span></span>
+                          <button type="button" className="btn btn-sm btn-ghost" disabled={c.iot || !c.total}
+                            onClick={() => setEditing((prev) => ({ ...prev, baseFee: c.total, finalSettle: c.total }))}>
+                            기본금·최종 정산에 적용
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </section>
               ))}
             </div>
