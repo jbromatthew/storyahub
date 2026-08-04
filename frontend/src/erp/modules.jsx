@@ -6991,14 +6991,14 @@ export function installSettleCalc(row) {
     const elec = cnt(/전기기사\s*(\d+)?/);
     const spk = cnt(/스피커\s*(\d+)?/);
     const plug = cnt(/플러그\s*(\d+)?/);
-    if (relay) { needElectrician = true; parts.push({ label: `릴레이(배전반) ×${relay} (특이사항)`, amount: 140000 * relay }); }
-    if (ac) parts.push({ label: `에어컨 허브 ×${ac} (특이사항)`, amount: 40000 * ac });
-    if (netL) parts.push({ label: `네트워크(대) ×${netL} (특이사항)`, amount: 300000 * netL });
-    if (netM) parts.push({ label: `네트워크(중) ×${netM} (특이사항)`, amount: 250000 * netM });
-    if (netS) parts.push({ label: `네트워크(소) ×${netS} (특이사항)`, amount: 200000 * netS });
-    if (spk) parts.push({ label: `스피커 ×${spk} (특이사항)`, amount: 70000 * spk });
-    if (plug) parts.push({ label: `플러그 ×${plug} (특이사항)`, amount: 9000 * plug });
-    if (elec) { hasElectrician = true; parts.push({ label: `전기기사 ×${elec} (특이사항)`, amount: 300000 * elec }); }
+    if (relay) { needElectrician = true; parts.push({ label: `릴레이(배전반) ×${relay} (특이사항에서 인식)`, amount: 140000 * relay }); }
+    if (ac) parts.push({ label: `에어컨 허브 ×${ac} (특이사항에서 인식)`, amount: 40000 * ac });
+    if (netL) parts.push({ label: `네트워크(대) ×${netL} (특이사항에서 인식)`, amount: 300000 * netL });
+    if (netM) parts.push({ label: `네트워크(중) ×${netM} (특이사항에서 인식)`, amount: 250000 * netM });
+    if (netS) parts.push({ label: `네트워크(소) ×${netS} (특이사항에서 인식)`, amount: 200000 * netS });
+    if (spk) parts.push({ label: `스피커 ×${spk} (특이사항에서 인식)`, amount: 70000 * spk });
+    if (plug) parts.push({ label: `플러그 ×${plug} (특이사항에서 인식)`, amount: 9000 * plug });
+    if (elec) { hasElectrician = true; parts.push({ label: `전기기사 ×${elec} (특이사항에서 인식)`, amount: 300000 * elec }); }
     if (relay || ac || netL || netM || netS || elec || spk || plug) iotUnparsed = false;
   }
 
