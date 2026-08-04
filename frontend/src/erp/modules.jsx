@@ -6941,7 +6941,12 @@ export function installSettleCalc(row) {
     if (/공유기/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 53540 * it.qty }); continue; }
     if (/락커/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 80000 * it.qty }); continue; }
     if (/KSNET|리더기/i.test(n) && !/인치/.test(n)) { readerItems.push(it); continue; }
-    if (/인치|티업기|QR|Q-?PASS|키오스크|DID/i.test(n)) {
+    // 티업기·빔프로젝터는 설치비 지급 없음 — 골프는 기본설치비+타석당 1.5만이 전부
+    if (/빔\s*프로|티업기/.test(n)) {
+      parts.push({ label: `${n} ×${it.qty} (지급 없음)`, amount: 0 });
+      continue;
+    }
+    if (/인치|QR|Q-?PASS|키오스크|DID/i.test(n)) {
       const unit = installKioskUnitPrice(n, region);
       for (let k = 0; k < it.qty; k++) mainUnits.push({ name: n, unit });
       continue;
@@ -7289,7 +7294,7 @@ export function InstallScheduleView() {
               <button type="button" className="btn btn-sm btn-ghost" disabled={bulkBusy} onClick={bulkFillSettle}>{bulkBusy ? "확정 중…" : "미확정 전체 확정 (자동계산 수락)"}</button>
             </div>
             <div className="small" style={{ color: "var(--muted)", margin: "6px 0 10px", lineHeight: 1.6 }}>
-              단가: 키오스크(Q-PASS 포함) 수도권 38만 / 지방 45만 · 32인치 42만 / 49만 · 2대 이상 추가분 70% · 통화소통 1만 · A.S 8만 · 리더기 단독 방문 8만 (본체 동시 설치 0원) · 골프는 별도 계산식: 기본설치비 50만 + 타석당 1.5만 · 제주 출장비 성수기 50만 / 비수기 35만 · <strong>IoT</strong>: 에어컨허브 4만 · 릴레이(배전반) 14만 + 전기기사 30만 · 스피커 7만 · 플러그 9천 · 네트워크 대 30만 / 중 25만 / 소 20만 — 장비칸이 'IoT'면 특이사항의 수량(예: 배전반 용량외 6 / 에어컨 3)도 자동 해석
+              단가: 키오스크(Q-PASS 포함, 티업기·빔프로젝터는 지급 없음) 수도권 38만 / 지방 45만 · 32인치 42만 / 49만 · 2대 이상 추가분 70% · 통화소통 1만 · A.S 8만 · 리더기 단독 방문 8만 (본체 동시 설치 0원) · 골프는 별도 계산식: 기본설치비 50만 + 타석당 1.5만 · 제주 출장비 성수기 50만 / 비수기 35만 · <strong>IoT</strong>: 에어컨허브 4만 · 릴레이(배전반) 14만 + 전기기사 30만 · 스피커 7만 · 플러그 9천 · 네트워크 대 30만 / 중 25만 / 소 20만 — 장비칸이 'IoT'면 특이사항의 수량(예: 배전반 용량외 6 / 에어컨 3)도 자동 해석
             </div>
             <div className="erp-tbl-wrap">
               <table className="erp-tbl">
