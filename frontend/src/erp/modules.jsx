@@ -7241,7 +7241,7 @@ export function InstallScheduleView() {
   };
 
   return (
-    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40 }}>
+    <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
       <div className="h-eyebrow">Construction</div>
       <div className="h-title">설치일정 <span style={{ color: "var(--muted)", fontWeight: 700, fontSize: 15 }}>(브로제이)</span></div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
