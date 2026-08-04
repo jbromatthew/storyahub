@@ -6845,6 +6845,7 @@ const INSTALL_FIELDS = [
   { key: "addInstall", label: "추가설치", type: "text", w: 90, g: "정산 · 서류", cls: "c4" },
   { key: "addVisit", label: "추가방문", type: "text", w: 90, g: "정산 · 서류", cls: "c4" },
   { key: "finalSettle", label: "최종 정산", type: "number", w: 100, g: "정산 · 서류", cls: "c4" },
+  { key: "adjustNote", label: "조정 사유", type: "text", w: 160, g: "정산 · 서류", cls: "c8", hint: "수기 수정 이유 (예: 8만원 사전정산 차감) — 설치팀 정산 페이지에도 표시" },
   { key: "paymentTid", label: "일반결제TID", type: "text", w: 120, g: "정산 · 서류", cls: "c4" },
   { key: "cultureTid", label: "문화비결제TID", type: "text", w: 120, g: "정산 · 서류", cls: "c4" },
   { key: "tidRegistered", label: "TID 등록 여부", type: "text", w: 116, g: "정산 · 서류", cls: "c4" },
@@ -6894,7 +6895,7 @@ function installKioskUnitPrice(name, region) {
   return metro ? 380000 : 450000;
 }
 
-function installSettleCalc(row) {
+export function installSettleCalc(row) {
   const type = String(row.type || "").trim();
   const region = String(row.region || "").trim() || "지방"; // 지역 미지정 시 지방 단가
   const parts = [];
@@ -7153,15 +7154,45 @@ export function InstallScheduleView() {
       const team = String(r.team || "").trim() || "(팀 미지정)";
       const c = installSettleCalc(r);
       const final = Number(r.finalSettle) || 0;
-      const g = by.get(team) || { team, count: 0, auto: 0, final: 0, iot: 0, missing: 0 };
+      const g = by.get(team) || { team, count: 0, auto: 0, final: 0, iot: 0, missing: 0, pending: 0 };
       g.count++;
       g.auto += c.iot ? 0 : c.total;
       if (final) g.final += final; else g.missing++;
       if (c.iot) g.iot++;
+      if (r.settleRequest?.status === "pending") g.pending++;
       by.set(team, g);
     }
     return [...by.values()].sort((a, b) => (b.final || b.auto) - (a.final || a.auto));
   }, [tableRows]);
+
+  // 설치팀 정산 공유 링크 (팀별 토큰+PIN) 및 금액 수정 요청 승인/거절
+  const [settleShares, setSettleShares] = useState({}); // team -> {token, pin}
+  const genSettleShare = async (team) => {
+    try {
+      const res = await api.erpInstallSettleShare(team);
+      setSettleShares((s) => ({ ...s, [team]: res }));
+      const url = `${window.location.origin}/?settle=${res.token}`;
+      try { await navigator.clipboard.writeText(url); } catch { /* 복사 실패 시 화면 표시로 대체 */ }
+      toastSuccess(`${team} 정산 링크 복사됨 · PIN ${res.pin}`);
+    } catch (e) { notifyError(e); }
+  };
+  const decideRequest = async (r, approve) => {
+    const req2 = r.settleRequest;
+    if (!req2) return;
+    const ok = await confirmAction(
+      approve ? `${r.centerName || "이 건"}의 최종 정산을 ${formatWon(req2.amount)}으로 승인할까요?` : "이 요청을 거절할까요?",
+      `${req2.by || "설치팀"}: ${req2.comment}`
+    );
+    if (!ok) return;
+    try {
+      await api.erpInstallScheduleUpdate(r.id, {
+        ...(approve ? { finalSettle: req2.amount } : {}),
+        settleRequest: { ...req2, status: approve ? "approved" : "rejected", decidedAt: new Date().toISOString() },
+      });
+      toastSuccess(approve ? "승인하고 최종 정산에 반영했습니다" : "거절했습니다");
+      await loadRows(range);
+    } catch (e) { notifyError(e); }
+  };
 
   // 최종 정산이 비어있는 건을 자동계산 금액으로 일괄 채우기 (IoT·미확인 건 제외)
   const bulkFillSettle = async () => {
@@ -7268,13 +7299,20 @@ export function InstallScheduleView() {
                   {settleSummary.map((g) => (
                     <tr key={g.team} style={{ cursor: "pointer", background: settleTeam === g.team ? "var(--accent-soft)" : undefined }}
                       onClick={() => setSettleTeam(settleTeam === g.team ? null : g.team)}>
-                      <td><div className="cell-ttl">{g.team}{settleTeam === g.team ? " ▾" : ""}</div></td>
+                      <td>
+                        <div className="cell-ttl">{g.team}{settleTeam === g.team ? " ▾" : ""}</div>
+                        <div className="row" style={{ gap: 6, marginTop: 3, alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
+                          <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => genSettleShare(g.team)}>🔗 정산 공유</button>
+                          {settleShares[g.team] && <span className="tag gray" style={{ fontSize: 11 }}>PIN {settleShares[g.team].pin}</span>}
+                        </div>
+                      </td>
                       <td className="num">{g.count}</td>
                       <td className="num">{formatWon(g.auto)}</td>
                       <td className="num">{g.final ? formatWon(g.final) : "—"}</td>
                       <td className="num">{g.final ? formatWon(Math.round(g.final * 1.1)) : "—"}</td>
                       <td className="small" style={{ color: "var(--muted)" }}>
-                        {[g.missing ? `미입력 ${g.missing}건` : "", g.iot ? `IoT ${g.iot}건` : ""].filter(Boolean).join(" · ") || "—"}
+                        {g.pending ? <span style={{ color: "#B26A00", fontWeight: 700 }}>요청 {g.pending}건 대기 · </span> : null}
+                        {[g.missing ? `미입력 ${g.missing}건` : "", g.iot ? `IoT ${g.iot}건` : ""].filter(Boolean).join(" · ") || (g.pending ? "" : "—")}
                       </td>
                     </tr>
                   ))}
@@ -7341,6 +7379,19 @@ export function InstallScheduleView() {
                         <td className="num" style={{ whiteSpace: "nowrap", fontWeight: 700 }}>
                           {final ? formatWon(final) : <span style={{ color: "var(--accent-deep)", fontWeight: 500 }}>미입력</span>}
                           {manual ? <span className="tag gray" style={{ marginLeft: 6, fontSize: 11 }}>수동</span> : null}
+                          {r.adjustNote ? <div className="small" style={{ fontWeight: 500, color: "var(--muted)", whiteSpace: "normal", maxWidth: 180 }}>사유: {r.adjustNote}</div> : null}
+                          {r.settleRequest?.status === "pending" && (
+                            <div style={{ marginTop: 4, padding: "6px 8px", background: "#FFF3E0", border: "1px solid #F0D9B8", borderRadius: 8, whiteSpace: "normal", maxWidth: 220, textAlign: "left" }}>
+                              <div className="small" style={{ fontWeight: 700, color: "#B26A00" }}>팀 요청 {formatWon(r.settleRequest.amount)}</div>
+                              <div className="small" style={{ fontWeight: 500, color: "#7A5A2E", lineHeight: 1.45 }}>{r.settleRequest.by}: {r.settleRequest.comment}</div>
+                              <div className="row" style={{ gap: 6, marginTop: 5 }}>
+                                <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 11 }} onClick={() => decideRequest(r, true)}>승인·반영</button>
+                                <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => decideRequest(r, false)}>거절</button>
+                              </div>
+                            </div>
+                          )}
+                          {r.settleRequest?.status === "approved" && <div className="small" style={{ fontWeight: 600, color: "#0D7A3E" }}>요청 승인됨</div>}
+                          {r.settleRequest?.status === "rejected" && <div className="small" style={{ fontWeight: 600, color: "var(--muted)" }}>요청 거절됨</div>}
                         </td>
                         <td><button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing({ ...r })}>수정</button></td>
                       </tr>

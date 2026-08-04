@@ -929,3 +929,14 @@ model ErpVendorOrder {
   @@index([vendorId, createdAt])
   @@index([status])
 }
+
+model ErpInstallSettleShare {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  pin       String
+  team      String   // 설치팀명 (ErpInstallSchedule.data.team과 매칭)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([team])
+}

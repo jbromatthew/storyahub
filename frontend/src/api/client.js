@@ -391,6 +391,7 @@ export const api = {
   erpConstructionDeleteStockMove: (id) => req(`/erp/construction/stock-moves/${id}`, { method: "DELETE" }),
   erpConstructionShareQuote: (id, days) => req(`/erp/construction/quotes/${id}/share`, { method: "POST", body: days ? { days } : {} }),
   erpConstructionDisableShare: (id) => req(`/erp/construction/quotes/${id}/share/disable`, { method: "POST" }),
+  erpInstallSettleShare: (team) => req("/erp/install-settle-share", { method: "POST", body: { team } }),
   erpConstructionSurveyShare: (id, days) => req(`/erp/construction/quotes/${id}/survey-share`, { method: "POST", body: days ? { days } : {} }),
   erpConstructionSurveyDisable: (id) => req(`/erp/construction/quotes/${id}/survey-share/disable`, { method: "POST" }),
   erpConstructionQuotes: () => req("/erp/construction/quotes"),

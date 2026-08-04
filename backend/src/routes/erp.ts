@@ -1824,6 +1824,7 @@ const INSTALL_DATA_KEYS = [
   "region", "address", "notes", "siteStatus", "visitTime", "phone", "bizRegNo",
   "paymentTid", "cultureTid", "photoDelivered", "serialNo", "baseFee",
   "addInstall", "addVisit", "finalSettle", "tidRegistered",
+  "adjustNote", "settleRequest", // 정산 조정 사유(수기) · 설치팀 금액 수정 요청 {amount, comment, by, at, status, ownerNote, decidedAt}
 ];
 
 function pickInstallData(body: Record<string, unknown>): Record<string, unknown> {
@@ -2088,6 +2089,20 @@ function installMonthFromTab(tab: string): string {
   const m = tab.match(/(\d{4})\.(\d{2})/);
   return m ? `${m[1]}.${m[2]}` : tab.trim();
 }
+
+// 설치팀 월별 정산 공유 링크 발급 (팀별 토큰+PIN, 재사용)
+erpRouter.post("/install-settle-share", async (req: AuthedRequest, res) => {
+  if (!(await requireVendorAccess(req, res))) return;
+  const team = String((req.body as Record<string, unknown>)?.team ?? "").trim();
+  if (!team) return res.status(400).json({ error: "설치팀명이 필요합니다" });
+  let share = await prisma.erpInstallSettleShare.findFirst({ where: { team, active: true } });
+  if (!share) {
+    share = await prisma.erpInstallSettleShare.create({
+      data: { team, token: randomBytes(18).toString("base64url"), pin: String(cryptoRandomInt(1000, 10000)) },
+    });
+  }
+  res.json({ token: share.token, pin: share.pin, team: share.team });
+});
 
 erpRouter.get("/install-schedule/sheet-tabs", async (req: AuthedRequest, res) => {
   if (!(await requireVendorAccess(req, res))) return;
