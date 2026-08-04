@@ -7035,6 +7035,7 @@ export function InstallScheduleView() {
   const [settleOpen, setSettleOpen] = useState(false);
   const [settleTeam, setSettleTeam] = useState(null); // 팀별 정산 상세: 선택한 팀만 (null = 전체)
   const [settleSort, setSettleSort] = useState({ key: "installDate", dir: 1 }); // 건별 리스트 정렬
+  const [settleExpanded, setSettleExpanded] = useState(null); // 건별 리스트 펼친 행
   const [bulkBusy, setBulkBusy] = useState(false);
 
   const rangeMonth = range[0] ? range[0].slice(0, 7).replace("-", ".") : currentInstallMonth();
@@ -7342,7 +7343,7 @@ export function InstallScheduleView() {
               </div>
               {settleTeam && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setSettleTeam(null)}>전체 보기 ✕</button>}
             </div>
-            <div className="small" style={{ color: "var(--muted)", margin: "4px 0 8px" }}>팀 행을 클릭하면 해당 팀 건만 표시됩니다. 최종 정산이 자동계산과 다르면 <strong>수동</strong> 표시가 붙습니다.</div>
+            <div className="small" style={{ color: "var(--muted)", margin: "4px 0 8px" }}>행을 클릭하면 산출 내역·조정 사유·팀 요청이 펼쳐집니다. 위 팀 행 클릭 시 해당 팀만 필터, 최종 정산이 자동계산과 다르면 <strong>수동</strong> 표시.</div>
             <div className="erp-tbl-wrap">
               <table className="erp-tbl">
                 <thead>
@@ -7353,13 +7354,14 @@ export function InstallScheduleView() {
                         {label}{settleSort.key === k ? (settleSort.dir > 0 ? " ▲" : " ▼") : ""}
                       </th>
                     ))}
-                    <th>설치 장비</th><th>산출 기준 (내역)</th>
+                    <th>설치 장비</th>
                     {[["auto", "자동계산"], ["finalSettle", "최종 정산"]].map(([k, label]) => (
                       <th key={k} className="num" style={{ cursor: "pointer", whiteSpace: "nowrap" }}
                         onClick={() => setSettleSort((s) => ({ key: k, dir: s.key === k ? -s.dir : 1 }))}>
                         {label}{settleSort.key === k ? (settleSort.dir > 0 ? " ▲" : " ▼") : ""}
                       </th>
                     ))}
+                    <th className="ctr" style={{ whiteSpace: "nowrap" }}>요청</th>
                     <th className="ctr" style={{ whiteSpace: "nowrap" }}>확인</th>
                     <th className="shrink"></th>
                   </tr>
@@ -7385,64 +7387,78 @@ export function InstallScheduleView() {
                         return `${name} ×${qty}`;
                       })
                       .filter(Boolean);
+                    const open = settleExpanded === r.id;
+                    const sr = r.settleRequest;
                     return (
-                      <tr key={r.id}>
-                        <td style={{ whiteSpace: "nowrap" }}>{r.installDate || "미정"}</td>
-                        <td style={{ whiteSpace: "nowrap" }}>{r.team || "—"}</td>
-                        <td><div className="cell-ttl">{r.centerName || "—"}</div></td>
-                        <td style={{ whiteSpace: "nowrap" }}>{r.type || "—"}</td>
-                        <td style={{ whiteSpace: "nowrap" }}>{r.region || "지방*"}</td>
-                        <td className="small" style={{ lineHeight: 1.5, minWidth: 140 }}>
-                          {equips.length ? equips.map((e, i) => <div key={i} style={{ whiteSpace: "nowrap" }}>{e}</div>) : <span style={{ color: "var(--muted)" }}>—</span>}
-                        </td>
-                        <td className="small" style={{ lineHeight: 1.5, minWidth: 240 }}>
-                          {c.iot && <span style={{ color: "var(--accent-deep)", fontWeight: 700 }}>IoT — IoT 계산기로 별도 계산</span>}
-                          {!c.iot && c.parts.map((p, i) => (
-                            <span key={i} style={{ whiteSpace: "nowrap" }}>{i > 0 ? " + " : ""}{p.label} {formatWon(p.amount)}</span>
-                          ))}
-                          {!c.iot && !c.parts.length && <span style={{ color: "var(--muted)" }}>장비 정보 없음</span>}
-                          {c.unknown.length > 0 && <span style={{ color: "var(--accent-deep)" }}> · 단가 미확인: {c.unknown.join(", ")}</span>}
-                        </td>
-                        <td className="num" style={{ whiteSpace: "nowrap" }}>{c.iot ? "—" : formatWon(c.total)}</td>
-                        <td className="num" style={{ whiteSpace: "nowrap", fontWeight: 700 }}>
-                          {final ? formatWon(final) : c.total > 0 && !c.iot ? (
-                            <span className="row" style={{ gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
-                              <span style={{ color: "var(--muted)", fontWeight: 500 }}>자동 {formatWon(c.total)}</span>
-                              <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 11 }}
-                                onClick={async () => { try { await api.erpInstallScheduleUpdate(r.id, { baseFee: c.total, finalSettle: c.total }); toastSuccess("확정했습니다"); await loadRows(range); } catch (e) { notifyError(e); } }}>
-                                확정
-                              </button>
-                            </span>
-                          ) : <span style={{ color: "var(--accent-deep)", fontWeight: 500 }}>{c.iot ? "IoT 별도" : "금액 미정"}</span>}
-                          {manual ? <span className="tag gray" style={{ marginLeft: 6, fontSize: 11 }}>수동</span> : null}
-                          {r.adjustNote ? <div className="small" style={{ fontWeight: 500, color: "var(--muted)", whiteSpace: "normal", maxWidth: 180 }}>사유: {r.adjustNote}</div> : null}
-                          {r.settleRequest?.status === "pending" && (
-                            <div style={{ marginTop: 4, padding: "6px 8px", background: "#FFF3E0", border: "1px solid #F0D9B8", borderRadius: 8, whiteSpace: "normal", maxWidth: 220, textAlign: "left" }}>
-                              <div className="small" style={{ fontWeight: 700, color: "#B26A00" }}>팀 요청 {formatWon(r.settleRequest.amount)}</div>
-                              <div className="small" style={{ fontWeight: 500, color: "#7A5A2E", lineHeight: 1.45 }}>{r.settleRequest.by}: {r.settleRequest.comment}</div>
-                              <div className="row" style={{ gap: 6, marginTop: 5 }}>
-                                <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 11 }} onClick={() => decideRequest(r, true)}>승인·반영</button>
-                                <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => decideRequest(r, false)}>거절</button>
+                      <React.Fragment key={r.id}>
+                        <tr className="clickable" style={{ background: open ? "var(--paper)" : undefined }} onClick={() => setSettleExpanded(open ? null : r.id)}>
+                          <td style={{ whiteSpace: "nowrap" }}>{r.installDate || "미정"}</td>
+                          <td style={{ whiteSpace: "nowrap" }}>{r.team || "—"}</td>
+                          <td><div className="cell-ttl">{r.centerName || "—"}</div></td>
+                          <td style={{ whiteSpace: "nowrap" }}>{r.type || "—"}</td>
+                          <td style={{ whiteSpace: "nowrap" }}>{r.region || "지방*"}</td>
+                          <td className="small" style={{ lineHeight: 1.5, minWidth: 140 }}>
+                            {equips.length ? equips.map((e, i) => <div key={i} style={{ whiteSpace: "nowrap" }}>{e}</div>) : <span style={{ color: "var(--muted)" }}>—</span>}
+                          </td>
+                          <td className="num" style={{ whiteSpace: "nowrap" }}>{c.iot ? "—" : formatWon(c.total)}</td>
+                          <td className="num" style={{ whiteSpace: "nowrap", fontWeight: 700 }} onClick={(e) => e.stopPropagation()}>
+                            {final ? formatWon(final) : c.total > 0 && !c.iot ? (
+                              <span className="row" style={{ gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
+                                <span style={{ color: "var(--muted)", fontWeight: 500 }}>자동 {formatWon(c.total)}</span>
+                                <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 11 }}
+                                  onClick={async () => { try { await api.erpInstallScheduleUpdate(r.id, { baseFee: c.total, finalSettle: c.total }); toastSuccess("확정했습니다"); await loadRows(range); } catch (e) { notifyError(e); } }}>
+                                  확정
+                                </button>
+                              </span>
+                            ) : <span style={{ color: "var(--accent-deep)", fontWeight: 500 }}>{c.iot ? "IoT 별도" : "금액 미정"}</span>}
+                            {manual ? <span className="tag gray" style={{ marginLeft: 6, fontSize: 11 }}>수동</span> : null}
+                          </td>
+                          <td className="ctr small" style={{ whiteSpace: "nowrap", fontWeight: 700 }}>
+                            {sr?.status === "pending" && <span style={{ color: "#B26A00" }}>요청중</span>}
+                            {sr?.status === "approved" && <span style={{ color: "#0D7A3E" }}>승인됨</span>}
+                            {sr?.status === "rejected" && <span style={{ color: "var(--muted)" }}>거절됨</span>}
+                            {!sr && <span style={{ color: "var(--muted)", fontWeight: 400 }}>—</span>}
+                          </td>
+                          <td className="ctr" style={{ whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
+                            <span className="small" style={{ fontWeight: 700, color: r.teamOk ? "#0D7A3E" : "var(--muted)" }}>팀 {r.teamOk ? "✓" : "대기"}</span>
+                            <button type="button" className={"btn btn-sm " + (r.brojOk ? "btn-accent" : "btn-ghost")} style={{ fontSize: 11, marginLeft: 6 }}
+                              onClick={async () => {
+                                try {
+                                  await api.erpInstallScheduleUpdate(r.id, { brojOk: r.brojOk ? null : { at: new Date().toISOString(), by: "브로제이" } });
+                                  await loadRows(range);
+                                } catch (e) { notifyError(e); }
+                              }}>
+                              {r.brojOk ? "우리 ✓" : "우리 OK"}
+                            </button>
+                          </td>
+                          <td onClick={(e) => e.stopPropagation()}><button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing({ ...r })}>수정</button></td>
+                        </tr>
+                        {open && (
+                          <tr>
+                            <td colSpan={11} style={{ background: "var(--paper)", padding: "10px 16px" }}>
+                              <div className="small" style={{ lineHeight: 1.6 }}>
+                                <strong>산출 내역:</strong>{" "}
+                                {c.iot ? <span style={{ color: "var(--accent-deep)", fontWeight: 700 }}>IoT — IoT 계산기로 별도 계산</span>
+                                  : c.parts.length ? <>{c.parts.map((p) => `${p.label} ${formatWon(p.amount)}`).join(" + ")} = <strong>{formatWon(c.total)}</strong></>
+                                  : <span style={{ color: "var(--muted)" }}>장비 정보 없음</span>}
+                                {c.unknown.length > 0 && <span style={{ color: "var(--accent-deep)" }}> · 단가 미확인: {c.unknown.join(", ")}</span>}
+                                {final > 0 && !c.iot && c.total !== final && <span style={{ color: "#B26A00" }}> · 최종 정산 {formatWon(final)}</span>}
                               </div>
-                            </div>
-                          )}
-                          {r.settleRequest?.status === "approved" && <div className="small" style={{ fontWeight: 600, color: "#0D7A3E" }}>요청 승인됨</div>}
-                          {r.settleRequest?.status === "rejected" && <div className="small" style={{ fontWeight: 600, color: "var(--muted)" }}>요청 거절됨</div>}
-                        </td>
-                        <td className="ctr" style={{ whiteSpace: "nowrap" }}>
-                          <div className="small" style={{ fontWeight: 700, color: r.teamOk ? "#0D7A3E" : "var(--muted)" }}>팀 {r.teamOk ? "✓" : "대기"}</div>
-                          <button type="button" className={"btn btn-sm " + (r.brojOk ? "btn-accent" : "btn-ghost")} style={{ fontSize: 11, marginTop: 3 }}
-                            onClick={async () => {
-                              try {
-                                await api.erpInstallScheduleUpdate(r.id, { brojOk: r.brojOk ? null : { at: new Date().toISOString(), by: "브로제이" } });
-                                await loadRows(range);
-                              } catch (e) { notifyError(e); }
-                            }}>
-                            {r.brojOk ? "우리 ✓" : "우리 OK"}
-                          </button>
-                        </td>
-                        <td><button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing({ ...r })}>수정</button></td>
-                      </tr>
+                              {r.adjustNote && <div className="small" style={{ marginTop: 4, fontWeight: 700, color: "#B26A00" }}>조정 사유: {r.adjustNote}</div>}
+                              {sr?.status === "pending" && (
+                                <div style={{ marginTop: 8, padding: "8px 10px", background: "#FFF3E0", border: "1px solid #F0D9B8", borderRadius: 8, display: "inline-block" }}>
+                                  <span className="small" style={{ fontWeight: 700, color: "#B26A00" }}>팀 요청 {formatWon(sr.amount)}</span>
+                                  <span className="small" style={{ fontWeight: 500, color: "#7A5A2E", marginLeft: 6 }}>{sr.by}: {sr.comment}</span>
+                                  <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 11, marginLeft: 10 }} onClick={() => decideRequest(r, true)}>승인·반영</button>
+                                  <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11, marginLeft: 4 }} onClick={() => decideRequest(r, false)}>거절</button>
+                                </div>
+                              )}
+                              {sr?.status === "approved" && <div className="small" style={{ marginTop: 4, fontWeight: 700, color: "#0D7A3E" }}>팀 요청 승인됨 → {formatWon(sr.amount)} 반영 ({sr.by}: {sr.comment})</div>}
+                              {sr?.status === "rejected" && <div className="small" style={{ marginTop: 4, fontWeight: 700, color: "var(--muted)" }}>팀 요청 거절됨 ({sr.by}: {sr.comment})</div>}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
