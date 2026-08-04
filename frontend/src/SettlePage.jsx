@@ -21,6 +21,7 @@ export default function SettlePage({ token }) {
   const [busy, setBusy] = useState(false);
   const [reqFor, setReqFor] = useState(null); // {rowId, amount, comment, by}
   const [expanded, setExpanded] = useState(null); // 펼친 행 id
+  const [payout, setPayout] = useState(null); // 브로제이가 작성한 지급 정산서
 
   useEffect(() => {
     fetch(`${API}/public/install/settle/${token}/preview`)
@@ -41,7 +42,7 @@ export default function SettlePage({ token }) {
       const d = await r.json();
       if (!r.ok) { setErr(d.error || "확인 실패"); setAuthed(false); return; }
       sessionStorage.setItem(`settle_pin_${token}`, pinVal);
-      setTeam(d.team); setPeriod({ from: d.from, to: d.to }); setRows(d.rows || []); setAuthed(true);
+      setTeam(d.team); setPeriod({ from: d.from, to: d.to }); setRows(d.rows || []); setPayout(d.payout || null); setAuthed(true);
     } catch { setErr("네트워크 오류"); }
     finally { setBusy(false); }
   };
@@ -242,6 +243,33 @@ export default function SettlePage({ token }) {
             </tbody>
           </table>
         </div>
+
+        {payout && ((payout.deductions || []).length || (payout.payees || []).length || payout.note) ? (() => {
+          const supply = totalFinal;
+          const tax = Math.round(supply * 0.1);
+          const total = supply + tax;
+          const dedSum = (payout.deductions || []).reduce((a, d) => a + (Number(d.amount) || 0), 0);
+          const pay = total - dedSum;
+          const line = { display: "flex", justifyContent: "space-between", padding: "7px 0", borderTop: "1px solid #F4EEE3", fontSize: 13.5 };
+          return (
+            <div style={{ marginTop: 16, border: "1px solid #EFE7D8", borderRadius: 12, padding: "14px 16px" }}>
+              <div style={{ fontWeight: 800, fontSize: 14.5, marginBottom: 6 }}>지급 정산서</div>
+              <div style={{ ...line, borderTop: "none" }}><span>공급가액</span><strong>{won(supply)}</strong></div>
+              <div style={line}><span>세금 (10%)</span><strong>{won(tax)}</strong></div>
+              <div style={line}><span>합계</span><strong>{won(total)}</strong></div>
+              {(payout.deductions || []).map((d, i) => (
+                <div key={i} style={{ ...line, color: "#C0392B" }}><span>{d.label || "차감"}</span><strong>−{won(d.amount)}</strong></div>
+              ))}
+              <div style={{ ...line, fontWeight: 800, fontSize: 14.5 }}><span>지급 금액 (VAT 포함)</span><strong>{won(pay)}</strong></div>
+              {(payout.payees || []).map((p, i) => (
+                <div key={i} style={{ ...line, background: "#FDF1EC", padding: "8px 8px", borderRadius: 8, borderTop: "none", marginTop: 4 }}>
+                  <span style={{ fontWeight: 700 }}>{p.name}</span><strong>{won(p.amount)}</strong>
+                </div>
+              ))}
+              {payout.note && <div style={{ fontSize: 12.5, color: "#8A7F6E", marginTop: 8 }}>메모: {payout.note}</div>}
+            </div>
+          );
+        })() : null}
       </div>
     </div>
   );

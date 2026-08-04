@@ -69,7 +69,7 @@ installPublicRouter.post("/settle/:token/info", async (req: Request, res: Respon
         canceled: r.canceled ?? null,
       };
     });
-  res.json({ ok: true, team: share.team, from, to, rows: mine });
+  res.json({ ok: true, team: share.team, from, to, rows: mine, payout: share.payout ?? null });
 });
 
 // 설치팀 확인(OK) 토글 — 브로제이 확인과 순서 무관

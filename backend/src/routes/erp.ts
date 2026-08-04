@@ -2110,7 +2110,31 @@ erpRouter.post("/install-settle-share", async (req: AuthedRequest, res) => {
     // 같은 링크를 유지하되 노출 기간은 이번에 선택한 기간으로 갱신
     share = await prisma.erpInstallSettleShare.update({ where: { id: share.id }, data: { fromDate, toDate } });
   }
-  res.json({ token: share.token, pin: share.pin, team: share.team, from: share.fromDate, to: share.toDate });
+  res.json({ token: share.token, pin: share.pin, team: share.team, from: share.fromDate, to: share.toDate, payout: share.payout ?? null });
+});
+
+// 팀 지급 정산서 저장 (차감·지급처 분배 — 설치팀 페이지에도 표시)
+erpRouter.put("/install-settle-share/payout", async (req: AuthedRequest, res) => {
+  if (!(await requireVendorAccess(req, res))) return;
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const team = String(b.team ?? "").trim();
+  if (!team) return res.status(400).json({ error: "설치팀명이 필요합니다" });
+  const share = await prisma.erpInstallSettleShare.findFirst({ where: { team, active: true } });
+  if (!share) return res.status(404).json({ error: "먼저 정산 공유 링크를 만드세요" });
+  const raw = (b.payout ?? {}) as Record<string, unknown>;
+  const num = (v: unknown) => Math.round(Number(String(v ?? "").replace(/[^\d.-]/g, "")) || 0);
+  const list = (v: unknown, nameKey: string) =>
+    (Array.isArray(v) ? v : [])
+      .map((x: Record<string, unknown>) => ({ [nameKey]: String(x?.[nameKey] ?? "").trim().slice(0, 120), amount: num(x?.amount) }))
+      .filter((x) => x[nameKey] || x.amount)
+      .slice(0, 20);
+  const payout = {
+    deductions: list(raw.deductions, "label"),
+    payees: list(raw.payees, "name"),
+    note: String(raw.note ?? "").trim().slice(0, 500),
+  };
+  await prisma.erpInstallSettleShare.update({ where: { id: share.id }, data: { payout: payout as object } });
+  res.json({ ok: true, payout });
 });
 
 erpRouter.get("/install-schedule/sheet-tabs", async (req: AuthedRequest, res) => {

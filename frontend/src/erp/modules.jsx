@@ -7202,6 +7202,30 @@ export function InstallScheduleView() {
     }
   };
 
+  // 팀 지급 정산서 (차감·지급처 분배) — 공유 레코드에 저장, 설치팀 페이지에도 표시
+  const [payoutTeam, setPayoutTeam] = useState(null); // 열려있는 팀
+  const [payoutDraft, setPayoutDraft] = useState(null); // {deductions, payees, note}
+  const openPayout = async (team) => {
+    if (payoutTeam === team) { setPayoutTeam(null); return; }
+    if (!range[0] || !range[1]) return notifyError(new Error("기간(월)을 먼저 선택하세요"));
+    try {
+      const res = await api.erpInstallSettleShare(team, range[0], range[1]); // 없으면 생성, 있으면 기간 갱신 + payout 반환
+      setSettleShares((s) => ({ ...s, [team]: res }));
+      setPayoutDraft({
+        deductions: (res.payout?.deductions || []).map((d) => ({ ...d })),
+        payees: (res.payout?.payees || []).map((p) => ({ ...p })),
+        note: res.payout?.note || "",
+      });
+      setPayoutTeam(team);
+    } catch (e) { notifyError(e); }
+  };
+  const savePayout = async () => {
+    try {
+      await api.erpInstallSettlePayout(payoutTeam, payoutDraft);
+      toastSuccess("지급 정산서를 저장했습니다 — 설치팀 페이지에도 표시됩니다");
+    } catch (e) { notifyError(e); }
+  };
+
   // 표시 중인 건 전체 '우리 OK' 일괄 처리
   const bulkBrojOk = async () => {
     const targets = tableRows.filter((r) => !r.brojOk);
@@ -7331,6 +7355,7 @@ export function InstallScheduleView() {
                         <div className="cell-ttl">{g.team}{settleTeam === g.team ? " ▾" : ""}</div>
                         <div className="row" style={{ gap: 6, marginTop: 3, alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
                           <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => genSettleShare(g.team)}>🔗 정산 공유</button>
+                          <button type="button" className={"btn btn-sm " + (payoutTeam === g.team ? "btn-accent" : "btn-ghost")} style={{ fontSize: 11 }} onClick={() => openPayout(g.team)}>₩ 지급 정산서</button>
                           {settleShares[g.team] && <span className="tag gray" style={{ fontSize: 11 }}>PIN {settleShares[g.team].pin}</span>}
                         </div>
                       </td>
@@ -7359,6 +7384,77 @@ export function InstallScheduleView() {
                 </tbody>
               </table>
             </div>
+
+            {/* 팀 지급 정산서 — 시트의 지급 요약처럼 차감·지급처 분배 */}
+            {payoutTeam && payoutDraft && (() => {
+              const g = settleSummary.find((x) => x.team === payoutTeam);
+              const supply = g?.final || 0;
+              const tax = Math.round(supply * 0.1);
+              const total = supply + tax;
+              const dedSum = payoutDraft.deductions.reduce((a, d) => a + (Number(d.amount) || 0), 0);
+              const pay = total - dedSum;
+              const payeeSum = payoutDraft.payees.reduce((a, p) => a + (Number(p.amount) || 0), 0);
+              const rest = pay - payeeSum;
+              const numIn = (v) => String(v ?? "").replace(/[^\d]/g, "");
+              return (
+                <div className="card" style={{ marginTop: 12, background: "var(--paper)" }}>
+                  <div className="row between" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                    <div className="kbe-meta-h" style={{ margin: 0 }}>{payoutTeam} 지급 정산서 <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>· 최종 정산 합 기준 · 설치팀 페이지에 표시됨</span></div>
+                    <button type="button" className="btn btn-accent btn-sm" onClick={savePayout}>저장</button>
+                  </div>
+                  <table className="erp-tbl" style={{ marginTop: 10, maxWidth: 560 }}>
+                    <tbody>
+                      <tr><td>공급가액</td><td className="num">{formatWon(supply)}</td></tr>
+                      <tr><td>세금 (10%)</td><td className="num">{formatWon(tax)}</td></tr>
+                      <tr style={{ fontWeight: 700 }}><td>합계</td><td className="num">{formatWon(total)}</td></tr>
+                      {payoutDraft.deductions.map((d, i) => (
+                        <tr key={`d${i}`}>
+                          <td>
+                            <span className="row" style={{ gap: 6, alignItems: "center" }}>
+                              <input className="cst-inp" style={{ maxWidth: 200 }} placeholder="차감 항목 (예: 이미입금)" value={d.label}
+                                onChange={(e) => setPayoutDraft((p) => ({ ...p, deductions: p.deductions.map((x, k) => k === i ? { ...x, label: e.target.value } : x) }))} />
+                              <button type="button" className="cst-x" onClick={() => setPayoutDraft((p) => ({ ...p, deductions: p.deductions.filter((_, k) => k !== i) }))}>✕</button>
+                            </span>
+                          </td>
+                          <td className="num">
+                            −<input className="cst-inp cst-inp-num" style={{ maxWidth: 120, textAlign: "right" }} inputMode="numeric" value={Number(d.amount || 0).toLocaleString()}
+                              onChange={(e) => setPayoutDraft((p) => ({ ...p, deductions: p.deductions.map((x, k) => k === i ? { ...x, amount: Number(numIn(e.target.value)) } : x) }))} />
+                          </td>
+                        </tr>
+                      ))}
+                      <tr style={{ fontWeight: 800 }}><td>지급 금액 (VAT 포함)</td><td className="num">{formatWon(pay)}</td></tr>
+                      {payoutDraft.payees.map((p2, i) => (
+                        <tr key={`p${i}`} style={{ background: "#FDF1EC" }}>
+                          <td>
+                            <span className="row" style={{ gap: 6, alignItems: "center" }}>
+                              <input className="cst-inp" style={{ maxWidth: 320 }} placeholder="지급처 (예: 해피싱즈 / 우리아이티 계좌번호 은행)" value={p2.name}
+                                onChange={(e) => setPayoutDraft((p) => ({ ...p, payees: p.payees.map((x, k) => k === i ? { ...x, name: e.target.value } : x) }))} />
+                              <button type="button" className="cst-x" onClick={() => setPayoutDraft((p) => ({ ...p, payees: p.payees.filter((_, k) => k !== i) }))}>✕</button>
+                            </span>
+                          </td>
+                          <td className="num" style={{ fontWeight: 700 }}>
+                            <input className="cst-inp cst-inp-num" style={{ maxWidth: 130, textAlign: "right", fontWeight: 700 }} inputMode="numeric" value={Number(p2.amount || 0).toLocaleString()}
+                              onChange={(e) => setPayoutDraft((p) => ({ ...p, payees: p.payees.map((x, k) => k === i ? { ...x, amount: Number(numIn(e.target.value)) } : x) }))} />
+                          </td>
+                        </tr>
+                      ))}
+                      {rest !== 0 && (
+                        <tr><td className="small" style={{ color: rest > 0 ? "#B26A00" : "#C0392B", fontWeight: 700 }}>{rest > 0 ? "미배분" : "초과 배분"}</td>
+                          <td className="num" style={{ color: rest > 0 ? "#B26A00" : "#C0392B", fontWeight: 700 }}>{formatWon(rest)}</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                  <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPayoutDraft((p) => ({ ...p, deductions: [...p.deductions, { label: "", amount: 0 }] }))}>+ 차감 항목 (사전입금 등)</button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPayoutDraft((p) => ({ ...p, payees: [...p.payees, { name: "", amount: Math.max(0, rest) }] }))}>+ 지급처</button>
+                  </div>
+                  <div className="field" style={{ marginTop: 8, marginBottom: 0 }}>
+                    <label>메모</label>
+                    <input value={payoutDraft.note} onChange={(e) => setPayoutDraft((p) => ({ ...p, note: e.target.value }))} placeholder="비고 (설치팀에도 보입니다)" />
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* 건별 산출 내역 — 어떤 건에 어떤 기준으로 얼마가 계산됐는지 */}
             <div className="row between" style={{ alignItems: "center", marginTop: 14, flexWrap: "wrap", gap: 8 }}>

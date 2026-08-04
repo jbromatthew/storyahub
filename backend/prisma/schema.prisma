@@ -937,6 +937,7 @@ model ErpInstallSettleShare {
   team      String   // 설치팀명 (ErpInstallSchedule.data.team과 매칭)
   fromDate  String?  // 공유 범위 시작 (YYYY-MM-DD) — 발급 시 보고 있던 기간만 노출
   toDate    String?  // 공유 범위 끝
+  payout    Json?    // 지급 정산서: {deductions: [{label, amount}], payees: [{name, amount}], note}
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
