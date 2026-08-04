@@ -6821,7 +6821,7 @@ const INSTALL_GROUPS = ["기본 정보", "장비 · 설치", "고객 · 현장",
 const INSTALL_FIELDS = [
   { key: "installDate", label: "시공일", type: "date", w: 116, g: "기본 정보", cls: "c4" },
   { key: "team", label: "설치팀", type: "text", w: 96, g: "기본 정보", cls: "c4" },
-  { key: "type", label: "구분", type: "select", options: ["", "스마트상점", "신규설치", "이전설치", "업그레이드", "중고설치", "통화소통", "A.S"], w: 92, g: "기본 정보", cls: "c4" },
+  { key: "type", label: "구분", type: "select", options: ["", "스마트상점", "신규설치", "이전설치", "업그레이드", "중고설치", "상품추가", "골프", "통화소통", "A.S"], w: 92, g: "기본 정보", cls: "c4" },
   { key: "plan", label: "요금제", type: "text", w: 96, g: "기본 정보", cls: "c4" },
   { key: "region", label: "지역", type: "select", options: ["", "지방", "수도권"], w: 80, g: "기본 정보", cls: "c4" },
   { key: "siteStatus", label: "현장상태", type: "select", options: ["", "정상운영", "인테리어"], w: 92, g: "기본 정보", cls: "c4" },
@@ -6913,12 +6913,16 @@ function installSettleCalc(row) {
     return { name, qty: Math.max(1, Math.round(Number(row[`qty${i}`]) || 1)) };
   }).filter(Boolean);
 
-  const mainUnits = []; // 70% 규칙 대상 (키오스크 본체)
+  const hasProgramItem = items.some((it) => /프로그/.test(it.name)); // 프로그램 별도 입력 시 타석에 중복 계산 방지
+  const readerItems = []; // 리더기: 본체와 동시 설치면 0원, 단독 방문이면 추가설치 8만
+  const mainUnits = []; // 70% 규칙 대상 (키오스크 본체 · 골프 스크린)
+  let golfScreen = false;
+  let needGolfScreen = false;
   for (const it of items) {
     const n = it.name;
     // IoT 제품 — 설치팀 지급 단가(설치가격) × 수량
     if (/허브|에어컨/.test(n)) { parts.push({ label: `${n} ×${it.qty} (IoT 설치비 4만)`, amount: 40000 * it.qty }); continue; }
-    if (/릴레이|배전반/.test(n)) { needElectrician = true; parts.push({ label: `${n} ×${it.qty} (IoT 설치비 14만)`, amount: 140000 * it.qty }); continue; }
+    if (/릴레이|배전반|용량외/.test(n)) { needElectrician = true; parts.push({ label: `${n} ×${it.qty} (IoT 설치비 14만)`, amount: 140000 * it.qty }); continue; }
     if (/플러그/.test(n)) { parts.push({ label: `${n} ×${it.qty} (IoT 설치비 9천)`, amount: 9000 * it.qty }); continue; }
     if (/전기기사/.test(n)) { hasElectrician = true; parts.push({ label: `${n} ×${it.qty}`, amount: 300000 * it.qty }); continue; }
     if (/네트워크\s*\(?대|네트워크대/.test(n)) { parts.push({ label: `${n} ×${it.qty} (IoT)`, amount: 300000 * it.qty }); continue; }
@@ -6927,16 +6931,22 @@ function installSettleCalc(row) {
     if (/스피커/.test(n)) { parts.push({ label: `${n} ×${it.qty} (IoT 설치비 7만)`, amount: 70000 * it.qty }); continue; }
     if (/iot|아이오티/i.test(n)) { iotUnparsed = true; continue; }
     if (/통화소통|전화소통/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 10000 * it.qty }); continue; }
-    if (/스크린/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 500000 * it.qty }); continue; }
-    if (/프로그/.test(n)) { parts.push({ label: `${n} ×${it.qty} (타석당)`, amount: 22000 * it.qty }); continue; }
-    if (/타석/.test(n)) { parts.push({ label: `${n} ×${it.qty} (타석당)`, amount: 15000 * it.qty }); continue; }
-    if (/골프/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 500000 * it.qty }); continue; }
+    // 골프: 스크린 500,000은 본체(100% 슬롯)로, 타석은 타석당 15,000 + 프로그램 22,000
+    if (/스크린/.test(n)) { golfScreen = true; for (let k = 0; k < it.qty; k++) mainUnits.push({ name: n, unit: 500000, fixed: true }); continue; }
+    if (/프로그/.test(n)) { parts.push({ label: `${n} ×${it.qty} (타석당 2.2만)`, amount: 22000 * it.qty }); continue; }
+    if (/타석/.test(n)) {
+      needGolfScreen = true;
+      const per = hasProgramItem ? 15000 : 37000;
+      parts.push({ label: `${n} ×${it.qty} (타석당 1.5만${hasProgramItem ? "" : "+프로그램 2.2만"})`, amount: per * it.qty });
+      continue;
+    }
+    if (/골프/.test(n)) { golfScreen = true; for (let k = 0; k < it.qty; k++) mainUnits.push({ name: n, unit: 500000, fixed: true }); continue; }
     if (/브라켓/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 70000 * it.qty }); continue; }
     if (/데드볼트/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 100000 * it.qty }); continue; }
-    if (/공유기/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 53546 * it.qty }); continue; }
+    if (/공유기/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 53540 * it.qty }); continue; }
     if (/락커/.test(n)) { parts.push({ label: `${n} ×${it.qty}`, amount: 80000 * it.qty }); continue; }
-    if (/KSNET|리더기/i.test(n) && !/인치/.test(n)) { parts.push({ label: `${n} ×${it.qty} (추가설치)`, amount: 80000 * it.qty }); continue; }
-    if (/인치|티업기|QR|키오스크/i.test(n)) {
+    if (/KSNET|리더기/i.test(n) && !/인치/.test(n)) { readerItems.push(it); continue; }
+    if (/인치|티업기|QR|Q-?PASS|키오스크|DID/i.test(n)) {
       const unit = installKioskUnitPrice(n, region);
       for (let k = 0; k < it.qty; k++) mainUnits.push({ name: n, unit });
       continue;
@@ -6944,11 +6954,52 @@ function installSettleCalc(row) {
     unknown.push(n);
   }
 
-  // 2대 이상: 단가 높은 것 100%, 나머지 70%
+  // 골프 타석만 있고 스크린 항목이 없으면 스크린 1식(500,000)을 본체로 추가
+  if (needGolfScreen && !golfScreen) mainUnits.push({ name: "골프 스크린 (1식)", unit: 500000, fixed: true });
+
+  // 리더기(KSNET): 키오스크 본체와 동시 설치면 0원, 단독 방문(추가설치)이면 80,000
+  for (const it of readerItems) {
+    if (mainUnits.length) parts.push({ label: `${it.name} ×${it.qty} (본체 동시 설치 — 0원)`, amount: 0 });
+    else parts.push({ label: `${it.name} ×${it.qty} (단독 추가설치)`, amount: 80000 * it.qty });
+  }
+
+  // 2대 이상: 단가 높은 것(골프 스크린 포함) 100%, 나머지 70% — 스크린은 항상 500,000 고정
   mainUnits.sort((a, b) => b.unit - a.unit);
   mainUnits.forEach((u, idx) => {
-    parts.push({ label: `${u.name} (${region}${idx > 0 ? " · 추가 70%" : ""})`, amount: idx === 0 ? u.unit : Math.round(u.unit * 0.7) });
+    const discounted = idx > 0 && !u.fixed;
+    parts.push({
+      label: `${u.name}${u.fixed ? "" : ` (${region}${discounted ? " · 추가 70%" : ""})`}`,
+      amount: discounted ? Math.round(u.unit * 0.7) : u.unit,
+    });
   });
+
+  // 장비칸에 'IoT'만 있고 세부내역이 특이사항에 적힌 경우 — 특이사항 텍스트에서 수량 해석
+  // (예: "배전반 용량외 6 / 에어컨 3 / 네트워크(중) / 전기기사 1")
+  if (iotUnparsed) {
+    const note = String(row.notes || "");
+    const cnt = (re) => {
+      const m = note.match(re);
+      if (!m) return 0;
+      return Math.max(1, parseInt(m[1] || "1", 10) || 1);
+    };
+    const relay = cnt(/용량외\s*(\d+)?/) || cnt(/배전반\s*(\d+)?/) || cnt(/릴레이\s*(\d+)?/);
+    const ac = cnt(/에어컨\s*(\d+)?/);
+    const netL = cnt(/네트워크\s*\(?대\)?\s*(\d+)?/);
+    const netM = cnt(/네트워크\s*\(?중\)?\s*(\d+)?/);
+    const netS = cnt(/네트워크\s*\(?소\)?\s*(\d+)?/);
+    const elec = cnt(/전기기사\s*(\d+)?/);
+    const spk = cnt(/스피커\s*(\d+)?/);
+    const plug = cnt(/플러그\s*(\d+)?/);
+    if (relay) { needElectrician = true; parts.push({ label: `릴레이(배전반) ×${relay} (특이사항)`, amount: 140000 * relay }); }
+    if (ac) parts.push({ label: `에어컨 허브 ×${ac} (특이사항)`, amount: 40000 * ac });
+    if (netL) parts.push({ label: `네트워크(대) ×${netL} (특이사항)`, amount: 300000 * netL });
+    if (netM) parts.push({ label: `네트워크(중) ×${netM} (특이사항)`, amount: 250000 * netM });
+    if (netS) parts.push({ label: `네트워크(소) ×${netS} (특이사항)`, amount: 200000 * netS });
+    if (spk) parts.push({ label: `스피커 ×${spk} (특이사항)`, amount: 70000 * spk });
+    if (plug) parts.push({ label: `플러그 ×${plug} (특이사항)`, amount: 9000 * plug });
+    if (elec) { hasElectrician = true; parts.push({ label: `전기기사 ×${elec} (특이사항)`, amount: 300000 * elec }); }
+    if (relay || ac || netL || netM || netS || elec || spk || plug) iotUnparsed = false;
+  }
 
   // 릴레이(배전반) 설치에는 전기기사 1회 자동 포함 (별도 입력 시 중복 방지)
   if (needElectrician && !hasElectrician) {
@@ -7206,7 +7257,7 @@ export function InstallScheduleView() {
               <button type="button" className="btn btn-sm btn-ghost" disabled={bulkBusy} onClick={bulkFillSettle}>{bulkBusy ? "채우는 중…" : "빈 정산 자동 채우기"}</button>
             </div>
             <div className="small" style={{ color: "var(--muted)", margin: "6px 0 10px", lineHeight: 1.6 }}>
-              단가: 키오스크 수도권 38만 / 지방 45만 · 32인치 42만 / 49만 · 2대 이상 추가분 70% · 통화소통 1만 · A.S 8만 · KSNET리더기 추가 8만 · 골프 스크린 50만 + 타석당 1.5만 + 프로그램 타석당 2.2만 · 제주 출장비 성수기 50만 / 비수기 35만 · <strong>IoT 설치팀 지급</strong>: 에어컨허브 4만 · 릴레이(배전반) 14만 + 전기기사 30만 · 스피커 7만 · 플러그 9천 · 네트워크 대 30만 / 중 25만 / 소 20만
+              단가: 키오스크(Q-PASS 포함) 수도권 38만 / 지방 45만 · 32인치 42만 / 49만 · 2대 이상 추가분 70% · 통화소통 1만 · A.S 8만 · 리더기 단독 방문 8만 (본체 동시 설치 0원) · 골프 스크린 50만(본체 취급) + 타석당 1.5만 + 프로그램 2.2만 · 제주 출장비 성수기 50만 / 비수기 35만 · <strong>IoT</strong>: 에어컨허브 4만 · 릴레이(배전반) 14만 + 전기기사 30만 · 스피커 7만 · 플러그 9천 · 네트워크 대 30만 / 중 25만 / 소 20만 — 장비칸이 'IoT'면 특이사항의 수량(예: 배전반 용량외 6 / 에어컨 3)도 자동 해석
             </div>
             <div className="erp-tbl-wrap">
               <table className="erp-tbl">
