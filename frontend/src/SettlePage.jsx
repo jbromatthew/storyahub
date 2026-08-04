@@ -63,6 +63,26 @@ export default function SettlePage({ token }) {
     }
   };
 
+  const bulkOk = async () => {
+    const targets = rows.filter((r) => !r.teamOk);
+    if (!targets.length) { setErr(""); return; }
+    if (!window.confirm(`${targets.length}건을 모두 확인(OK) 처리할까요?`)) return;
+    setErr(""); setBusy(true);
+    const stamp = { at: new Date().toISOString(), by: team };
+    const ids = new Set(targets.map((r) => r.id));
+    setRows((prev) => prev.map((x) => (ids.has(x.id) ? { ...x, teamOk: stamp } : x))); // 즉시 반영
+    try {
+      for (const r0 of targets) {
+        const r = await fetch(`${API}/public/install/settle/${token}/ok`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pin, rowId: r0.id, ok: true, by: team }),
+        });
+        if (!r.ok) throw new Error((await r.json()).error || "확인 실패");
+      }
+    } catch (e) { setErr(String(e.message || "일부 건 확인 실패 — 새로고침 후 다시 확인하세요")); }
+    finally { setBusy(false); }
+  };
+
   const submitRequest = async () => {
     if (!reqFor) return;
     if (!String(reqFor.comment || "").trim()) return setErr("요청 사유를 입력하세요");
@@ -121,6 +141,11 @@ export default function SettlePage({ token }) {
             · 양측 확인 {rows.filter((r) => r.teamOk && r.brojOk).length}/{rows.length}
           </span>
           <div style={{ fontSize: 12, color: "#8A7F6E", marginTop: 3 }}>금액이 다르면 각 건의 "수정 요청"으로 원하는 금액과 사유를 남겨주세요. 브로제이 승인 후 반영됩니다.</div>
+          {rows.some((r) => !r.teamOk) && (
+            <button style={{ ...S.btn, marginTop: 8, padding: "9px 14px", fontSize: 13 }} disabled={busy} onClick={bulkOk}>
+              👍 전체 확인 OK ({rows.filter((r) => !r.teamOk).length}건)
+            </button>
+          )}
         </div>
         {err && <div style={S.err}>{err}</div>}
 

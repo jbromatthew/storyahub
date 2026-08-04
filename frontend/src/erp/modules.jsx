@@ -7202,6 +7202,23 @@ export function InstallScheduleView() {
     }
   };
 
+  // 표시 중인 건 전체 '우리 OK' 일괄 처리
+  const bulkBrojOk = async () => {
+    const targets = tableRows.filter((r) => !r.brojOk);
+    if (!targets.length) { toastSuccess("이미 모두 확인했습니다"); return; }
+    const ok = await confirmAction(`표시 중인 ${targets.length}건을 모두 '우리 OK'로 확인할까요?`, "설치팀 확인과 순서는 무관합니다.");
+    if (!ok) return;
+    setBulkBusy(true);
+    const stamp = { at: new Date().toISOString(), by: "브로제이" };
+    const ids = new Set(targets.map((r) => r.id));
+    setRows((prev) => prev.map((x) => (ids.has(x.id) ? { ...x, brojOk: stamp } : x))); // 즉시 반영
+    try {
+      for (const r of targets) await api.erpInstallScheduleUpdate(r.id, { brojOk: stamp });
+      toastSuccess(`${targets.length}건 확인했습니다`);
+    } catch (e) { notifyError(e); await loadRows(range); }
+    finally { setBulkBusy(false); }
+  };
+
   // 최종 정산이 비어있는 건을 자동계산 금액으로 일괄 채우기 (IoT·미확인 건 제외)
   const bulkFillSettle = async () => {
     const targets = tableRows.filter((r) => {
@@ -7293,7 +7310,10 @@ export function InstallScheduleView() {
           <div className="card" style={{ marginTop: 10 }}>
             <div className="row between" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
               <div className="kbe-meta-h" style={{ margin: 0 }}>팀별 정산 요약 <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>· 표시 중인 {tableRows.length}건 기준 · 공급가액</span></div>
-              <button type="button" className="btn btn-sm btn-ghost" disabled={bulkBusy} onClick={bulkFillSettle}>{bulkBusy ? "확정 중…" : "미확정 전체 확정 (자동계산 수락)"}</button>
+              <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                <button type="button" className="btn btn-sm btn-ghost" disabled={bulkBusy} onClick={bulkFillSettle}>{bulkBusy ? "처리 중…" : "미확정 전체 확정 (자동계산 수락)"}</button>
+                <button type="button" className="btn btn-sm btn-accent" disabled={bulkBusy} onClick={bulkBrojOk}>✓ 우리 OK 전체</button>
+              </div>
             </div>
             <div className="small" style={{ color: "var(--muted)", margin: "6px 0 10px", lineHeight: 1.6 }}>
               단가: 키오스크(Q-PASS 포함) 수도권 38만 / 지방 45만 · 골프 장비(24인치·티업기·빔프로젝터)는 기본설치비 포함(지급 없음) · 32인치 42만 / 49만 · 2대 이상 추가분 70% · 통화소통 1만 · A.S 8만 · 리더기 단독 방문 8만 (본체 동시 설치 0원) · 골프는 별도 계산식: 기본설치비 50만 + 타석당 1.5만 · 제주 출장비 성수기 50만 / 비수기 35만 · <strong>IoT</strong>: 에어컨허브 4만 · 릴레이(배전반) 14만 + 전기기사 30만 · 스피커 7만 · 플러그 9천 · 네트워크 대 30만 / 중 25만 / 소 20만 — 장비칸이 'IoT'면 특이사항의 수량(예: 배전반 용량외 6 / 에어컨 3)도 자동 해석
