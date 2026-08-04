@@ -47,17 +47,20 @@ export default function SettlePage({ token }) {
   };
 
   const toggleOk = async (row) => {
-    setBusy(true); setErr("");
+    setErr("");
+    const next = row.teamOk ? null : { at: new Date().toISOString(), by: team };
+    setRows((prev) => prev.map((x) => (x.id === row.id ? { ...x, teamOk: next } : x))); // 즉시 반영
     try {
       const r = await fetch(`${API}/public/install/settle/${token}/ok`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pin, rowId: row.id, ok: !row.teamOk, by: team }),
       });
       const d = await r.json();
-      if (!r.ok) { setErr(d.error || "확인 실패"); return; }
-      await load(pin);
-    } catch { setErr("네트워크 오류"); }
-    finally { setBusy(false); }
+      if (!r.ok) { setRows((prev) => prev.map((x) => (x.id === row.id ? { ...x, teamOk: row.teamOk } : x))); setErr(d.error || "확인 실패"); }
+    } catch {
+      setRows((prev) => prev.map((x) => (x.id === row.id ? { ...x, teamOk: row.teamOk } : x)));
+      setErr("네트워크 오류");
+    }
   };
 
   const submitRequest = async () => {
@@ -71,8 +74,9 @@ export default function SettlePage({ token }) {
       });
       const d = await r.json();
       if (!r.ok) { setErr(d.error || "요청 실패"); return; }
+      const newReq = { amount: Number(reqFor.amount) || 0, comment: reqFor.comment, by: reqFor.by || team, at: new Date().toISOString(), status: "pending" };
+      setRows((prev) => prev.map((x) => (x.id === reqFor.rowId ? { ...x, settleRequest: newReq } : x))); // 즉시 반영
       setReqFor(null);
-      await load(pin);
     } catch { setErr("네트워크 오류"); }
     finally { setBusy(false); }
   };

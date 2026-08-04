@@ -7188,14 +7188,18 @@ export function InstallScheduleView() {
       `${req2.by || "설치팀"}: ${req2.comment}`
     );
     if (!ok) return;
+    const nextReq = { ...req2, status: approve ? "approved" : "rejected", decidedAt: new Date().toISOString() };
+    setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, settleRequest: nextReq, ...(approve ? { finalSettle: req2.amount } : {}) } : x))); // 즉시 반영
     try {
       await api.erpInstallScheduleUpdate(r.id, {
         ...(approve ? { finalSettle: req2.amount } : {}),
-        settleRequest: { ...req2, status: approve ? "approved" : "rejected", decidedAt: new Date().toISOString() },
+        settleRequest: nextReq,
       });
       toastSuccess(approve ? "승인하고 최종 정산에 반영했습니다" : "거절했습니다");
-      await loadRows(range);
-    } catch (e) { notifyError(e); }
+    } catch (e) {
+      setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, settleRequest: req2, finalSettle: r.finalSettle } : x)));
+      notifyError(e);
+    }
   };
 
   // 최종 정산이 비어있는 건을 자동계산 금액으로 일괄 채우기 (IoT·미확인 건 제외)
@@ -7406,7 +7410,11 @@ export function InstallScheduleView() {
                               <span className="row" style={{ gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
                                 <span style={{ color: "var(--muted)", fontWeight: 500 }}>자동 {formatWon(c.total)}</span>
                                 <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 11 }}
-                                  onClick={async () => { try { await api.erpInstallScheduleUpdate(r.id, { baseFee: c.total, finalSettle: c.total }); toastSuccess("확정했습니다"); await loadRows(range); } catch (e) { notifyError(e); } }}>
+                                  onClick={async () => {
+                                    setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, baseFee: c.total, finalSettle: c.total } : x))); // 즉시 반영
+                                    try { await api.erpInstallScheduleUpdate(r.id, { baseFee: c.total, finalSettle: c.total }); toastSuccess("확정했습니다"); }
+                                    catch (e) { setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, baseFee: r.baseFee, finalSettle: r.finalSettle } : x))); notifyError(e); }
+                                  }}>
                                   확정
                                 </button>
                               </span>
@@ -7423,10 +7431,10 @@ export function InstallScheduleView() {
                             <span className="small" style={{ fontWeight: 700, color: r.teamOk ? "#0D7A3E" : "var(--muted)" }}>팀 {r.teamOk ? "✓" : "대기"}</span>
                             <button type="button" className={"btn btn-sm " + (r.brojOk ? "btn-accent" : "btn-ghost")} style={{ fontSize: 11, marginLeft: 6 }}
                               onClick={async () => {
-                                try {
-                                  await api.erpInstallScheduleUpdate(r.id, { brojOk: r.brojOk ? null : { at: new Date().toISOString(), by: "브로제이" } });
-                                  await loadRows(range);
-                                } catch (e) { notifyError(e); }
+                                const next = r.brojOk ? null : { at: new Date().toISOString(), by: "브로제이" };
+                                setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, brojOk: next } : x))); // 즉시 반영
+                                try { await api.erpInstallScheduleUpdate(r.id, { brojOk: next }); }
+                                catch (e) { setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, brojOk: r.brojOk } : x))); notifyError(e); }
                               }}>
                               {r.brojOk ? "우리 ✓" : "우리 OK"}
                             </button>
