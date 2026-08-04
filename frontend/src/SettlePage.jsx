@@ -4,22 +4,19 @@ import { installSettleCalc } from "./erp/modules.jsx";
 
 const API = getApiBase();
 const won = (n) => `${(Number(n) || 0).toLocaleString()}원`;
-const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const monthRange = (y, m) => [`${y}-${String(m).padStart(2, "0")}-01`, ymd(new Date(y, m, 0))];
 
 /**
- * 설치팀 월별 정산 확인 페이지 (가입 없이 PIN 접속)
- * - 자기 팀 설치 건의 정산 내역(산출 기준 포함)을 월별로 확인
+ * 설치팀 정산 확인 페이지 (가입 없이 PIN 접속)
+ * - 브로제이가 공유 시 지정한 기간의 자기 팀 설치 건만 보인다 (기간은 서버에서 고정)
  * - 금액이 다르면 건별로 수정 요청(원하는 금액 + 사유) → 브로제이 승인 시 반영
  */
 export default function SettlePage({ token }) {
-  const today = new Date();
   const [pin, setPin] = useState("");
   const [authed, setAuthed] = useState(false);
   const [preview, setPreview] = useState(null);
   const [team, setTeam] = useState("");
+  const [period, setPeriod] = useState(null); // {from, to} — 서버가 정한 노출 기간
   const [rows, setRows] = useState([]);
-  const [ym, setYm] = useState({ y: today.getFullYear(), m: today.getMonth() + 1 });
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [reqFor, setReqFor] = useState(null); // {rowId, amount, comment, by}
@@ -29,30 +26,23 @@ export default function SettlePage({ token }) {
       .then((r) => r.json()).then(setPreview)
       .catch(() => setPreview({ error: "링크 확인 실패" }));
     const saved = sessionStorage.getItem(`settle_pin_${token}`);
-    if (saved) { setPin(saved); load(saved, ym); }
+    if (saved) { setPin(saved); load(saved); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const load = async (pinVal, ymVal) => {
+  const load = async (pinVal) => {
     setErr(""); setBusy(true);
     try {
-      const [from, to] = monthRange(ymVal.y, ymVal.m);
       const r = await fetch(`${API}/public/install/settle/${token}/info`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin: pinVal, from, to }),
+        body: JSON.stringify({ pin: pinVal }),
       });
       const d = await r.json();
       if (!r.ok) { setErr(d.error || "확인 실패"); setAuthed(false); return; }
       sessionStorage.setItem(`settle_pin_${token}`, pinVal);
-      setTeam(d.team); setRows(d.rows || []); setAuthed(true);
+      setTeam(d.team); setPeriod({ from: d.from, to: d.to }); setRows(d.rows || []); setAuthed(true);
     } catch { setErr("네트워크 오류"); }
     finally { setBusy(false); }
-  };
-
-  const shiftMonth = (delta) => {
-    const d = new Date(ym.y, ym.m - 1 + delta, 1);
-    const next = { y: d.getFullYear(), m: d.getMonth() + 1 };
-    setYm(next); load(pin, next);
   };
 
   const submitRequest = async () => {
@@ -67,7 +57,7 @@ export default function SettlePage({ token }) {
       const d = await r.json();
       if (!r.ok) { setErr(d.error || "요청 실패"); return; }
       setReqFor(null);
-      await load(pin, ym);
+      await load(pin);
     } catch { setErr("네트워크 오류"); }
     finally { setBusy(false); }
   };
@@ -89,9 +79,9 @@ export default function SettlePage({ token }) {
           <div style={{ fontSize: 19, fontWeight: 800, margin: "4px 0" }}>{preview?.team || "확인 중…"}</div>
           <div style={{ fontSize: 13, color: "#8A7F6E", marginBottom: 14 }}>{preview?.error || "전달받은 PIN 4자리를 입력하세요."}</div>
           <input style={{ ...S.input, width: "100%" }} inputMode="numeric" maxLength={4} placeholder="PIN 4자리" value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} onKeyDown={(e) => e.key === "Enter" && load(pin, ym)} />
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} onKeyDown={(e) => e.key === "Enter" && load(pin)} />
           {err && <div style={S.err}>{err}</div>}
-          <button style={{ ...S.btn, width: "100%", marginTop: 14 }} disabled={busy || pin.length !== 4} onClick={() => load(pin, ym)}>{busy ? "확인 중…" : "입장"}</button>
+          <button style={{ ...S.btn, width: "100%", marginTop: 14 }} disabled={busy || pin.length !== 4} onClick={() => load(pin)}>{busy ? "확인 중…" : "입장"}</button>
         </div>
       </div>
     );
@@ -104,11 +94,7 @@ export default function SettlePage({ token }) {
         <div style={{ fontSize: 12, fontWeight: 800, color: "#C96F4A", letterSpacing: 1 }}>BROJ 설치 정산</div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <div style={{ fontSize: 19, fontWeight: 800 }}>{team}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button style={S.ghost} onClick={() => shiftMonth(-1)}>◀</button>
-            <strong style={{ fontSize: 15 }}>{ym.y}년 {ym.m}월</strong>
-            <button style={S.ghost} onClick={() => shiftMonth(1)}>▶</button>
-          </div>
+          {period?.from && <strong style={{ fontSize: 14 }}>{period.from} ~ {period.to}</strong>}
         </div>
         <div style={{ margin: "8px 0 14px", padding: "10px 12px", background: "#FAF6EF", borderRadius: 10, fontSize: 13.5 }}>
           {rows.length}건 · 최종 정산 합계 <strong>{won(totalFinal)}</strong> <span style={{ color: "#8A7F6E" }}>(공급가액 · VAT 포함 {won(Math.round(totalFinal * 1.1))})</span>

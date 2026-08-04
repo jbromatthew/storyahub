@@ -28,13 +28,14 @@ installPublicRouter.get("/settle/:token/preview", async (req: Request, res: Resp
   res.json({ team: share.team });
 });
 
-// PIN 확인 → 기간 내 자기 팀 설치 건 정산 내역
+// PIN 확인 → 공유 발급 시 지정된 기간의 자기 팀 설치 건 정산 내역만
 installPublicRouter.post("/settle/:token/info", async (req: Request, res: Response) => {
   const b = (req.body ?? {}) as Record<string, unknown>;
   const share = await resolveSettleShare(req.params.token, String(b.pin ?? ""));
   if (!share) return res.status(403).json({ error: "링크 또는 PIN이 올바르지 않습니다" });
-  const from = ymd(b.from);
-  const to = ymd(b.to);
+  // 기간은 공유에 저장된 범위 고정 — 클라이언트 값은 무시
+  const from = ymd(share.fromDate);
+  const to = ymd(share.toDate);
   let where: object = {};
   if (from || to) {
     const dateCond = { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) };
@@ -66,7 +67,7 @@ installPublicRouter.post("/settle/:token/info", async (req: Request, res: Respon
         adjustNote: r.adjustNote ?? "", settleRequest: r.settleRequest ?? null,
       };
     });
-  res.json({ ok: true, team: share.team, rows: mine });
+  res.json({ ok: true, team: share.team, from, to, rows: mine });
 });
 
 // 금액 수정 요청 — 원하는 금액 + 코멘트 (건당 1개, 재요청 시 덮어씀. 승인/거절 전 상태로)

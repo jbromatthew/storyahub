@@ -7168,12 +7168,13 @@ export function InstallScheduleView() {
   // 설치팀 정산 공유 링크 (팀별 토큰+PIN) 및 금액 수정 요청 승인/거절
   const [settleShares, setSettleShares] = useState({}); // team -> {token, pin}
   const genSettleShare = async (team) => {
+    if (!range[0] || !range[1]) return notifyError(new Error("공유할 기간(월)을 먼저 선택하세요 — 선택한 기간만 설치팀에 보입니다"));
     try {
-      const res = await api.erpInstallSettleShare(team);
+      const res = await api.erpInstallSettleShare(team, range[0], range[1]);
       setSettleShares((s) => ({ ...s, [team]: res }));
       const url = `${window.location.origin}/?settle=${res.token}`;
       try { await navigator.clipboard.writeText(url); } catch { /* 복사 실패 시 화면 표시로 대체 */ }
-      toastSuccess(`${team} 정산 링크 복사됨 · PIN ${res.pin}`);
+      toastSuccess(`${team} 정산 링크 복사됨 · PIN ${res.pin} · ${res.from}~${res.to}만 노출`);
     } catch (e) { notifyError(e); }
   };
   const decideRequest = async (r, approve) => {

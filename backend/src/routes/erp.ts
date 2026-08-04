@@ -2090,18 +2090,25 @@ function installMonthFromTab(tab: string): string {
   return m ? `${m[1]}.${m[2]}` : tab.trim();
 }
 
-// 설치팀 월별 정산 공유 링크 발급 (팀별 토큰+PIN, 재사용)
+// 설치팀 월별 정산 공유 링크 발급 (팀별 토큰+PIN 재사용) — 발급 시 보고 있던 기간만 노출
 erpRouter.post("/install-settle-share", async (req: AuthedRequest, res) => {
   if (!(await requireVendorAccess(req, res))) return;
-  const team = String((req.body as Record<string, unknown>)?.team ?? "").trim();
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const team = String(b.team ?? "").trim();
   if (!team) return res.status(400).json({ error: "설치팀명이 필요합니다" });
+  const fromDate = cstDate(b.from);
+  const toDate = cstDate(b.to);
+  if (!fromDate || !toDate) return res.status(400).json({ error: "공유할 기간(월)을 선택하세요" });
   let share = await prisma.erpInstallSettleShare.findFirst({ where: { team, active: true } });
   if (!share) {
     share = await prisma.erpInstallSettleShare.create({
-      data: { team, token: randomBytes(18).toString("base64url"), pin: String(cryptoRandomInt(1000, 10000)) },
+      data: { team, token: randomBytes(18).toString("base64url"), pin: String(cryptoRandomInt(1000, 10000)), fromDate, toDate },
     });
+  } else {
+    // 같은 링크를 유지하되 노출 기간은 이번에 선택한 기간으로 갱신
+    share = await prisma.erpInstallSettleShare.update({ where: { id: share.id }, data: { fromDate, toDate } });
   }
-  res.json({ token: share.token, pin: share.pin, team: share.team });
+  res.json({ token: share.token, pin: share.pin, team: share.team, from: share.fromDate, to: share.toDate });
 });
 
 erpRouter.get("/install-schedule/sheet-tabs", async (req: AuthedRequest, res) => {
