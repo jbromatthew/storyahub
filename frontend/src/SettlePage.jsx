@@ -45,6 +45,20 @@ export default function SettlePage({ token }) {
     finally { setBusy(false); }
   };
 
+  const toggleOk = async (row) => {
+    setBusy(true); setErr("");
+    try {
+      const r = await fetch(`${API}/public/install/settle/${token}/ok`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin, rowId: row.id, ok: !row.teamOk, by: team }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setErr(d.error || "확인 실패"); return; }
+      await load(pin);
+    } catch { setErr("네트워크 오류"); }
+    finally { setBusy(false); }
+  };
+
   const submitRequest = async () => {
     if (!reqFor) return;
     if (!String(reqFor.comment || "").trim()) return setErr("요청 사유를 입력하세요");
@@ -98,6 +112,9 @@ export default function SettlePage({ token }) {
         </div>
         <div style={{ margin: "8px 0 14px", padding: "10px 12px", background: "#FAF6EF", borderRadius: 10, fontSize: 13.5 }}>
           {rows.length}건 · 최종 정산 합계 <strong>{won(totalFinal)}</strong> <span style={{ color: "#8A7F6E" }}>(공급가액 · VAT 포함 {won(Math.round(totalFinal * 1.1))})</span>
+          <span style={{ marginLeft: 8, fontWeight: 800, color: rows.length && rows.every((r) => r.teamOk && r.brojOk) ? "#2D6A3F" : "#8A7F6E" }}>
+            · 양측 확인 {rows.filter((r) => r.teamOk && r.brojOk).length}/{rows.length}
+          </span>
           <div style={{ fontSize: 12, color: "#8A7F6E", marginTop: 3 }}>금액이 다르면 각 건의 "수정 요청"으로 원하는 금액과 사유를 남겨주세요. 브로제이 승인 후 반영됩니다.</div>
         </div>
         {err && <div style={S.err}>{err}</div>}
@@ -127,6 +144,16 @@ export default function SettlePage({ token }) {
                 </div>
               )}
               {r.adjustNote && <div style={{ fontSize: 12.5, marginTop: 6, color: "#B26A00", fontWeight: 700 }}>브로제이 조정: {r.adjustNote}</div>}
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+                <button style={{ ...S.ghost, ...(r.teamOk ? { background: "#E8F5E9", borderColor: "#BBDBc4", color: "#2D6A3F" } : {}) }} disabled={busy} onClick={() => toggleOk(r)}>
+                  {r.teamOk ? "✓ 우리 팀 확인함 (취소)" : "👍 이 금액 확인 OK"}
+                </button>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: r.brojOk ? "#2D6A3F" : "#8A7F6E" }}>
+                  브로제이 {r.brojOk ? "✓ 확인" : "확인 대기"}
+                </span>
+                {r.teamOk && r.brojOk && <span style={{ fontSize: 12.5, fontWeight: 800, color: "#2D6A3F" }}>· 양측 확인 완료</span>}
+              </div>
 
               {sr?.status === "pending" && (
                 <div style={{ marginTop: 8, padding: "8px 10px", background: "#FFF3E0", borderRadius: 8, fontSize: 12.5 }}>

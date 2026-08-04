@@ -65,9 +65,29 @@ installPublicRouter.post("/settle/:token/info", async (req: Request, res: Respon
         address: r.address ?? "",
         baseFee: r.baseFee ?? "", finalSettle: r.finalSettle ?? "",
         adjustNote: r.adjustNote ?? "", settleRequest: r.settleRequest ?? null,
+        teamOk: r.teamOk ?? null, brojOk: r.brojOk ?? null,
       };
     });
   res.json({ ok: true, team: share.team, from, to, rows: mine });
+});
+
+// 설치팀 확인(OK) 토글 — 브로제이 확인과 순서 무관
+installPublicRouter.post("/settle/:token/ok", async (req: Request, res: Response) => {
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const share = await resolveSettleShare(req.params.token, String(b.pin ?? ""));
+  if (!share) return res.status(403).json({ error: "링크 또는 PIN이 올바르지 않습니다" });
+  const rowId = String(b.rowId ?? "").trim();
+  const on = !!b.ok;
+  const by = String(b.by ?? "").trim().slice(0, 40) || share.team;
+  const row = await prisma.erpInstallSchedule.findUnique({ where: { id: rowId } });
+  if (!row) return res.status(404).json({ error: "설치 건을 찾을 수 없습니다" });
+  const data = (row.data ?? {}) as Record<string, unknown>;
+  if (String(data.team ?? "").trim() !== share.team) {
+    return res.status(403).json({ error: "이 팀의 설치 건이 아닙니다" });
+  }
+  data.teamOk = on ? { at: new Date().toISOString(), by } : null;
+  await prisma.erpInstallSchedule.update({ where: { id: rowId }, data: { data: data as object } });
+  res.json({ ok: true, teamOk: data.teamOk });
 });
 
 // 금액 수정 요청 — 원하는 금액 + 코멘트 (건당 1개, 재요청 시 덮어씀. 승인/거절 전 상태로)

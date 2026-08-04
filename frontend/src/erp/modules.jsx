@@ -7155,12 +7155,13 @@ export function InstallScheduleView() {
       const team = String(r.team || "").trim() || "(팀 미지정)";
       const c = installSettleCalc(r);
       const final = Number(r.finalSettle) || 0;
-      const g = by.get(team) || { team, count: 0, auto: 0, final: 0, iot: 0, missing: 0, pending: 0 };
+      const g = by.get(team) || { team, count: 0, auto: 0, final: 0, iot: 0, missing: 0, pending: 0, both: 0 };
       g.count++;
       g.auto += c.iot ? 0 : c.total;
       if (final) g.final += final; else g.missing++;
       if (c.iot) g.iot++;
       if (r.settleRequest?.status === "pending") g.pending++;
+      if (r.teamOk && r.brojOk) g.both++;
       by.set(team, g);
     }
     return [...by.values()].sort((a, b) => (b.final || b.auto) - (a.final || a.auto));
@@ -7314,7 +7315,8 @@ export function InstallScheduleView() {
                       <td className="num">{g.final ? formatWon(Math.round(g.final * 1.1)) : "—"}</td>
                       <td className="small" style={{ color: "var(--muted)" }}>
                         {g.pending ? <span style={{ color: "#B26A00", fontWeight: 700 }}>요청 {g.pending}건 대기 · </span> : null}
-                        {[g.missing ? `미확정 ${g.missing}건` : "", g.iot ? `IoT ${g.iot}건` : ""].filter(Boolean).join(" · ") || (g.pending ? "" : "—")}
+                        <span style={{ color: g.both === g.count ? "#0D7A3E" : "var(--muted)", fontWeight: 700 }}>양측 확인 {g.both}/{g.count}</span>
+                        {[g.missing ? ` · 미확정 ${g.missing}건` : "", g.iot ? ` · IoT ${g.iot}건` : ""].filter(Boolean).join("")}
                       </td>
                     </tr>
                   ))}
@@ -7358,6 +7360,7 @@ export function InstallScheduleView() {
                         {label}{settleSort.key === k ? (settleSort.dir > 0 ? " ▲" : " ▼") : ""}
                       </th>
                     ))}
+                    <th className="ctr" style={{ whiteSpace: "nowrap" }}>확인</th>
                     <th className="shrink"></th>
                   </tr>
                 </thead>
@@ -7425,6 +7428,18 @@ export function InstallScheduleView() {
                           )}
                           {r.settleRequest?.status === "approved" && <div className="small" style={{ fontWeight: 600, color: "#0D7A3E" }}>요청 승인됨</div>}
                           {r.settleRequest?.status === "rejected" && <div className="small" style={{ fontWeight: 600, color: "var(--muted)" }}>요청 거절됨</div>}
+                        </td>
+                        <td className="ctr" style={{ whiteSpace: "nowrap" }}>
+                          <div className="small" style={{ fontWeight: 700, color: r.teamOk ? "#0D7A3E" : "var(--muted)" }}>팀 {r.teamOk ? "✓" : "대기"}</div>
+                          <button type="button" className={"btn btn-sm " + (r.brojOk ? "btn-accent" : "btn-ghost")} style={{ fontSize: 11, marginTop: 3 }}
+                            onClick={async () => {
+                              try {
+                                await api.erpInstallScheduleUpdate(r.id, { brojOk: r.brojOk ? null : { at: new Date().toISOString(), by: "브로제이" } });
+                                await loadRows(range);
+                              } catch (e) { notifyError(e); }
+                            }}>
+                            {r.brojOk ? "우리 ✓" : "우리 OK"}
+                          </button>
                         </td>
                         <td><button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing({ ...r })}>수정</button></td>
                       </tr>

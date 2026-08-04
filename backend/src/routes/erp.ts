@@ -1825,6 +1825,7 @@ const INSTALL_DATA_KEYS = [
   "paymentTid", "cultureTid", "photoDelivered", "serialNo", "baseFee",
   "addInstall", "addVisit", "finalSettle", "tidRegistered",
   "adjustNote", "settleRequest", // 정산 조정 사유(수기) · 설치팀 금액 수정 요청 {amount, comment, by, at, status, ownerNote, decidedAt}
+  "teamOk", "brojOk", // 정산 상호 확인 {at, by} | null — 설치팀 OK · 브로제이 OK (순서 무관)
 ];
 
 function pickInstallData(body: Record<string, unknown>): Record<string, unknown> {
