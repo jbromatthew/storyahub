@@ -9232,11 +9232,16 @@ export function VendorOrdersView() {
                 for (const d of deliveries) deliveredByName[d.name] = (deliveredByName[d.name] || 0) + d.qty;
                 const totalQty = items.reduce((s2, it) => s2 + it.qty, 0);
                 const totalDelivered = deliveries.reduce((s2, d) => s2 + d.qty, 0);
-                const payBadge = (requestedAt, paidAt, verified) => paidAt
-                  ? <span className="erp-badge green">완료</span>
-                  : requestedAt
-                    ? <span className="erp-badge orange">청구됨{verified ? " ✓" : ""}</span>
-                    : <span style={{ color: "var(--muted)" }}>—</span>;
+                const payBadge = (requestedAt, paidAt, verified, amount) => (
+                  <div>
+                    {paidAt
+                      ? <span className="erp-badge green">완료</span>
+                      : requestedAt
+                        ? <span className="erp-badge orange">청구됨{verified ? " ✓" : ""}</span>
+                        : <span style={{ color: "var(--muted)" }}>—</span>}
+                    {amount > 0 && <div style={{ fontSize: 11, fontWeight: 700, marginTop: 3, whiteSpace: "nowrap" }}>{formatWon(amount)}</div>}
+                  </div>
+                );
                 const open = expandedOrder === o.id;
                 return (
                   <React.Fragment key={o.id}>
@@ -9247,8 +9252,8 @@ export function VendorOrdersView() {
                         {o.note && <div className="cell-sub">{o.note}</div>}
                       </td>
                       <td className="shrink num" style={{ fontWeight: 800 }}>{formatWon(o.totalAmount)}</td>
-                      <td className="shrink ctr">{payBadge(o.prepayRequestedAt, o.prepayPaidAt, o.prepayVerified)}</td>
-                      <td className="shrink ctr">{payBadge(o.balanceRequestedAt, o.balancePaidAt, o.balanceVerified)}</td>
+                      <td className="shrink ctr">{payBadge(o.prepayRequestedAt, o.prepayPaidAt, o.prepayVerified, o.prepayAmount)}</td>
+                      <td className="shrink ctr">{payBadge(o.balanceRequestedAt, o.balancePaidAt, o.balanceVerified, o.balanceAmount)}</td>
                       <td className="shrink ctr" style={{ color: totalDelivered >= totalQty && totalQty > 0 ? "#0D7A3E" : "var(--muted)", fontWeight: 700 }}>
                         {totalDelivered}/{totalQty}
                         {o.expectedDelivery && <div style={{ fontSize: 10.5, fontWeight: 600, color: "#1A5DAB" }}>예상 {o.expectedDelivery.slice(5)}</div>}

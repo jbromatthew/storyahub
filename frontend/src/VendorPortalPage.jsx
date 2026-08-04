@@ -267,11 +267,16 @@ export default function VendorPortalPage({ vendorId }) {
               const history = Array.isArray(o.history) ? o.history : [];
               const deliveredByName = {};
               for (const d of deliveries) deliveredByName[d.name] = (deliveredByName[d.name] || 0) + d.qty;
-              const payBadge = (requestedAt, paidAt, verified) => paidAt
-                ? <span style={badge("#E8F5E9", "#2D6A3F")}>완료</span>
-                : requestedAt
-                  ? <span style={badge("#FFF3E0", "#B26A00")}>청구됨{verified ? " ✓" : ""}</span>
-                  : <span style={{ color: "#B0A694" }}>—</span>;
+              const payBadge = (requestedAt, paidAt, verified, amount) => (
+                <div>
+                  {paidAt
+                    ? <span style={badge("#E8F5E9", "#2D6A3F")}>완료</span>
+                    : requestedAt
+                      ? <span style={badge("#FFF3E0", "#B26A00")}>청구됨{verified ? " ✓" : ""}</span>
+                      : <span style={{ color: "#B0A694" }}>—</span>}
+                  {amount > 0 && <div style={{ fontSize: 11, fontWeight: 700, marginTop: 3, whiteSpace: "nowrap" }}>{won(amount)}</div>}
+                </div>
+              );
               const open = expanded === o.id;
               return (
                 <React.Fragment key={o.id}>
@@ -279,8 +284,8 @@ export default function VendorPortalPage({ vendorId }) {
                     <td style={{ padding: "10px 12px", fontWeight: 800, whiteSpace: "nowrap" }}>{o.orderDate}</td>
                     <td style={{ padding: "10px 12px" }}>{items.map((it) => `${it.name} ×${it.qty}`).join(", ")}</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 800, whiteSpace: "nowrap" }}>{won(o.totalAmount)}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "center" }}>{payBadge(o.prepayRequestedAt, o.prepayPaidAt, o.prepayVerified)}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "center" }}>{payBadge(o.balanceRequestedAt, o.balancePaidAt, o.balanceVerified)}</td>
+                    <td style={{ padding: "10px 12px", textAlign: "center" }}>{payBadge(o.prepayRequestedAt, o.prepayPaidAt, o.prepayVerified, o.prepayAmount)}</td>
+                    <td style={{ padding: "10px 12px", textAlign: "center" }}>{payBadge(o.balanceRequestedAt, o.balancePaidAt, o.balanceVerified, o.balanceAmount)}</td>
                     <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, color: delivered >= totalQty && totalQty > 0 ? "#2D6A3F" : "#8A7E6F", whiteSpace: "nowrap" }}>{delivered}/{totalQty}</td>
                     <td style={{ padding: "10px 12px", textAlign: "center" }}><span style={badge(bg, fg)}>{label}</span></td>
                   </tr>
