@@ -154,7 +154,7 @@ export default function SettlePage({ token }) {
                       </td>
                       <td style={{ padding: "9px 10px", fontSize: 12, lineHeight: 1.45 }}>{equips.length ? equips.map((e, i) => <div key={i} style={{ whiteSpace: "nowrap" }}>{e}</div>) : "—"}</td>
                       <td style={{ padding: "9px 10px", textAlign: "right", fontWeight: 800, whiteSpace: "nowrap" }}>
-                        {final ? won(final) : c.total > 0 ? <span style={{ color: "#B26A00", fontWeight: 700 }}>확정 전 {won(c.total)}</span> : "미정"}
+                        {r.canceled ? <span style={{ color: "#C0392B" }}>취소 · 0원</span> : final ? won(final) : c.total > 0 ? <span style={{ color: "#B26A00", fontWeight: 700 }}>확정 전 {won(c.total)}</span> : "미정"}
                         {r.adjustNote && <div style={{ fontSize: 11, fontWeight: 600, color: "#B26A00" }}>조정: {r.adjustNote}</div>}
                       </td>
                       <td style={{ padding: "9px 10px", whiteSpace: "nowrap", fontSize: 12, fontWeight: 700 }}>

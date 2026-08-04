@@ -6905,6 +6905,7 @@ export function installSettleCalc(row) {
   let needElectrician = false; // 릴레이(배전반) 설치 시 전기기사 자동 추가
   let hasElectrician = false;
 
+  if (row.canceled) return { total: 0, parts: [{ label: "취소 공사 (현장사정) — 0원", amount: 0 }], iot: false, unknown, canceled: true };
   if (/^A\.?S$/i.test(type)) return { total: 80000, parts: [{ label: "A.S 방문", amount: 80000 }], iot: false, unknown };
   if (/통화소통|전화소통/.test(type)) return { total: 10000, parts: [{ label: "통화소통", amount: 10000 }], iot: false, unknown };
 
@@ -7157,7 +7158,7 @@ export function InstallScheduleView() {
       const g = by.get(team) || { team, count: 0, auto: 0, final: 0, iot: 0, missing: 0, pending: 0, both: 0 };
       g.count++;
       g.auto += c.iot ? 0 : c.total;
-      if (final) g.final += final; else g.missing++;
+      if (final) g.final += final; else if (!r.canceled) g.missing++;
       if (c.iot) g.iot++;
       if (r.settleRequest?.status === "pending") g.pending++;
       if (r.teamOk && r.brojOk) g.both++;
@@ -7404,7 +7405,7 @@ export function InstallScheduleView() {
                           </td>
                           <td className="num" style={{ whiteSpace: "nowrap" }}>{c.iot ? "—" : formatWon(c.total)}</td>
                           <td className="num" style={{ whiteSpace: "nowrap", fontWeight: 700 }} onClick={(e) => e.stopPropagation()}>
-                            {final ? formatWon(final) : c.total > 0 && !c.iot ? (
+                            {r.canceled ? <span style={{ color: "#C0392B" }}>취소 · 0원</span> : final ? formatWon(final) : c.total > 0 && !c.iot ? (
                               <span className="row" style={{ gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
                                 <span style={{ color: "var(--muted)", fontWeight: 500 }}>자동 {formatWon(c.total)}</span>
                                 <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 11 }}
@@ -7437,7 +7438,24 @@ export function InstallScheduleView() {
                               {r.brojOk ? "우리 ✓" : "우리 OK"}
                             </button>
                           </td>
-                          <td onClick={(e) => e.stopPropagation()}><button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing({ ...r })}>수정</button></td>
+                          <td style={{ whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing({ ...r })}>수정</button>
+                            <button type="button" className="btn btn-ghost btn-sm" style={{ color: r.canceled ? "var(--muted)" : "#C0392B", fontSize: 11 }}
+                              onClick={async () => {
+                                const toCancel = !r.canceled;
+                                const ok = await confirmAction(
+                                  toCancel ? `'${r.centerName || "이 건"}'을 취소 공사로 처리할까요?` : "취소를 해제할까요?",
+                                  toCancel ? "정산이 0원 처리되고 설치팀 페이지에도 '취소'로 표시됩니다." : "해제 후 금액을 다시 확정하세요."
+                                );
+                                if (!ok) return;
+                                const next = toCancel ? { at: new Date().toISOString(), by: "브로제이" } : null;
+                                setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, canceled: next, ...(toCancel ? { finalSettle: 0, baseFee: 0 } : {}) } : x))); // 즉시 반영
+                                try { await api.erpInstallScheduleUpdate(r.id, { canceled: next, ...(toCancel ? { finalSettle: 0, baseFee: 0 } : {}) }); }
+                                catch (e) { setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, canceled: r.canceled, finalSettle: r.finalSettle, baseFee: r.baseFee } : x))); notifyError(e); }
+                              }}>
+                              {r.canceled ? "취소 해제" : "공사 취소"}
+                            </button>
+                          </td>
                         </tr>
                         {open && (
                           <tr>

@@ -66,6 +66,7 @@ installPublicRouter.post("/settle/:token/info", async (req: Request, res: Respon
         baseFee: r.baseFee ?? "", finalSettle: r.finalSettle ?? "",
         adjustNote: r.adjustNote ?? "", settleRequest: r.settleRequest ?? null,
         teamOk: r.teamOk ?? null, brojOk: r.brojOk ?? null,
+        canceled: r.canceled ?? null,
       };
     });
   res.json({ ok: true, team: share.team, from, to, rows: mine });
