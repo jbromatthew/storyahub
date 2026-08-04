@@ -129,8 +129,8 @@ export default function SettlePage({ token }) {
           <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 720, fontSize: 13 }}>
             <thead>
               <tr style={{ background: "#FAF6EF", textAlign: "left" }}>
-                {["시공일", "센터명", "구분", "장비", "금액", "요청", "확인"].map((h, i) => (
-                  <th key={h} style={{ padding: "9px 10px", whiteSpace: "nowrap", fontSize: 12, color: "#8A7F6E", textAlign: i >= 4 && i <= 4 ? "right" : "left" }}>{h}</th>
+                {["시공일", "센터명", "구분", "지역", "장비", "금액", "요청", "확인"].map((h) => (
+                  <th key={h} style={{ padding: "9px 10px", whiteSpace: "nowrap", fontSize: 12, color: "#8A7F6E", textAlign: h === "금액" ? "right" : "left" }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -147,6 +147,11 @@ export default function SettlePage({ token }) {
                       <td style={{ padding: "9px 10px", whiteSpace: "nowrap" }}>{r.installDate || "미정"}</td>
                       <td style={{ padding: "9px 10px", fontWeight: 700 }}>{r.centerName || "(센터명 없음)"}</td>
                       <td style={{ padding: "9px 10px", whiteSpace: "nowrap" }}>{r.type || "—"}</td>
+                      <td style={{ padding: "9px 10px", whiteSpace: "nowrap" }}>
+                        <span style={{ fontSize: 11.5, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: r.region === "수도권" ? "#E3F0FB" : "#F0EAE0", color: r.region === "수도권" ? "#1A5DAB" : "#6B6152" }}>
+                          {r.region || "지방"}
+                        </span>
+                      </td>
                       <td style={{ padding: "9px 10px", fontSize: 12, lineHeight: 1.45 }}>{equips.length ? equips.map((e, i) => <div key={i} style={{ whiteSpace: "nowrap" }}>{e}</div>) : "—"}</td>
                       <td style={{ padding: "9px 10px", textAlign: "right", fontWeight: 800, whiteSpace: "nowrap" }}>
                         {final ? won(final) : c.total > 0 ? <span style={{ color: "#B26A00", fontWeight: 700 }}>확정 전 {won(c.total)}</span> : "미정"}
@@ -167,7 +172,7 @@ export default function SettlePage({ token }) {
                     </tr>
                     {open && (
                       <tr style={{ background: "#FBF8F2" }}>
-                        <td colSpan={7} style={{ padding: "10px 14px" }}>
+                        <td colSpan={8} style={{ padding: "10px 14px" }}>
                           {c.parts.length > 0 && (
                             <div style={{ fontSize: 12.5, color: "#6B6152", lineHeight: 1.6 }}>
                               <strong>산출 내역:</strong> {c.parts.map((p) => `${p.label} ${won(p.amount)}`).join(" + ")} = <strong>{won(c.total)}</strong>
@@ -208,7 +213,7 @@ export default function SettlePage({ token }) {
                   </React.Fragment>
                 );
               })}
-              {!rows.length && <tr><td colSpan={7} style={{ padding: 20, textAlign: "center", color: "#8A7F6E", fontSize: 13.5 }}>이 기간에 설치 건이 없습니다.</td></tr>}
+              {!rows.length && <tr><td colSpan={8} style={{ padding: 20, textAlign: "center", color: "#8A7F6E", fontSize: 13.5 }}>이 기간에 설치 건이 없습니다.</td></tr>}
             </tbody>
           </table>
         </div>
