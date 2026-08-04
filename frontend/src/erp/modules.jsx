@@ -7202,10 +7202,10 @@ export function InstallScheduleView() {
       const c = installSettleCalc(r);
       return !c.iot && c.total > 0;
     });
-    if (!targets.length) { toastSuccess("채울 대상이 없습니다 (모두 입력됨 또는 IoT 건)"); return; }
+    if (!targets.length) { toastSuccess("확정할 대상이 없습니다 (모두 확정됨 또는 금액 미정)"); return; }
     const ok = await confirmAction(
-      `최종 정산이 비어있는 ${targets.length}건을 자동계산 금액으로 채울까요?`,
-      "이미 입력된 건과 IoT 건은 건드리지 않습니다. 기본금·최종 정산에 공급가액이 들어갑니다."
+      `미확정 ${targets.length}건을 자동계산 금액으로 확정할까요?`,
+      "이미 확정된 건은 건드리지 않습니다. 개별 금액은 건별 [확정] 버튼이나 수정에서 조정할 수 있어요."
     );
     if (!ok) return;
     setBulkBusy(true);
@@ -7286,7 +7286,7 @@ export function InstallScheduleView() {
           <div className="card" style={{ marginTop: 10 }}>
             <div className="row between" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
               <div className="kbe-meta-h" style={{ margin: 0 }}>팀별 정산 요약 <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>· 표시 중인 {tableRows.length}건 기준 · 공급가액</span></div>
-              <button type="button" className="btn btn-sm btn-ghost" disabled={bulkBusy} onClick={bulkFillSettle}>{bulkBusy ? "채우는 중…" : "빈 정산 자동 채우기"}</button>
+              <button type="button" className="btn btn-sm btn-ghost" disabled={bulkBusy} onClick={bulkFillSettle}>{bulkBusy ? "확정 중…" : "미확정 전체 확정 (자동계산 수락)"}</button>
             </div>
             <div className="small" style={{ color: "var(--muted)", margin: "6px 0 10px", lineHeight: 1.6 }}>
               단가: 키오스크(Q-PASS 포함) 수도권 38만 / 지방 45만 · 32인치 42만 / 49만 · 2대 이상 추가분 70% · 통화소통 1만 · A.S 8만 · 리더기 단독 방문 8만 (본체 동시 설치 0원) · 골프 스크린 50만(본체 취급) + 타석당 1.5만 + 프로그램 2.2만 · 제주 출장비 성수기 50만 / 비수기 35만 · <strong>IoT</strong>: 에어컨허브 4만 · 릴레이(배전반) 14만 + 전기기사 30만 · 스피커 7만 · 플러그 9천 · 네트워크 대 30만 / 중 25만 / 소 20만 — 장비칸이 'IoT'면 특이사항의 수량(예: 배전반 용량외 6 / 에어컨 3)도 자동 해석
@@ -7313,7 +7313,7 @@ export function InstallScheduleView() {
                       <td className="num">{g.final ? formatWon(Math.round(g.final * 1.1)) : "—"}</td>
                       <td className="small" style={{ color: "var(--muted)" }}>
                         {g.pending ? <span style={{ color: "#B26A00", fontWeight: 700 }}>요청 {g.pending}건 대기 · </span> : null}
-                        {[g.missing ? `미입력 ${g.missing}건` : "", g.iot ? `IoT ${g.iot}건` : ""].filter(Boolean).join(" · ") || (g.pending ? "" : "—")}
+                        {[g.missing ? `미확정 ${g.missing}건` : "", g.iot ? `IoT ${g.iot}건` : ""].filter(Boolean).join(" · ") || (g.pending ? "" : "—")}
                       </td>
                     </tr>
                   ))}
@@ -7378,7 +7378,15 @@ export function InstallScheduleView() {
                         </td>
                         <td className="num" style={{ whiteSpace: "nowrap" }}>{c.iot ? "—" : formatWon(c.total)}</td>
                         <td className="num" style={{ whiteSpace: "nowrap", fontWeight: 700 }}>
-                          {final ? formatWon(final) : <span style={{ color: "var(--accent-deep)", fontWeight: 500 }}>미입력</span>}
+                          {final ? formatWon(final) : c.total > 0 && !c.iot ? (
+                            <span className="row" style={{ gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
+                              <span style={{ color: "var(--muted)", fontWeight: 500 }}>자동 {formatWon(c.total)}</span>
+                              <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: 11 }}
+                                onClick={async () => { try { await api.erpInstallScheduleUpdate(r.id, { baseFee: c.total, finalSettle: c.total }); toastSuccess("확정했습니다"); await loadRows(range); } catch (e) { notifyError(e); } }}>
+                                확정
+                              </button>
+                            </span>
+                          ) : <span style={{ color: "var(--accent-deep)", fontWeight: 500 }}>{c.iot ? "IoT 별도" : "금액 미정"}</span>}
                           {manual ? <span className="tag gray" style={{ marginLeft: 6, fontSize: 11 }}>수동</span> : null}
                           {r.adjustNote ? <div className="small" style={{ fontWeight: 500, color: "var(--muted)", whiteSpace: "normal", maxWidth: 180 }}>사유: {r.adjustNote}</div> : null}
                           {r.settleRequest?.status === "pending" && (

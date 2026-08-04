@@ -115,8 +115,10 @@ export default function SettlePage({ token }) {
                   <div style={{ fontSize: 12.5, color: "#8A7F6E" }}>{r.installDate || "날짜 미정"} · {r.type || "—"} · {r.region || "지방"}{equips ? ` · ${equips}` : ""}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 800, fontSize: 15 }}>{final ? won(final) : "정산 미입력"}</div>
-                  {c.total > 0 && c.total !== final && <div style={{ fontSize: 11.5, color: "#8A7F6E" }}>자동계산 {won(c.total)}</div>}
+                  <div style={{ fontWeight: 800, fontSize: 15 }}>
+                    {final ? won(final) : c.total > 0 ? <span style={{ color: "#B26A00" }}>확정 전 · {won(c.total)}</span> : "금액 미정"}
+                  </div>
+                  {final > 0 && c.total > 0 && c.total !== final && <div style={{ fontSize: 11.5, color: "#8A7F6E" }}>자동계산 {won(c.total)}</div>}
                 </div>
               </div>
               {c.parts.length > 0 && (
