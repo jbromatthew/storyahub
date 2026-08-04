@@ -1454,6 +1454,21 @@ function sanitizeMaterials(raw: unknown) {
     .filter((m) => m.name || m.qty > 0);
 }
 
+// 실사 요청 (아파트너 기술지원 요청 내용 기록)
+function sanitizeSurveyRequest(raw: unknown) {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const s = (v: unknown, max = 200) => String(v ?? "").trim().slice(0, max);
+  const out = {
+    requestType: s(r.requestType, 80),       // 요청구분 (예: 공동현관(SRR))
+    evLink: s(r.evLink, 80),                 // E/V연동여부
+    hopeDate: /^\d{4}-\d{2}-\d{2}$/.test(s(r.hopeDate, 10)) ? s(r.hopeDate, 10) : "", // 실사희망일
+    content: s(r.content, 1000),             // 공사내용
+    note: s(r.note, 1000),                   // 기타 요청사항
+  };
+  return out.requestType || out.evLink || out.hopeDate || out.content || out.note ? out : null;
+}
+
 function sanitizeSitePhotos(raw: unknown) {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -1625,6 +1640,7 @@ erpRouter.post("/construction/quotes", async (req: AuthedRequest, res) => {
       materials: sanitizeMaterials(materials),
       complaints: sanitizeComplaints(complaints),
       sitePhotos: sanitizeSitePhotos(req.body?.sitePhotos),
+      surveyRequest: sanitizeSurveyRequest(req.body?.surveyRequest) ?? undefined,
       status: CONSTRUCTION_STATUSES.includes(status) ? status : "requested",
       taxInvoiceIssued: !!taxInvoiceIssued,
       note: note?.trim() || null,
@@ -1651,6 +1667,9 @@ erpRouter.patch("/construction/quotes/:id", async (req: AuthedRequest, res) => {
       ...(materials !== undefined ? { materials: sanitizeMaterials(materials) } : {}),
       ...(complaints !== undefined ? { complaints: sanitizeComplaints(complaints) } : {}),
       ...(req.body?.sitePhotos !== undefined ? { sitePhotos: sanitizeSitePhotos(req.body.sitePhotos) } : {}),
+      ...(req.body?.surveyRequest !== undefined
+        ? { surveyRequest: sanitizeSurveyRequest(req.body.surveyRequest) ?? undefined }
+        : {}),
       ...(status !== undefined && CONSTRUCTION_STATUSES.includes(status) ? { status } : {}),
       ...(taxInvoiceIssued !== undefined ? { taxInvoiceIssued: !!taxInvoiceIssued } : {}),
       ...(note !== undefined ? { note: note?.trim() || null } : {}),
@@ -1696,6 +1715,28 @@ erpRouter.post("/construction/quotes/:id/share", async (req: AuthedRequest, res)
 erpRouter.post("/construction/quotes/:id/share/disable", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
   await prisma.erpConstructionQuote.update({ where: { id: req.params.id }, data: { shareEnabled: false } });
+  res.json({ enabled: false });
+});
+
+// 설치팀 실사 입력 링크 발급 (PIN 접속, 단가 비노출)
+erpRouter.post("/construction/quotes/:id/survey-share", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const existing = await prisma.erpConstructionQuote.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: "견적을 찾을 수 없습니다" });
+  const token = existing.surveyToken || randomBytes(18).toString("base64url");
+  const pin = existing.surveyPin || String(cryptoRandomInt(1000, 10000));
+  const days = Number(req.body?.days) > 0 ? Math.min(365, Number(req.body.days)) : 30;
+  const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  const q = await prisma.erpConstructionQuote.update({
+    where: { id: req.params.id },
+    data: { surveyToken: token, surveyPin: pin, surveyEnabled: true, surveyExpiresAt: expiresAt },
+  });
+  res.json({ token: q.surveyToken, pin: q.surveyPin, enabled: q.surveyEnabled, expiresAt: q.surveyExpiresAt });
+});
+
+erpRouter.post("/construction/quotes/:id/survey-share/disable", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  await prisma.erpConstructionQuote.update({ where: { id: req.params.id }, data: { surveyEnabled: false } });
   res.json({ enabled: false });
 });
 

@@ -150,3 +150,90 @@ constructionPublicRouter.post(
     }
   }
 );
+
+/* ===================== 설치팀 실사 입력 (PIN 접속 · 단가 비노출) ===================== */
+
+async function resolveSurvey(token: string, pin: string) {
+  if (!token) return null;
+  const quote = await prisma.erpConstructionQuote.findUnique({
+    where: { surveyToken: token },
+    include: { apartment: true },
+  });
+  if (!quote || !quote.surveyEnabled) return null;
+  if (quote.surveyExpiresAt && quote.surveyExpiresAt.getTime() < Date.now()) return null;
+  if (!quote.surveyPin || String(pin).trim() !== quote.surveyPin) return null;
+  return quote;
+}
+
+// PIN 전 미리보기 (단지명만)
+constructionPublicRouter.get("/survey/:token/preview", async (req: Request, res: Response) => {
+  const quote = await prisma.erpConstructionQuote.findUnique({
+    where: { surveyToken: req.params.token },
+    include: { apartment: true },
+  });
+  if (!quote || !quote.surveyEnabled) return res.status(404).json({ error: "링크가 유효하지 않습니다" });
+  if (quote.surveyExpiresAt && quote.surveyExpiresAt.getTime() < Date.now()) {
+    return res.status(410).json({ error: "만료된 링크입니다" });
+  }
+  res.json({ apartmentName: quote.apartment?.name ?? "(현장)", title: quote.title ?? null });
+});
+
+// PIN 확인 → 실사 요청 정보 + 품목 목록 (단가는 절대 내려주지 않음)
+constructionPublicRouter.post("/survey/:token/info", async (req: Request, res: Response) => {
+  const quote = await resolveSurvey(req.params.token, String(req.body?.pin ?? ""));
+  if (!quote) return res.status(403).json({ error: "링크 또는 PIN이 올바르지 않거나 만료되었습니다" });
+  const items = await prisma.erpConstructionItem.findMany({
+    where: { active: true },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { id: true, name: true }, // 단가 비노출
+  });
+  res.json({
+    ok: true,
+    apartmentName: quote.apartment?.name ?? "(현장)",
+    address: quote.apartment?.address ?? null,
+    title: quote.title ?? null,
+    request: quote.surveyRequest ?? null,
+    result: quote.surveyResult ?? null,
+    items,
+  });
+});
+
+// 실사 결과 제출 — 실사일·기록·품목별 개수. 견적 단가는 서버의 품목 단가표로 계산해 lines에 반영.
+constructionPublicRouter.post("/survey/:token/submit", async (req: Request, res: Response) => {
+  const quote = await resolveSurvey(req.params.token, String(req.body?.pin ?? ""));
+  if (!quote) return res.status(403).json({ error: "링크 또는 PIN이 올바르지 않거나 만료되었습니다" });
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const visitDate = /^\d{4}-\d{2}-\d{2}$/.test(String(b.visitDate ?? "").trim()) ? String(b.visitDate).trim() : "";
+  const findings = String(b.findings ?? "").trim().slice(0, 4000);
+  const by = String(b.by ?? "").trim().slice(0, 40);
+  if (!visitDate) return res.status(400).json({ error: "실사일을 입력하세요 (YYYY-MM-DD)" });
+  if (!findings) return res.status(400).json({ error: "실사 기록(어떻게 하기로 했는지)을 입력하세요" });
+
+  const rawItems = Array.isArray(b.items) ? b.items : [];
+  const qtyById = new Map<string, number>();
+  for (const it of rawItems) {
+    const id = String((it as Record<string, unknown>)?.itemId ?? "").trim();
+    const qty = Math.max(0, Math.round(Number((it as Record<string, unknown>)?.qty) || 0));
+    if (id && qty > 0) qtyById.set(id, qty);
+  }
+
+  const catalog = await prisma.erpConstructionItem.findMany({
+    where: { id: { in: [...qtyById.keys()] } },
+  });
+  const resultItems = catalog
+    .map((c) => ({ itemId: c.id, name: c.name, qty: qtyById.get(c.id) ?? 0 }))
+    .filter((c) => c.qty > 0);
+  // 견적 lines 재구성 — 단가는 서버 카탈로그에서 (설치팀에게는 노출 안 됨)
+  const lines = catalog
+    .map((c) => ({ name: c.name, unitPrice: c.unitPrice, qty: qtyById.get(c.id) ?? 0 }))
+    .filter((l) => l.qty > 0);
+
+  await prisma.erpConstructionQuote.update({
+    where: { id: quote.id },
+    data: {
+      surveyResult: { visitDate, findings, items: resultItems, by: by || null, at: new Date().toISOString() } as unknown as object,
+      ...(lines.length ? { lines: lines as unknown as object } : {}),
+    },
+  });
+  res.json({ ok: true, itemCount: resultItems.length });
+});

@@ -2267,6 +2267,21 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
     try { await api.erpConstructionDisableShare(editing.id); setEditing((e) => ({ ...e, shareEnabled: false })); toastSuccess("링크를 비활성화했습니다"); } catch (e) { notifyError(e); }
   };
   const copyText = async (t) => { try { await navigator.clipboard.writeText(t); toastSuccess("복사했습니다"); } catch { notifyError(new Error("복사 실패 — 직접 선택해 복사하세요")); } };
+  // ---- 설치팀 실사 입력 링크 (단가 비노출) ----
+  const genSurveyLink = async () => {
+    if (!editing?.id) return notifyError(new Error("먼저 견적을 저장한 뒤 공유하세요"));
+    try {
+      const res = await api.erpConstructionSurveyShare(editing.id);
+      setEditing((e) => ({ ...e, surveyToken: res.token, surveyPin: res.pin, surveyEnabled: res.enabled, surveyExpiresAt: res.expiresAt }));
+      toastSuccess("실사 입력 링크를 만들었습니다");
+    } catch (e) { notifyError(e); }
+  };
+  const disableSurveyLink = async () => {
+    if (!editing?.id) return;
+    if (!(await confirmAction("실사 입력 링크를 비활성화할까요?"))) return;
+    try { await api.erpConstructionSurveyDisable(editing.id); setEditing((e) => ({ ...e, surveyEnabled: false })); toastSuccess("링크를 비활성화했습니다"); } catch (e) { notifyError(e); }
+  };
+  const setSurveyReq = (patch) => setEditing((e) => ({ ...e, surveyRequest: { requestType: "", evLink: "", hopeDate: "", content: "", note: "", ...(e.surveyRequest || {}), ...patch } }));
   const addLineFromItem = (itemId) => {
     const it = items.find((x) => x.id === itemId);
     if (!it) return;
@@ -2314,6 +2329,7 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
       materials: (editing.materials || []).map((m) => ({ stockId: m.stockId || null, name: m.name || "", qty: cstNum(m.qty), unitCost: cstNum(m.unitCost) })).filter((m) => m.name || m.qty > 0),
       complaints: (editing.complaints || []).map((c) => ({ date: c.date || "", content: c.content || "", status: c.status || "접수", resolution: c.resolution || "" })).filter((c) => c.content),
       sitePhotos: (editing.sitePhotos || []).map((s) => ({ name: s.name || "", beforeKey: s.beforeKey || null, afterKey: s.afterKey || null })).filter((s) => s.name || s.beforeKey || s.afterKey),
+      surveyRequest: editing.surveyRequest || null,
     };
     try {
       const saved = editing.id
@@ -2459,6 +2475,64 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
             {items.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.unitPrice.toLocaleString()})</option>)}
           </select>
           <button type="button" className="btn btn-ghost btn-sm" onClick={addBlankLine}>+ 직접 입력</button>
+        </div>
+
+        {/* 실사 (아파트너 실사요청 → 설치팀 실사 입력) */}
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="row between" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <div className="kbe-meta-h" style={{ margin: 0 }}>실사 요청 · 기록</div>
+            <div className="row" style={{ gap: 6 }}>
+              {editing.surveyEnabled && editing.surveyToken ? (
+                <>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => copyText(`${window.location.origin}/?survey=${editing.surveyToken}`)}>🔗 링크 복사</button>
+                  <span className="tag gray">PIN {editing.surveyPin}</span>
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={disableSurveyLink}>비활성화</button>
+                </>
+              ) : (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={genSurveyLink} disabled={!editing.id}>🔗 설치팀 실사 링크 만들기</button>
+              )}
+            </div>
+          </div>
+          <div className="small" style={{ color: "var(--muted)", margin: "6px 0 12px" }}>
+            아파트너 실사요청 내용을 기록하고, 링크를 설치팀에 보내면 설치팀이 <strong>실사 기록과 설치 수량</strong>을 입력합니다. <strong>단가는 설치팀에게 보이지 않고</strong>, 수량이 들어오면 위 견적 항목이 자동 산출됩니다.
+          </div>
+          <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+            <div className="field" style={{ flex: "1 1 150px", marginBottom: 0 }}>
+              <label>요청구분</label>
+              <input value={editing.surveyRequest?.requestType || ""} onChange={(e) => setSurveyReq({ requestType: e.target.value })} placeholder="예: 공동현관(SRR)" />
+            </div>
+            <div className="field" style={{ flex: "1 1 130px", marginBottom: 0 }}>
+              <label>E/V연동여부</label>
+              <input value={editing.surveyRequest?.evLink || ""} onChange={(e) => setSurveyReq({ evLink: e.target.value })} placeholder="예: 확인 필요" />
+            </div>
+            <div className="field" style={{ flex: "0 1 150px", marginBottom: 0 }}>
+              <label>실사희망일</label>
+              <input type="date" value={editing.surveyRequest?.hopeDate || ""} onChange={(e) => setSurveyReq({ hopeDate: e.target.value })} />
+            </div>
+          </div>
+          <div className="row" style={{ gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+            <div className="field" style={{ flex: "1 1 240px", marginBottom: 0 }}>
+              <label>공사내용</label>
+              <textarea value={editing.surveyRequest?.content || ""} onChange={(e) => setSurveyReq({ content: e.target.value })} placeholder="예: ble 실사 요청. 계약확정단지." style={{ minHeight: 56 }} />
+            </div>
+            <div className="field" style={{ flex: "1 1 240px", marginBottom: 0 }}>
+              <label>요청사항</label>
+              <textarea value={editing.surveyRequest?.note || ""} onChange={(e) => setSurveyReq({ note: e.target.value })} placeholder="예: 설치가능여부 및 EV연동 가능여부 확인 요청" style={{ minHeight: 56 }} />
+            </div>
+          </div>
+          {editing.surveyResult && (
+            <div style={{ marginTop: 12, padding: "10px 12px", background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 10 }}>
+              <div className="small" style={{ fontWeight: 700, marginBottom: 4 }}>
+                설치팀 실사 결과 · {editing.surveyResult.visitDate}{editing.surveyResult.by ? ` · ${editing.surveyResult.by}` : ""}
+              </div>
+              <div className="small" style={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{editing.surveyResult.findings}</div>
+              {(editing.surveyResult.items || []).length > 0 && (
+                <div className="small" style={{ marginTop: 6, color: "var(--muted)" }}>
+                  수량: {editing.surveyResult.items.map((it) => `${it.name} ×${it.qty}`).join(", ")} — 견적 항목에 자동 반영됨
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* 상태 / 세금계산서 */}

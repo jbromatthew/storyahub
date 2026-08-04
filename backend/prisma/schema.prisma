@@ -727,6 +727,12 @@ model ErpConstructionQuote {
   sharePin         String?                   // 공유 링크 PIN (4자리)
   shareEnabled     Boolean                   @default(false)
   shareExpiresAt   DateTime?
+  surveyRequest    Json?                     // 실사 요청: {requestType, evLink, hopeDate, content, note}
+  surveyResult     Json?                     // 실사 결과: {visitDate, findings, items: [{itemId, name, qty}], by, at}
+  surveyToken      String?                   @unique // 설치팀 실사 입력 링크 토큰
+  surveyPin        String?                   // 실사 링크 PIN (4자리)
+  surveyEnabled    Boolean                   @default(false)
+  surveyExpiresAt  DateTime?
   note             String?
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
