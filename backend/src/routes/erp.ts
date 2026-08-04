@@ -2188,11 +2188,31 @@ erpRouter.post("/install-schedule/import", async (req: AuthedRequest, res) => {
     if (!exists) await prisma.erpConstructionTeam.create({ data: { name } });
   }
 
-  // 이 시트 탭에서 가져온 기존 데이터만 교체 (재-가져오기 시 중복 방지, 같은 달 다른 업체는 보존)
+  // 재-가져오기 시 해당 월 전체 교체 (안내 문구와 동일 동작 — 과거 sourceTab 없는 데이터도 중복되지 않게).
+  // 단, 앱에서 입력한 정산 데이터(최종 정산·기본금·조정 사유·팀 수정요청)는 같은 건에 병합해 보존한다.
+  const existing = await prisma.erpInstallSchedule.findMany({ where: { month } });
+  const matchKey = (installDate: string | null, centerName: string | null, d: Record<string, unknown>) =>
+    [installDate ?? "", (centerName ?? "").trim(), String(d.type ?? ""), String(d.kiosk1 ?? "")].join("|");
+  const pool = new Map<string, Array<Record<string, unknown>>>();
+  for (const ex of existing) {
+    const d = (ex.data ?? {}) as Record<string, unknown>;
+    const k = matchKey(ex.installDate, ex.centerName, d);
+    if (!pool.has(k)) pool.set(k, []);
+    pool.get(k)!.push(d);
+  }
+  for (const row of rows) {
+    const k = matchKey(row.installDate, row.centerName, row.data as Record<string, unknown>);
+    const olds = pool.get(k);
+    if (!olds?.length) continue;
+    const old = olds.shift()!;
+    const d = row.data as Record<string, unknown>;
+    if (d.finalSettle == null && old.finalSettle != null) d.finalSettle = old.finalSettle;
+    if (d.baseFee == null && old.baseFee != null) d.baseFee = old.baseFee;
+    if (!d.adjustNote && old.adjustNote) d.adjustNote = old.adjustNote;
+    if (old.settleRequest) d.settleRequest = old.settleRequest;
+  }
   await prisma.$transaction([
-    prisma.erpInstallSchedule.deleteMany({
-      where: { month, data: { path: ["sourceTab"], equals: sheetName } },
-    }),
+    prisma.erpInstallSchedule.deleteMany({ where: { month } }),
     ...rows.map((row, i) =>
       prisma.erpInstallSchedule.create({
         data: { month, installDate: row.installDate, centerName: row.centerName, data: row.data as object, sortIndex: i },

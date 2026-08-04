@@ -7034,6 +7034,7 @@ export function InstallScheduleView() {
   const [importing, setImporting] = useState("");
   const [settleOpen, setSettleOpen] = useState(false);
   const [settleTeam, setSettleTeam] = useState(null); // 팀별 정산 상세: 선택한 팀만 (null = 전체)
+  const [settleSort, setSettleSort] = useState({ key: "installDate", dir: 1 }); // 건별 리스트 정렬
   const [bulkBusy, setBulkBusy] = useState(false);
 
   const rangeMonth = range[0] ? range[0].slice(0, 7).replace("-", ".") : currentInstallMonth();
@@ -7343,10 +7344,33 @@ export function InstallScheduleView() {
             <div className="erp-tbl-wrap">
               <table className="erp-tbl">
                 <thead>
-                  <tr><th>시공일</th><th>설치팀</th><th>센터명</th><th>구분</th><th>지역</th><th>설치 장비</th><th>산출 기준 (내역)</th><th className="num">자동계산</th><th className="num">최종 정산</th><th className="shrink"></th></tr>
+                  <tr>
+                    {[["installDate", "시공일"], ["team", "설치팀"], ["centerName", "센터명"], ["type", "구분"], ["region", "지역"]].map(([k, label]) => (
+                      <th key={k} style={{ cursor: "pointer", whiteSpace: "nowrap" }}
+                        onClick={() => setSettleSort((s) => ({ key: k, dir: s.key === k ? -s.dir : 1 }))}>
+                        {label}{settleSort.key === k ? (settleSort.dir > 0 ? " ▲" : " ▼") : ""}
+                      </th>
+                    ))}
+                    <th>설치 장비</th><th>산출 기준 (내역)</th>
+                    {[["auto", "자동계산"], ["finalSettle", "최종 정산"]].map(([k, label]) => (
+                      <th key={k} className="num" style={{ cursor: "pointer", whiteSpace: "nowrap" }}
+                        onClick={() => setSettleSort((s) => ({ key: k, dir: s.key === k ? -s.dir : 1 }))}>
+                        {label}{settleSort.key === k ? (settleSort.dir > 0 ? " ▲" : " ▼") : ""}
+                      </th>
+                    ))}
+                    <th className="shrink"></th>
+                  </tr>
                 </thead>
                 <tbody>
-                  {tableRows.filter((r) => !settleTeam || (String(r.team || "").trim() || "(팀 미지정)") === settleTeam).map((r) => {
+                  {tableRows.filter((r) => !settleTeam || (String(r.team || "").trim() || "(팀 미지정)") === settleTeam).slice().sort((a, b) => {
+                    const { key, dir } = settleSort;
+                    const val = (r) => key === "auto" ? installSettleCalc(r).total
+                      : key === "finalSettle" ? (Number(r.finalSettle) || 0)
+                      : String(r[key] ?? "");
+                    const va = val(a), vb = val(b);
+                    if (typeof va === "number") return (va - vb) * dir;
+                    return String(va).localeCompare(String(vb), "ko") * dir;
+                  }).map((r) => {
                     const c = installSettleCalc(r);
                     const final = Number(r.finalSettle) || 0;
                     const manual = final && !c.iot && final !== c.total;
