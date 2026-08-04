@@ -9240,6 +9240,7 @@ export function VendorOrdersView() {
                         ? <span className="erp-badge orange">청구됨{verified ? " ✓" : ""}</span>
                         : <span style={{ color: "var(--muted)" }}>—</span>}
                     {amount > 0 && <div style={{ fontSize: 11, fontWeight: 700, marginTop: 3, whiteSpace: "nowrap" }}>{formatWon(amount)}</div>}
+                    {paidAt && <div style={{ fontSize: 10.5, fontWeight: 600, color: "#0D7A3E", whiteSpace: "nowrap" }}>입금 {new Date(paidAt).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}</div>}
                   </div>
                 );
                 const open = expandedOrder === o.id;

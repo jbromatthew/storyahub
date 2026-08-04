@@ -24,6 +24,29 @@ async function auth(req: Request, res: Response) {
   return portal;
 }
 
+// 세금계산서 승인번호 중복 검사 — 같은 번호가 다른 청구에 이미 입력돼 있으면 사용 불가
+async function findTaxNoDup(
+  vendorId: string,
+  taxNo: string,
+  exceptOrderId: string,
+  exceptKind: "prepay" | "balance"
+): Promise<{ orderDate: string; kind: "prepay" | "balance" } | null> {
+  const matches = await prisma.erpVendorOrder.findMany({
+    where: { vendorId, OR: [{ prepayTaxNo: taxNo }, { balanceTaxNo: taxNo }] },
+    select: { id: true, orderDate: true, prepayTaxNo: true, balanceTaxNo: true },
+    take: 10,
+  });
+  for (const m of matches) {
+    if (m.prepayTaxNo === taxNo && !(m.id === exceptOrderId && exceptKind === "prepay")) {
+      return { orderDate: m.orderDate, kind: "prepay" };
+    }
+    if (m.balanceTaxNo === taxNo && !(m.id === exceptOrderId && exceptKind === "balance")) {
+      return { orderDate: m.orderDate, kind: "balance" };
+    }
+  }
+  return null;
+}
+
 // 포털 이름 미리보기 (PIN 전)
 vendorPublicRouter.get("/:vendorId/preview", async (req: Request, res: Response) => {
   const portal = await prisma.erpVendorPortal.findUnique({ where: { id: String(req.params.vendorId) } });
@@ -87,6 +110,12 @@ vendorPublicRouter.post("/:vendorId/orders/:id/request-payment", async (req: Req
   const order = await prisma.erpVendorOrder.findFirst({ where: { id: req.params.id, vendorId: portal.id } });
   if (!order) return res.status(404).json({ error: "발주를 찾을 수 없습니다" });
   if (order.status === "requested") return res.status(400).json({ error: "발주 승인 후 청구할 수 있습니다" });
+  const dup = await findTaxNoDup(portal.id, taxNo, order.id, kind);
+  if (dup) {
+    return res.status(400).json({
+      error: `이미 사용된 세금계산서 승인번호입니다 (발주 ${dup.orderDate} ${dup.kind === "prepay" ? "선금" : "잔금"} 청구에 입력됨). 번호를 확인하세요.`,
+    });
+  }
   const label = kind === "prepay" ? "선금" : "잔금";
   const histText =
     `${portal.name}가 ${label} 청구를 신청했습니다 — 계산서 ${taxDate} · 승인번호 ${taxNo}` +
@@ -121,6 +150,14 @@ vendorPublicRouter.post("/:vendorId/orders/:id/tax-date", async (req: Request, r
   const order = await prisma.erpVendorOrder.findFirst({ where: { id: req.params.id, vendorId: portal.id } });
   if (!order) return res.status(404).json({ error: "발주를 찾을 수 없습니다" });
   const taxNo = typeof b?.taxNo === "string" ? b.taxNo.trim().slice(0, 40) : undefined;
+  if (taxNo) {
+    const dup = await findTaxNoDup(portal.id, taxNo, order.id, kind);
+    if (dup) {
+      return res.status(400).json({
+        error: `이미 사용된 세금계산서 승인번호입니다 (발주 ${dup.orderDate} ${dup.kind === "prepay" ? "선금" : "잔금"} 청구에 입력됨). 번호를 확인하세요.`,
+      });
+    }
+  }
   const label = kind === "prepay" ? "선금" : "잔금";
   const data: Record<string, unknown> = {
     history: appendHistory(
