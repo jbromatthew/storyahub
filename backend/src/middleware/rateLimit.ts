@@ -41,8 +41,11 @@ export const ocrLimiter = rateLimit({
 
 export const shareLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  // 공개 페이지(정산·발주 포털 등)는 목록 조회 + 건별 OK 클릭이 많아 넉넉하게.
+  // trust proxy 설정으로 IP별 버킷이므로 개인당 한도.
+  max: env.isProduction ? 1000 : 5000,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "요청이 너무 많습니다." },
+  skip: () => skipInDev,
+  message: { error: "요청이 너무 많습니다. 15분 후 다시 시도하세요." },
 });

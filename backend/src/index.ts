@@ -40,6 +40,9 @@ import { startPurgeScheduler } from "./services/purge.js";
 import { startSalesDashboardWarmer } from "./services/salesDashboard.js";
 
 const app = express();
+// Cloudflare → nginx → node (프록시 2단). 이걸 설정해야 req.ip가 실제 방문자 IP가 되어
+// rate limit이 사용자별로 걸린다 (미설정 시 전 사용자가 프록시 IP 한 버킷을 공유).
+app.set("trust proxy", 2);
 applySecurityMiddleware(app);
 app.use(cookieParser());
 app.use(globalLimiter);
