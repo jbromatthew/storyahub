@@ -123,6 +123,8 @@ export function parseOrderRowMonth(data: Record<string, string>): string | null 
   for (const [key, val] of Object.entries(data)) {
     if (/날짜/i.test(key)) candidates.push(val);
   }
+  // 날짜 컬럼 헤더가 오타로 바뀐 경우("ㅇ" 등) 대비 — 앞쪽 3칸 값도 후보에 추가
+  candidates.push(...Object.values(data).slice(0, 3));
   for (const raw of candidates.filter(Boolean)) {
     const s = String(raw).trim();
     const m = s.match(/^(\d{4})[-/.](\d{2})/);
@@ -182,6 +184,8 @@ export function parseOrderRowDate(data: Record<string, string>): string | null {
   for (const [key, val] of Object.entries(data)) {
     if (/날짜/i.test(key)) candidates.push(val);
   }
+  // 날짜 컬럼 헤더가 오타로 바뀐 경우("ㅇ" 등) 대비 — 앞쪽 3칸 값도 후보에 추가
+  candidates.push(...Object.values(data).slice(0, 3));
   return firstDateKey(candidates.filter(Boolean));
 }
 
