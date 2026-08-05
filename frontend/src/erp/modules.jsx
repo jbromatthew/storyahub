@@ -1728,8 +1728,8 @@ function formatWon(n) {
 }
 
 const CST_STATUS = {
-  requested: { label: "시공요청", cls: "cst-badge-before" },
-  survey: { label: "실사", cls: "cst-badge-before" },
+  requested: { label: "실사요청", cls: "cst-badge-before" },
+  survey: { label: "실사", cls: "cst-badge-before" }, // 레거시 호환
   quoting: { label: "견적중", cls: "cst-badge-before" },
   confirmed: { label: "공사 확정", cls: "cst-badge-ongoing" },
   ongoing: { label: "공사중", cls: "cst-badge-ongoing" },
@@ -1737,11 +1737,11 @@ const CST_STATUS = {
   billing: { label: "청구 단계", cls: "cst-badge-settle" },
   settled: { label: "정산완료", cls: "cst-badge-settled" },
   // 레거시 호환
-  before: { label: "시공요청", cls: "cst-badge-before" },
+  before: { label: "실사요청", cls: "cst-badge-before" },
   settle_requested: { label: "청구 단계", cls: "cst-badge-settle" },
 };
-// 아파트너 흐름: 시공요청 접수 → 실사 → (실사 완료 후) 견적중 → 공사 확정 → 공사 → 청구 → 정산
-const CST_FLOW = ["requested", "survey", "quoting", "confirmed", "ongoing", "done", "billing", "settled"];
+// 아파트너 흐름: 실사요청(일정·단지 개요) → 시공팀 실사 입력(제품·수량) → 견적중 → 공사 확정 → 공사 → 청구 → 정산
+const CST_FLOW = ["requested", "quoting", "confirmed", "ongoing", "done", "billing", "settled"];
 const cstNum = (v) => Math.max(0, Math.round(Number(String(v).replace(/[^\d]/g, "")) || 0));
 const lineSupply = (l) => cstNum(l.unitPrice) * cstNum(l.qty);
 const lineVat = (l) => Math.round(lineSupply(l) * 0.1);
@@ -2511,6 +2511,13 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
             <div className="field" style={{ flex: "0 1 150px", marginBottom: 0 }}>
               <label>실사희망일</label>
               <input type="date" value={editing.surveyRequest?.hopeDate || ""} onChange={(e) => setSurveyReq({ hopeDate: e.target.value })} />
+            </div>
+            <div className="field" style={{ flex: "1 1 150px", marginBottom: 0 }}>
+              <label>담당 시공팀</label>
+              <select value={editing.surveyRequest?.team || ""} onChange={(e) => setSurveyReq({ team: e.target.value })}>
+                <option value="">— 미지정 —</option>
+                {teams.map((t2) => <option key={t2.id} value={t2.name}>{t2.name}</option>)}
+              </select>
             </div>
           </div>
           <div className="row" style={{ gap: 10, flexWrap: "wrap", marginTop: 10 }}>

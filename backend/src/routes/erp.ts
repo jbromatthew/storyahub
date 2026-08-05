@@ -1465,8 +1465,9 @@ function sanitizeSurveyRequest(raw: unknown) {
     hopeDate: /^\d{4}-\d{2}-\d{2}$/.test(s(r.hopeDate, 10)) ? s(r.hopeDate, 10) : "", // 실사희망일
     content: s(r.content, 1000),             // 공사내용
     note: s(r.note, 1000),                   // 기타 요청사항
+    team: s(r.team, 80),                     // 담당 시공팀
   };
-  return out.requestType || out.evLink || out.hopeDate || out.content || out.note ? out : null;
+  return out.requestType || out.evLink || out.hopeDate || out.content || out.note || out.team ? out : null;
 }
 
 function sanitizeSitePhotos(raw: unknown) {

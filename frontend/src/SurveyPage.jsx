@@ -129,6 +129,7 @@ export default function SurveyPage({ token }) {
         {reqInfo && (
           <div style={S.box}>
             <div style={{ fontWeight: 800, marginBottom: 4 }}>실사 요청 내용</div>
+            {reqInfo.team && <div>담당 시공팀: <strong>{reqInfo.team}</strong></div>}
             {reqInfo.requestType && <div>요청구분: <strong>{reqInfo.requestType}</strong></div>}
             {reqInfo.evLink && <div>E/V연동여부: {reqInfo.evLink}</div>}
             {reqInfo.hopeDate && <div>실사희망일: {reqInfo.hopeDate}</div>}
