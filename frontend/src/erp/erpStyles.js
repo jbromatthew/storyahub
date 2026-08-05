@@ -23,6 +23,14 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .app-sidebar.collapsed .app-sidebar-hd{justify-content:center;}
 .app-sidebar.collapsed .app-brand{display:none;}
 .app-sidebar.collapsed .sidenav-group{display:none;}
+.nav-search{padding:2px 2px 8px;}
+.nav-search input{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:inherit;font-size:13px;background:var(--card);color:inherit;}
+.nav-search input:focus{outline:none;border-color:var(--accent,#C96F4A);}
+.app-sidebar.collapsed .nav-search{display:none;}
+.nav-fav{margin-left:auto;font-size:13px;opacity:0;color:var(--muted);padding:0 2px;line-height:1;}
+.sidenavitem:hover .nav-fav{opacity:.55;}
+.nav-fav.on{opacity:1 !important;color:#E0A100;}
+.app-sidebar.collapsed .nav-fav{display:none;}
 .app-sidebar.collapsed .sidenavitem{justify-content:center;padding:11px 0;gap:0;}
 .app-sidebar.collapsed .sidenavitem span{display:none;}
 .app-sidebar.collapsed .app-sidebar-foot{display:none;}

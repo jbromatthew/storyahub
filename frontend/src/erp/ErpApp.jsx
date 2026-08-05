@@ -14,11 +14,21 @@ import { ERP_MODULES, ERP_ADMIN_MODULES } from "./config.js";
 import { erpIcons as I } from "./icons.jsx";
 import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesDashboardView, MarketingDashboardView, BrojDashboardView, RevenueView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, ConsultDocsView, MembersView, DailyReportView, IotLeadsView, VendorOrdersView } from "./modules.jsx";
 
-function NavBtn({ on, icon, label, onClick, hidden, layout = "side" }) {
+function NavBtn({ on, icon, label, onClick, hidden, fav, onFav, layout = "side" }) {
   const cls = layout === "side" ? "sidenavitem" : "sidenavitem";
   return (
     <button type="button" className={cls + (on ? " on" : "") + (hidden ? " sidenav-hide" : "")} title={label} onClick={onClick}>
       {icon({ width: 20, height: 20 })}<span>{label}</span>
+      {onFav && (
+        <span
+          className={"nav-fav" + (fav ? " on" : "")}
+          role="button"
+          title={fav ? "즐겨찾기 해제" : "즐겨찾기"}
+          onClick={(e) => { e.stopPropagation(); onFav(); }}
+        >
+          {fav ? "★" : "☆"}
+        </span>
+      )}
     </button>
   );
 }
@@ -47,9 +57,51 @@ function ErpNav({ tab, kbView, onSelect, onLogout, user, hiddenIds, collapsedGro
   // 그룹 헤더가 있는 그룹만 접기 대상 (지식경영 등 헤더 없는 항목은 항상 표시)
   const collapsibleGroups = new Set(items.filter((m) => m.groupLabel).map((m) => m.group));
   const isClosed = (g) => collapsibleGroups.has(g) && (collapsedGroups || []).includes(g);
+
+  // 메뉴 검색 + 즐겨찾기 (이 브라우저에 저장)
+  const [navQ, setNavQ] = useState("");
+  const [favs, setFavs] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("erp_fav_menus") || "[]"); } catch { return []; }
+  });
+  const toggleFav = (id) => setFavs((prev) => {
+    const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+    try { localStorage.setItem("erp_fav_menus", JSON.stringify(next)); } catch { /* ignore */ }
+    return next;
+  });
+  const favItems = favs.map((id) => items.find((m) => m.id === id)).filter(Boolean);
+  const kw = navQ.trim().toLowerCase().replace(/\s/g, "");
+  const searching = kw.length > 0;
+  const searchItems = searching
+    ? items.filter((m) => (m.label + (m.groupLabel || "")).toLowerCase().replace(/\s/g, "").includes(kw))
+    : [];
   return (
     <>
       <div className="sidenav-top">
+        <div className="nav-search">
+          <input value={navQ} onChange={(e) => setNavQ(e.target.value)} placeholder="🔍 메뉴 검색"
+            onKeyDown={(e) => { if (e.key === "Enter" && searchItems.length) { onSelect(searchItems[0].id); setNavQ(""); } if (e.key === "Escape") setNavQ(""); }} />
+        </div>
+        {searching ? (
+          <>
+            {searchItems.map((m) => (
+              <NavBtn key={m.id} on={tab === m.id && !kbView} icon={I[m.icon] || I.book}
+                label={m.groupLabel ? `${m.label}` : m.label}
+                fav={favs.includes(m.id)} onFav={() => toggleFav(m.id)}
+                onClick={() => { onSelect(m.id); setNavQ(""); }} />
+            ))}
+            {!searchItems.length && <div className="sidenav-group" style={{ cursor: "default" }}>검색 결과 없음</div>}
+          </>
+        ) : (
+          <>
+        {favItems.length > 0 && (
+          <>
+            <div className="sidenav-group" style={{ cursor: "default" }}>★ 즐겨찾기</div>
+            {favItems.map((m) => (
+              <NavBtn key={`fav-${m.id}`} on={tab === m.id && !kbView} icon={I[m.icon] || I.book} label={m.label}
+                fav onFav={() => toggleFav(m.id)} onClick={() => onSelect(m.id)} />
+            ))}
+          </>
+        )}
         {items.map((m, i, arr) => {
           const prev = arr[i - 1];
           const showGroup = m.groupLabel && m.groupLabel !== prev?.groupLabel;
@@ -73,11 +125,15 @@ function ErpNav({ tab, kbView, onSelect, onLogout, user, hiddenIds, collapsedGro
                 icon={I[m.icon] || I.book}
                 label={m.label}
                 hidden={closed}
+                fav={favs.includes(m.id)}
+                onFav={() => toggleFav(m.id)}
                 onClick={() => onSelect(m.id)}
               />
             </React.Fragment>
           );
         })}
+          </>
+        )}
       </div>
       {showAdmin && (
         <div className="sidenav-admin">
