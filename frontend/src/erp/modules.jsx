@@ -2223,6 +2223,29 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
 
   // ---- 견적 ----
   const newQuote = () => { setNewApt(null); setEditing({ apartmentId: apts[0]?.id || "", title: "", orderType, lines: [], payouts: [], materials: [], complaints: [], sitePhotos: [], status: "requested", taxInvoiceIssued: false, note: "", startDate: "", endDate: "" }); };
+
+  // 실사요청 빠른 접수 — 아파트너 카톡 형식 그대로 (단지·요청구분·E/V·실사희망일·공사내용·담당팀)
+  const emptyIntake = { aptName: "", aptAddress: "", requestType: "공동현관(SRR)", evLink: "", hopeDate: "", content: "", note: "", team: "" };
+  const [intake, setIntake] = useState(null); // null = 닫힘
+  const [intakeBusy, setIntakeBusy] = useState(false);
+  const submitIntake = async () => {
+    if (!intake.aptName.trim()) return notifyError(new Error("단지명을 입력하세요"));
+    setIntakeBusy(true);
+    try {
+      let apartmentId = apts.find((a) => a.name.trim() === intake.aptName.trim())?.id || null;
+      if (!apartmentId) {
+        const created = await api.erpConstructionCreateApartment({ name: intake.aptName.trim(), address: intake.aptAddress.trim() });
+        setApts((prev) => [created, ...prev]);
+        apartmentId = created.id;
+      }
+      await api.erpConstructionCreateQuote({
+        apartmentId, orderType, status: "requested", lines: [],
+        surveyRequest: { requestType: intake.requestType, evLink: intake.evLink, hopeDate: intake.hopeDate, content: intake.content, note: intake.note, team: intake.team },
+      });
+      toastSuccess("실사요청을 접수했습니다");
+      setIntake(null); load();
+    } catch (e) { notifyError(e); } finally { setIntakeBusy(false); }
+  };
   const saveNewApt = async () => {
     if (!newApt?.name.trim()) return notifyError(new Error("단지명을 입력하세요"));
     try {
@@ -2431,55 +2454,6 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
           </div>
         </div>
 
-        {/* 품목 라인 */}
-        <div className="cst-table-wrap" style={{ marginTop: 14 }}>
-          <table className="cst-quote-table">
-            <thead>
-              <tr>
-                <th style={{ width: 44 }}>순번</th>
-                <th style={{ textAlign: "left" }}>품명</th>
-                <th style={{ width: 70 }}>개수</th>
-                <th style={{ width: 120 }}>1개 단가</th>
-                <th style={{ width: 120 }}>총 공급가</th>
-                <th style={{ width: 100 }}>부가세</th>
-                <th style={{ width: 130 }}>금액(VAT포함)</th>
-                <th style={{ width: 40 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {editing.lines.map((l, i) => (
-                <tr key={i}>
-                  <td className="cst-num">{i + 1}</td>
-                  <td><input className="cst-inp" value={l.name} onChange={(e) => patchLine(i, { name: e.target.value })} placeholder="품명" /></td>
-                  <td><input className="cst-inp cst-inp-num" value={l.qty} onChange={(e) => patchLine(i, { qty: cstNum(e.target.value) })} inputMode="numeric" /></td>
-                  <td><input className="cst-inp cst-inp-num" value={Number(l.unitPrice).toLocaleString()} onChange={(e) => patchLine(i, { unitPrice: cstNum(e.target.value) })} inputMode="numeric" /></td>
-                  <td className="cst-num">{lineSupply(l).toLocaleString()}</td>
-                  <td className="cst-num">{lineVat(l).toLocaleString()}</td>
-                  <td className="cst-num" style={{ fontWeight: 700 }}>{(lineSupply(l) + lineVat(l)).toLocaleString()}</td>
-                  <td><button type="button" className="cst-x" onClick={() => removeLine(i)}>✕</button></td>
-                </tr>
-              ))}
-              {!editing.lines.length && (
-                <tr><td colSpan={8} style={{ textAlign: "center", color: "var(--muted)", padding: 18 }}>아래에서 품목을 추가하세요</td></tr>
-              )}
-              <tr className="cst-total-row">
-                <td className="cst-num" colSpan={4} style={{ textAlign: "right", fontWeight: 800 }}>합계</td>
-                <td className="cst-num" style={{ fontWeight: 800 }}>{totals.supply.toLocaleString()}</td>
-                <td className="cst-num" style={{ fontWeight: 800 }}>{totals.vat.toLocaleString()}</td>
-                <td className="cst-num" style={{ fontWeight: 900, color: "var(--accent-deep)" }}>{totals.total.toLocaleString()}</td>
-                <td></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-          <select className="cst-inp" style={{ maxWidth: 240 }} value="" onChange={(e) => { if (e.target.value) addLineFromItem(e.target.value); e.target.value = ""; }}>
-            <option value="">+ 품목 단가에서 추가…</option>
-            {items.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.unitPrice.toLocaleString()})</option>)}
-          </select>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={addBlankLine}>+ 직접 입력</button>
-        </div>
-
         {/* 실사 (아파트너 실사요청 → 설치팀 실사 입력) */}
         <div className="card" style={{ marginTop: 16 }}>
           <div className="row between" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
@@ -2543,6 +2517,55 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
               )}
             </div>
           )}
+        </div>
+
+        {/* 품목 라인 */}
+        <div className="cst-table-wrap" style={{ marginTop: 14 }}>
+          <table className="cst-quote-table">
+            <thead>
+              <tr>
+                <th style={{ width: 44 }}>순번</th>
+                <th style={{ textAlign: "left" }}>품명</th>
+                <th style={{ width: 70 }}>개수</th>
+                <th style={{ width: 120 }}>1개 단가</th>
+                <th style={{ width: 120 }}>총 공급가</th>
+                <th style={{ width: 100 }}>부가세</th>
+                <th style={{ width: 130 }}>금액(VAT포함)</th>
+                <th style={{ width: 40 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {editing.lines.map((l, i) => (
+                <tr key={i}>
+                  <td className="cst-num">{i + 1}</td>
+                  <td><input className="cst-inp" value={l.name} onChange={(e) => patchLine(i, { name: e.target.value })} placeholder="품명" /></td>
+                  <td><input className="cst-inp cst-inp-num" value={l.qty} onChange={(e) => patchLine(i, { qty: cstNum(e.target.value) })} inputMode="numeric" /></td>
+                  <td><input className="cst-inp cst-inp-num" value={Number(l.unitPrice).toLocaleString()} onChange={(e) => patchLine(i, { unitPrice: cstNum(e.target.value) })} inputMode="numeric" /></td>
+                  <td className="cst-num">{lineSupply(l).toLocaleString()}</td>
+                  <td className="cst-num">{lineVat(l).toLocaleString()}</td>
+                  <td className="cst-num" style={{ fontWeight: 700 }}>{(lineSupply(l) + lineVat(l)).toLocaleString()}</td>
+                  <td><button type="button" className="cst-x" onClick={() => removeLine(i)}>✕</button></td>
+                </tr>
+              ))}
+              {!editing.lines.length && (
+                <tr><td colSpan={8} style={{ textAlign: "center", color: "var(--muted)", padding: 18 }}>아래에서 품목을 추가하세요</td></tr>
+              )}
+              <tr className="cst-total-row">
+                <td className="cst-num" colSpan={4} style={{ textAlign: "right", fontWeight: 800 }}>합계</td>
+                <td className="cst-num" style={{ fontWeight: 800 }}>{totals.supply.toLocaleString()}</td>
+                <td className="cst-num" style={{ fontWeight: 800 }}>{totals.vat.toLocaleString()}</td>
+                <td className="cst-num" style={{ fontWeight: 900, color: "var(--accent-deep)" }}>{totals.total.toLocaleString()}</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+          <select className="cst-inp" style={{ maxWidth: 240 }} value="" onChange={(e) => { if (e.target.value) addLineFromItem(e.target.value); e.target.value = ""; }}>
+            <option value="">+ 품목 단가에서 추가…</option>
+            {items.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.unitPrice.toLocaleString()})</option>)}
+          </select>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={addBlankLine}>+ 직접 입력</button>
         </div>
 
         {/* 상태 / 세금계산서 */}
@@ -2764,8 +2787,61 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
         <>
           <div className="row between" style={{ margin: "16px 0 10px", alignItems: "center" }}>
             <span className="h-eyebrow">공사 {filteredQuotes.length}건 {filteredQuotes.length !== typedQuotes.length ? `/ 전체 ${typedQuotes.length}` : ""}</span>
-            <button type="button" className="btn btn-accent btn-sm" onClick={newQuote}>+ 새 견적</button>
+            <button type="button" className="btn btn-accent btn-sm" onClick={() => setIntake(intake ? null : { ...emptyIntake })}>📋 실사요청 접수</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={newQuote}>+ 새 견적</button>
           </div>
+
+          {intake && (
+            <div className="card" style={{ marginBottom: 12, background: "var(--paper)" }}>
+              <div className="kbe-meta-h" style={{ marginTop: 0 }}>실사요청 접수 <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>· 아파트너에서 온 내용 그대로 입력 — 공사예정일·견적은 실사 후에</span></div>
+              <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                <KakaoPlacePicker flex="1 1 100%" onPick={({ name, address }) => setIntake((f) => ({ ...f, aptName: name, aptAddress: address }))} />
+                <div className="field" style={{ flex: "1 1 200px", marginBottom: 0 }}>
+                  <label>단지명 *</label>
+                  <input value={intake.aptName} onChange={(e) => setIntake((f) => ({ ...f, aptName: e.target.value }))} placeholder="예: 감일한라비발디" />
+                </div>
+                <div className="field" style={{ flex: "2 1 260px", marginBottom: 0 }}>
+                  <label>단지주소</label>
+                  <input value={intake.aptAddress} onChange={(e) => setIntake((f) => ({ ...f, aptAddress: e.target.value }))} placeholder="예: 경기도 하남시 감일백제로 65" />
+                </div>
+              </div>
+              <div className="row" style={{ gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                <div className="field" style={{ flex: "1 1 160px", marginBottom: 0 }}>
+                  <label>요청구분</label>
+                  <input value={intake.requestType} onChange={(e) => setIntake((f) => ({ ...f, requestType: e.target.value }))} placeholder="예: 공동현관(SRR)" />
+                </div>
+                <div className="field" style={{ flex: "1 1 130px", marginBottom: 0 }}>
+                  <label>E/V연동여부</label>
+                  <input value={intake.evLink} onChange={(e) => setIntake((f) => ({ ...f, evLink: e.target.value }))} placeholder="예: 확인 필요" />
+                </div>
+                <div className="field" style={{ flex: "0 1 150px", marginBottom: 0 }}>
+                  <label>실사희망일</label>
+                  <input type="date" value={intake.hopeDate} onChange={(e) => setIntake((f) => ({ ...f, hopeDate: e.target.value }))} />
+                </div>
+                <div className="field" style={{ flex: "1 1 150px", marginBottom: 0 }}>
+                  <label>담당 시공팀</label>
+                  <select value={intake.team} onChange={(e) => setIntake((f) => ({ ...f, team: e.target.value }))}>
+                    <option value="">— 미지정 —</option>
+                    {teams.map((t2) => <option key={t2.id} value={t2.name}>{t2.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="row" style={{ gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                <div className="field" style={{ flex: "1 1 240px", marginBottom: 0 }}>
+                  <label>공사내용</label>
+                  <textarea value={intake.content} onChange={(e) => setIntake((f) => ({ ...f, content: e.target.value }))} placeholder="예: ble 실사 요청. 계약확정단지." style={{ minHeight: 56 }} />
+                </div>
+                <div className="field" style={{ flex: "1 1 240px", marginBottom: 0 }}>
+                  <label>요청사항</label>
+                  <textarea value={intake.note} onChange={(e) => setIntake((f) => ({ ...f, note: e.target.value }))} placeholder="예: 설치가능여부 및 EV연동 가능여부 확인 요청" style={{ minHeight: 56 }} />
+                </div>
+              </div>
+              <div className="row" style={{ gap: 8, marginTop: 12 }}>
+                <button type="button" className="btn btn-accent" disabled={intakeBusy} onClick={submitIntake}>{intakeBusy ? "접수 중…" : "실사요청 접수"}</button>
+                <button type="button" className="btn btn-ghost" onClick={() => setIntake(null)}>취소</button>
+              </div>
+            </div>
+          )}
 
           {/* 상태 필터 */}
           <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
