@@ -1728,17 +1728,20 @@ function formatWon(n) {
 }
 
 const CST_STATUS = {
-  requested: { label: "견적요청", cls: "cst-badge-before" },
+  requested: { label: "시공요청", cls: "cst-badge-before" },
+  survey: { label: "실사", cls: "cst-badge-before" },
+  quoting: { label: "견적중", cls: "cst-badge-before" },
   confirmed: { label: "공사 확정", cls: "cst-badge-ongoing" },
   ongoing: { label: "공사중", cls: "cst-badge-ongoing" },
   done: { label: "공사완료", cls: "cst-badge-done" },
   billing: { label: "청구 단계", cls: "cst-badge-settle" },
   settled: { label: "정산완료", cls: "cst-badge-settled" },
   // 레거시 호환
-  before: { label: "견적요청", cls: "cst-badge-before" },
+  before: { label: "시공요청", cls: "cst-badge-before" },
   settle_requested: { label: "청구 단계", cls: "cst-badge-settle" },
 };
-const CST_FLOW = ["requested", "confirmed", "ongoing", "done", "billing", "settled"];
+// 아파트너 흐름: 시공요청 접수 → 실사 → (실사 완료 후) 견적중 → 공사 확정 → 공사 → 청구 → 정산
+const CST_FLOW = ["requested", "survey", "quoting", "confirmed", "ongoing", "done", "billing", "settled"];
 const cstNum = (v) => Math.max(0, Math.round(Number(String(v).replace(/[^\d]/g, "")) || 0));
 const lineSupply = (l) => cstNum(l.unitPrice) * cstNum(l.qty);
 const lineVat = (l) => Math.round(lineSupply(l) * 0.1);

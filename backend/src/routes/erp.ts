@@ -1410,7 +1410,7 @@ erpRouter.delete("/construction/apartments/:id", async (req: AuthedRequest, res)
 
 // 견적/공사 건
 const CONSTRUCTION_STATUSES = [
-  "requested", "confirmed", "ongoing", "done", "billing", "settled",
+  "requested", "survey", "quoting", "confirmed", "ongoing", "done", "billing", "settled",
   "before", "settle_requested", // 레거시 호환
 ];
 const cstDate = (v: unknown): string | null => {

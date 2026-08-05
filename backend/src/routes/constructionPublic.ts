@@ -233,6 +233,8 @@ constructionPublicRouter.post("/survey/:token/submit", async (req: Request, res:
     data: {
       surveyResult: { visitDate, findings, items: resultItems, by: by || null, at: new Date().toISOString() } as unknown as object,
       ...(lines.length ? { lines: lines as unknown as object } : {}),
+      // 실사 완료 → 견적중으로 자동 진행 (이미 확정 이후 단계면 유지)
+      ...(["requested", "survey", "before"].includes(quote.status) ? { status: "quoting" } : {}),
     },
   });
   res.json({ ok: true, itemCount: resultItems.length });
