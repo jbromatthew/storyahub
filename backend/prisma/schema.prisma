@@ -718,6 +718,8 @@ model ErpConstructionQuote {
   endDate          String?                   // 공사 종료일 (YYYY-MM-DD)
   status           String                    @default("requested") // requested | confirmed | ongoing | done | billing | settled
   taxInvoiceIssued Boolean                   @default(false)
+  taxInvoiceDate   String?                   // 세금계산서 발행일자 (YYYY-MM-DD)
+  taxInvoiceNo     String?                   // 세금계산서 승인번호
   payouts          Json                      @default("[]") // 협력업체 재정산: [{teamId, teamName, amount, paid, memo}]
   materials        Json                      @default("[]") // 투입 부품/자재 원가: [{stockId, name, qty, unitCost}]
   complaints       Json                      @default("[]") // 민원: [{date, content, status, resolution}]

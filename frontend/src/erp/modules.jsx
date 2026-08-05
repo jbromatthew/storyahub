@@ -2348,6 +2348,8 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
       lines: editing.lines.map((l) => ({ name: l.name, unitPrice: cstNum(l.unitPrice), qty: cstNum(l.qty) })).filter((l) => l.name),
       status: editing.status,
       taxInvoiceIssued: !!editing.taxInvoiceIssued,
+      taxInvoiceDate: editing.taxInvoiceDate || null,
+      taxInvoiceNo: editing.taxInvoiceNo || null,
       note: editing.note || null,
       startDate: editing.startDate || null,
       endDate: editing.endDate || null,
@@ -2582,6 +2584,16 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
             <input type="checkbox" checked={!!editing.taxInvoiceIssued} onChange={(e) => setEditing((ed) => ({ ...ed, taxInvoiceIssued: e.target.checked }))} />
             <span style={{ fontWeight: 700 }}>세금계산서 발행 완료</span>
           </label>
+          <div className="row" style={{ gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+            <div className="field" style={{ flex: "0 1 170px", marginBottom: 0 }}>
+              <label>세금계산서 발행일자</label>
+              <input type="date" value={editing.taxInvoiceDate || ""} onChange={(e) => setEditing((ed) => ({ ...ed, taxInvoiceDate: e.target.value, ...(e.target.value ? { taxInvoiceIssued: true } : {}) }))} />
+            </div>
+            <div className="field" style={{ flex: "1 1 220px", marginBottom: 0 }}>
+              <label>세금계산서 승인번호</label>
+              <input value={editing.taxInvoiceNo || ""} onChange={(e) => setEditing((ed) => ({ ...ed, taxInvoiceNo: e.target.value }))} placeholder="예: 20260805-41000063-12345678" />
+            </div>
+          </div>
           <div className="field" style={{ marginTop: 14, marginBottom: 0 }}>
             <label>메모</label>
             <textarea value={editing.note || ""} onChange={(e) => setEditing((ed) => ({ ...ed, note: e.target.value }))} placeholder="정산 요청일, 특이사항 등" style={{ minHeight: 70 }} />
