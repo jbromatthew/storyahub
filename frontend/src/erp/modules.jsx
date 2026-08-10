@@ -8558,6 +8558,8 @@ function parseChecklistItems(raw, { legacyDone = true } = {}) {
           done: !!it?.done,
           reason: typeof it?.reason === "string" ? it.reason : "",
           kind: it?.kind === "header" ? "header" : undefined,
+          start: typeof it?.start === "string" ? it.start : undefined,
+          end: typeof it?.end === "string" ? it.end : undefined,
         }))
         .filter((it) => it.text);
     }
@@ -8831,14 +8833,17 @@ export function DailyReportView() {
     const cleanTodos = todoItems
       .map((t) => ({ ...t, id: t.id || checklistItemId(), text: t.text.trim() }))
       .filter((t) => t.text);
+    // 기간(시작~종료)이 오늘 이후까지 걸친 할 일은 내일 할 일에 자동 유지 (매일 다시 안 적어도 됨)
+    const basePlans = (planItems || [])
+      .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim(), kind: p.kind, start: p.start, end: p.end }))
+      .filter((p) => p.text);
+    const autoCarry = cleanTodos.filter((t) => t.kind !== "header" && t.end && t.end > selDay
+      && !basePlans.some((p) => (t.id && p.id === t.id) || p.text === t.text))
+      .map(({ id, text, kind, start, end }) => ({ id, text, kind, start, end }));
     return api.erpDailyReportSave(selDay, {
-      did: JSON.stringify(cleanTodos.map(({ id, text, done, kind }) => ({ id, text, done, kind }))),
+      did: JSON.stringify(cleanTodos.map(({ id, text, done, kind, start, end }) => ({ id, text, done, kind, start, end }))),
       missed: JSON.stringify(cleanTodos.filter((t) => !t.done && t.kind !== "header").map((t) => ({ id: t.id, text: t.text, reason: (t.reason || "").trim() }))),
-      plan: JSON.stringify(
-        (planItems || [])
-          .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim(), kind: p.kind }))
-          .filter((p) => p.text)
-      ),
+      plan: JSON.stringify([...basePlans, ...autoCarry]),
     })
       .then(() => load())
       .catch(notifyError);
@@ -8853,6 +8858,8 @@ export function DailyReportView() {
       done: it.kind === "header" ? false : j === toggleIdx,
       reason: "",
       kind: it.kind,
+      start: it.start,
+      end: it.end,
     }));
     quickSave(items, []).then(() => toastSuccess("이월된 할 일을 오늘 보고로 저장했어요"));
   };
@@ -8866,6 +8873,8 @@ export function DailyReportView() {
       done: t.kind === "header" ? false : j === idx ? !t.done : t.done,
       reason: reasons.get(t.text) || "",
       kind: t.kind,
+      start: t.start,
+      end: t.end,
     }));
     quickSave(items, parseChecklistItems(r.plan, { legacyDone: false }));
   };
@@ -8888,7 +8897,7 @@ export function DailyReportView() {
         // 직전 보고의 '내일 할 일' 체크리스트를 오늘 할 일로 프리필 (새 보고일 때만)
         if (r.prev?.plan && !mine) {
           const items = parseChecklistItems(r.prev.plan, { legacyDone: false });
-          if (items.length) setTodos((cur) => (cur.length ? cur : items.map((it) => ({ id: it.id, text: it.text, done: false, reason: "", kind: it.kind }))));
+          if (items.length) setTodos((cur) => (cur.length ? cur : items.map((it) => ({ id: it.id, text: it.text, done: false, reason: "", kind: it.kind, start: it.start, end: it.end }))));
         }
       })
       .catch(() => {});
@@ -8899,13 +8908,17 @@ export function DailyReportView() {
       .map((t) => ({ ...t, id: t.id || checklistItemId(), text: t.text.trim() }))
       .filter((t) => t.text);
     const cleanPlans = plans
-      .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim(), kind: p.kind }))
+      .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim(), kind: p.kind, start: p.start, end: p.end }))
       .filter((p) => p.text);
+    // 기간이 오늘 이후까지 걸친 오늘 할 일은 내일 할 일에 자동 유지
+    const rangedCarry = cleanTodos.filter((t) => t.kind !== "header" && t.end && t.end > selDay
+      && !cleanPlans.some((p) => (t.id && p.id === t.id) || p.text === t.text))
+      .map(({ id, text, kind, start, end }) => ({ id, text, kind, start, end }));
     setSaving(true);
     api.erpDailyReportSave(selDay, {
-      did: JSON.stringify(cleanTodos.map(({ id, text, done, kind }) => ({ id, text, done, kind }))),
+      did: JSON.stringify(cleanTodos.map(({ id, text, done, kind, start, end }) => ({ id, text, done, kind, start, end }))),
       missed: JSON.stringify(cleanTodos.filter((t) => !t.done && t.kind !== "header").map((t) => ({ id: t.id, text: t.text, reason: (t.reason || "").trim() }))),
-      plan: JSON.stringify(cleanPlans),
+      plan: JSON.stringify([...cleanPlans, ...rangedCarry]),
     })
       .then(() => {
         toastSuccess("일일보고 저장 완료");
@@ -9069,6 +9082,13 @@ export function DailyReportView() {
                       if (e.key === "Enter") { e.preventDefault(); setTodos((p) => [...p.slice(0, i + 1), { text: "", done: false, reason: "" }, ...p.slice(i + 1)]); }
                     }}
                   />
+                  <span className="row" style={{ gap: 4, alignItems: "center", flexShrink: 0 }} title="기간을 정하면 종료일까지 매일 할 일에 자동 유지됩니다">
+                    <input type="date" value={t.start || ""} onChange={(e) => setTodos((p) => p.map((x, j) => (j === i ? { ...x, start: e.target.value || undefined } : x)))}
+                      style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "5px 6px", fontFamily: "inherit", fontSize: 11.5, width: 118, color: t.start ? "inherit" : "var(--muted)" }} />
+                    <span className="small" style={{ color: "var(--muted)" }}>~</span>
+                    <input type="date" value={t.end || ""} onChange={(e) => setTodos((p) => p.map((x, j) => (j === i ? { ...x, end: e.target.value || undefined } : x)))}
+                      style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "5px 6px", fontFamily: "inherit", fontSize: 11.5, width: 118, color: t.end ? "inherit" : "var(--muted)" }} />
+                  </span>
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => p.filter((_, j) => j !== i))}>✕</button>
                 </div>
                 );
@@ -9133,6 +9153,15 @@ export function DailyReportView() {
                       if (e.key === "Enter") { e.preventDefault(); setPlans((p) => [...p.slice(0, i + 1), { text: "" }, ...p.slice(i + 1)]); }
                     }}
                   />
+                  {p2.kind !== "header" && (
+                    <span className="row" style={{ gap: 4, alignItems: "center", flexShrink: 0 }} title="기간을 정하면 종료일까지 매일 할 일에 자동 유지됩니다">
+                      <input type="date" value={p2.start || ""} onChange={(e) => setPlans((p) => p.map((x, j) => (j === i ? { ...x, start: e.target.value || undefined } : x)))}
+                        style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "5px 6px", fontFamily: "inherit", fontSize: 11.5, width: 118, color: p2.start ? "inherit" : "var(--muted)" }} />
+                      <span className="small" style={{ color: "var(--muted)" }}>~</span>
+                      <input type="date" value={p2.end || ""} onChange={(e) => setPlans((p) => p.map((x, j) => (j === i ? { ...x, end: e.target.value || undefined } : x)))}
+                        style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "5px 6px", fontFamily: "inherit", fontSize: 11.5, width: 118, color: p2.end ? "inherit" : "var(--muted)" }} />
+                    </span>
+                  )}
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPlans((p) => p.filter((_, j) => j !== i))}>✕</button>
                 </div>
                 {groupEnds && (
@@ -9234,6 +9263,11 @@ export function DailyReportView() {
                               >
                                 {q2.key === "did" ? (it.done ? "✅ " : "⬜ ") : q2.key === "plan" ? "⬜ " : "⚠️ "}
                                 <span style={q2.key === "did" && !it.done ? { color: "var(--muted)" } : undefined}>{it.text}</span>
+                                {(it.start || it.end) && (
+                                  <span className="tag gray" style={{ fontSize: 10.5, marginLeft: 4, padding: "0 6px" }}>
+                                    📅 {(it.start || "").slice(5)}{it.end ? `~${it.end.slice(5)}` : "~"}
+                                  </span>
+                                )}
                                 {q2.key === "missed" && it.reason && (
                                   <span style={{ color: "var(--muted)" }}> — 사유: {it.reason}</span>
                                 )}
