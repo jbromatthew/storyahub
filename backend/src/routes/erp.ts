@@ -2356,9 +2356,9 @@ erpRouter.get("/daily-comments", async (req: AuthedRequest, res) => {
       })
     : [];
 
-  // 미해결 스레드 (루트 기준, 전체 기간)
+  // ★ 중요 표시된 스레드만 스레드함에 노출 (일반 코멘트는 항목 히스토리)
   const openRoots = await prisma.erpDailyComment.findMany({
-    where: { parentId: null, resolved: false },
+    where: { parentId: null, important: true },
     orderBy: { createdAt: "desc" },
     take: 50,
   });
@@ -2437,7 +2437,18 @@ erpRouter.post("/daily-comments", async (req: AuthedRequest, res) => {
   res.json({ comment });
 });
 
-// 스레드 해결/해제 (루트)
+// ★ 중요 표시/해제 (루트) — 중요만 스레드함에 남음
+erpRouter.post("/daily-comments/:id/important", async (req: AuthedRequest, res) => {
+  const a = await dailyAccess(req.userId!);
+  if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });
+  const important = !!(req.body as Record<string, unknown> | undefined)?.important;
+  const root = await prisma.erpDailyComment.findUnique({ where: { id: req.params.id } });
+  if (!root || root.parentId) return res.status(404).json({ error: "스레드를 찾을 수 없습니다" });
+  const comment = await prisma.erpDailyComment.update({ where: { id: root.id }, data: { important } });
+  res.json({ comment });
+});
+
+// 스레드 해결/해제 (루트) — 레거시, UI에서는 미사용
 erpRouter.post("/daily-comments/:id/resolve", async (req: AuthedRequest, res) => {
   const a = await dailyAccess(req.userId!);
   if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });

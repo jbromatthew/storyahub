@@ -853,12 +853,13 @@ model ErpDailyComment {
   authorName  String
   body        String   @default("")
   files       Json     @default("[]") // [{key, name}]
-  resolved    Boolean  @default(false) // 루트에만 의미 (스레드 해결/숨김)
+  resolved    Boolean  @default(false) // (레거시) 이전 해결 개념 — 더 이상 사용 안 함
+  important   Boolean  @default(false) // 루트에만 의미: ★ 중요 표시 → 스레드함에 남김
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([reportId])
-  @@index([resolved])
+  @@index([important])
 }
 
 // IoT 견적 리드 — 고객이 공개 페이지에서 직접 견적 내고 상담 신청 (인스타 유입)

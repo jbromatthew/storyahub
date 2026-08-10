@@ -345,6 +345,7 @@ export const api = {
   },
   erpDailyCommentAdd: (body) => req("/erp/daily-comments", { method: "POST", body }),
   erpDailyCommentResolve: (id, resolved) => req(`/erp/daily-comments/${id}/resolve`, { method: "POST", body: { resolved } }),
+  erpDailyCommentImportant: (id, important) => req(`/erp/daily-comments/${id}/important`, { method: "POST", body: { important } }),
   erpDailyCommentDelete: (id) => req(`/erp/daily-comments/${id}`, { method: "DELETE" }),
   erpDailyCommentFileUrl: (key) => req(`/erp/daily-comments/file?key=${encodeURIComponent(key)}`),
   erpMarketingDashboard: ({ month } = {}) => {

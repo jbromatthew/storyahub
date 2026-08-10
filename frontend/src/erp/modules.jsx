@@ -8600,7 +8600,7 @@ function DailyThreadBox({ report, section, item, threads, myEmail, onChanged, on
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  const activeRoot = threads.find((t) => !t.root.resolved);
+  const activeRoot = threads.length ? threads[threads.length - 1] : null; // 답글은 최신 스레드에 이어감
 
   const attach = async () => {
     try {
@@ -8636,9 +8636,9 @@ function DailyThreadBox({ report, section, item, threads, myEmail, onChanged, on
       .finally(() => setSending(false));
   };
 
-  const resolveThread = (rootId, resolved) => {
-    api.erpDailyCommentResolve(rootId, resolved)
-      .then(() => { toastSuccess(resolved ? "스레드를 해결 처리했어요" : "스레드를 다시 열었어요"); onChanged(); })
+  const markImportant = (rootId, important) => {
+    api.erpDailyCommentImportant(rootId, important)
+      .then(() => { toastSuccess(important ? "★ 중요 표시했어요 — 스레드함에 남습니다" : "중요 표시를 해제했어요"); onChanged(); })
       .catch(notifyError);
   };
 
@@ -8679,17 +8679,17 @@ function DailyThreadBox({ report, section, item, threads, myEmail, onChanged, on
       </div>
 
       {threads.map((t) => (
-        <div key={t.root.id} style={{ marginBottom: 12, opacity: t.root.resolved ? 0.55 : 1 }}>
+        <div key={t.root.id} style={{ marginBottom: 12 }}>
           {renderComment(t.root, true)}
           {t.replies.map((c) => renderComment(c, false))}
           <div className="row" style={{ gap: 6, marginTop: 6 }}>
-            {t.root.resolved ? (
+            {t.root.important ? (
               <>
-                <span className="tag gray" style={{ fontSize: 11 }}>✔ 해결됨</span>
-                <button type="button" className="btn btn-ghost btn-sm" style={{ padding: "0 8px", fontSize: 11.5 }} onClick={() => resolveThread(t.root.id, false)}>다시 열기</button>
+                <span className="tag" style={{ fontSize: 11, background: "#FFF3D6", color: "#8A6100", fontWeight: 700 }}>★ 중요 — 스레드함에 표시됨</span>
+                <button type="button" className="btn btn-ghost btn-sm" style={{ padding: "0 8px", fontSize: 11.5 }} onClick={() => markImportant(t.root.id, false)}>해제</button>
               </>
             ) : (
-              <button type="button" className="btn btn-ghost btn-sm" style={{ padding: "0 8px", fontSize: 11.5 }} onClick={() => resolveThread(t.root.id, true)}>✔ 해결 처리</button>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ padding: "0 8px", fontSize: 11.5 }} onClick={() => markImportant(t.root.id, true)}>★ 중요 표시 (나중에 보기)</button>
             )}
           </div>
         </div>
@@ -8940,7 +8940,7 @@ export function DailyReportView() {
 
       {openThreads.length > 0 && (
         <div className="card" style={{ marginTop: 14, padding: "12px 16px" }}>
-          <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>💬 열린 스레드 {openThreads.length}개</div>
+          <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>★ 중요 스레드 {openThreads.length}개 <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 중요 표시한 코멘트만 여기 남습니다</span></div>
           {openThreads.map((t) => (
             <div key={t.id} className="row" style={{ gap: 8, alignItems: "center", padding: "4px 0", flexWrap: "wrap", borderTop: "1px solid var(--line)" }}>
               <button
@@ -8965,9 +8965,9 @@ export function DailyReportView() {
                 type="button"
                 className="btn btn-ghost btn-sm"
                 style={{ fontSize: 11.5 }}
-                onClick={() => api.erpDailyCommentResolve(t.id, true).then(() => { toastSuccess("스레드를 해결 처리했어요"); loadComments(); }).catch(notifyError)}
+                onClick={() => api.erpDailyCommentImportant(t.id, false).then(() => { toastSuccess("중요 표시를 해제했어요"); loadComments(); }).catch(notifyError)}
               >
-                ✔ 해결
+                ★ 해제
               </button>
             </div>
           ))}
@@ -9224,7 +9224,7 @@ export function DailyReportView() {
                         const tKey = `${r.id}|${q2.key}|${anchor}`;
                         const threads = threadMap.get(tKey) || [];
                         const cCount = threads.reduce((s, t) => s + 1 + t.replies.length, 0);
-                        const hasOpen = threads.some((t) => !t.root.resolved);
+                        const hasOpen = threads.some((t) => t.root.important);
                         return (
                           <React.Fragment key={i}>
                             <div className="small row" style={{ lineHeight: 1.7, alignItems: "center", gap: 6, flexWrap: "wrap", marginLeft: indent ? 18 : 0 }}>
