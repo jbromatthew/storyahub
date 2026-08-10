@@ -1,4 +1,5 @@
 import { getSalesDaily, type SalesDailyData } from "./salesDaily.js";
+import { runAutoSync } from "./salesAutoSync.js";
 
 /**
  * 문의/결제 대시보드 요약을 채널톡 그룹(팀챗)으로 자동 보고.
@@ -81,6 +82,9 @@ export async function sendSalesReportNow(): Promise<{ sent: boolean; text: strin
 
 async function runReport(hhmm: string): Promise<void> {
   try {
+    // 보고 직전에 시트 동기화 → 항상 최신 데이터 기준으로 발송
+    const day = Number(kstNow().date.slice(8, 10));
+    await runAutoSync(day);
     const text = await buildSalesReportText(hhmm);
     await sendToChannelTalk(text);
     console.log(`[sales-report-bot] ${hhmm} 보고 발송 완료`);

@@ -1,11 +1,12 @@
 import { listAvailableMonthSheets, syncSalesSheet } from "./salesSync.js";
 
 /**
- * 세일즈 시트 자동 동기화 — 매일 KST 12:30 / 15:00 / 19:00에
+ * 세일즈 시트 자동 동기화 — 매일 KST 12:30 단독 실행.
+ * (15:00·18:30은 채널톡 보고 봇이 동기화 → 보고 순서로 직접 실행)
  * 문의·결제 현재 월 탭(월초 3일까지는 지난달 탭도)을 동기화한다.
  * 수동 동기화와 겹쳐도 advisory lock으로 안전.
  */
-const SLOTS = ["12:30", "15:00", "19:00"];
+const SLOTS = ["12:30"];
 let lastRunKey = ""; // "YYYY-MM-DD HH:MM" — 같은 슬롯 중복 실행 방지
 
 function kstNow(): { date: string; hhmm: string; day: number } {
@@ -19,7 +20,7 @@ function kstNow(): { date: string; hhmm: string; day: number } {
   return { date, hhmm: `${get("hour")}:${get("minute")}`, day: Number(get("day")) };
 }
 
-async function runAutoSync(day: number): Promise<void> {
+export async function runAutoSync(day: number): Promise<void> {
   for (const kind of ["inquiry", "order"] as const) {
     try {
       const sheets = await listAvailableMonthSheets(kind);
