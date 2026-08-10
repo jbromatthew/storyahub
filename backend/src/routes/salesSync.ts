@@ -345,6 +345,16 @@ salesSyncRouter.get("/trend/inquiry", async (req: AuthedRequest, res: Response) 
   }
 });
 
+// 채널톡 자동 보고 수동 발송 (테스트)
+salesSyncRouter.post("/report-bot/send", async (_req: AuthedRequest, res: Response) => {
+  try {
+    const { sendSalesReportNow } = await import("../services/salesReportBot.js");
+    res.json(await sendSalesReportNow());
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
 salesSyncRouter.post("/sync", async (req: AuthedRequest, res: Response) => {
   const parsed = syncBodySchema.safeParse(req.body);
   if (!parsed.success) {

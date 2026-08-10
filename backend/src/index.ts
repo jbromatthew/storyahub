@@ -38,6 +38,8 @@ import { vendorPublicRouter } from "./routes/vendorPublic.js";
 import { installPublicRouter } from "./routes/installPublic.js";
 import { startPurgeScheduler } from "./services/purge.js";
 import { startSalesDashboardWarmer } from "./services/salesDashboard.js";
+import { startSalesAutoSync } from "./services/salesAutoSync.js";
+import { startSalesReportBot } from "./services/salesReportBot.js";
 
 const app = express();
 // Cloudflare → nginx → node (프록시 2단). 이걸 설정해야 req.ip가 실제 방문자 IP가 되어
@@ -119,6 +121,8 @@ app.listen(env.port, () => {
       // 결제 없는 배포에서는 만료 데이터 삭제(purge)를 절대 돌리지 않는다.
       if (!env.erpMode && !env.billingDisabled) startPurgeScheduler();
       startSalesDashboardWarmer();
+      startSalesAutoSync();
+      startSalesReportBot();
     })
     .catch((e) => console.warn("PostgreSQL unreachable — check DATABASE_URL / RDS security group:", (e as Error).message));
 });

@@ -434,8 +434,14 @@ export async function listMonthSheets(spreadsheetId: string): Promise<string[]> 
 }
 
 /** 상품 문의: 월별 동기화 대상 (Raw 제외) */
+/** 문의(마케팅): 2026.01. 이후만 월별 동기화 대상 — 2025년은 Raw 아카이브로 유지 */
 export async function listInquiryMonthlySyncSheets(spreadsheetId: string): Promise<string[]> {
-  return listMonthSheets(spreadsheetId);
+  const sheets = await listMonthSheets(spreadsheetId);
+  return sheets.filter((name) => {
+    const m = name.match(/^(\d{4})\.(\d{2})/);
+    if (!m) return false;
+    return Number(m[1]) * 100 + Number(m[2]) >= 202601;
+  });
 }
 
 /** 결제 주문: 2026.01. 이후 월별 동기화 대상 */
