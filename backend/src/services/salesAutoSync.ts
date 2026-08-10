@@ -1,12 +1,12 @@
 import { listAvailableMonthSheets, syncSalesSheet } from "./salesSync.js";
 
 /**
- * 세일즈 시트 자동 동기화 — 매일 KST 12:30 단독 실행.
- * (15:00·18:30은 채널톡 보고 봇이 동기화 → 보고 순서로 직접 실행)
+ * 세일즈 시트 자동 동기화 — 매일 KST 10:00~20:00 매시 정각.
+ * (15:00·18:30 채널톡 보고는 발송 직전에 별도로 한 번 더 동기화)
  * 문의·결제 현재 월 탭(월초 3일까지는 지난달 탭도)을 동기화한다.
  * 수동 동기화와 겹쳐도 advisory lock으로 안전.
  */
-const SLOTS = ["12:30"];
+const SLOTS = Array.from({ length: 11 }, (_, i) => `${String(10 + i).padStart(2, "0")}:00`); // 10:00 ~ 20:00
 let lastRunKey = ""; // "YYYY-MM-DD HH:MM" — 같은 슬롯 중복 실행 방지
 
 function kstNow(): { date: string; hhmm: string; day: number } {
