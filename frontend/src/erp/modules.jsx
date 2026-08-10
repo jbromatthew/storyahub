@@ -8835,7 +8835,7 @@ export function DailyReportView() {
       .filter((t) => t.text);
     // 기간(시작~종료)이 오늘 이후까지 걸친 할 일은 내일 할 일에 자동 유지 (매일 다시 안 적어도 됨)
     const basePlans = (planItems || [])
-      .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim(), kind: p.kind, start: p.start, end: p.end }))
+      .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim(), kind: p.kind, start: p.start || (p.end ? selDay : undefined), end: p.end }))
       .filter((p) => p.text);
     const autoCarry = cleanTodos.filter((t) => t.kind !== "header" && t.end && t.end > selDay
       && !basePlans.some((p) => (t.id && p.id === t.id) || p.text === t.text))
@@ -8908,7 +8908,7 @@ export function DailyReportView() {
       .map((t) => ({ ...t, id: t.id || checklistItemId(), text: t.text.trim() }))
       .filter((t) => t.text);
     const cleanPlans = plans
-      .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim(), kind: p.kind, start: p.start, end: p.end }))
+      .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim(), kind: p.kind, start: p.start || (p.end ? selDay : undefined), end: p.end }))
       .filter((p) => p.text);
     // 기간이 오늘 이후까지 걸친 오늘 할 일은 내일 할 일에 자동 유지
     const rangedCarry = cleanTodos.filter((t) => t.kind !== "header" && t.end && t.end > selDay
@@ -9086,7 +9086,7 @@ export function DailyReportView() {
                     <input type="date" value={t.start || ""} onChange={(e) => setTodos((p) => p.map((x, j) => (j === i ? { ...x, start: e.target.value || undefined } : x)))}
                       style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "5px 6px", fontFamily: "inherit", fontSize: 11.5, width: 118, color: t.start ? "inherit" : "var(--muted)" }} />
                     <span className="small" style={{ color: "var(--muted)" }}>~</span>
-                    <input type="date" value={t.end || ""} onChange={(e) => setTodos((p) => p.map((x, j) => (j === i ? { ...x, end: e.target.value || undefined } : x)))}
+                    <input type="date" value={t.end || ""} onChange={(e) => setTodos((p) => p.map((x, j) => (j === i ? { ...x, end: e.target.value || undefined, start: x.start || (e.target.value ? selDay : undefined) } : x)))}
                       style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "5px 6px", fontFamily: "inherit", fontSize: 11.5, width: 118, color: t.end ? "inherit" : "var(--muted)" }} />
                   </span>
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => p.filter((_, j) => j !== i))}>✕</button>
@@ -9158,7 +9158,7 @@ export function DailyReportView() {
                       <input type="date" value={p2.start || ""} onChange={(e) => setPlans((p) => p.map((x, j) => (j === i ? { ...x, start: e.target.value || undefined } : x)))}
                         style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "5px 6px", fontFamily: "inherit", fontSize: 11.5, width: 118, color: p2.start ? "inherit" : "var(--muted)" }} />
                       <span className="small" style={{ color: "var(--muted)" }}>~</span>
-                      <input type="date" value={p2.end || ""} onChange={(e) => setPlans((p) => p.map((x, j) => (j === i ? { ...x, end: e.target.value || undefined } : x)))}
+                      <input type="date" value={p2.end || ""} onChange={(e) => setPlans((p) => p.map((x, j) => (j === i ? { ...x, end: e.target.value || undefined, start: x.start || (e.target.value ? selDay : undefined) } : x)))}
                         style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "5px 6px", fontFamily: "inherit", fontSize: 11.5, width: 118, color: p2.end ? "inherit" : "var(--muted)" }} />
                     </span>
                   )}
