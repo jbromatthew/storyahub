@@ -31,16 +31,15 @@ function totalsOf(d: SalesDailyData): { inq: number; ord: number } {
   return d.rows.reduce((a, r) => ({ inq: a.inq + r.inquiries, ord: a.ord + r.orders }), { inq: 0, ord: 0 });
 }
 
-function inquiryGroupLines(d: SalesDailyData): string[] {
+function groupLines(d: SalesDailyData, field: "inquiries" | "orders"): string[] {
   const counts = new Map<string, number>();
   for (const r of d.rows) {
-    if (!r.inquiries) continue;
+    const n = r[field];
+    if (!n) continue;
     const grp = INDUSTRY_GROUPS.find((g) => g.industries.includes(r.industry));
-    const label = grp ? grp.label : "기타업종";
-    counts.set(label, (counts.get(label) ?? 0) + r.inquiries);
+    counts.set(grp ? grp.label : "기타", (counts.get(grp ? grp.label : "기타") ?? 0) + n);
   }
-  const order = [...INDUSTRY_GROUPS.map((g) => g.label), "기타"];
-  return order.map((l) => ` • ${l} : ${counts.get(l === "기타" ? "기타업종" : l) ?? 0}건`);
+  return [...INDUSTRY_GROUPS.map((g) => g.label), "기타"].map((l) => ` • ${l} : ${counts.get(l) ?? 0}건`);
 }
 
 async function sendToChannelTalk(text: string): Promise<void> {
@@ -66,40 +65,41 @@ async function sendToChannelTalk(text: string): Promise<void> {
   }
 }
 
-export async function buildSalesReportText(hhmm: string): Promise<string> {
+export async function buildSalesReportTexts(hhmm: string): Promise<{ inquiry: string; order: string }> {
   const [day, week, month] = await Promise.all([
     getSalesDaily({ period: "day" }),
     getSalesDaily({ period: "week" }),
     getSalesDaily({ period: "month" }),
   ]);
-  const title = hhmm <= "16:00" ? "[중간보고]" : "[마감보고]";
-  const monthLabel = (month.rangeLabel.match(/(\d+)월/) || [])[1] || "";
-  const dTot = totalsOf(day);
-  const lines = [
-    title,
-    `당일 문의 : ${dTot.inq}건`,
-    ...inquiryGroupLines(day),
+  const kind = hhmm <= "16:00" ? "중간" : "마감";
+  const inquiry = [
+    `[문의 ${kind} 보고]`,
+    `당일 문의 : ${totalsOf(day).inq}건`,
+    ...groupLines(day, "inquiries"),
     "",
     `주간 문의 : ${totalsOf(week).inq}건`,
     "",
     `당월 문의 : ${totalsOf(month).inq}건`,
+  ].join("\n");
+  const order = [
+    `[결제 ${kind} 보고]`,
+    `당일 결제 : ${totalsOf(day).ord}건`,
+    ...groupLines(day, "orders"),
     "",
-    "금일 신규 결제",
-    ` • 현재 : ${dTot.ord}개`,
+    `주간 결제 : ${totalsOf(week).ord}건`,
     "",
-    `[${monthLabel}월 총 신규]`,
-    ` • 총 : ${totalsOf(month).ord}건`,
-  ];
-  return lines.join("\n");
+    `당월 결제 : ${totalsOf(month).ord}건`,
+  ].join("\n");
+  return { inquiry, order };
 }
 
 /** 수동 발송 (테스트·즉시 보고용) — 키 미설정이면 텍스트만 반환 */
 export async function sendSalesReportNow(): Promise<{ sent: boolean; text: string }> {
   const { hhmm } = kstNow();
-  const text = await buildSalesReportText(hhmm);
+  const { inquiry, order } = await buildSalesReportTexts(hhmm);
   const configured = !!(process.env.CHANNELTALK_ACCESS_KEY && process.env.CHANNELTALK_ACCESS_SECRET && process.env.CHANNELTALK_GROUP_ID);
-  if (configured) await sendToChannelTalk(text);
-  return { sent: configured, text };
+  if (configured) { await sendToChannelTalk(inquiry); await sendToChannelTalk(order); }
+  return { sent: configured, text: `${inquiry}\n\n${order}` };
 }
 
 async function runReport(hhmm: string): Promise<void> {
@@ -107,8 +107,9 @@ async function runReport(hhmm: string): Promise<void> {
     // 보고 직전에 시트 동기화 → 항상 최신 데이터 기준으로 발송
     const day = Number(kstNow().date.slice(8, 10));
     await runAutoSync(day);
-    const text = await buildSalesReportText(hhmm);
-    await sendToChannelTalk(text);
+    const { inquiry, order } = await buildSalesReportTexts(hhmm);
+    await sendToChannelTalk(inquiry);
+    await sendToChannelTalk(order);
     console.log(`[sales-report-bot] ${hhmm} 보고 발송 완료`);
   } catch (e) {
     console.error("[sales-report-bot] 실패:", e instanceof Error ? e.message : e);
