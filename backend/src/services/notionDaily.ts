@@ -190,15 +190,71 @@ async function notionUserName(id: string): Promise<string> {
   }
 }
 
-/** 최근 보고들의 노션 페이지 댓글을 읽어 ERP 코멘트로 가져온다. */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** 노션 항목 라벨에서 기간 태그 제거 → ERP 항목 텍스트로 복원 */
+function stripLabel(text: string): string {
+  return text.replace(/\s*\(📅[^)]*\)\s*$/, "").trim();
+}
+
+type Anchor = { section: string; itemId: string; itemText: string };
+
+/** 블록 텍스트를 보고의 체크리스트 항목과 매칭해 코멘트 앵커를 찾는다 */
+function matchAnchor(blockText: string, did: string, plan: string): Anchor | null {
+  const target = stripLabel(blockText);
+  if (!target) return null;
+  for (const [section, raw] of [["did", did], ["plan", plan]] as const) {
+    for (const it of parseItems(raw)) {
+      if (it.kind === "header") continue;
+      if (it.text === target) {
+        const id = (JSON.parse(raw || "[]") as Array<{ id?: string; text?: string }>).find((x) => String(x?.text ?? "").trim() === target)?.id;
+        return { section, itemId: id || `t:${target}`, itemText: target };
+      }
+    }
+  }
+  return null;
+}
+
+async function importComment(
+  reportId: string,
+  c: Record<string, unknown>,
+  bot: string,
+  anchor: Anchor
+): Promise<boolean> {
+  const cid = String(c.id ?? "");
+  const createdBy = (c.created_by as { id?: string }) || {};
+  if (!cid || createdBy.id === bot) return false; // 우리가 보낸 댓글은 제외
+  const exists = await prisma.erpDailyComment.findFirst({ where: { notionCommentId: cid } });
+  if (exists) return false;
+  const text = ((c.rich_text as Array<{ plain_text?: string }>) || []).map((t) => t.plain_text ?? "").join("").trim();
+  if (!text) return false;
+  const author = await notionUserName(createdBy.id ?? "");
+  await prisma.erpDailyComment.create({
+    data: {
+      reportId,
+      section: anchor.section,
+      itemId: anchor.itemId,
+      itemText: anchor.itemText,
+      parentId: null,
+      authorEmail: "notion",
+      authorName: `${author} (노션)`,
+      body: text,
+      files: [],
+      notionCommentId: cid,
+    },
+  });
+  return true;
+}
+
+/** 최근 보고들의 노션 페이지·항목(블록) 댓글을 읽어 ERP 코멘트로 가져온다. */
 export async function pullNotionComments(): Promise<number> {
   const dbId = process.env.NOTION_DAILY_DB_ID;
   if (!headers() || !dbId) return 0;
 
-  const since = new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
   const reports = await prisma.erpDailyReport.findMany({
     where: { date: { gte: since } },
-    select: { id: true, date: true, authorName: true },
+    select: { id: true, date: true, authorName: true, did: true, plan: true },
   });
   if (!reports.length) return 0;
 
@@ -209,33 +265,30 @@ export async function pullNotionComments(): Promise<number> {
     try {
       const pageId = await findExistingPage(dbId, r.date, r.authorName || "미지정");
       if (!pageId) continue;
-      const body = await notionFetch(`/comments?block_id=${pageId}&page_size=50`, { method: "GET" });
-      const comments = (body.results as Array<Record<string, unknown>>) || [];
-      for (const c of comments) {
-        const cid = String(c.id ?? "");
-        const createdBy = (c.created_by as { id?: string }) || {};
-        if (!cid || createdBy.id === bot) continue; // 우리가 보낸 댓글은 제외
-        const exists = await prisma.erpDailyComment.findFirst({ where: { notionCommentId: cid } });
-        if (exists) continue;
-        const text = ((c.rich_text as Array<{ plain_text?: string }>) || [])
-          .map((t) => t.plain_text ?? "").join("").trim();
-        if (!text) continue;
-        const author = await notionUserName(createdBy.id ?? "");
-        await prisma.erpDailyComment.create({
-          data: {
-            reportId: r.id,
-            section: "did",
-            itemId: "notion-page",
-            itemText: "📥 노션 댓글",
-            parentId: null,
-            authorEmail: "notion",
-            authorName: `${author} (노션)`,
-            body: text,
-            files: [],
-            notionCommentId: cid,
-          },
-        });
-        imported++;
+
+      // 1) 페이지 전체 댓글
+      const pageBody = await notionFetch(`/comments?block_id=${pageId}&page_size=50`, { method: "GET" });
+      for (const c of (pageBody.results as Array<Record<string, unknown>>) || []) {
+        if (await importComment(r.id, c, bot, { section: "did", itemId: "notion-page", itemText: "📥 노션 댓글" })) imported++;
+      }
+
+      // 2) 항목(블록) 인라인 댓글 — 블록 텍스트로 ERP 항목에 매칭
+      const childrenBody = await notionFetch(`/blocks/${pageId}/children?page_size=100`, { method: "GET" });
+      const blocks = (childrenBody.results as Array<Record<string, unknown>>) || [];
+      for (const b of blocks) {
+        const type = String(b.type ?? "");
+        if (type !== "to_do" && type !== "bulleted_list_item") continue;
+        const blockData = (b[type] as { rich_text?: Array<{ plain_text?: string }> }) || {};
+        const blockText = (blockData.rich_text || []).map((t) => t.plain_text ?? "").join("");
+        await sleep(120); // 노션 rate limit 배려
+        const cb = await notionFetch(`/comments?block_id=${String(b.id)}&page_size=20`, { method: "GET" }).catch(() => ({ results: [] }));
+        const comments = (cb.results as Array<Record<string, unknown>>) || [];
+        if (!comments.length) continue;
+        const anchor = matchAnchor(blockText, r.did, r.plan)
+          ?? { section: "did", itemId: "notion-page", itemText: `📥 ${stripLabel(blockText).slice(0, 60) || "노션 댓글"}` };
+        for (const c of comments) {
+          if (await importComment(r.id, c, bot, anchor)) imported++;
+        }
       }
     } catch (e) {
       console.error("[notion-pull]", r.date, e instanceof Error ? e.message : e);
