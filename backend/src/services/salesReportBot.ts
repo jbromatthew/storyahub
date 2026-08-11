@@ -3,11 +3,11 @@ import { runAutoSync } from "./salesAutoSync.js";
 
 /**
  * 문의/결제 대시보드 요약을 채널톡 그룹(팀챗)으로 자동 보고.
- * 매일 KST 15:00 / 18:30. 환경변수 없으면 조용히 비활성.
+ * 매일 KST 12:00(오전 중간) / 15:00(오후 중간) / 18:30(마감). 환경변수 없으면 조용히 비활성.
  *  - CHANNELTALK_ACCESS_KEY / CHANNELTALK_ACCESS_SECRET: 채널톡 Open API 키
  *  - CHANNELTALK_GROUP_ID: 보낼 그룹(팀챗) ID
  */
-const SLOTS = ["15:00", "18:30"];
+const SLOTS = ["12:00", "15:00", "18:30"];
 let lastRunKey = "";
 
 function kstNow(): { date: string; hhmm: string } {
@@ -71,7 +71,7 @@ export async function buildSalesReportTexts(hhmm: string): Promise<{ inquiry: st
     getSalesDaily({ period: "week" }),
     getSalesDaily({ period: "month" }),
   ]);
-  const kind = hhmm <= "16:00" ? "중간" : "마감";
+  const kind = hhmm <= "13:00" ? "오전 중간" : hhmm <= "16:00" ? "오후 중간" : "마감";
   const inquiry = [
     `[문의 ${kind} 보고]`,
     `당일 문의 : ${totalsOf(day).inq}건`,
