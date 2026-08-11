@@ -2281,6 +2281,21 @@ erpRouter.get("/daily-reports", async (req: AuthedRequest, res) => {
 });
 
 // 직전 보고의 '내일 할 일' (선택 날짜 이전 내 최신 보고 — 다음날 '오늘 한 일' 프리필용)
+// 기존 보고 전체를 노션으로 일괄 전송 (1회성 백필)
+erpRouter.post("/daily-reports/notion-backfill", async (req: AuthedRequest, res) => {
+  const a = await dailyAccess(req.userId!);
+  if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });
+  const reports = await prisma.erpDailyReport.findMany({ orderBy: { date: "asc" } });
+  const m = await import("../services/notionDaily.js");
+  let ok = 0;
+  const errors: string[] = [];
+  for (const r of reports) {
+    try { await m.syncDailyReportToNotion(r); ok++; }
+    catch (e) { errors.push(`${r.date}: ${e instanceof Error ? e.message : e}`); }
+  }
+  res.json({ total: reports.length, ok, errors: errors.slice(0, 5) });
+});
+
 erpRouter.get("/daily-reports/prev-plan", async (req: AuthedRequest, res) => {
   const a = await dailyAccess(req.userId!);
   if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });
@@ -2314,6 +2329,10 @@ erpRouter.put("/daily-reports/:date", async (req: AuthedRequest, res) => {
     },
     update: data,
   });
+  // 노션 단방향 동기화 (설정 시) — 저장 응답을 막지 않도록 백그라운드
+  void import("../services/notionDaily.js")
+    .then((m) => m.syncDailyReportToNotion({ date, authorName: report.authorName, ...data }))
+    .catch((e) => console.error("[notion-daily]", e instanceof Error ? e.message : e));
   res.json({ report });
 });
 
@@ -2322,7 +2341,13 @@ erpRouter.delete("/daily-reports/:date", async (req: AuthedRequest, res) => {
   const a = await dailyAccess(req.userId!);
   if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });
   const date = req.params.date;
+  const target = await prisma.erpDailyReport.findFirst({ where: { date, authorEmail: a.email }, select: { authorName: true } });
   await prisma.erpDailyReport.deleteMany({ where: { date, authorEmail: a.email } });
+  if (target) {
+    void import("../services/notionDaily.js")
+      .then((m) => m.removeDailyReportFromNotion(date, target.authorName))
+      .catch((e) => console.error("[notion-daily]", e instanceof Error ? e.message : e));
+  }
   res.json({ ok: true });
 });
 
@@ -2415,7 +2440,7 @@ erpRouter.post("/daily-comments", async (req: AuthedRequest, res) => {
   const files = sanitizeCommentFiles(b.files);
   if (!reportId || !section || !itemId) return res.status(400).json({ error: "reportId/section/itemId 필요" });
   if (!body.trim() && !files.length) return res.status(400).json({ error: "내용 또는 파일이 필요합니다" });
-  const report = await prisma.erpDailyReport.findUnique({ where: { id: reportId }, select: { id: true } });
+  const report = await prisma.erpDailyReport.findUnique({ where: { id: reportId }, select: { id: true, date: true, authorName: true } });
   if (!report) return res.status(404).json({ error: "보고를 찾을 수 없습니다" });
   if (parentId) {
     const parent = await prisma.erpDailyComment.findUnique({ where: { id: parentId }, select: { id: true, reportId: true } });
@@ -2434,6 +2459,15 @@ erpRouter.post("/daily-comments", async (req: AuthedRequest, res) => {
       files,
     },
   });
+  // 노션 페이지 댓글로도 동기화 (설정 시)
+  {
+    const sectionLabel = section === "did" ? "오늘 한 일" : section === "missed" ? "못한 일" : "내일 할 일";
+    const fileNote = files.length ? ` (📎 파일 ${files.length}개)` : "";
+    const text = `[${sectionLabel}] ${itemText} — ${comment.authorName}: ${comment.body || "📎 파일"}${fileNote}`;
+    void import("../services/notionDaily.js")
+      .then((m) => m.addDailyCommentToNotion(report.date, report.authorName, text))
+      .catch((e) => console.error("[notion-daily]", e instanceof Error ? e.message : e));
+  }
   res.json({ comment });
 });
 
