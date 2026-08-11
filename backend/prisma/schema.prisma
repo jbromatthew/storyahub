@@ -947,3 +947,29 @@ model ErpInstallSettleShare {
 
   @@index([team])
 }
+
+/// 메뉴 접근 제어 — 규칙이 있는 메뉴는 지정된 팀/멤버만 노출 (소유자는 항상 전체)
+model ErpMenuAccess {
+  id        String   @id @default(cuid())
+  menuId    String   @unique
+  mode      String   @default("custom") // custom (규칙 없으면 기본 노출)
+  deptIds   String[] @default([])
+  emails    String[] @default([])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// 계정별 일별 접속 기록 (KST 날짜 기준, 활동 1분 단위로 hits 집계)
+model ErpAccessLog {
+  id      String   @id @default(cuid())
+  email   String
+  date    String   // YYYY-MM-DD (KST)
+  name    String?
+  firstAt DateTime @default(now())
+  lastAt  DateTime @default(now())
+  hits    Int      @default(1)
+
+  @@unique([email, date])
+  @@index([date])
+  @@index([email])
+}

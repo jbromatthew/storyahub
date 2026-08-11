@@ -233,6 +233,16 @@ export const api = {
   erpReadNotification: (id) => req(`/erp/notifications/${id}/read`, { method: "PATCH" }),
   erpProfile: () => req("/erp/me/profile"),
   erpMembers: () => req("/erp/members"),
+  erpIncentive: ({ year, quarter } = {}) => {
+    const p = new URLSearchParams();
+    if (year) p.set("year", year);
+    if (quarter) p.set("quarter", quarter);
+    return req(`/erp/incentive?${p}`);
+  },
+  erpMenuAccess: () => req("/erp/menu-access"),
+  erpMenuAccessConfig: () => req("/erp/menu-access/config"),
+  erpMenuAccessSave: (rules) => req("/erp/menu-access/config", { method: "PUT", body: { rules } }),
+  erpAccessLogs: ({ days } = {}) => req(`/erp/access-logs${days ? `?days=${days}` : ""}`),
   erpInviteMember: (data) => req("/erp/members/invite", { method: "POST", body: data }),
   erpApproveMember: (id) => req(`/erp/members/${id}/approve`, { method: "POST" }),
   erpRejectMember: (id) => req(`/erp/members/${id}/reject`, { method: "POST" }),

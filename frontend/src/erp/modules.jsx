@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { erpIcons as I } from "./icons.jsx";
-import { APPROVAL_BOXES, LEAVE_TYPES, LEAVE_POLICY, APPROVAL_CHAINS, FORM_CHAIN_HINT, EMPLOYEE_ROLES, REFUND_TYPES, PAYMENT_METHODS, REFUND_METHODS, EMPTY_REFUND_FORM } from "./config.js";
+import { APPROVAL_BOXES, LEAVE_TYPES, LEAVE_POLICY, APPROVAL_CHAINS, FORM_CHAIN_HINT, EMPLOYEE_ROLES, REFUND_TYPES, PAYMENT_METHODS, REFUND_METHODS, EMPTY_REFUND_FORM, ERP_MODULES } from "./config.js";
 import { notifyError, toastSuccess, toast } from "../toast.js";
 import { confirmAction } from "../confirm.js";
 import { StatViz, seriesColor } from "./charts.jsx";
@@ -3526,9 +3526,288 @@ export function TaxInvoiceView() {
   );
 }
 
+/** 인센티브 (소유자 전용) — 분기 선택 → 결제주문내역 담당자별 마감 카운트 + NBM(HW매출, 이카운트 연동 예정) */
+export function IncentiveView() {
+  const kstNow = new Date(Date.now() + 9 * 3600 * 1000);
+  const [year, setYear] = useState(kstNow.getUTCFullYear());
+  const [quarter, setQuarter] = useState(Math.floor(kstNow.getUTCMonth() / 3) + 1);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    api.erpIncentive({ year, quarter })
+      .then(setData)
+      .catch(notifyError)
+      .finally(() => setLoading(false));
+  }, [year, quarter]);
+
+  const years = [];
+  for (let y = kstNow.getUTCFullYear(); y >= 2023; y--) years.push(y);
+
+  return (
+    <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">Sales</div>
+      <div className="h-title">인센티브</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+        분기를 선택하면 <strong>결제주문내역 기준 담당자별 마감 건수</strong>가 집계됩니다.
+        NBM 매출(이카운트 HW매출)은 연동 확정 후 이 화면에 추가됩니다.
+      </div>
+
+      <div className="row" style={{ gap: 8, margin: "16px 0 4px", alignItems: "center", flexWrap: "wrap" }}>
+        <select value={year} onChange={(e) => setYear(Number(e.target.value))}
+          style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff" }}>
+          {years.map((y) => <option key={y} value={y}>{y}년</option>)}
+        </select>
+        {[1, 2, 3, 4].map((q) => (
+          <button key={q} type="button" className={"chip" + (quarter === q ? " on" : "")} onClick={() => setQuarter(q)}>{q}분기</button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="spinner" />
+      ) : !data ? null : (
+        <>
+          <div className="trend-selection-bar" style={{ marginTop: 10 }}>
+            <span className="trend-selection-label">{data.year}년 {data.quarter}분기 결제 {data.totalCount}건</span>
+            {Object.entries(data.typeTotals || {}).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([t, c]) => (
+              <span key={t} className="small">{t} <strong>{c}</strong></span>
+            ))}
+          </div>
+
+          <div className="card" style={{ marginTop: 14, padding: "12px 14px" }}>
+            <div className="h-eyebrow" style={{ marginBottom: 6 }}>NBM 매출 (HW매출)</div>
+            <div className="small" style={{ color: "var(--muted)" }}>
+              이카운트 월별손익분석의 HW매출 연동 예정 — 다음 단계에서 연결합니다.
+            </div>
+          </div>
+
+          <div className="rate-plan-block" style={{ marginTop: 18 }}>
+            <div className="rate-plan-title">담당자별 마감 건수</div>
+            <div className="dash-table-wrap">
+              <table className="dash-table">
+                <thead>
+                  <tr>
+                    <th className="label">담당자</th>
+                    {data.months.map((m) => <th key={m}>{m}</th>)}
+                    <th>분기 합계</th>
+                    <th style={{ textAlign: "left" }}>구분 상세</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.assignees.map((a) => (
+                    <tr key={a.name}>
+                      <td className="label"><AssigneeBadge name={a.name} /></td>
+                      {a.monthCounts.map((c, i) => <td key={i} className="num">{c || "-"}</td>)}
+                      <td className="num" style={{ fontWeight: 700 }}>{a.total}</td>
+                      <td style={{ textAlign: "left" }}>
+                        <span className="small" style={{ color: "var(--muted)" }}>
+                          {Object.entries(a.byType).sort((x, y) => y[1] - x[1]).map(([t, c]) => `${t} ${c}`).join(" · ")}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {!data.assignees.length && (
+                    <tr><td colSpan={data.months.length + 3} className="erp-tbl-empty">해당 분기 결제 데이터가 없습니다 — 세일즈 동기화에서 해당 월을 동기화해 주세요</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** 메뉴 권한 — 메뉴별 기본 공개/제한 + 허용 팀·멤버 선택 (소유자 전용, 소유자는 항상 전체 접근) */
+function MenuAccessPanel({ depts, members }) {
+  const [rules, setRules] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.erpMenuAccessConfig()
+      .then((c) => {
+        const map = {};
+        for (const r of c.rules || []) map[r.menuId] = { restricted: true, deptIds: r.deptIds || [], emails: r.emails || [] };
+        setRules(map);
+      })
+      .catch(notifyError);
+  }, []);
+
+  if (!rules) return <div className="spinner" />;
+
+  const menuList = ERP_MODULES.filter((m) => !m.ownerOnly);
+  const get = (id) => rules[id] || { restricted: false, deptIds: [], emails: [] };
+  const setRule = (id, patch) => setRules((prev) => ({ ...prev, [id]: { ...get(id), ...patch } }));
+  const toggleIn = (arr, v) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
+  const approved = members.filter((m) => m.memberStatus === "approved" && m.email);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.erpMenuAccessSave(menuList.map((m) => ({ menuId: m.id, ...get(m.id) })));
+      toastSuccess("메뉴 권한을 저장했어요 — 각자 새로고침하면 반영됩니다");
+    } catch (e) { notifyError(e); } finally { setSaving(false); }
+  };
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div className="small" style={{ lineHeight: 1.5, marginBottom: 12 }}>
+        <strong>제한</strong>으로 바꾼 메뉴는 선택한 팀/멤버에게만 보입니다. 기본 공개 메뉴는 지금처럼 모두에게 보여요.
+        소유자(Matthew)는 항상 전체 메뉴가 보입니다.
+      </div>
+      {menuList.map((m) => {
+        const r = get(m.id);
+        return (
+          <div key={m.id} className="card" style={{ marginTop: 8, padding: "12px 14px" }}>
+            <div className="row between" style={{ alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <div>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>{m.label}</span>
+                {m.groupLabel && <span className="small" style={{ marginLeft: 6, color: "var(--muted)" }}>{m.groupLabel}</span>}
+              </div>
+              <div className="row" style={{ gap: 6 }}>
+                <button type="button" className={"chip" + (!r.restricted ? " on" : "")} onClick={() => setRule(m.id, { restricted: false })}>기본 공개</button>
+                <button type="button" className={"chip" + (r.restricted ? " on" : "")} onClick={() => setRule(m.id, { restricted: true })}>제한</button>
+              </div>
+            </div>
+            {r.restricted && (
+              <div style={{ marginTop: 10 }}>
+                <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <span className="small" style={{ minWidth: 34 }}>팀</span>
+                  {depts.map((d) => (
+                    <button key={d.id} type="button" className={"chip" + (r.deptIds.includes(d.id) ? " on" : "")}
+                      onClick={() => setRule(m.id, { deptIds: toggleIn(r.deptIds, d.id) })}>{d.name}</button>
+                  ))}
+                  {!depts.length && <span className="small" style={{ color: "var(--muted)" }}>팀 없음</span>}
+                </div>
+                <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
+                  <span className="small" style={{ minWidth: 34 }}>멤버</span>
+                  {approved.map((mm) => (
+                    <button key={mm.id} type="button" className={"chip" + (r.emails.includes(mm.email.toLowerCase()) ? " on" : "")}
+                      onClick={() => setRule(m.id, { emails: toggleIn(r.emails, mm.email.toLowerCase()) })}>{mm.name || mm.email}</button>
+                  ))}
+                </div>
+                {!r.deptIds.length && !r.emails.length && (
+                  <div className="small" style={{ marginTop: 6, color: "#C0392B" }}>⚠ 아무도 선택하지 않으면 소유자 외에는 이 메뉴가 안 보입니다</div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <div style={{ marginTop: 14 }}>
+        <button type="button" className="btn btn-accent" onClick={save} disabled={saving}>{saving ? "저장 중…" : "메뉴 권한 저장"}</button>
+      </div>
+    </div>
+  );
+}
+
+/** 접속 기록 — 계정별 일/주/월 접속 집계 (소유자 전용) */
+function AccessLogsPanel() {
+  const [rows, setRows] = useState(null);
+  const [mode, setMode] = useState("daily");
+
+  useEffect(() => {
+    api.erpAccessLogs({ days: 185 }).then((d) => setRows(d.rows || [])).catch(notifyError);
+  }, []);
+
+  if (!rows) return <div className="spinner" />;
+
+  const kstNow = new Date(Date.now() + 9 * 3600 * 1000);
+  const fmt = (d) => d.toISOString().slice(0, 10);
+  const mondayOf = (dateStr) => {
+    const d = new Date(dateStr + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+    return fmt(d);
+  };
+
+  let cols = [];
+  if (mode === "daily") {
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(kstNow); d.setUTCDate(d.getUTCDate() - i);
+      cols.push({ key: fmt(d), label: `${d.getUTCMonth() + 1}/${d.getUTCDate()}` });
+    }
+  } else if (mode === "weekly") {
+    const thisMon = mondayOf(fmt(kstNow));
+    for (let i = 7; i >= 0; i--) {
+      const d = new Date(thisMon + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() - i * 7);
+      cols.push({ key: fmt(d), label: `${d.getUTCMonth() + 1}/${d.getUTCDate()}~` });
+    }
+  } else {
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth() - i, 1));
+      cols.push({ key: fmt(d).slice(0, 7), label: `${d.getUTCMonth() + 1}월` });
+    }
+  }
+  const bucketOf = (dateStr) => (mode === "daily" ? dateStr : mode === "monthly" ? dateStr.slice(0, 7) : mondayOf(dateStr));
+
+  const byUser = new Map();
+  for (const r of rows) {
+    const u = byUser.get(r.email) || { email: r.email, name: r.name, last: "", cells: {}, minutes: {} };
+    if (!u.name && r.name) u.name = r.name;
+    if (r.lastAt > u.last) u.last = r.lastAt;
+    const b = bucketOf(r.date);
+    u.cells[b] = (u.cells[b] || 0) + 1; // 접속 일수
+    u.minutes[b] = (u.minutes[b] || 0) + (r.hits || 0); // 활동 분 (근사)
+    byUser.set(r.email, u);
+  }
+  const users = [...byUser.values()].sort((a, b) => (b.last || "").localeCompare(a.last || ""));
+  const fmtLast = (iso) => {
+    if (!iso) return "-";
+    const d = new Date(new Date(iso).getTime() + 9 * 3600 * 1000);
+    return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+  };
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div className="row" style={{ gap: 6, marginBottom: 10 }}>
+        {[["daily", "일별"], ["weekly", "주별"], ["monthly", "월별"]].map(([k, label]) => (
+          <button key={k} type="button" className={"chip" + (mode === k ? " on" : "")} onClick={() => setMode(k)}>{label}</button>
+        ))}
+        <span className="small" style={{ marginLeft: "auto", color: "var(--muted)" }}>
+          {mode === "daily" ? "셀 = 활동 시간(분 단위 근사)" : "셀 = 접속한 일수"}
+        </span>
+      </div>
+      <div className="dash-table-wrap">
+        <table className="dash-table">
+          <thead>
+            <tr>
+              <th className="label">계정</th>
+              <th style={{ textAlign: "left", whiteSpace: "nowrap" }}>최근 접속</th>
+              {cols.map((c) => <th key={c.key} style={{ whiteSpace: "nowrap" }}>{c.label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {users.map((u) => (
+              <tr key={u.email}>
+                <td className="label" style={{ whiteSpace: "nowrap" }}>
+                  <div className="cell-ttl">{u.name || u.email}</div>
+                  <div className="cell-sub">{u.email}</div>
+                </td>
+                <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{fmtLast(u.last)}</td>
+                {cols.map((c) => {
+                  const v = mode === "daily" ? u.minutes[c.key] : u.cells[c.key];
+                  return (
+                    <td key={c.key} className="num" style={{ background: v ? "#F3FAF4" : undefined, color: v ? "#1F6B3A" : "var(--muted)" }}>
+                      {v ? (mode === "daily" ? `${v}분` : `${v}일`) : "-"}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+            {!users.length && <tr><td colSpan={cols.length + 2} className="erp-tbl-empty">아직 접속 기록이 없습니다 (오늘부터 쌓입니다)</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export function MembersView() {
   const [members, setMembers] = useState([]);
   const [depts, setDepts] = useState([]);
+  const [view, setView] = useState("members"); // members | menus | logs
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [teamName, setTeamName] = useState("");
@@ -3620,6 +3899,16 @@ export function MembersView() {
         슈퍼어드민 계정으로 초대·승인하고, 팀을 만들어 멤버를 배정합니다. 승인된 멤버만 ERP를 이용할 수 있습니다.
       </div>
 
+      <div className="row" style={{ gap: 6, marginTop: 14 }}>
+        {[["members", "멤버"], ["menus", "메뉴 권한"], ["logs", "접속 기록"]].map(([k, label]) => (
+          <button key={k} type="button" className={"chip" + (view === k ? " on" : "")} onClick={() => setView(k)}>{label}</button>
+        ))}
+      </div>
+
+      {view === "menus" && <MenuAccessPanel depts={depts} members={members} />}
+      {view === "logs" && <AccessLogsPanel />}
+
+      {view === "members" && (<>
       <div className="card" style={{ marginTop: 16 }}>
         <div className="field"><label>이메일 초대</label><input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" /></div>
         <div className="field"><label>이름 (선택)</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="홍길동" /></div>
@@ -3745,6 +4034,7 @@ export function MembersView() {
           </table>
         </div>
       </div>
+      </>)}
     </div>
   );
 }

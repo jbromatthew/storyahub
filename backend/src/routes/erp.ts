@@ -1314,6 +1314,120 @@ async function requireOwner(req: AuthedRequest, res: Response): Promise<boolean>
   return false;
 }
 
+/* ===================== 인센티브 (소유자 전용) ===================== */
+
+// 분기별 결제주문내역 담당자별 마감 카운트 (+ NBM HW매출은 이카운트 연동 예정)
+erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const now = new Date(Date.now() + 9 * 3600 * 1000);
+  const year = Number(req.query.year) || now.getUTCFullYear();
+  const quarter = Math.min(4, Math.max(1, Number(req.query.quarter) || Math.floor(now.getUTCMonth() / 3) + 1));
+  const monthNums = [1, 2, 3].map((i) => (quarter - 1) * 3 + i);
+  const monthKeys = monthNums.map((m) => `${year}.${String(m).padStart(2, "0")}`);
+
+  const rows = await prisma.erpSalesOrder.findMany({
+    where: { OR: monthKeys.map((m) => ({ sheetName: { startsWith: m } })) },
+    select: { data: true, sheetName: true },
+  });
+
+  type Agg = { name: string; monthCounts: number[]; total: number; byType: Record<string, number> };
+  const byAssignee = new Map<string, Agg>();
+  const typeTotals: Record<string, number> = {};
+  for (const row of rows) {
+    const data = row.data as Record<string, string>;
+    const name = String(data["결제 담당자"] ?? data["담당자"] ?? "").trim() || "미지정";
+    const type = String(data["구분"] ?? "").trim() || "미기재";
+    const mi = monthKeys.findIndex((m) => row.sheetName.trim().startsWith(m));
+    if (mi === -1) continue;
+    const agg = byAssignee.get(name) ?? { name, monthCounts: [0, 0, 0], total: 0, byType: {} };
+    agg.monthCounts[mi] += 1;
+    agg.total += 1;
+    agg.byType[type] = (agg.byType[type] || 0) + 1;
+    byAssignee.set(name, agg);
+    typeTotals[type] = (typeTotals[type] || 0) + 1;
+  }
+
+  const assignees = [...byAssignee.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "ko"));
+  res.json({
+    year,
+    quarter,
+    months: monthNums.map((m) => `${m}월`),
+    assignees,
+    typeTotals,
+    totalCount: rows.length,
+    hwSales: null, // NBM(이카운트 HW매출) — 연동 방식 확정 후 채움
+  });
+});
+
+/* ===================== 메뉴 접근 제어 + 접속기록 ===================== */
+
+// 내 메뉴 접근 규칙 — 규칙이 설정된 메뉴에 대해 현재 사용자의 허용 여부 (규칙 없는 메뉴는 기본 노출)
+erpRouter.get("/menu-access", async (req: AuthedRequest, res) => {
+  const user = await prisma.user.findUnique({ where: { id: req.userId! }, select: { email: true } });
+  const email = (user?.email || "").trim().toLowerCase();
+  const rules = await prisma.erpMenuAccess.findMany();
+  if (!rules.length) return res.json({ rules: {} });
+  if (isErpOwner(email)) {
+    return res.json({ rules: Object.fromEntries(rules.map((r) => [r.menuId, true])) });
+  }
+  const emp = await prisma.erpEmployee.findFirst({
+    where: { OR: [{ userId: req.userId! }, { email }] },
+    select: { departmentId: true },
+  });
+  const deptId = emp?.departmentId || "";
+  const out: Record<string, boolean> = {};
+  for (const r of rules) {
+    out[r.menuId] =
+      r.emails.map((e) => e.toLowerCase()).includes(email) || (!!deptId && r.deptIds.includes(deptId));
+  }
+  res.json({ rules: out });
+});
+
+// 메뉴 접근 규칙 설정 조회/저장 (소유자 전용)
+erpRouter.get("/menu-access/config", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const rules = await prisma.erpMenuAccess.findMany({ orderBy: { menuId: "asc" } });
+  res.json({ rules });
+});
+
+erpRouter.put("/menu-access/config", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const body = (req.body ?? {}) as { rules?: Array<Record<string, unknown>> };
+  const rules = Array.isArray(body.rules) ? body.rules : [];
+  for (const r of rules) {
+    const menuId = String(r.menuId ?? "").trim();
+    if (!menuId) continue;
+    if (!r.restricted) {
+      await prisma.erpMenuAccess.deleteMany({ where: { menuId } });
+      continue;
+    }
+    const deptIds = Array.isArray(r.deptIds) ? r.deptIds.map(String).filter(Boolean) : [];
+    const emails = Array.isArray(r.emails)
+      ? r.emails.map((e) => String(e).trim().toLowerCase()).filter(Boolean)
+      : [];
+    await prisma.erpMenuAccess.upsert({
+      where: { menuId },
+      create: { menuId, deptIds, emails },
+      update: { deptIds, emails },
+    });
+  }
+  const saved = await prisma.erpMenuAccess.findMany({ orderBy: { menuId: "asc" } });
+  res.json({ rules: saved });
+});
+
+// 계정별 접속기록 (소유자 전용) — 최근 N일 일별 집계 (일/주/월 뷰는 프론트에서 계산)
+erpRouter.get("/access-logs", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const days = Math.min(370, Math.max(7, Number(req.query.days) || 92));
+  const since = new Date(Date.now() + 9 * 3600 * 1000 - days * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const rows = await prisma.erpAccessLog.findMany({
+    where: { date: { gte: since } },
+    orderBy: { date: "desc" },
+    select: { email: true, name: true, date: true, firstAt: true, lastAt: true, hits: true },
+  });
+  res.json({ rows, since });
+});
+
 const DEFAULT_CONSTRUCTION_ITEMS = [
   { name: "화상출입기 설치비", unitPrice: 300000 },
   { name: "엘리베이터 송신 모듈", unitPrice: 10000 },

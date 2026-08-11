@@ -12,7 +12,7 @@ import { userPreferences } from "../preferences.js";
 import { ERP_CSS } from "./erpStyles.js";
 import { ERP_MODULES, ERP_ADMIN_MODULES } from "./config.js";
 import { erpIcons as I } from "./icons.jsx";
-import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesClosingView, SalesDashboardView, MarketingDashboardView, BrojDashboardView, RevenueView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, ConsultDocsView, MembersView, DailyReportView, IotLeadsView, VendorOrdersView } from "./modules.jsx";
+import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesClosingView, IncentiveView, SalesDashboardView, MarketingDashboardView, BrojDashboardView, RevenueView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, ConsultDocsView, MembersView, DailyReportView, IotLeadsView, VendorOrdersView } from "./modules.jsx";
 
 function NavBtn({ on, icon, label, onClick, hidden, fav, onFav, layout = "side" }) {
   const cls = layout === "side" ? "sidenavitem" : "sidenavitem";
@@ -53,7 +53,7 @@ function erpModuleLabel(id) {
 
 function ErpNav({ tab, kbView, onSelect, onLogout, user, hiddenIds, collapsedGroups, onToggleGroup }) {
   const showAdmin = canAccessErpAdmin(user);
-  const items = ERP_MODULES.filter((m) => (!m.ownerOnly || user?.erpAccess?.isOwner) && (!m.execOnly || isErpExec(user)) && !(m.consultGate && !hiddenIds?.consultVisible) && !(m.vendorGate && !hiddenIds?.vendorVisible));
+  const items = ERP_MODULES.filter((m) => (!m.ownerOnly || user?.erpAccess?.isOwner) && (!m.execOnly || isErpExec(user)) && !(m.consultGate && !hiddenIds?.consultVisible) && !(m.vendorGate && !hiddenIds?.vendorVisible) && hiddenIds?.menuRules?.[m.id] !== false);
   // 그룹 헤더가 있는 그룹만 접기 대상 (지식경영 등 헤더 없는 항목은 항상 표시)
   const collapsibleGroups = new Set(items.filter((m) => m.groupLabel).map((m) => m.group));
   const isClosed = (g) => collapsibleGroups.has(g) && (collapsedGroups || []).includes(g);
@@ -204,12 +204,23 @@ export default function ErpApp() {
   const [consultVisible, setConsultVisible] = useState(false); // 상담자료 컨펌 메뉴 노출 (세일즈팀·CEO·COO)
 
   const [vendorVisible, setVendorVisible] = useState(false); // 크라이저 발주 (소유자·경영지원·세일즈)
+  const [menuRules, setMenuRules] = useState(null); // 메뉴 접근 규칙 {menuId: 허용여부} — 규칙 없는 메뉴는 기본 노출
 
   useEffect(() => {
     if (boot !== "app") return;
     api.erpConsultAccess().then((a) => setConsultVisible(!!a?.visible)).catch(() => setConsultVisible(false));
     api.erpVendorOrdersAccess().then((a) => setVendorVisible(!!a?.visible)).catch(() => setVendorVisible(false));
+    api.erpMenuAccess().then((a) => setMenuRules(a?.rules || {})).catch(() => setMenuRules({}));
   }, [boot]);
+
+  // 접근 제한된 메뉴를 보고 있으면 첫 허용 메뉴로 이동
+  useEffect(() => {
+    if (!menuRules || menuRules[tab] !== false) return;
+    const first = ERP_MODULES.find(
+      (m) => (!m.ownerOnly || user?.erpAccess?.isOwner) && (!m.execOnly || isErpExec(user)) && !m.consultGate && menuRules[m.id] !== false
+    );
+    if (first) setTab(first.id);
+  }, [menuRules]); // eslint-disable-line
 
   // 첫 화면 = 각자 볼 수 있는 첫 메뉴 (matthew·david는 일일보고, 그 외는 첫 노출 메뉴)
   const initialTabSet = useRef(false);
@@ -398,6 +409,7 @@ export default function ErpApp() {
       case "sales-rate": return <PaymentRateView />;
       case "sales-trend": return <SalesTrendView />;
       case "sales-closing": return <SalesClosingView />;
+      case "incentive": return <IncentiveView />;
       case "sales-inquiry-trend": return <SalesInquiryTrendView />;
       case "sales-dashboard": return <SalesDashboardView />;
       case "marketing-dashboard": return <MarketingDashboardView />;
@@ -433,7 +445,7 @@ export default function ErpApp() {
               </button>
             </div>
             <nav className="app-sidenav">
-              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} user={user} hiddenIds={{ consultVisible, vendorVisible }} collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup} />
+              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} user={user} hiddenIds={{ consultVisible, vendorVisible, menuRules }} collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup} />
             </nav>
             <div className="app-sidebar-foot" style={{ fontSize: 12, color: "var(--muted)", padding: "12px 10px" }}>
               <div>지식경영 · 회의록 · OKR · 문의/결제</div>
@@ -483,7 +495,7 @@ export default function ErpApp() {
               </button>
             </div>
             <nav className="mobile-drawer-nav">
-              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} onLogout={handleLogout} user={user} hiddenIds={{ consultVisible, vendorVisible }} collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup} />
+              <ErpNav tab={tab} kbView={kbView} onSelect={goTab} onLogout={handleLogout} user={user} hiddenIds={{ consultVisible, vendorVisible, menuRules }} collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup} />
             </nav>
           </aside>
         </>
