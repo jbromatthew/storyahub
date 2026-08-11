@@ -239,6 +239,7 @@ export const api = {
     if (quarter) p.set("quarter", quarter);
     return req(`/erp/incentive?${p}`);
   },
+  erpIncentiveSave: (body) => req("/erp/incentive", { method: "PUT", body }),
   erpMenuAccess: () => req("/erp/menu-access"),
   erpMenuAccessConfig: () => req("/erp/menu-access/config"),
   erpMenuAccessSave: (rules) => req("/erp/menu-access/config", { method: "PUT", body: { rules } }),

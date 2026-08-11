@@ -1330,33 +1330,50 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
     select: { data: true, sheetName: true },
   });
 
-  type Agg = { name: string; monthCounts: number[]; total: number; byType: Record<string, number> };
+  // 신규센터 결제만 카운트 (인센티브 대상)
+  type Agg = { name: string; monthCounts: number[]; total: number };
   const byAssignee = new Map<string, Agg>();
-  const typeTotals: Record<string, number> = {};
+  let totalCount = 0;
   for (const row of rows) {
     const data = row.data as Record<string, string>;
+    if (String(data["구분"] ?? "").trim() !== "신규센터") continue;
     const name = String(data["결제 담당자"] ?? data["담당자"] ?? "").trim() || "미지정";
-    const type = String(data["구분"] ?? "").trim() || "미기재";
     const mi = monthKeys.findIndex((m) => row.sheetName.trim().startsWith(m));
     if (mi === -1) continue;
-    const agg = byAssignee.get(name) ?? { name, monthCounts: [0, 0, 0], total: 0, byType: {} };
+    const agg = byAssignee.get(name) ?? { name, monthCounts: [0, 0, 0], total: 0 };
     agg.monthCounts[mi] += 1;
     agg.total += 1;
-    agg.byType[type] = (agg.byType[type] || 0) + 1;
     byAssignee.set(name, agg);
-    typeTotals[type] = (typeTotals[type] || 0) + 1;
+    totalCount += 1;
   }
 
+  const saved = await prisma.erpIncentiveQuarter.findUnique({ where: { year_quarter: { year, quarter } } });
   const assignees = [...byAssignee.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "ko"));
   res.json({
     year,
     quarter,
     months: monthNums.map((m) => `${m}월`),
     assignees,
-    typeTotals,
-    totalCount: rows.length,
-    hwSales: null, // NBM(이카운트 HW매출) — 연동 방식 확정 후 채움
+    totalCount,
+    hwSales: Array.isArray(saved?.hwSales) ? saved.hwSales : [null, null, null], // NBM — 수기 입력 (이카운트 손익 조회 API 미제공)
   });
+});
+
+// NBM(HW매출) 분기 수기 저장
+erpRouter.put("/incentive", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const year = Number(b.year);
+  const quarter = Number(b.quarter);
+  if (!year || quarter < 1 || quarter > 4) return res.status(400).json({ error: "year/quarter 필요" });
+  const hwSales = (Array.isArray(b.hwSales) ? b.hwSales : []).slice(0, 3)
+    .map((v) => (v === null || v === "" ? null : Math.max(0, Math.round(Number(v) || 0))));
+  const saved = await prisma.erpIncentiveQuarter.upsert({
+    where: { year_quarter: { year, quarter } },
+    create: { year, quarter, hwSales },
+    update: { hwSales },
+  });
+  res.json({ hwSales: saved.hwSales });
 });
 
 /* ===================== 메뉴 접근 제어 + 접속기록 ===================== */

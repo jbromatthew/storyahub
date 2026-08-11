@@ -3534,10 +3534,16 @@ export function IncentiveView() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const [hwDraft, setHwDraft] = useState(["", "", ""]);
+  const [hwSaving, setHwSaving] = useState(false);
+
   useEffect(() => {
     setLoading(true);
     api.erpIncentive({ year, quarter })
-      .then(setData)
+      .then((d) => {
+        setData(d);
+        setHwDraft((d.hwSales || [null, null, null]).map((v) => (v == null ? "" : String(v))));
+      })
       .catch(notifyError)
       .finally(() => setLoading(false));
   }, [year, quarter]);
@@ -3545,13 +3551,26 @@ export function IncentiveView() {
   const years = [];
   for (let y = kstNow.getUTCFullYear(); y >= 2023; y--) years.push(y);
 
+  const hwTotal = hwDraft.reduce((s, v) => s + (Number(String(v).replace(/[^0-9]/g, "")) || 0), 0);
+  const saveHw = async () => {
+    setHwSaving(true);
+    try {
+      const hwSales = hwDraft.map((v) => {
+        const n = String(v).replace(/[^0-9]/g, "");
+        return n === "" ? null : Number(n);
+      });
+      await api.erpIncentiveSave({ year, quarter, hwSales });
+      toastSuccess("NBM 매출을 저장했어요");
+    } catch (e) { notifyError(e); } finally { setHwSaving(false); }
+  };
+
   return (
     <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
       <div className="h-eyebrow">Sales</div>
       <div className="h-title">인센티브</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
-        분기를 선택하면 <strong>결제주문내역 기준 담당자별 마감 건수</strong>가 집계됩니다.
-        NBM 매출(이카운트 HW매출)은 연동 확정 후 이 화면에 추가됩니다.
+        분기를 선택하면 <strong>결제주문내역의 신규센터 결제만</strong> 담당자별로 카운트합니다.
+        NBM 매출(HW매출)은 이카운트 월별손익분석 값을 월별로 입력해 관리합니다.
       </div>
 
       <div className="row" style={{ gap: 8, margin: "16px 0 4px", alignItems: "center", flexWrap: "wrap" }}>
@@ -3569,16 +3588,35 @@ export function IncentiveView() {
       ) : !data ? null : (
         <>
           <div className="trend-selection-bar" style={{ marginTop: 10 }}>
-            <span className="trend-selection-label">{data.year}년 {data.quarter}분기 결제 {data.totalCount}건</span>
-            {Object.entries(data.typeTotals || {}).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([t, c]) => (
-              <span key={t} className="small">{t} <strong>{c}</strong></span>
-            ))}
+            <span className="trend-selection-label">{data.year}년 {data.quarter}분기 신규센터 마감 {data.totalCount}건</span>
+            <span>NBM 합계 <strong>{hwTotal ? formatWon(hwTotal) : "-"}</strong></span>
           </div>
 
-          <div className="card" style={{ marginTop: 14, padding: "12px 14px" }}>
-            <div className="h-eyebrow" style={{ marginBottom: 6 }}>NBM 매출 (HW매출)</div>
-            <div className="small" style={{ color: "var(--muted)" }}>
-              이카운트 월별손익분석의 HW매출 연동 예정 — 다음 단계에서 연결합니다.
+          <div className="card" style={{ marginTop: 14, padding: "14px 16px" }}>
+            <div className="h-eyebrow" style={{ marginBottom: 8 }}>NBM 매출 (HW매출 · 공급가액)</div>
+            <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+              {data.months.map((m, i) => (
+                <div key={m}>
+                  <div className="small" style={{ marginBottom: 4 }}>{m}</div>
+                  <input
+                    value={hwDraft[i] ? Number(String(hwDraft[i]).replace(/[^0-9]/g, "")).toLocaleString() : ""}
+                    onChange={(e) => setHwDraft((prev) => prev.map((v, j) => (j === i ? e.target.value.replace(/[^0-9]/g, "") : v)))}
+                    placeholder="0"
+                    inputMode="numeric"
+                    style={{ width: 150, border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14, textAlign: "right" }}
+                  />
+                </div>
+              ))}
+              <div>
+                <div className="small" style={{ marginBottom: 4 }}>분기 합계</div>
+                <div style={{ fontWeight: 800, fontSize: 16, padding: "9px 0" }}>{hwTotal ? formatWon(hwTotal) : "-"}</div>
+              </div>
+              <button type="button" className="btn btn-accent btn-sm" onClick={saveHw} disabled={hwSaving} style={{ marginBottom: 2 }}>
+                {hwSaving ? "저장 중…" : "저장"}
+              </button>
+            </div>
+            <div className="small" style={{ marginTop: 8, color: "var(--muted)" }}>
+              이카운트 Open API가 손익 조회를 제공하지 않아 월별손익분석의 HW매출을 직접 입력합니다.
             </div>
           </div>
 
@@ -3591,7 +3629,6 @@ export function IncentiveView() {
                     <th className="label">담당자</th>
                     {data.months.map((m) => <th key={m}>{m}</th>)}
                     <th>분기 합계</th>
-                    <th style={{ textAlign: "left" }}>구분 상세</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3600,15 +3637,10 @@ export function IncentiveView() {
                       <td className="label"><AssigneeBadge name={a.name} /></td>
                       {a.monthCounts.map((c, i) => <td key={i} className="num">{c || "-"}</td>)}
                       <td className="num" style={{ fontWeight: 700 }}>{a.total}</td>
-                      <td style={{ textAlign: "left" }}>
-                        <span className="small" style={{ color: "var(--muted)" }}>
-                          {Object.entries(a.byType).sort((x, y) => y[1] - x[1]).map(([t, c]) => `${t} ${c}`).join(" · ")}
-                        </span>
-                      </td>
                     </tr>
                   ))}
                   {!data.assignees.length && (
-                    <tr><td colSpan={data.months.length + 3} className="erp-tbl-empty">해당 분기 결제 데이터가 없습니다 — 세일즈 동기화에서 해당 월을 동기화해 주세요</td></tr>
+                    <tr><td colSpan={data.months.length + 2} className="erp-tbl-empty">해당 분기 신규센터 결제가 없습니다 — 세일즈 동기화에서 해당 월을 동기화해 주세요</td></tr>
                   )}
                 </tbody>
               </table>
@@ -3621,6 +3653,9 @@ export function IncentiveView() {
 }
 
 /** 메뉴 권한 — 메뉴별 기본 공개/제한 + 허용 팀·멤버 선택 (소유자 전용, 소유자는 항상 전체 접근) */
+const MENU_OWNER_EMAIL = "matthew@broj.company";
+const MENU_EXEC_EMAILS = [MENU_OWNER_EMAIL, "david@broj.company"];
+
 function MenuAccessPanel({ depts, members }) {
   const [rules, setRules] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -3630,6 +3665,12 @@ function MenuAccessPanel({ depts, members }) {
       .then((c) => {
         const map = {};
         for (const r of c.rules || []) map[r.menuId] = { restricted: true, deptIds: r.deptIds || [], emails: r.emails || [] };
+        // 규칙이 아직 없는 소유자/경영진 전용 메뉴는 현재 상태 그대로 프리필 (저장하면 규칙으로 고정)
+        for (const m of ERP_MODULES) {
+          if (map[m.id]) continue;
+          if (m.ownerOnly) map[m.id] = { restricted: true, deptIds: [], emails: [MENU_OWNER_EMAIL] };
+          else if (m.execOnly) map[m.id] = { restricted: true, deptIds: [], emails: [...MENU_EXEC_EMAILS] };
+        }
         setRules(map);
       })
       .catch(notifyError);
@@ -3637,7 +3678,7 @@ function MenuAccessPanel({ depts, members }) {
 
   if (!rules) return <div className="spinner" />;
 
-  const menuList = ERP_MODULES.filter((m) => !m.ownerOnly);
+  const menuList = ERP_MODULES;
   const get = (id) => rules[id] || { restricted: false, deptIds: [], emails: [] };
   const setRule = (id, patch) => setRules((prev) => ({ ...prev, [id]: { ...get(id), ...patch } }));
   const toggleIn = (arr, v) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
@@ -3655,7 +3696,8 @@ function MenuAccessPanel({ depts, members }) {
     <div style={{ marginTop: 16 }}>
       <div className="small" style={{ lineHeight: 1.5, marginBottom: 12 }}>
         <strong>제한</strong>으로 바꾼 메뉴는 선택한 팀/멤버에게만 보입니다. 기본 공개 메뉴는 지금처럼 모두에게 보여요.
-        소유자(Matthew)는 항상 전체 메뉴가 보입니다.
+        소유자(Matthew)는 항상 전체 메뉴가 보입니다. 일부 메뉴(공사관리·인센티브·매출 분석 등)는 메뉴를 열어줘도
+        데이터 자체는 서버 권한이 별도라 소유자 외에는 내용이 제한될 수 있어요.
       </div>
       {menuList.map((m) => {
         const r = get(m.id);

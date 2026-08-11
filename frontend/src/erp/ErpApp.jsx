@@ -53,7 +53,13 @@ function erpModuleLabel(id) {
 
 function ErpNav({ tab, kbView, onSelect, onLogout, user, hiddenIds, collapsedGroups, onToggleGroup }) {
   const showAdmin = canAccessErpAdmin(user);
-  const items = ERP_MODULES.filter((m) => (!m.ownerOnly || user?.erpAccess?.isOwner) && (!m.execOnly || isErpExec(user)) && !(m.consultGate && !hiddenIds?.consultVisible) && !(m.vendorGate && !hiddenIds?.vendorVisible) && hiddenIds?.menuRules?.[m.id] !== false);
+  // 접근 규칙이 있으면 규칙이 ownerOnly/execOnly보다 우선 (소유자 전용 메뉴도 규칙으로 열어줄 수 있음)
+  const items = ERP_MODULES.filter((m) => {
+    const rule = hiddenIds?.menuRules?.[m.id];
+    const baseOk = (!m.ownerOnly || user?.erpAccess?.isOwner) && (!m.execOnly || isErpExec(user));
+    if (!(rule === undefined ? baseOk : rule)) return false;
+    return !(m.consultGate && !hiddenIds?.consultVisible) && !(m.vendorGate && !hiddenIds?.vendorVisible);
+  });
   // 그룹 헤더가 있는 그룹만 접기 대상 (지식경영 등 헤더 없는 항목은 항상 표시)
   const collapsibleGroups = new Set(items.filter((m) => m.groupLabel).map((m) => m.group));
   const isClosed = (g) => collapsibleGroups.has(g) && (collapsedGroups || []).includes(g);
