@@ -2281,6 +2281,38 @@ erpRouter.get("/daily-reports", async (req: AuthedRequest, res) => {
 });
 
 // 직전 보고의 '내일 할 일' (선택 날짜 이전 내 최신 보고 — 다음날 '오늘 한 일' 프리필용)
+// 기존 ERP 코멘트를 노션 댓글로 일괄 전송 (1회성 백필) — cutoff 이전 작성분만 (라이브 훅 발송분 중복 방지)
+erpRouter.post("/daily-comments/notion-backfill", async (req: AuthedRequest, res) => {
+  const a = await dailyAccess(req.userId!);
+  if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });
+  const cutoffRaw = String((req.body as Record<string, unknown>)?.cutoff ?? "");
+  const cutoff = cutoffRaw ? new Date(cutoffRaw) : null;
+  if (!cutoff || isNaN(cutoff.getTime())) return res.status(400).json({ error: "cutoff (ISO 시각) 필요" });
+  const comments = await prisma.erpDailyComment.findMany({
+    where: { createdAt: { lt: cutoff }, notionCommentId: null, authorEmail: { not: "notion" } },
+    orderBy: { createdAt: "asc" },
+  });
+  const reportIds = [...new Set(comments.map((c) => c.reportId))];
+  const reports = await prisma.erpDailyReport.findMany({
+    where: { id: { in: reportIds } },
+    select: { id: true, date: true, authorName: true },
+  });
+  const reportMap = new Map(reports.map((r) => [r.id, r]));
+  const m = await import("../services/notionDaily.js");
+  let ok = 0;
+  const errors: string[] = [];
+  for (const c of comments) {
+    const r = reportMap.get(c.reportId);
+    if (!r) continue;
+    const sectionLabel = c.section === "did" ? "오늘 한 일" : c.section === "missed" ? "못한 일" : "내일 할 일";
+    const fileCount = Array.isArray(c.files) ? c.files.length : 0;
+    const text = `[${sectionLabel}] ${c.itemText} — ${c.authorName}: ${c.body || "📎 파일"}${fileCount ? ` (📎 파일 ${fileCount}개)` : ""}`;
+    try { await m.addDailyCommentToNotion(r.date, r.authorName, text); ok++; }
+    catch (e) { errors.push(`${r.date}: ${e instanceof Error ? e.message : e}`); }
+  }
+  res.json({ total: comments.length, ok, errors: errors.slice(0, 5) });
+});
+
 // 기존 보고 전체를 노션으로 일괄 전송 (1회성 백필)
 erpRouter.post("/daily-reports/notion-backfill", async (req: AuthedRequest, res) => {
   const a = await dailyAccess(req.userId!);
