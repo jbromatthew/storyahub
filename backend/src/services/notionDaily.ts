@@ -104,11 +104,55 @@ async function findExistingPage(dbId: string, date: string, author: string): Pro
   return results[0]?.id ?? null;
 }
 
-async function clearChildren(pageId: string): Promise<void> {
+/** 블록의 순수 텍스트 — 기존 블록(plain_text)과 생성 예정 블록(text.content) 모두 처리 */
+function blockPlain(b: Record<string, unknown>): string {
+  const type = String(b.type ?? "");
+  const data = (b[type] as { rich_text?: Array<{ plain_text?: string; text?: { content?: string } }> }) || {};
+  return (data.rich_text || []).map((t) => t.plain_text ?? t.text?.content ?? "").join("");
+}
+
+/**
+ * 기존 블록을 최대한 보존하며 원하는 목록으로 맞춘다.
+ * 블록을 지우면 그 블록의 인라인 댓글도 사라지므로 전체 재생성 대신 diff 방식:
+ * 같은 타입+텍스트 블록은 유지(체크 상태만 갱신), 새 항목은 제자리에 삽입, 없어진 것만 삭제.
+ */
+async function syncChildren(pageId: string, desired: unknown[]): Promise<void> {
   const body = await notionFetch(`/blocks/${pageId}/children?page_size=100`, { method: "GET" });
-  const children = (body.results as Array<{ id: string }>) || [];
-  for (const c of children) {
-    await notionFetch(`/blocks/${c.id}`, { method: "DELETE" }).catch(() => {});
+  const existing = (body.results as Array<Record<string, unknown>>) || [];
+  const used = new Set<string>();
+  let lastId: string | null = null;
+  let pending: unknown[] = [];
+  const flush = async () => {
+    if (!pending.length) return;
+    const payload: Record<string, unknown> = { children: pending };
+    if (lastId) payload.after = lastId;
+    const res = await notionFetch(`/blocks/${pageId}/children`, { method: "PATCH", body: JSON.stringify(payload) });
+    const results = (res.results as Array<{ id: string }>) || [];
+    if (results.length) lastId = results[results.length - 1].id;
+    pending = [];
+  };
+  for (const d of desired as Array<Record<string, unknown>>) {
+    const dType = String(d.type ?? "");
+    const dText = blockPlain(d);
+    const match = existing.find((e) => !used.has(String(e.id)) && String(e.type) === dType && blockPlain(e) === dText);
+    if (match) {
+      await flush();
+      used.add(String(match.id));
+      if (dType === "to_do") {
+        const eChecked = !!(match.to_do as { checked?: boolean } | undefined)?.checked;
+        const dChecked = !!(d.to_do as { checked?: boolean } | undefined)?.checked;
+        if (eChecked !== dChecked) {
+          await notionFetch(`/blocks/${match.id}`, { method: "PATCH", body: JSON.stringify({ to_do: { checked: dChecked } }) }).catch(() => {});
+        }
+      }
+      lastId = String(match.id);
+    } else {
+      pending.push(d);
+    }
+  }
+  await flush();
+  for (const e of existing) {
+    if (!used.has(String(e.id))) await notionFetch(`/blocks/${e.id}`, { method: "DELETE" }).catch(() => {});
   }
 }
 
@@ -130,10 +174,7 @@ export async function syncDailyReportToNotion(report: {
   const existing = await findExistingPage(dbId, report.date, author);
   if (existing) {
     await notionFetch(`/pages/${existing}`, { method: "PATCH", body: JSON.stringify({ properties: props }) });
-    await clearChildren(existing);
-    if (blocks.length) {
-      await notionFetch(`/blocks/${existing}/children`, { method: "PATCH", body: JSON.stringify({ children: blocks }) });
-    }
+    await syncChildren(existing, blocks);
   } else {
     await notionFetch(`/pages`, {
       method: "POST",
@@ -142,19 +183,43 @@ export async function syncDailyReportToNotion(report: {
   }
 }
 
-/** 일일보고 코멘트를 해당 날짜 노션 페이지의 댓글로 남긴다 (통합에 '코멘트 삽입' 권한 필요) */
+/**
+ * 일일보고 코멘트를 노션에 남긴다 (통합에 '코멘트 삽입' 권한 필요).
+ * itemText와 일치하는 항목 블록을 찾으면 그 블록의 인라인 댓글로(노션 UI의 블록 댓글과 동일),
+ * 못 찾으면 페이지 댓글로 폴백.
+ */
 export async function addDailyCommentToNotion(
   reportDate: string,
   reportAuthorName: string,
-  text: string
+  opts: { itemText?: string; inlineText: string; pageText: string }
 ): Promise<void> {
   const dbId = process.env.NOTION_DAILY_DB_ID;
   if (!headers() || !dbId) return;
   const pageId = await findExistingPage(dbId, reportDate, reportAuthorName || "미지정");
   if (!pageId) return; // 보고가 아직 노션에 없으면 생략
+  const itemText = (opts.itemText || "").trim();
+  if (itemText) {
+    try {
+      const body = await notionFetch(`/blocks/${pageId}/children?page_size=100`, { method: "GET" });
+      const blocks = (body.results as Array<Record<string, unknown>>) || [];
+      const target = blocks.find((b) => {
+        const type = String(b.type ?? "");
+        if (type !== "to_do" && type !== "bulleted_list_item" && type !== "heading_3") return false;
+        const plain = stripLabel(blockPlain(b).replace(/^▾\s*/, "").replace(/ — 사유: .*$/, ""));
+        return plain === itemText;
+      });
+      if (target) {
+        await notionFetch(`/comments`, {
+          method: "POST",
+          body: JSON.stringify({ parent: { block_id: String(target.id) }, rich_text: rt(opts.inlineText) }),
+        });
+        return;
+      }
+    } catch { /* 블록 매칭 실패 → 페이지 댓글 폴백 */ }
+  }
   await notionFetch(`/comments`, {
     method: "POST",
-    body: JSON.stringify({ parent: { page_id: pageId }, rich_text: rt(text) }),
+    body: JSON.stringify({ parent: { page_id: pageId }, rich_text: rt(opts.pageText) }),
   });
 }
 

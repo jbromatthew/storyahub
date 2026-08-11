@@ -2306,8 +2306,15 @@ erpRouter.post("/daily-comments/notion-backfill", async (req: AuthedRequest, res
     if (!r) continue;
     const sectionLabel = c.section === "did" ? "오늘 한 일" : c.section === "missed" ? "못한 일" : "내일 할 일";
     const fileCount = Array.isArray(c.files) ? c.files.length : 0;
-    const text = `[${sectionLabel}] ${c.itemText} — ${c.authorName}: ${c.body || "📎 파일"}${fileCount ? ` (📎 파일 ${fileCount}개)` : ""}`;
-    try { await m.addDailyCommentToNotion(r.date, r.authorName, text); ok++; }
+    const msg = `${c.authorName}: ${c.body || "📎 파일"}${fileCount ? ` (📎 파일 ${fileCount}개)` : ""}`;
+    try {
+      await m.addDailyCommentToNotion(r.date, r.authorName, {
+        itemText: c.itemText,
+        inlineText: msg,
+        pageText: `[${sectionLabel}] ${c.itemText} — ${msg}`,
+      });
+      ok++;
+    }
     catch (e) { errors.push(`${r.date}: ${e instanceof Error ? e.message : e}`); }
   }
   res.json({ total: comments.length, ok, errors: errors.slice(0, 5) });
@@ -2491,13 +2498,17 @@ erpRouter.post("/daily-comments", async (req: AuthedRequest, res) => {
       files,
     },
   });
-  // 노션 페이지 댓글로도 동기화 (설정 시)
+  // 노션 항목 블록 인라인 댓글로도 동기화 (설정 시, 매칭 실패 시 페이지 댓글)
   {
     const sectionLabel = section === "did" ? "오늘 한 일" : section === "missed" ? "못한 일" : "내일 할 일";
     const fileNote = files.length ? ` (📎 파일 ${files.length}개)` : "";
-    const text = `[${sectionLabel}] ${itemText} — ${comment.authorName}: ${comment.body || "📎 파일"}${fileNote}`;
+    const msg = `${comment.authorName}: ${comment.body || "📎 파일"}${fileNote}`;
     void import("../services/notionDaily.js")
-      .then((m) => m.addDailyCommentToNotion(report.date, report.authorName, text))
+      .then((m) => m.addDailyCommentToNotion(report.date, report.authorName, {
+        itemText,
+        inlineText: msg,
+        pageText: `[${sectionLabel}] ${itemText} — ${msg}`,
+      }))
       .catch((e) => console.error("[notion-daily]", e instanceof Error ? e.message : e));
   }
   res.json({ comment });
