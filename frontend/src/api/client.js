@@ -323,7 +323,7 @@ export const api = {
     }
     return req(`/erp/sales/trend/inquiry?${p}`);
   },
-  erpSalesClosing: () => req("/erp/sales/closing"),
+  erpSalesClosing: ({ refresh } = {}) => req(`/erp/sales/closing${refresh ? "?refresh=1" : ""}`),
   erpSalesClosingLeadUpdate: (id, body) => req(`/erp/sales/closing/lead/${id}`, { method: "PUT", body }),
   erpSalesDashboard: ({ month } = {}) => {
     const p = new URLSearchParams();

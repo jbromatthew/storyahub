@@ -5550,6 +5550,7 @@ const CLOSING_TEMP_STYLE = {
 };
 
 const CLOSING_EDIT_TEMPS = ["임박", "긍정적", "미지근", "부재", "어려움/이탈"];
+const CLOSING_EDIT_URGENCIES = ["7일 이내", "30일 이내", "60일 이내", "90일 이내", "불투명/어려움"];
 
 function ClosingTempSelect({ temp, onSave }) {
   const s = CLOSING_TEMP_STYLE[temp] || { bg: "var(--card)", fg: "var(--ink)" };
@@ -5564,24 +5565,55 @@ function ClosingTempSelect({ temp, onSave }) {
   );
 }
 
-function ClosingNoteCell({ note, onSave }) {
-  const [val, setVal] = useState(note || "");
+// 시트 AX열(미도입 사유) 드롭다운과 동일한 선택지
+const CLOSING_REASONS = [
+  "업종 부적합", "UI/UX", "기능 부족", "혜택 부족/불만족", "월 요금", "설치/도입비",
+  "직원반대", "고객반대", "오픈 딜레이/취소", "건물/환경 제약", "데이터이관 불안/불만족",
+  "앱스토어 평점", "현재 바꿀 여력 안됨", "타프로그램 결제", "알수없음/단순변심",
+];
+
+/** 긴 텍스트 셀 — 접힌 2줄 미리보기, 클릭하면 펼쳐진 textarea로 수정 */
+function ClosingTextCell({ text, placeholder, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(text || "");
   const cancelRef = useRef(false);
-  useEffect(() => setVal(note || ""), [note]);
+  useEffect(() => { if (!editing) setVal(text || ""); }, [text, editing]);
+
+  if (!editing) {
+    return (
+      <div
+        onClick={() => setEditing(true)}
+        title={text ? "클릭해서 전체 보기·수정" : "클릭해서 입력"}
+        style={{
+          cursor: "text", whiteSpace: "pre-wrap", fontSize: 12, lineHeight: 1.5,
+          color: text ? "inherit" : "var(--muted)",
+          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+          overflow: "hidden", minWidth: 220, borderRadius: 8, padding: "2px 4px",
+        }}
+      >
+        {text || placeholder}
+      </div>
+    );
+  }
   return (
-    <input
+    <textarea
+      autoFocus
       value={val}
-      placeholder="비고 입력…"
       onChange={(e) => setVal(e.target.value)}
+      rows={Math.min(12, Math.max(4, val.split("\n").length + 1))}
       onBlur={() => {
-        if (cancelRef.current) { cancelRef.current = false; setVal(note || ""); return; }
-        if (val.trim() !== (note || "").trim()) onSave(val.trim());
+        setEditing(false);
+        if (cancelRef.current) { cancelRef.current = false; return; }
+        if (val.trim() !== (text || "").trim()) onSave(val.trim());
       }}
       onKeyDown={(e) => {
-        if (e.key === "Enter") e.currentTarget.blur();
         if (e.key === "Escape") { cancelRef.current = true; e.currentTarget.blur(); }
       }}
-      style={{ width: "100%", minWidth: 200, border: "1px solid var(--line)", borderRadius: 8, padding: "4px 8px", fontFamily: "inherit", fontSize: 12, background: "#fff" }}
+      style={{
+        width: "100%", minWidth: 280, border: "1px solid var(--line)", borderRadius: 8,
+        padding: "6px 8px", fontFamily: "inherit", fontSize: 12, lineHeight: 1.5,
+        background: "#fff", resize: "vertical",
+      }}
     />
   );
 }
@@ -5589,14 +5621,43 @@ function ClosingNoteCell({ note, onSave }) {
 export function SalesClosingView() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(true);
   const [selected, setSelected] = useState("");
+  const [sort, setSort] = useState({ key: "", dir: 1 }); // key ""=기본(임박·긍정 순)
+  const refreshedRef = useRef(false);
+
+  const toggleSort = (key) =>
+    setSort((s) => (s.key !== key ? { key, dir: 1 } : s.dir === 1 ? { key, dir: -1 } : { key: "", dir: 1 }));
+  const sortLeads = (leads) => {
+    if (!sort.key) return leads;
+    return [...leads].sort(
+      (a, b) => String(a[sort.key] || "").localeCompare(String(b[sort.key] || ""), "ko") * sort.dir
+    );
+  };
+  const SortTh = ({ k, className, children }) => (
+    <th
+      className={className}
+      style={{ textAlign: "left", cursor: "pointer", whiteSpace: "nowrap", userSelect: "none" }}
+      onClick={() => toggleSort(k)}
+      title="클릭해서 정렬"
+    >
+      {children}{sort.key === k ? (sort.dir === 1 ? " ▲" : " ▼") : ""}
+    </th>
+  );
 
   useEffect(() => {
+    let alive = true;
+    // 1) DB 캐시로 즉시 표시 → 2) 시트 동기화 후 최신값으로 교체 (시트에서 수정한 내용 반영)
     api.erpSalesClosing()
-      .then(setData)
-      .catch(notifyError)
-      .finally(() => setLoading(false));
-  }, []);
+      .then((d) => { if (alive && !refreshedRef.current) { setData(d); setLoading(false); } })
+      .catch((e) => { if (alive && !refreshedRef.current) notifyError(e); })
+      .finally(() => { if (alive && !refreshedRef.current) setLoading(false); });
+    api.erpSalesClosing({ refresh: true })
+      .then((d) => { if (!alive) return; refreshedRef.current = true; setData(d); setLoading(false); })
+      .catch(() => {})
+      .finally(() => { if (alive) setRefreshing(false); });
+    return () => { alive = false; };
+  }, []); // eslint-disable-line
 
   const assignees = data?.assignees || [];
   const visible = selected ? assignees.filter((a) => a.name === selected) : assignees;
@@ -5632,7 +5693,7 @@ export function SalesClosingView() {
     try {
       const r = await api.erpSalesClosingLeadUpdate(lead.id, patch);
       if (r.stillClosing) {
-        applyLeadPatch(lead.id, (leads) => leads.map((l) => (l.id === lead.id ? { ...l, temp: r.temp, note: r.note } : l)));
+        applyLeadPatch(lead.id, (leads) => leads.map((l) => (l.id === lead.id ? { ...l, temp: r.temp, note: r.note, urgency: r.urgency, reason: r.reason } : l)));
         toastSuccess("문의시트에 반영했어요");
       } else {
         applyLeadPatch(lead.id, (leads) => leads.filter((l) => l.id !== lead.id));
@@ -5664,7 +5725,11 @@ export function SalesClosingView() {
             <span className="trend-selection-label">클로징 대상 {totals.total}건</span>
             <span>임박 <strong>{totals.임박}</strong></span>
             <span>긍정적 <strong>{totals.긍정적}</strong></span>
-            {data?.syncedThrough && <span className="small">동기화: {data.syncedThrough}</span>}
+            {refreshing ? (
+              <span className="small" style={{ color: "var(--muted)" }}>시트 최신화 중…</span>
+            ) : (
+              <span className="small">시트 최신 반영됨</span>
+            )}
           </div>
 
           <div className="row" style={{ gap: 6, flexWrap: "wrap", margin: "12px 0 4px" }}>
@@ -5699,29 +5764,50 @@ export function SalesClosingView() {
                   <table className="dash-table">
                     <thead>
                       <tr>
-                        <th style={{ textAlign: "left" }}>문의일</th>
-                        <th className="label">센터명</th>
-                        <th style={{ textAlign: "left" }}>업종</th>
-                        <th style={{ textAlign: "left" }}>지역</th>
-                        <th style={{ textAlign: "left" }}>요금제</th>
-                        <th style={{ textAlign: "left" }}>상담온도</th>
-                        <th style={{ textAlign: "left" }}>결제임박</th>
+                        <SortTh k="date">문의일</SortTh>
+                        <SortTh k="center" className="label">센터명</SortTh>
+                        <SortTh k="industry">업종</SortTh>
+                        <SortTh k="region">지역</SortTh>
+                        <SortTh k="plan">요금제</SortTh>
+                        <SortTh k="temp">상담온도</SortTh>
+                        <SortTh k="urgency">결제임박</SortTh>
                         <th style={{ textAlign: "left" }}>당월가능</th>
-                        <th style={{ textAlign: "left" }}>비고</th>
+                        <th style={{ textAlign: "left" }}>문의 내용</th>
+                        <th style={{ textAlign: "left" }}>미도입 사유</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {a.leads.map((l, i) => (
-                        <tr key={i}>
+                      {sortLeads(a.leads).map((l) => (
+                        <tr key={l.id}>
                           <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.date || "-"}</td>
                           <td className="label">{l.center}</td>
                           <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.industry || "-"}</td>
                           <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.region || "-"}</td>
                           <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.plan || "-"}</td>
                           <td style={{ textAlign: "left" }}><ClosingTempSelect temp={l.temp} onSave={(t) => saveLead(l, { temp: t })} /></td>
-                          <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.urgency || "-"}</td>
+                          <td style={{ textAlign: "left" }}>
+                            <select
+                              value={CLOSING_EDIT_URGENCIES.includes(l.urgency) ? l.urgency : ""}
+                              onChange={(e) => saveLead(l, { urgency: e.target.value })}
+                              style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "3px 6px", fontFamily: "inherit", fontSize: 12, background: "#fff", cursor: "pointer" }}
+                            >
+                              <option value="">-</option>
+                              {CLOSING_EDIT_URGENCIES.map((u) => <option key={u} value={u}>{u}</option>)}
+                            </select>
+                          </td>
                           <td style={{ textAlign: "left" }}>{l.canPayThisMonth ? "⭕" : "-"}</td>
-                          <td style={{ textAlign: "left", minWidth: 220, maxWidth: 360 }}><ClosingNoteCell note={l.note} onSave={(v) => saveLead(l, { note: v })} /></td>
+                          <td style={{ textAlign: "left", minWidth: 240, maxWidth: 400 }}><ClosingTextCell text={l.note} placeholder="문의 내용 입력…" onSave={(v) => saveLead(l, { note: v })} /></td>
+                          <td style={{ textAlign: "left" }}>
+                            <select
+                              value={CLOSING_REASONS.includes(l.reason) ? l.reason : l.reason ? "__custom" : ""}
+                              onChange={(e) => { if (e.target.value !== "__custom") saveLead(l, { reason: e.target.value }); }}
+                              style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "3px 6px", fontFamily: "inherit", fontSize: 12, background: "#fff", cursor: "pointer", maxWidth: 160 }}
+                            >
+                              <option value="">-</option>
+                              {l.reason && !CLOSING_REASONS.includes(l.reason) && <option value="__custom">{l.reason}</option>}
+                              {CLOSING_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                            </select>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

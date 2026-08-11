@@ -345,11 +345,12 @@ salesSyncRouter.get("/trend/inquiry", async (req: AuthedRequest, res: Response) 
   }
 });
 
-// 클로징 관리 — 직전 3개월 긍정 이상 미결제 리드 (담당자별)
-salesSyncRouter.get("/closing", async (_req: AuthedRequest, res: Response) => {
+// 클로징 관리 — 직전 3개월 긍정 이상 미결제 리드 (담당자별). refresh=1이면 시트 먼저 동기화(양방향)
+salesSyncRouter.get("/closing", async (req: AuthedRequest, res: Response) => {
+  const refresh = req.query.refresh === "1" || req.query.refresh === "true";
   try {
     const { getClosingData } = await import("../services/salesClosing.js");
-    res.json(await getClosingData());
+    res.json(await getClosingData({ refresh }));
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }
@@ -358,9 +359,11 @@ salesSyncRouter.get("/closing", async (_req: AuthedRequest, res: Response) => {
 // 클로징 리드 수정 — 상담온도·비고를 구글시트에 역기록
 salesSyncRouter.put("/closing/lead/:id", async (req: AuthedRequest, res: Response) => {
   const b = (req.body ?? {}) as Record<string, unknown>;
-  const patch: { temp?: string; note?: string } = {};
+  const patch: { temp?: string; note?: string; urgency?: string; reason?: string } = {};
   if (typeof b.temp === "string") patch.temp = b.temp.trim();
   if (typeof b.note === "string") patch.note = b.note;
+  if (typeof b.urgency === "string") patch.urgency = b.urgency;
+  if (typeof b.reason === "string") patch.reason = b.reason;
   try {
     const { updateClosingLead } = await import("../services/salesClosing.js");
     res.json(await updateClosingLead(req.params.id, patch));

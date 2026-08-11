@@ -1,6 +1,7 @@
 import { prisma } from "../db.js";
 import { env } from "../env.js";
 import { updateSheetRowCells } from "./googleSheets.js";
+import { syncSalesSheet } from "./salesSync.js";
 
 /**
  * 클로징 관리 — 문의시트 기반, 직전 3개월 상담온도 긍정 이상(임박·긍정적)인데
@@ -25,6 +26,7 @@ export type ClosingLead = {
   canPayThisMonth: boolean;
   waitDate: string;
   note: string;
+  reason: string;
 };
 
 export type ClosingAssignee = {
@@ -62,17 +64,36 @@ function urgencyRank(urgency: string): number {
   return i === -1 ? URGENCY_ORDER.length : i;
 }
 
-export async function getClosingData(): Promise<ClosingData> {
+export async function getClosingData(opts: { refresh?: boolean } = {}): Promise<ClosingData> {
   const spreadsheetId = env.googleSheets.inquirySpreadsheetId;
-  const rows = await prisma.erpSalesInquiry.findMany({
-    where: { spreadsheetId },
-    select: { id: true, data: true, sheetName: true },
-  });
+  const load = () =>
+    prisma.erpSalesInquiry.findMany({
+      where: { spreadsheetId },
+      select: { id: true, data: true, sheetName: true },
+    });
+  let rows = await load();
 
   // 시트 탭 기준 최신 3개월 (당월 포함)
-  const allMonths = [...new Set(rows.map((r) => monthKey(r.sheetName)).filter(Boolean) as string[])].sort();
+  const tabByMonth = new Map<string, string>();
+  for (const r of rows) {
+    const mk = monthKey(r.sheetName);
+    if (mk) tabByMonth.set(mk, r.sheetName.trim());
+  }
+  const allMonths = [...tabByMonth.keys()].sort();
   const months = allMonths.slice(-3);
   const monthSet = new Set(months);
+
+  // 양방향: 시트에서 직접 수정한 상담온도·비고 등을 즉시 반영하도록 대상 탭을 먼저 동기화
+  if (opts.refresh) {
+    for (const m of months) {
+      try {
+        await syncSalesSheet("inquiry", tabByMonth.get(m)!);
+      } catch (e) {
+        console.error("[closing-refresh]", m, e instanceof Error ? e.message : e);
+      }
+    }
+    rows = await load();
+  }
 
   const byAssignee = new Map<string, ClosingLead[]>();
   for (const row of rows) {
@@ -99,7 +120,9 @@ export async function getClosingData(): Promise<ClosingData> {
       urgency: pick(data, "결제임박률"),
       canPayThisMonth: pick(data, "당월결제가능").toUpperCase() === "TRUE",
       waitDate: pick(data, "대기일"),
-      note: pick(data, "비고").slice(0, 300),
+      // 수정 시 그대로 역기록되므로 표시용으로 자르지 않는다 (잘린 채 저장되는 사고 방지)
+      note: pick(data, "문의 내용").slice(0, 2000),
+      reason: pick(data, "*미도입 사유").slice(0, 2000),
     };
     const list = byAssignee.get(assignee) ?? [];
     list.push(lead);
@@ -136,14 +159,15 @@ export async function getClosingData(): Promise<ClosingData> {
   };
 }
 
-/** ERP에서 수정 가능한 상담온도 선택지 (시트 값 그대로) */
+/** ERP에서 수정 가능한 상담온도·결제임박률 선택지 (시트 값 그대로) */
 export const EDITABLE_TEMPS = ["임박", "긍정적", "미지근", "부재", "어려움/이탈"];
+export const EDITABLE_URGENCIES = ["7일 이내", "30일 이내", "60일 이내", "90일 이내", "불투명/어려움"];
 
-/** 상담온도·비고 수정 → 구글시트 해당 셀에 역기록 + DB 반영 */
+/** 상담온도·결제임박률·문의 내용·미도입 사유 수정 → 구글시트 해당 셀에 역기록 + DB 반영 */
 export async function updateClosingLead(
   id: string,
-  patch: { temp?: string; note?: string }
-): Promise<{ temp: string; note: string; stillClosing: boolean }> {
+  patch: { temp?: string; note?: string; urgency?: string; reason?: string }
+): Promise<{ temp: string; note: string; urgency: string; reason: string; stillClosing: boolean }> {
   const row = await prisma.erpSalesInquiry.findUnique({ where: { id } });
   if (!row) throw new Error("리드를 찾을 수 없습니다");
   const data = row.data as Record<string, string>;
@@ -153,7 +177,13 @@ export async function updateClosingLead(
     if (!EDITABLE_TEMPS.includes(patch.temp)) throw new Error("유효하지 않은 상담온도입니다");
     updates["상담온도"] = patch.temp;
   }
-  if (patch.note !== undefined) updates["비고"] = String(patch.note).slice(0, 2000);
+  if (patch.urgency !== undefined) {
+    const u = patch.urgency.trim();
+    if (u && !EDITABLE_URGENCIES.includes(u)) throw new Error("유효하지 않은 결제임박률입니다");
+    updates["결제임박률"] = u;
+  }
+  if (patch.note !== undefined) updates["문의 내용"] = String(patch.note).slice(0, 2000);
+  if (patch.reason !== undefined) updates["*미도입 사유"] = String(patch.reason).slice(0, 2000);
   if (!Object.keys(updates).length) throw new Error("수정할 내용이 없습니다");
 
   const res = await updateSheetRowCells(row.spreadsheetId, row.sheetName, row.sheetRow, updates, {
@@ -168,7 +198,9 @@ export async function updateClosingLead(
   const temp = String(newData["상담온도"] ?? "");
   return {
     temp,
-    note: String(newData["비고"] ?? ""),
+    note: String(newData["문의 내용"] ?? ""),
+    urgency: String(newData["결제임박률"] ?? ""),
+    reason: String(newData["*미도입 사유"] ?? ""),
     stillClosing: (POSITIVE_TEMPS as readonly string[]).includes(temp),
   };
 }
