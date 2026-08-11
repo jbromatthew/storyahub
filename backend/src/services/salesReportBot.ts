@@ -39,8 +39,8 @@ function inquiryGroupLines(d: SalesDailyData): string[] {
     const label = grp ? grp.label : "기타업종";
     counts.set(label, (counts.get(label) ?? 0) + r.inquiries);
   }
-  const order = [...INDUSTRY_GROUPS.map((g) => g.label), "기타업종"];
-  return order.filter((l) => counts.get(l)).map((l) => ` • ${l} : ${counts.get(l)}건`);
+  const order = [...INDUSTRY_GROUPS.map((g) => g.label), "기타"];
+  return order.map((l) => ` • ${l} : ${counts.get(l === "기타" ? "기타업종" : l) ?? 0}건`);
 }
 
 async function sendToChannelTalk(text: string): Promise<void> {
