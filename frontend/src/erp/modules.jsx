@@ -5624,6 +5624,7 @@ export function SalesClosingView() {
   const [refreshing, setRefreshing] = useState(true);
   const [selected, setSelected] = useState("");
   const [sort, setSort] = useState({ key: "", dir: 1 }); // key ""=기본(임박·긍정 순)
+  const [q, setQ] = useState("");
   const refreshedRef = useRef(false);
 
   const toggleSort = (key) =>
@@ -5660,7 +5661,20 @@ export function SalesClosingView() {
   }, []); // eslint-disable-line
 
   const assignees = data?.assignees || [];
-  const visible = selected ? assignees.filter((a) => a.name === selected) : assignees;
+  const query = q.trim().toLowerCase();
+  const qDigits = query.replace(/\D/g, "");
+  const matchQ = (l) =>
+    !query ||
+    l.center.toLowerCase().includes(query) ||
+    (qDigits.length >= 3 && (l.phone || "").replace(/\D/g, "").includes(qDigits));
+  const visible = (selected ? assignees.filter((a) => a.name === selected) : assignees)
+    .map((a) => {
+      const leads = a.leads.filter(matchQ);
+      const counts = {};
+      for (const t of data?.temps || []) counts[t] = leads.filter((l) => l.temp === t).length;
+      return { ...a, leads, total: leads.length, counts };
+    })
+    .filter((a) => a.leads.length > 0 || !query);
   const totals = useMemo(() => {
     const t = { total: 0, 임박: 0, 긍정적: 0 };
     for (const a of assignees) {
@@ -5732,7 +5746,14 @@ export function SalesClosingView() {
             )}
           </div>
 
-          <div className="row" style={{ gap: 6, flexWrap: "wrap", margin: "12px 0 4px" }}>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap", margin: "12px 0 4px", alignItems: "center" }}>
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") setQ(""); }}
+              placeholder="🔍 센터명·연락처 검색"
+              style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, minWidth: 210, background: "#fff" }}
+            />
             <button type="button" className={"chip" + (!selected ? " on" : "")} onClick={() => setSelected("")}>전체</button>
             {assignees.map((a) => (
               <button
@@ -5750,6 +5771,10 @@ export function SalesClosingView() {
             <div className="small" style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
               클로징 대상 리드가 없습니다. 세일즈 동기화에서 문의 데이터를 갱신해 보세요.
             </div>
+          ) : !visible.length ? (
+            <div className="small" style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+              "{q.trim()}" 검색 결과가 없습니다.
+            </div>
           ) : (
             visible.map((a) => (
               <div key={a.name} className="rate-plan-block" style={{ marginTop: 20 }}>
@@ -5766,6 +5791,7 @@ export function SalesClosingView() {
                       <tr>
                         <SortTh k="date">문의일</SortTh>
                         <SortTh k="center" className="label">센터명</SortTh>
+                        <th style={{ textAlign: "left" }}>연락처</th>
                         <SortTh k="industry">업종</SortTh>
                         <SortTh k="region">지역</SortTh>
                         <SortTh k="plan">요금제</SortTh>
@@ -5781,6 +5807,9 @@ export function SalesClosingView() {
                         <tr key={l.id}>
                           <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.date || "-"}</td>
                           <td className="label">{l.center}</td>
+                          <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>
+                            {l.phone ? <a href={`tel:${l.phone.replace(/[^0-9+]/g, "")}`}>{l.phone}</a> : "-"}
+                          </td>
                           <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.industry || "-"}</td>
                           <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.region || "-"}</td>
                           <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.plan || "-"}</td>

@@ -18,6 +18,7 @@ export type ClosingLead = {
   month: string;
   date: string;
   center: string;
+  phone: string;
   industry: string;
   region: string;
   plan: string;
@@ -113,6 +114,7 @@ export async function getClosingData(opts: { refresh?: boolean } = {}): Promise<
       month,
       date: pick(data, "날짜"),
       center: pick(data, "센터명") || "(센터명 없음)",
+      phone: pick(data, "연락처"),
       industry: pick(data, "업종"),
       region: [pick(data, "지역"), pick(data, "시군구")].filter(Boolean).join(" "),
       plan: pick(data, "문의요금제"),
