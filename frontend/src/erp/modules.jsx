@@ -5549,10 +5549,40 @@ const CLOSING_TEMP_STYLE = {
   긍정적: { bg: "#D3F8DF", fg: "#1F6B3A" },
 };
 
-function ClosingTempBadge({ temp }) {
-  const s = CLOSING_TEMP_STYLE[temp] || { bg: "var(--card)", fg: "var(--muted)" };
+const CLOSING_EDIT_TEMPS = ["임박", "긍정적", "미지근", "부재", "어려움/이탈"];
+
+function ClosingTempSelect({ temp, onSave }) {
+  const s = CLOSING_TEMP_STYLE[temp] || { bg: "var(--card)", fg: "var(--ink)" };
   return (
-    <span className="assignee-badge compact" style={{ background: s.bg, color: s.fg }}>{temp}</span>
+    <select
+      value={temp}
+      onChange={(e) => onSave(e.target.value)}
+      style={{ background: s.bg, color: s.fg, border: "1px solid var(--line)", borderRadius: 8, padding: "3px 6px", fontFamily: "inherit", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+    >
+      {CLOSING_EDIT_TEMPS.map((t) => <option key={t} value={t}>{t}</option>)}
+    </select>
+  );
+}
+
+function ClosingNoteCell({ note, onSave }) {
+  const [val, setVal] = useState(note || "");
+  const cancelRef = useRef(false);
+  useEffect(() => setVal(note || ""), [note]);
+  return (
+    <input
+      value={val}
+      placeholder="비고 입력…"
+      onChange={(e) => setVal(e.target.value)}
+      onBlur={() => {
+        if (cancelRef.current) { cancelRef.current = false; setVal(note || ""); return; }
+        if (val.trim() !== (note || "").trim()) onSave(val.trim());
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") { cancelRef.current = true; e.currentTarget.blur(); }
+      }}
+      style={{ width: "100%", minWidth: 200, border: "1px solid var(--line)", borderRadius: 8, padding: "4px 8px", fontFamily: "inherit", fontSize: 12, background: "#fff" }}
+    />
   );
 }
 
@@ -5582,6 +5612,36 @@ export function SalesClosingView() {
   const monthLabel = data?.months?.length
     ? `${data.months[0]} ~ ${data.months[data.months.length - 1]}`
     : "";
+
+  // 리드 수정 후 로컬 상태 재계산 (건수·집계 포함)
+  const applyLeadPatch = (leadId, mapLeads) => {
+    setData((d) => {
+      if (!d) return d;
+      const nextAssignees = d.assignees.map((a) => {
+        if (!a.leads.some((l) => l.id === leadId)) return a;
+        const leads = mapLeads(a.leads);
+        const counts = {};
+        for (const t of d.temps) counts[t] = leads.filter((l) => l.temp === t).length;
+        return { ...a, leads, total: leads.length, counts };
+      });
+      return { ...d, assignees: nextAssignees, totalLeads: nextAssignees.reduce((s, a) => s + a.total, 0) };
+    });
+  };
+
+  const saveLead = async (lead, patch) => {
+    try {
+      const r = await api.erpSalesClosingLeadUpdate(lead.id, patch);
+      if (r.stillClosing) {
+        applyLeadPatch(lead.id, (leads) => leads.map((l) => (l.id === lead.id ? { ...l, temp: r.temp, note: r.note } : l)));
+        toastSuccess("문의시트에 반영했어요");
+      } else {
+        applyLeadPatch(lead.id, (leads) => leads.filter((l) => l.id !== lead.id));
+        toastSuccess(`문의시트에 반영했어요 — 상담온도 "${r.temp}"라 클로징 목록에서 제외됩니다`);
+      }
+    } catch (e) {
+      notifyError(e);
+    }
+  };
 
   return (
     <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
@@ -5658,10 +5718,10 @@ export function SalesClosingView() {
                           <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.industry || "-"}</td>
                           <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.region || "-"}</td>
                           <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.plan || "-"}</td>
-                          <td style={{ textAlign: "left" }}><ClosingTempBadge temp={l.temp} /></td>
+                          <td style={{ textAlign: "left" }}><ClosingTempSelect temp={l.temp} onSave={(t) => saveLead(l, { temp: t })} /></td>
                           <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.urgency || "-"}</td>
                           <td style={{ textAlign: "left" }}>{l.canPayThisMonth ? "⭕" : "-"}</td>
-                          <td style={{ textAlign: "left", maxWidth: 320, whiteSpace: "pre-wrap" }}>{l.note || "-"}</td>
+                          <td style={{ textAlign: "left", minWidth: 220, maxWidth: 360 }}><ClosingNoteCell note={l.note} onSave={(v) => saveLead(l, { note: v })} /></td>
                         </tr>
                       ))}
                     </tbody>

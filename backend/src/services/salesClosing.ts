@@ -1,5 +1,6 @@
 import { prisma } from "../db.js";
 import { env } from "../env.js";
+import { updateSheetRowCells } from "./googleSheets.js";
 
 /**
  * 클로징 관리 — 문의시트 기반, 직전 3개월 상담온도 긍정 이상(임박·긍정적)인데
@@ -12,6 +13,7 @@ const INQUIRY_TYPE = "신규문의";
 const URGENCY_ORDER = ["7일 이내", "30일 이내", "60일 이내", "90일 이내", "불투명/어려움", ""];
 
 export type ClosingLead = {
+  id: string;
   month: string;
   date: string;
   center: string;
@@ -64,7 +66,7 @@ export async function getClosingData(): Promise<ClosingData> {
   const spreadsheetId = env.googleSheets.inquirySpreadsheetId;
   const rows = await prisma.erpSalesInquiry.findMany({
     where: { spreadsheetId },
-    select: { data: true, sheetName: true },
+    select: { id: true, data: true, sheetName: true },
   });
 
   // 시트 탭 기준 최신 3개월 (당월 포함)
@@ -86,6 +88,7 @@ export async function getClosingData(): Promise<ClosingData> {
 
     const assignee = pick(data, "응대자") || "미지정";
     const lead: ClosingLead = {
+      id: row.id,
       month,
       date: pick(data, "날짜"),
       center: pick(data, "센터명") || "(센터명 없음)",
@@ -130,5 +133,42 @@ export async function getClosingData(): Promise<ClosingData> {
     totalLeads: assignees.reduce((s, a) => s + a.total, 0),
     spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
     syncedThrough: latest?.sheetName ?? null,
+  };
+}
+
+/** ERP에서 수정 가능한 상담온도 선택지 (시트 값 그대로) */
+export const EDITABLE_TEMPS = ["임박", "긍정적", "미지근", "부재", "어려움/이탈"];
+
+/** 상담온도·비고 수정 → 구글시트 해당 셀에 역기록 + DB 반영 */
+export async function updateClosingLead(
+  id: string,
+  patch: { temp?: string; note?: string }
+): Promise<{ temp: string; note: string; stillClosing: boolean }> {
+  const row = await prisma.erpSalesInquiry.findUnique({ where: { id } });
+  if (!row) throw new Error("리드를 찾을 수 없습니다");
+  const data = row.data as Record<string, string>;
+
+  const updates: Record<string, string> = {};
+  if (patch.temp !== undefined) {
+    if (!EDITABLE_TEMPS.includes(patch.temp)) throw new Error("유효하지 않은 상담온도입니다");
+    updates["상담온도"] = patch.temp;
+  }
+  if (patch.note !== undefined) updates["비고"] = String(patch.note).slice(0, 2000);
+  if (!Object.keys(updates).length) throw new Error("수정할 내용이 없습니다");
+
+  const res = await updateSheetRowCells(row.spreadsheetId, row.sheetName, row.sheetRow, updates, {
+    column: "센터명",
+    expected: String(data["센터명"] ?? "").trim(),
+  });
+  if (!res.ok) throw new Error(res.reason || "시트 수정에 실패했습니다");
+
+  const newData = { ...data, ...updates };
+  await prisma.erpSalesInquiry.update({ where: { id }, data: { data: newData } });
+
+  const temp = String(newData["상담온도"] ?? "");
+  return {
+    temp,
+    note: String(newData["비고"] ?? ""),
+    stillClosing: (POSITIVE_TEMPS as readonly string[]).includes(temp),
   };
 }

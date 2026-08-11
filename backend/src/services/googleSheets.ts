@@ -300,6 +300,74 @@ function rowToRecord(indices: number[], names: string[], row: unknown[]): Record
   return data;
 }
 
+function columnLetter(idx: number): string {
+  let n = idx;
+  let s = "";
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return s;
+}
+
+/**
+ * 헤더명 기준으로 특정 행의 셀을 수정한다 (ERP → 시트 역기록).
+ * guard: 동기화 이후 시트에 행이 추가/삭제돼 행번호가 밀렸을 수 있으므로,
+ * 지정 컬럼의 현재 값이 기대값과 다르면 수정하지 않는다.
+ */
+export async function updateSheetRowCells(
+  spreadsheetId: string,
+  sheetName: string,
+  sheetRow: number,
+  updates: Record<string, string>,
+  guard?: { column: string; expected: string }
+): Promise<{ ok: boolean; reason?: string }> {
+  const sheets = getSheetsClient();
+  const headerRes = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${quoteSheetName(sheetName)}!1:1`,
+    valueRenderOption: "FORMATTED_VALUE",
+  });
+  const { names, indices } = buildSheetHeaders(headerRes.data.values?.[0] ?? []);
+  if (!names.length) return { ok: false, reason: "시트 헤더를 읽을 수 없습니다" };
+  const colIdx = (name: string) => {
+    const p = names.indexOf(name);
+    return p === -1 ? -1 : indices[p];
+  };
+
+  if (guard?.expected) {
+    const gIdx = colIdx(guard.column);
+    if (gIdx !== -1) {
+      const rowRes = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${quoteSheetName(sheetName)}!${columnLetter(gIdx)}${sheetRow}`,
+        valueRenderOption: "FORMATTED_VALUE",
+      });
+      const current = cellToString(rowRes.data.values?.[0]?.[0]);
+      if (current !== guard.expected.trim()) {
+        return {
+          ok: false,
+          reason: `시트 행이 바뀐 것 같습니다 (해당 행 ${guard.column}: "${current || "빈값"}"). 세일즈 동기화 후 다시 시도해주세요.`,
+        };
+      }
+    }
+  }
+
+  const data: { range: string; values: string[][] }[] = [];
+  for (const [col, val] of Object.entries(updates)) {
+    const idx = colIdx(col);
+    if (idx === -1) return { ok: false, reason: `시트에 "${col}" 컬럼이 없습니다` };
+    data.push({ range: `${quoteSheetName(sheetName)}!${columnLetter(idx)}${sheetRow}`, values: [[val]] });
+  }
+  if (data.length) {
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: { valueInputOption: "USER_ENTERED", data },
+    });
+  }
+  return { ok: true };
+}
+
 /** 시트 1행 기준 컬럼명 (데이터 보기·필터용 정렬) */
 export async function fetchSheetColumnNames(
   spreadsheetId: string,

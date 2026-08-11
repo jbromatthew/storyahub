@@ -355,6 +355,20 @@ salesSyncRouter.get("/closing", async (_req: AuthedRequest, res: Response) => {
   }
 });
 
+// 클로징 리드 수정 — 상담온도·비고를 구글시트에 역기록
+salesSyncRouter.put("/closing/lead/:id", async (req: AuthedRequest, res: Response) => {
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const patch: { temp?: string; note?: string } = {};
+  if (typeof b.temp === "string") patch.temp = b.temp.trim();
+  if (typeof b.note === "string") patch.note = b.note;
+  try {
+    const { updateClosingLead } = await import("../services/salesClosing.js");
+    res.json(await updateClosingLead(req.params.id, patch));
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
 // 채널톡 자동 보고 수동 발송 (테스트)
 salesSyncRouter.post("/report-bot/send", async (_req: AuthedRequest, res: Response) => {
   try {

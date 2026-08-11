@@ -324,6 +324,7 @@ export const api = {
     return req(`/erp/sales/trend/inquiry?${p}`);
   },
   erpSalesClosing: () => req("/erp/sales/closing"),
+  erpSalesClosingLeadUpdate: (id, body) => req(`/erp/sales/closing/lead/${id}`, { method: "PUT", body }),
   erpSalesDashboard: ({ month } = {}) => {
     const p = new URLSearchParams();
     if (month) p.set("month", month);
