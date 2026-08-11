@@ -3,6 +3,8 @@
  * ERP에서 보고 저장 시 노션 데이터베이스(캘린더 뷰 가능)에 날짜별 페이지를 생성/갱신한다.
  * 환경변수: NOTION_TOKEN, NOTION_DAILY_DB_ID (없으면 조용히 비활성)
  */
+import { prisma } from "../db.js";
+
 const NOTION = "https://api.notion.com/v1";
 
 function headers(): Record<string, string> | null {
@@ -161,4 +163,84 @@ export async function removeDailyReportFromNotion(date: string, authorName: stri
   if (!headers() || !dbId) return;
   const existing = await findExistingPage(dbId, date, authorName || "미지정");
   if (existing) await notionFetch(`/pages/${existing}`, { method: "PATCH", body: JSON.stringify({ archived: true }) });
+}
+
+/* ── 노션 댓글 역동기화 (노션에서 단 댓글 → ERP 코멘트) ── */
+
+let botUserId: string | null = null;
+const userNameCache = new Map<string, string>();
+
+async function getBotUserId(): Promise<string> {
+  if (botUserId) return botUserId;
+  const me = await notionFetch("/users/me", { method: "GET" });
+  botUserId = String(me.id ?? "");
+  return botUserId;
+}
+
+async function notionUserName(id: string): Promise<string> {
+  if (userNameCache.has(id)) return userNameCache.get(id)!;
+  try {
+    const u = await notionFetch(`/users/${id}`, { method: "GET" });
+    const name = String(u.name ?? "노션 사용자");
+    userNameCache.set(id, name);
+    return name;
+  } catch {
+    userNameCache.set(id, "노션 사용자");
+    return "노션 사용자";
+  }
+}
+
+/** 최근 보고들의 노션 페이지 댓글을 읽어 ERP 코멘트로 가져온다. */
+export async function pullNotionComments(): Promise<number> {
+  const dbId = process.env.NOTION_DAILY_DB_ID;
+  if (!headers() || !dbId) return 0;
+
+  const since = new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const reports = await prisma.erpDailyReport.findMany({
+    where: { date: { gte: since } },
+    select: { id: true, date: true, authorName: true },
+  });
+  if (!reports.length) return 0;
+
+  const bot = await getBotUserId().catch(() => "");
+  let imported = 0;
+
+  for (const r of reports) {
+    try {
+      const pageId = await findExistingPage(dbId, r.date, r.authorName || "미지정");
+      if (!pageId) continue;
+      const body = await notionFetch(`/comments?block_id=${pageId}&page_size=50`, { method: "GET" });
+      const comments = (body.results as Array<Record<string, unknown>>) || [];
+      for (const c of comments) {
+        const cid = String(c.id ?? "");
+        const createdBy = (c.created_by as { id?: string }) || {};
+        if (!cid || createdBy.id === bot) continue; // 우리가 보낸 댓글은 제외
+        const exists = await prisma.erpDailyComment.findFirst({ where: { notionCommentId: cid } });
+        if (exists) continue;
+        const text = ((c.rich_text as Array<{ plain_text?: string }>) || [])
+          .map((t) => t.plain_text ?? "").join("").trim();
+        if (!text) continue;
+        const author = await notionUserName(createdBy.id ?? "");
+        await prisma.erpDailyComment.create({
+          data: {
+            reportId: r.id,
+            section: "did",
+            itemId: "notion-page",
+            itemText: "📥 노션 댓글",
+            parentId: null,
+            authorEmail: "notion",
+            authorName: `${author} (노션)`,
+            body: text,
+            files: [],
+            notionCommentId: cid,
+          },
+        });
+        imported++;
+      }
+    } catch (e) {
+      console.error("[notion-pull]", r.date, e instanceof Error ? e.message : e);
+    }
+  }
+  if (imported) console.log(`[notion-pull] 노션 댓글 ${imported}건 가져옴`);
+  return imported;
 }

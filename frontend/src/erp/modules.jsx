@@ -9300,6 +9300,20 @@ export function DailyReportView() {
                   </div>
                 );
               })}
+              {(() => {
+                const nThreads = threadMap.get(`${r.id}|did|notion-page`) || [];
+                if (!nThreads.length) return null;
+                return (
+                  <div style={{ marginTop: 10, padding: "8px 12px", background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 10 }}>
+                    <div className="small" style={{ fontWeight: 800, marginBottom: 4 }}>📥 노션에서 온 댓글 {nThreads.length}개</div>
+                    {nThreads.map((t) => (
+                      <div key={t.root.id} className="small" style={{ lineHeight: 1.6 }}>
+                        <strong>{t.root.authorName}</strong>: {t.root.body}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           ))}
         </div>

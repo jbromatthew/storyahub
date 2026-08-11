@@ -123,6 +123,12 @@ app.listen(env.port, () => {
       startSalesDashboardWarmer();
       startSalesAutoSync();
       startSalesReportBot();
+      // 노션 댓글 역동기화 — 5분 간격 (설정 없으면 즉시 return이라 무해)
+      setInterval(() => {
+        void import("./services/notionDaily.js")
+          .then((m) => m.pullNotionComments())
+          .catch((e) => console.error("[notion-pull]", (e as Error).message));
+      }, 5 * 60 * 1000);
     })
     .catch((e) => console.warn("PostgreSQL unreachable — check DATABASE_URL / RDS security group:", (e as Error).message));
 });

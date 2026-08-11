@@ -855,6 +855,7 @@ model ErpDailyComment {
   files       Json     @default("[]") // [{key, name}]
   resolved    Boolean  @default(false) // (레거시) 이전 해결 개념 — 더 이상 사용 안 함
   important   Boolean  @default(false) // 루트에만 의미: ★ 중요 표시 → 스레드함에 남김
+  notionCommentId String? @unique // 노션에서 가져온 댓글의 원본 ID (중복 방지)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
