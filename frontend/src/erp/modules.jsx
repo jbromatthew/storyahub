@@ -5543,6 +5543,139 @@ export function SalesInquiryTrendView() {
   );
 }
 
+// 클로징 관리 — 직전 3개월 상담온도 긍정 이상(임박·긍정적) 미결제 리드, 담당자별
+const CLOSING_TEMP_STYLE = {
+  임박: { bg: "#FDE8E8", fg: "#B42318" },
+  긍정적: { bg: "#D3F8DF", fg: "#1F6B3A" },
+};
+
+function ClosingTempBadge({ temp }) {
+  const s = CLOSING_TEMP_STYLE[temp] || { bg: "var(--card)", fg: "var(--muted)" };
+  return (
+    <span className="assignee-badge compact" style={{ background: s.bg, color: s.fg }}>{temp}</span>
+  );
+}
+
+export function SalesClosingView() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState("");
+
+  useEffect(() => {
+    api.erpSalesClosing()
+      .then(setData)
+      .catch(notifyError)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const assignees = data?.assignees || [];
+  const visible = selected ? assignees.filter((a) => a.name === selected) : assignees;
+  const totals = useMemo(() => {
+    const t = { total: 0, 임박: 0, 긍정적: 0 };
+    for (const a of assignees) {
+      t.total += a.total;
+      for (const k of ["임박", "긍정적"]) t[k] += a.counts?.[k] || 0;
+    }
+    return t;
+  }, [assignees]);
+
+  const monthLabel = data?.months?.length
+    ? `${data.months[0]} ~ ${data.months[data.months.length - 1]}`
+    : "";
+
+  return (
+    <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">Sales</div>
+      <div className="h-title">클로징 관리</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+        문의시트 기준 <strong>직전 3개월{monthLabel ? ` (${monthLabel})` : ""}</strong> 신규문의 중 상담온도가{" "}
+        <strong>임박·긍정적</strong>인데 아직 <strong>결제되지 않은</strong> 리드입니다 (실 결제 FALSE · 결제일 없음).
+        세일즈 동기화로 문의 데이터를 갱신하면 바로 반영됩니다.
+        {data?.spreadsheetUrl && (
+          <>{" "}<a href={data.spreadsheetUrl} target="_blank" rel="noreferrer">상품 문의 시트</a></>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="spinner" />
+      ) : (
+        <>
+          <div className="trend-selection-bar" style={{ marginTop: 16, borderColor: totals.total ? "#F0C4A8" : "var(--line)", background: totals.total ? "#FFF7F2" : "var(--card)" }}>
+            <span className="trend-selection-label">클로징 대상 {totals.total}건</span>
+            <span>임박 <strong>{totals.임박}</strong></span>
+            <span>긍정적 <strong>{totals.긍정적}</strong></span>
+            {data?.syncedThrough && <span className="small">동기화: {data.syncedThrough}</span>}
+          </div>
+
+          <div className="row" style={{ gap: 6, flexWrap: "wrap", margin: "12px 0 4px" }}>
+            <button type="button" className={"chip" + (!selected ? " on" : "")} onClick={() => setSelected("")}>전체</button>
+            {assignees.map((a) => (
+              <button
+                key={a.name}
+                type="button"
+                className={"chip" + (selected === a.name ? " on" : "")}
+                onClick={() => setSelected(selected === a.name ? "" : a.name)}
+              >
+                {a.name} {a.total}
+              </button>
+            ))}
+          </div>
+
+          {!totals.total ? (
+            <div className="small" style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+              클로징 대상 리드가 없습니다. 세일즈 동기화에서 문의 데이터를 갱신해 보세요.
+            </div>
+          ) : (
+            visible.map((a) => (
+              <div key={a.name} className="rate-plan-block" style={{ marginTop: 20 }}>
+                <div className="rate-plan-title row" style={{ gap: 8, alignItems: "center" }}>
+                  <AssigneeBadge name={a.name} />
+                  <span>{a.total}건</span>
+                  <span className="small" style={{ color: "var(--muted)" }}>
+                    임박 {a.counts?.["임박"] || 0} · 긍정적 {a.counts?.["긍정적"] || 0}
+                  </span>
+                </div>
+                <div className="dash-table-wrap">
+                  <table className="dash-table">
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: "left" }}>문의일</th>
+                        <th className="label">센터명</th>
+                        <th style={{ textAlign: "left" }}>업종</th>
+                        <th style={{ textAlign: "left" }}>지역</th>
+                        <th style={{ textAlign: "left" }}>요금제</th>
+                        <th style={{ textAlign: "left" }}>상담온도</th>
+                        <th style={{ textAlign: "left" }}>결제임박</th>
+                        <th style={{ textAlign: "left" }}>당월가능</th>
+                        <th style={{ textAlign: "left" }}>비고</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {a.leads.map((l, i) => (
+                        <tr key={i}>
+                          <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.date || "-"}</td>
+                          <td className="label">{l.center}</td>
+                          <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.industry || "-"}</td>
+                          <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.region || "-"}</td>
+                          <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.plan || "-"}</td>
+                          <td style={{ textAlign: "left" }}><ClosingTempBadge temp={l.temp} /></td>
+                          <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{l.urgency || "-"}</td>
+                          <td style={{ textAlign: "left" }}>{l.canPayThisMonth ? "⭕" : "-"}</td>
+                          <td style={{ textAlign: "left", maxWidth: 320, whiteSpace: "pre-wrap" }}>{l.note || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 const DASHBOARD_TABS = [
   { id: "channel", label: "채널별" },
   { id: "industry", label: "업종별" },

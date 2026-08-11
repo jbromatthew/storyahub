@@ -345,6 +345,16 @@ salesSyncRouter.get("/trend/inquiry", async (req: AuthedRequest, res: Response) 
   }
 });
 
+// 클로징 관리 — 직전 3개월 긍정 이상 미결제 리드 (담당자별)
+salesSyncRouter.get("/closing", async (_req: AuthedRequest, res: Response) => {
+  try {
+    const { getClosingData } = await import("../services/salesClosing.js");
+    res.json(await getClosingData());
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
 // 채널톡 자동 보고 수동 발송 (테스트)
 salesSyncRouter.post("/report-bot/send", async (_req: AuthedRequest, res: Response) => {
   try {
