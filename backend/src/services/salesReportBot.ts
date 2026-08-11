@@ -20,18 +20,27 @@ function kstNow(): { date: string; hhmm: string } {
   return { date: `${get("year")}-${get("month")}-${get("day")}`, hhmm: `${get("hour")}:${get("minute")}` };
 }
 
-function summarize(label: string, d: SalesDailyData): string {
-  const totals = d.rows.reduce(
-    (a, r) => ({ inq: a.inq + r.inquiries, ord: a.ord + r.orders }),
-    { inq: 0, ord: 0 }
-  );
-  const top = d.rows
-    .filter((r) => r.inquiries + r.orders > 0)
-    .sort((a, b) => b.inquiries + b.orders - (a.inquiries + a.orders))
-    .slice(0, 5)
-    .map((r) => `${r.industry} 문의${r.inquiries}/결제${r.orders}`)
-    .join(" · ");
-  return `【${label}】 문의 ${totals.inq}건 · 결제 ${totals.ord}건${top ? `\n  ${top}` : ""}`;
+// 결제율 분석의 빠른 검색 분류와 동일 — 그 외 업종은 기타업종으로 집계
+const INDUSTRY_GROUPS: Array<{ label: string; industries: string[] }> = [
+  { label: "헬스/PT", industries: ["헬스장", "PT샵"] },
+  { label: "스튜디오", industries: ["필라테스", "요가", "바레", "폴댄스"] },
+  { label: "체육관", industries: ["복싱", "주짓수", "유도", "합기도", "레슬링", "검도", "MMA", "크로스핏", "체육교실", "태권도"] },
+];
+
+function totalsOf(d: SalesDailyData): { inq: number; ord: number } {
+  return d.rows.reduce((a, r) => ({ inq: a.inq + r.inquiries, ord: a.ord + r.orders }), { inq: 0, ord: 0 });
+}
+
+function inquiryGroupLines(d: SalesDailyData): string[] {
+  const counts = new Map<string, number>();
+  for (const r of d.rows) {
+    if (!r.inquiries) continue;
+    const grp = INDUSTRY_GROUPS.find((g) => g.industries.includes(r.industry));
+    const label = grp ? grp.label : "기타업종";
+    counts.set(label, (counts.get(label) ?? 0) + r.inquiries);
+  }
+  const order = [...INDUSTRY_GROUPS.map((g) => g.label), "기타업종"];
+  return order.filter((l) => counts.get(l)).map((l) => ` • ${l} : ${counts.get(l)}건`);
 }
 
 async function sendToChannelTalk(text: string): Promise<void> {
@@ -63,12 +72,25 @@ export async function buildSalesReportText(hhmm: string): Promise<string> {
     getSalesDaily({ period: "week" }),
     getSalesDaily({ period: "month" }),
   ]);
-  return [
-    `📊 문의/결제 자동 보고 (${hhmm} 기준)`,
-    summarize(`일일 · ${day.rangeLabel}`, day),
-    summarize(`주간 · ${week.rangeLabel}`, week),
-    summarize(`월간 · ${month.rangeLabel}`, month),
-  ].join("\n\n");
+  const title = hhmm <= "16:00" ? "[중간보고]" : "[마감보고]";
+  const monthLabel = (month.rangeLabel.match(/(\d+)월/) || [])[1] || "";
+  const dTot = totalsOf(day);
+  const lines = [
+    title,
+    `당일 문의 : ${dTot.inq}건`,
+    ...inquiryGroupLines(day),
+    "",
+    `주간 문의 : ${totalsOf(week).inq}건`,
+    "",
+    `당월 문의 : ${totalsOf(month).inq}건`,
+    "",
+    "금일 신규 결제",
+    ` • 현재 : ${dTot.ord}개`,
+    "",
+    `[${monthLabel}월 총 신규]`,
+    ` • 총 : ${totalsOf(month).ord}건`,
+  ];
+  return lines.join("\n");
 }
 
 /** 수동 발송 (테스트·즉시 보고용) — 키 미설정이면 텍스트만 반환 */
