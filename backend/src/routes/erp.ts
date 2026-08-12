@@ -2403,7 +2403,9 @@ erpRouter.get("/daily-reports", async (req: AuthedRequest, res) => {
   const a = await dailyAccess(req.userId!);
   if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });
   const month = typeof req.query.month === "string" ? req.query.month : "";
-  const where = /^\d{4}-\d{2}$/.test(month) ? { date: { startsWith: month } } : {};
+  const whereBase = /^\d{4}-\d{2}$/.test(month) ? { date: { startsWith: month } } : {};
+  // 내 보고는 나만 — 소유자는 전체 열람, 그 외에는 본인 보고만 보인다
+  const where = isErpOwner(a.email) ? whereBase : { ...whereBase, authorEmail: a.email };
   const reports = await prisma.erpDailyReport.findMany({
     where,
     orderBy: [{ date: "desc" }, { authorEmail: "asc" }],
@@ -2541,8 +2543,10 @@ erpRouter.get("/daily-comments", async (req: AuthedRequest, res) => {
   const a = await dailyAccess(req.userId!);
   if (!a.ok) return res.status(403).json({ error: "CEO/COO 전용 메뉴입니다" });
   const month = typeof req.query.month === "string" ? req.query.month : "";
+  // 내 보고는 나만 — 소유자 외에는 본인 보고의 코멘트만
+  const reportScope = isErpOwner(a.email) ? {} : { authorEmail: a.email };
   const monthReports = /^\d{4}-\d{2}$/.test(month)
-    ? await prisma.erpDailyReport.findMany({ where: { date: { startsWith: month } }, select: { id: true } })
+    ? await prisma.erpDailyReport.findMany({ where: { date: { startsWith: month }, ...reportScope }, select: { id: true } })
     : [];
   const comments = monthReports.length
     ? await prisma.erpDailyComment.findMany({
@@ -2552,8 +2556,11 @@ erpRouter.get("/daily-comments", async (req: AuthedRequest, res) => {
     : [];
 
   // ★ 중요 표시된 스레드만 스레드함에 노출 (일반 코멘트는 항목 히스토리)
+  const visibleReportIds = isErpOwner(a.email)
+    ? null
+    : (await prisma.erpDailyReport.findMany({ where: reportScope, select: { id: true } })).map((r) => r.id);
   const openRoots = await prisma.erpDailyComment.findMany({
-    where: { parentId: null, important: true },
+    where: { parentId: null, important: true, ...(visibleReportIds ? { reportId: { in: visibleReportIds } } : {}) },
     orderBy: { createdAt: "desc" },
     take: 50,
   });

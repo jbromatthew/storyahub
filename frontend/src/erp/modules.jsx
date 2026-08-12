@@ -9705,7 +9705,7 @@ export function DailyReportView() {
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => p.filter((_, j) => j !== i))}>✕</button>
                   </div>
                 ) : (
-                <div className="row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: todos.slice(0, i).some((x) => x.kind === "header") ? 22 : 0 }}>
+                <div className="row dr-todo-row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: todos.slice(0, i).some((x) => x.kind === "header") ? 22 : 0 }}>
                   <input
                     type="checkbox"
                     checked={t.done}
@@ -9722,7 +9722,7 @@ export function DailyReportView() {
                       if (e.key === "Enter") { e.preventDefault(); setTodos((p) => [...p.slice(0, i + 1), { text: "", done: false, reason: "" }, ...p.slice(i + 1)]); }
                     }}
                   />
-                  <span className="row" style={{ gap: 4, alignItems: "center", flexShrink: 0 }} title="기간을 정하면 종료일까지 매일 할 일에 자동 유지됩니다">
+                  <span className="row dr-dates" style={{ gap: 4, alignItems: "center", flexShrink: 0 }} title="기간을 정하면 종료일까지 매일 할 일에 자동 유지됩니다">
                     <input type="date" value={t.start || ""} onChange={(e) => setTodos((p) => p.map((x, j) => (j === i ? { ...x, start: e.target.value || undefined } : x)))}
                       style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "5px 6px", fontFamily: "inherit", fontSize: 11.5, width: 118, color: t.start ? "inherit" : "var(--muted)" }} />
                     <span className="small" style={{ color: "var(--muted)" }}>~</span>
@@ -9781,7 +9781,7 @@ export function DailyReportView() {
                 const inGroup = plans.slice(0, i + 1).some((x) => x.kind === "header");
                 return (
                 <React.Fragment key={i}>
-                <div className="row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: p2.kind === "header" ? 0 : (plans.slice(0, i).some((x) => x.kind === "header") ? 22 : 0), marginTop: p2.kind === "header" ? 10 : 0 }}>
+                <div className="row dr-todo-row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: p2.kind === "header" ? 0 : (plans.slice(0, i).some((x) => x.kind === "header") ? 22 : 0), marginTop: p2.kind === "header" ? 10 : 0 }}>
                   <span style={{ flexShrink: 0, fontWeight: p2.kind === "header" ? 800 : 400 }}>{p2.kind === "header" ? "▾" : "⬜"}</span>
                   <input
                     className="input"
@@ -9794,7 +9794,7 @@ export function DailyReportView() {
                     }}
                   />
                   {p2.kind !== "header" && (
-                    <span className="row" style={{ gap: 4, alignItems: "center", flexShrink: 0 }} title="기간을 정하면 종료일까지 매일 할 일에 자동 유지됩니다">
+                    <span className="row dr-dates" style={{ gap: 4, alignItems: "center", flexShrink: 0 }} title="기간을 정하면 종료일까지 매일 할 일에 자동 유지됩니다">
                       <input type="date" value={p2.start || ""} onChange={(e) => setPlans((p) => p.map((x, j) => (j === i ? { ...x, start: e.target.value || undefined } : x)))}
                         style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "5px 6px", fontFamily: "inherit", fontSize: 11.5, width: 118, color: p2.start ? "inherit" : "var(--muted)" }} />
                       <span className="small" style={{ color: "var(--muted)" }}>~</span>

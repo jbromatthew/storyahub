@@ -633,6 +633,13 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .erp-btn-dl:hover{background:var(--accent-soft);color:var(--accent-deep);}
 @media(max-width:560px){.erp-tbl{font-size:13px;}.erp-tbl thead th,.erp-tbl tbody td{padding:10px 12px;}}
 
+/* 일일보고 할 일 행 — 모바일에서 날짜(기간) 입력을 둘째 줄로 내려 텍스트 입력이 안 눌리게 */
+@media(max-width:640px){
+  .dr-todo-row{flex-wrap:wrap;}
+  .dr-todo-row .dr-dates{order:9;flex-basis:100%;margin-left:26px;margin-top:2px;}
+  .dr-todo-row .dr-dates input[type=date]{width:112px !important;font-size:12px !important;}
+}
+
 /* 카카오맵 장소검색 드롭다운 */
 .kakao-pop{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:30;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px -14px rgba(20,16,12,.4);max-height:300px;overflow-y:auto;}
 .kakao-pop button{display:block;width:100%;text-align:left;border:none;background:none;padding:10px 14px;cursor:pointer;font-family:inherit;border-bottom:1px solid var(--line-soft,#F3EFE9);}
