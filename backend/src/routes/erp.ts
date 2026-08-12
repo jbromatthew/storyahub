@@ -1314,68 +1314,6 @@ async function requireOwner(req: AuthedRequest, res: Response): Promise<boolean>
   return false;
 }
 
-/* ===================== 인센티브 (소유자 전용) ===================== */
-
-// 분기별 결제주문내역 담당자별 마감 카운트 (+ NBM HW매출은 이카운트 연동 예정)
-erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
-  const now = new Date(Date.now() + 9 * 3600 * 1000);
-  const year = Number(req.query.year) || now.getUTCFullYear();
-  const quarter = Math.min(4, Math.max(1, Number(req.query.quarter) || Math.floor(now.getUTCMonth() / 3) + 1));
-  const monthNums = [1, 2, 3].map((i) => (quarter - 1) * 3 + i);
-  const monthKeys = monthNums.map((m) => `${year}.${String(m).padStart(2, "0")}`);
-
-  const rows = await prisma.erpSalesOrder.findMany({
-    where: { OR: monthKeys.map((m) => ({ sheetName: { startsWith: m } })) },
-    select: { data: true, sheetName: true },
-  });
-
-  // 신규센터 결제만 카운트 (인센티브 대상)
-  type Agg = { name: string; monthCounts: number[]; total: number };
-  const byAssignee = new Map<string, Agg>();
-  let totalCount = 0;
-  for (const row of rows) {
-    const data = row.data as Record<string, string>;
-    if (String(data["구분"] ?? "").trim() !== "신규센터") continue;
-    const name = String(data["결제 담당자"] ?? data["담당자"] ?? "").trim() || "미지정";
-    const mi = monthKeys.findIndex((m) => row.sheetName.trim().startsWith(m));
-    if (mi === -1) continue;
-    const agg = byAssignee.get(name) ?? { name, monthCounts: [0, 0, 0], total: 0 };
-    agg.monthCounts[mi] += 1;
-    agg.total += 1;
-    byAssignee.set(name, agg);
-    totalCount += 1;
-  }
-
-  const saved = await prisma.erpIncentiveQuarter.findUnique({ where: { year_quarter: { year, quarter } } });
-  const assignees = [...byAssignee.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "ko"));
-  res.json({
-    year,
-    quarter,
-    months: monthNums.map((m) => `${m}월`),
-    assignees,
-    totalCount,
-    hwSales: Array.isArray(saved?.hwSales) ? saved.hwSales : [null, null, null], // NBM — 수기 입력 (이카운트 손익 조회 API 미제공)
-  });
-});
-
-// NBM(HW매출) 분기 수기 저장
-erpRouter.put("/incentive", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
-  const b = (req.body ?? {}) as Record<string, unknown>;
-  const year = Number(b.year);
-  const quarter = Number(b.quarter);
-  if (!year || quarter < 1 || quarter > 4) return res.status(400).json({ error: "year/quarter 필요" });
-  const hwSales = (Array.isArray(b.hwSales) ? b.hwSales : []).slice(0, 3)
-    .map((v) => (v === null || v === "" ? null : Math.max(0, Math.round(Number(v) || 0))));
-  const saved = await prisma.erpIncentiveQuarter.upsert({
-    where: { year_quarter: { year, quarter } },
-    create: { year, quarter, hwSales },
-    update: { hwSales },
-  });
-  res.json({ hwSales: saved.hwSales });
-});
-
 /* ===================== 메뉴 접근 제어 + 접속기록 ===================== */
 
 // 내 메뉴 접근 규칙 — 규칙이 설정된 메뉴에 대해 현재 사용자의 허용 여부 (규칙 없는 메뉴는 기본 노출)

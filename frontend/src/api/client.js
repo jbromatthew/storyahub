@@ -233,13 +233,6 @@ export const api = {
   erpReadNotification: (id) => req(`/erp/notifications/${id}/read`, { method: "PATCH" }),
   erpProfile: () => req("/erp/me/profile"),
   erpMembers: () => req("/erp/members"),
-  erpIncentive: ({ year, quarter } = {}) => {
-    const p = new URLSearchParams();
-    if (year) p.set("year", year);
-    if (quarter) p.set("quarter", quarter);
-    return req(`/erp/incentive?${p}`);
-  },
-  erpIncentiveSave: (body) => req("/erp/incentive", { method: "PUT", body }),
   erpMenuAccess: () => req("/erp/menu-access"),
   erpMenuAccessConfig: () => req("/erp/menu-access/config"),
   erpMenuAccessSave: (rules) => req("/erp/menu-access/config", { method: "PUT", body: { rules } }),

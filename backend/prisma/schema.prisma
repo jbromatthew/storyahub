@@ -973,16 +973,3 @@ model ErpAccessLog {
   @@index([date])
   @@index([email])
 }
-
-/// 인센티브 분기 데이터 — NBM(HW매출) 수기 입력 (이카운트 API에 손익 조회가 없어 수기 관리)
-model ErpIncentiveQuarter {
-  id        String   @id @default(cuid())
-  year      Int
-  quarter   Int
-  hwSales   Json     @default("[]") // [월1, 월2, 월3] 공급가액
-  note      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([year, quarter])
-}
