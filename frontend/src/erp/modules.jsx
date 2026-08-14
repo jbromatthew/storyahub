@@ -9239,6 +9239,102 @@ function DailyThreadBox({ report, section, item, threads, myEmail, onChanged, on
   );
 }
 
+/* ── 체크리스트 드래그 정렬 ──
+ * 목록은 평면 배열이고 kind:"header"가 대분류 시작점이다. 따라서 항목을 다른 헤더 아래로
+ * 끌어놓으면 자연스럽게 그 대분류 소속이 되고, 맨 위(첫 헤더 앞)로 옮기면 분류 없는 항목이 된다.
+ * 헤더를 끌면 소속 항목까지 한 덩어리로 움직인다. */
+function checklistBlockLen(list, i) {
+  if (list[i]?.kind !== "header") return 1;
+  let n = 1;
+  while (i + n < list.length && list[i + n]?.kind !== "header") n += 1;
+  return n;
+}
+
+function moveChecklist(list, from, to) {
+  const len = checklistBlockLen(list, from);
+  if (from < 0 || to < 0 || (to >= from && to < from + len)) return list;
+  const block = list.slice(from, from + len);
+  const rest = [...list.slice(0, from), ...list.slice(from + len)];
+  // 아래로 끌면 대상 행 "뒤"에, 위로 끌면 대상 행 "앞"에 놓는다
+  const insert = Math.max(0, Math.min(rest.length, to > from ? to - len + 1 : to));
+  return [...rest.slice(0, insert), ...block, ...rest.slice(insert)];
+}
+
+/** 마우스·터치 공통 드래그 (pointer 이벤트) — 행 중앙과 가장 가까운 위치로 이동 */
+function useChecklistDrag(items, setItems) {
+  const rowsRef = useRef(new Map());
+  const stateRef = useRef({ from: -1, to: -1 });
+  const [drag, setDrag] = useState({ from: -1, to: -1 });
+
+  const setRow = (i) => (el) => {
+    if (el) rowsRef.current.set(i, el);
+    else rowsRef.current.delete(i);
+  };
+
+  const startDrag = (i) => (e) => {
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    stateRef.current = { from: i, to: i };
+    setDrag({ from: i, to: i });
+    const onMove = (ev) => {
+      const y = ev.clientY;
+      let best = stateRef.current.from;
+      let bestDist = Infinity;
+      for (let j = 0; j < items.length; j++) {
+        const el = rowsRef.current.get(j);
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        const d = Math.abs(y - (r.top + r.height / 2));
+        if (d < bestDist) { bestDist = d; best = j; }
+      }
+      if (best !== stateRef.current.to) {
+        stateRef.current = { ...stateRef.current, to: best };
+        setDrag({ ...stateRef.current });
+      }
+    };
+    const onEnd = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("pointercancel", onEnd);
+      const { from, to } = stateRef.current;
+      if (from >= 0 && to >= 0 && from !== to) setItems((prev) => moveChecklist(prev, from, to));
+      stateRef.current = { from: -1, to: -1 };
+      setDrag({ from: -1, to: -1 });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onEnd);
+    window.addEventListener("pointercancel", onEnd);
+  };
+
+  // 끌고 있는 행/놓일 자리 표시
+  const rowStyle = (i) => {
+    if (drag.from < 0) return null;
+    const len = checklistBlockLen(items, drag.from);
+    if (i >= drag.from && i < drag.from + len) return { opacity: 0.35 };
+    if (i !== drag.to) return null;
+    return drag.to > drag.from
+      ? { boxShadow: "0 2px 0 0 var(--accent)" }
+      : { boxShadow: "0 -2px 0 0 var(--accent)" };
+  };
+
+  return { setRow, startDrag, rowStyle, dragging: drag.from >= 0 };
+}
+
+function DragHandle({ onPointerDown, title = "끌어서 순서 변경 · 다른 대분류로 이동" }) {
+  return (
+    <span
+      onPointerDown={onPointerDown}
+      title={title}
+      style={{
+        flexShrink: 0, cursor: "grab", touchAction: "none", userSelect: "none",
+        color: "var(--muted)", fontSize: 14, lineHeight: 1, padding: "6px 2px",
+      }}
+    >
+      ⠿
+    </span>
+  );
+}
+
 export function DailyReportView() {
   const now = new Date();
   const todayStr = fmtDateYmd(now);
@@ -9250,6 +9346,8 @@ export function DailyReportView() {
   const [editing, setEditing] = useState(false);
   const [todos, setTodos] = useState([]); // 오늘 할 일 [{text, done, reason}]
   const [plans, setPlans] = useState([]); // 내일 할 일 [{text}]
+  const todoDrag = useChecklistDrag(todos, setTodos);
+  const planDrag = useChecklistDrag(plans, setPlans);
   const [prevPlan, setPrevPlan] = useState(null);
   const [saving, setSaving] = useState(false);
   const [comments, setComments] = useState([]);
@@ -9563,7 +9661,8 @@ export function DailyReportView() {
                 const groupEnds = hasHeaders && (i === todos.length - 1 || todos[i + 1]?.kind === "header");
                 const inGroup = todos.slice(0, i + 1).some((x) => x.kind === "header");
                 const row = t.kind === "header" ? (
-                  <div className="row" style={{ gap: 8, alignItems: "center", margin: "10px 0 6px" }}>
+                  <div ref={todoDrag.setRow(i)} className="row" style={{ gap: 8, alignItems: "center", margin: "10px 0 6px", ...todoDrag.rowStyle(i) }}>
+                    <DragHandle onPointerDown={todoDrag.startDrag(i)} title="끌어서 대분류 통째로 이동" />
                     <span style={{ flexShrink: 0, fontWeight: 800 }}>▾</span>
                     <input
                       className="input"
@@ -9578,7 +9677,8 @@ export function DailyReportView() {
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => p.filter((_, j) => j !== i))}>✕</button>
                   </div>
                 ) : (
-                <div className="row dr-todo-row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: todos.slice(0, i).some((x) => x.kind === "header") ? 22 : 0 }}>
+                <div ref={todoDrag.setRow(i)} className="row dr-todo-row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: todos.slice(0, i).some((x) => x.kind === "header") ? 22 : 0, ...todoDrag.rowStyle(i) }}>
+                  <DragHandle onPointerDown={todoDrag.startDrag(i)} />
                   <input
                     type="checkbox"
                     checked={t.done}
@@ -9654,7 +9754,8 @@ export function DailyReportView() {
                 const inGroup = plans.slice(0, i + 1).some((x) => x.kind === "header");
                 return (
                 <React.Fragment key={i}>
-                <div className="row dr-todo-row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: p2.kind === "header" ? 0 : (plans.slice(0, i).some((x) => x.kind === "header") ? 22 : 0), marginTop: p2.kind === "header" ? 10 : 0 }}>
+                <div ref={planDrag.setRow(i)} className="row dr-todo-row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: p2.kind === "header" ? 0 : (plans.slice(0, i).some((x) => x.kind === "header") ? 22 : 0), marginTop: p2.kind === "header" ? 10 : 0, ...planDrag.rowStyle(i) }}>
+                  <DragHandle onPointerDown={planDrag.startDrag(i)} title={p2.kind === "header" ? "끌어서 대분류 통째로 이동" : "끌어서 순서 변경 · 다른 대분류로 이동"} />
                   <span style={{ flexShrink: 0, fontWeight: p2.kind === "header" ? 800 : 400 }}>{p2.kind === "header" ? "▾" : "⬜"}</span>
                   <input
                     className="input"
