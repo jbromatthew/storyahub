@@ -29,7 +29,7 @@ function parseItems(raw: string): ChecklistItem[] {
           text: String(it?.text ?? "").trim(),
           done: !!it?.done,
           reason: typeof it?.reason === "string" ? it.reason : "",
-          kind: it?.kind === "header" ? "header" : undefined,
+          kind: it?.kind === "header" ? "header" : it?.kind === "sub" ? "sub" : undefined,
           start: typeof it?.start === "string" ? it.start : undefined,
           end: typeof it?.end === "string" ? it.end : undefined,
         }))
@@ -41,6 +41,17 @@ function parseItems(raw: string): ChecklistItem[] {
 
 function rt(text: string) {
   return [{ type: "text", text: { content: text.slice(0, 1900) } }];
+}
+
+/** 소분류 — 노션엔 heading이 3단계뿐이라 굵은 문단으로 표현 */
+function subBlock(text: string) {
+  return {
+    object: "block",
+    type: "paragraph",
+    paragraph: {
+      rich_text: [{ type: "text", text: { content: `▸ ${text}`.slice(0, 1900) }, annotations: { bold: true } }],
+    },
+  };
 }
 
 function itemLabel(it: ChecklistItem): string {
@@ -56,6 +67,7 @@ function buildBlocks(did: string, missed: string, plan: string): unknown[] {
   push({ object: "block", type: "heading_2", heading_2: { rich_text: rt("✅ 오늘 한 일") } });
   for (const it of didItems) {
     if (it.kind === "header") push({ object: "block", type: "heading_3", heading_3: { rich_text: rt(`▾ ${it.text}`) } });
+    else if (it.kind === "sub") push(subBlock(it.text));
     else push({ object: "block", type: "to_do", to_do: { rich_text: rt(itemLabel(it)), checked: !!it.done } });
   }
 
@@ -72,6 +84,7 @@ function buildBlocks(did: string, missed: string, plan: string): unknown[] {
     push({ object: "block", type: "heading_2", heading_2: { rich_text: rt("📌 내일 할 일") } });
     for (const p of planItems) {
       if (p.kind === "header") push({ object: "block", type: "heading_3", heading_3: { rich_text: rt(`▾ ${p.text}`) } });
+      else if (p.kind === "sub") push(subBlock(p.text));
       else push({ object: "block", type: "to_do", to_do: { rich_text: rt(itemLabel(p)), checked: false } });
     }
   }
@@ -270,7 +283,7 @@ function matchAnchor(blockText: string, did: string, plan: string): Anchor | nul
   if (!target) return null;
   for (const [section, raw] of [["did", did], ["plan", plan]] as const) {
     for (const it of parseItems(raw)) {
-      if (it.kind === "header") continue;
+      if (it.kind === "header" || it.kind === "sub") continue;
       if (it.text === target) {
         const id = (JSON.parse(raw || "[]") as Array<{ id?: string; text?: string }>).find((x) => String(x?.text ?? "").trim() === target)?.id;
         return { section, itemId: id || `t:${target}`, itemText: target };

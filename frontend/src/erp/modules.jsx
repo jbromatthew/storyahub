@@ -9070,7 +9070,7 @@ function parseChecklistItems(raw, { legacyDone = true } = {}) {
           text: String(it?.text ?? "").trim(),
           done: !!it?.done,
           reason: typeof it?.reason === "string" ? it.reason : "",
-          kind: it?.kind === "header" ? "header" : undefined,
+          kind: it?.kind === "header" ? "header" : it?.kind === "sub" ? "sub" : undefined,
           start: typeof it?.start === "string" ? it.start : undefined,
           end: typeof it?.end === "string" ? it.end : undefined,
         }))
@@ -9239,15 +9239,40 @@ function DailyThreadBox({ report, section, item, threads, myEmail, onChanged, on
   );
 }
 
-/* ── 체크리스트 드래그 정렬 ──
- * 목록은 평면 배열이고 kind:"header"가 대분류 시작점이다. 따라서 항목을 다른 헤더 아래로
- * 끌어놓으면 자연스럽게 그 대분류 소속이 되고, 맨 위(첫 헤더 앞)로 옮기면 분류 없는 항목이 된다.
- * 헤더를 끌면 소속 항목까지 한 덩어리로 움직인다. */
+/* ── 체크리스트 구조 (평면 배열 + 분류 마커) ──
+ * kind:"header" = 대분류, kind:"sub" = 소분류, 나머지 = 할 일 항목.
+ * 순서가 곧 소속이라, 항목을 다른 분류 아래로 끌어놓으면 그 분류에 속하고
+ * 맨 위(첫 분류 앞)로 옮기면 분류 없는 항목이 된다.
+ * 분류를 끌면 소속된 것들까지 한 덩어리로 움직인다. */
+const isChecklistGroup = (kind) => kind === "header" || kind === "sub";
+
+/** 들여쓰기 단계: 대분류 0, 소분류 1, 항목은 직전 분류에 따라 1~2 (분류 없으면 0) */
+function checklistIndent(list, i) {
+  const kind = list[i]?.kind;
+  if (kind === "header") return 0;
+  if (kind === "sub") return 1;
+  for (let j = i - 1; j >= 0; j -= 1) {
+    if (list[j]?.kind === "sub") return 2;
+    if (list[j]?.kind === "header") return 1;
+  }
+  return 0;
+}
+
 function checklistBlockLen(list, i) {
-  if (list[i]?.kind !== "header") return 1;
-  let n = 1;
-  while (i + n < list.length && list[i + n]?.kind !== "header") n += 1;
-  return n;
+  const kind = list[i]?.kind;
+  if (kind === "header") {
+    // 대분류는 다음 대분류 전까지 (소속 소분류·항목 포함)
+    let n = 1;
+    while (i + n < list.length && list[i + n]?.kind !== "header") n += 1;
+    return n;
+  }
+  if (kind === "sub") {
+    // 소분류는 다음 분류(대·소) 전까지
+    let n = 1;
+    while (i + n < list.length && !isChecklistGroup(list[i + n]?.kind)) n += 1;
+    return n;
+  }
+  return 1;
 }
 
 function moveChecklist(list, from, to) {
@@ -9448,12 +9473,12 @@ export function DailyReportView() {
     const basePlans = (planItems || [])
       .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim(), kind: p.kind, start: p.start || (p.end ? selDay : undefined), end: p.end }))
       .filter((p) => p.text);
-    const autoCarry = cleanTodos.filter((t) => t.kind !== "header" && t.end && t.end > selDay
+    const autoCarry = cleanTodos.filter((t) => !isChecklistGroup(t.kind) && t.end && t.end > selDay
       && !basePlans.some((p) => (t.id && p.id === t.id) || p.text === t.text))
       .map(({ id, text, kind, start, end }) => ({ id, text, kind, start, end }));
     return api.erpDailyReportSave(selDay, {
       did: JSON.stringify(cleanTodos.map(({ id, text, done, kind, start, end }) => ({ id, text, done, kind, start, end }))),
-      missed: JSON.stringify(cleanTodos.filter((t) => !t.done && t.kind !== "header").map((t) => ({ id: t.id, text: t.text, reason: (t.reason || "").trim() }))),
+      missed: JSON.stringify(cleanTodos.filter((t) => !t.done && !isChecklistGroup(t.kind)).map((t) => ({ id: t.id, text: t.text, reason: (t.reason || "").trim() }))),
       plan: JSON.stringify([...basePlans, ...autoCarry]),
     })
       .then(() => load())
@@ -9466,7 +9491,7 @@ export function DailyReportView() {
     const items = carriedItems.map((it, j) => ({
       id: it.id,
       text: it.text,
-      done: it.kind === "header" ? false : j === toggleIdx,
+      done: isChecklistGroup(it.kind) ? false : j === toggleIdx,
       reason: "",
       kind: it.kind,
       start: it.start,
@@ -9481,7 +9506,7 @@ export function DailyReportView() {
     const items = parseChecklistItems(r.did).map((t, j) => ({
       id: t.id,
       text: t.text,
-      done: t.kind === "header" ? false : j === idx ? !t.done : t.done,
+      done: isChecklistGroup(t.kind) ? false : j === idx ? !t.done : t.done,
       reason: reasons.get(t.text) || "",
       kind: t.kind,
       start: t.start,
@@ -9522,13 +9547,13 @@ export function DailyReportView() {
       .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim(), kind: p.kind, start: p.start || (p.end ? selDay : undefined), end: p.end }))
       .filter((p) => p.text);
     // 기간이 오늘 이후까지 걸친 오늘 할 일은 내일 할 일에 자동 유지
-    const rangedCarry = cleanTodos.filter((t) => t.kind !== "header" && t.end && t.end > selDay
+    const rangedCarry = cleanTodos.filter((t) => !isChecklistGroup(t.kind) && t.end && t.end > selDay
       && !cleanPlans.some((p) => (t.id && p.id === t.id) || p.text === t.text))
       .map(({ id, text, kind, start, end }) => ({ id, text, kind, start, end }));
     setSaving(true);
     api.erpDailyReportSave(selDay, {
       did: JSON.stringify(cleanTodos.map(({ id, text, done, kind, start, end }) => ({ id, text, done, kind, start, end }))),
-      missed: JSON.stringify(cleanTodos.filter((t) => !t.done && t.kind !== "header").map((t) => ({ id: t.id, text: t.text, reason: (t.reason || "").trim() }))),
+      missed: JSON.stringify(cleanTodos.filter((t) => !t.done && !isChecklistGroup(t.kind)).map((t) => ({ id: t.id, text: t.text, reason: (t.reason || "").trim() }))),
       plan: JSON.stringify([...cleanPlans, ...rangedCarry]),
     })
       .then(() => {
@@ -9653,22 +9678,24 @@ export function DailyReportView() {
               )}
 
               <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>▶ 오늘 무슨 일을 하였나? <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 한 일은 체크 · 대분류 아래에 체크리스트를 넣을 수 있어요</span></div>
-              {todos[0]?.kind === "header" && (
+              {isChecklistGroup(todos[0]?.kind) && (
                 <button type="button" className="btn btn-ghost btn-sm" style={{ marginBottom: 4, fontSize: 11.5 }} onClick={() => setTodos((p) => [{ text: "", done: false, reason: "" }, ...p])}>+ 분류 없는 항목</button>
               )}
               {todos.map((t, i) => {
-                const hasHeaders = todos.some((x) => x.kind === "header");
-                const groupEnds = hasHeaders && (i === todos.length - 1 || todos[i + 1]?.kind === "header");
-                const inGroup = todos.slice(0, i + 1).some((x) => x.kind === "header");
-                const row = t.kind === "header" ? (
-                  <div ref={todoDrag.setRow(i)} className="row" style={{ gap: 8, alignItems: "center", margin: "10px 0 6px", ...todoDrag.rowStyle(i) }}>
-                    <DragHandle onPointerDown={todoDrag.startDrag(i)} title="끌어서 대분류 통째로 이동" />
-                    <span style={{ flexShrink: 0, fontWeight: 800 }}>▾</span>
+                const hasGroups = todos.some((x) => isChecklistGroup(x.kind));
+                const groupEnds = hasGroups && (i === todos.length - 1 || isChecklistGroup(todos[i + 1]?.kind));
+                const indent = checklistIndent(todos, i) * 22;
+                const row = isChecklistGroup(t.kind) ? (
+                  <div ref={todoDrag.setRow(i)} className="row" style={{ gap: 8, alignItems: "center", margin: t.kind === "header" ? "10px 0 6px" : "6px 0 4px", marginLeft: indent, ...todoDrag.rowStyle(i) }}>
+                    <DragHandle onPointerDown={todoDrag.startDrag(i)} title={`끌어서 ${t.kind === "header" ? "대분류" : "소분류"} 통째로 이동`} />
+                    <span style={{ flexShrink: 0, fontWeight: t.kind === "header" ? 800 : 700, color: t.kind === "sub" ? "var(--muted)" : undefined }}>{t.kind === "header" ? "▾" : "▸"}</span>
                     <input
                       className="input"
-                      style={{ flex: 1, fontWeight: 800, background: "var(--sand, #F7F3EC)" }}
+                      style={t.kind === "header"
+                        ? { flex: 1, fontWeight: 800, background: "var(--sand, #F7F3EC)" }
+                        : { flex: 1, fontWeight: 700, fontSize: 13.5, background: "var(--card)" }}
                       value={t.text}
-                      placeholder="대분류 이름"
+                      placeholder={t.kind === "header" ? "대분류 이름" : "소분류 이름"}
                       onChange={(e) => setTodos((p) => p.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") { e.preventDefault(); setTodos((p) => [...p.slice(0, i + 1), { text: "", done: false, reason: "" }, ...p.slice(i + 1)]); }
@@ -9677,7 +9704,7 @@ export function DailyReportView() {
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => p.filter((_, j) => j !== i))}>✕</button>
                   </div>
                 ) : (
-                <div ref={todoDrag.setRow(i)} className="row dr-todo-row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: todos.slice(0, i).some((x) => x.kind === "header") ? 22 : 0, ...todoDrag.rowStyle(i) }}>
+                <div ref={todoDrag.setRow(i)} className="row dr-todo-row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: indent, ...todoDrag.rowStyle(i) }}>
                   <DragHandle onPointerDown={todoDrag.startDrag(i)} />
                   <input
                     type="checkbox"
@@ -9709,14 +9736,26 @@ export function DailyReportView() {
                   <React.Fragment key={i}>
                     {row}
                     {groupEnds && (
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        style={{ marginLeft: inGroup ? 22 : 0, marginBottom: 6, fontSize: 11.5, color: "var(--muted)" }}
-                        onClick={() => setTodos((p) => [...p.slice(0, i + 1), { text: "", done: false, reason: "" }, ...p.slice(i + 1)])}
-                      >
-                        + 항목
-                      </button>
+                      <div className="row" style={{ gap: 4, marginLeft: Math.max(indent, isChecklistGroup(t.kind) ? indent + 22 : indent), marginBottom: 6 }}>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ fontSize: 11.5, color: "var(--muted)" }}
+                          onClick={() => setTodos((p) => [...p.slice(0, i + 1), { text: "", done: false, reason: "" }, ...p.slice(i + 1)])}
+                        >
+                          + 항목
+                        </button>
+                        {checklistIndent(todos, i) < 2 && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ fontSize: 11.5, color: "var(--muted)" }}
+                            onClick={() => setTodos((p) => [...p.slice(0, i + 1), { text: "", done: false, reason: "", kind: "sub" }, ...p.slice(i + 1)])}
+                          >
+                            + 소분류
+                          </button>
+                        )}
+                      </div>
                     )}
                   </React.Fragment>
                 );
@@ -9724,12 +9763,13 @@ export function DailyReportView() {
               <div className="row" style={{ gap: 6, marginBottom: 14 }}>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => [...p, { text: "", done: false, reason: "" }])}>+ 항목 추가</button>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => [...p, { text: "", done: false, reason: "", kind: "header" }])}>+ 대분류 추가</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodos((p) => [...p, { text: "", done: false, reason: "", kind: "sub" }])}>+ 소분류 추가</button>
               </div>
 
-              {todos.some((t) => t.text.trim() && !t.done && t.kind !== "header") && (
+              {todos.some((t) => t.text.trim() && !t.done && !isChecklistGroup(t.kind)) && (
                 <div style={{ marginBottom: 14 }}>
                   <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>▶ 오늘 무슨 일을 했어야 했는데 못했나? <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 체크 안 된 항목, 사유를 적어주세요</span></div>
-                  {todos.map((t, i) => (!t.done && t.text.trim() && t.kind !== "header" ? (
+                  {todos.map((t, i) => (!t.done && t.text.trim() && !isChecklistGroup(t.kind) ? (
                     <div key={i} className="row" style={{ gap: 8, alignItems: "center", marginBottom: 6 }}>
                       <span className="small" style={{ flex: "0 1 auto", minWidth: 120, fontWeight: 600 }}>⬜ {t.text}</span>
                       <input
@@ -9745,29 +9785,29 @@ export function DailyReportView() {
               )}
 
               <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>▶ 내일은 무슨 일을 할 것인가? <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 다음 보고의 오늘 할 일로 자동 이월</span></div>
-              {plans[0]?.kind === "header" && (
+              {isChecklistGroup(plans[0]?.kind) && (
                 <button type="button" className="btn btn-ghost btn-sm" style={{ marginBottom: 4, fontSize: 11.5 }} onClick={() => setPlans((p) => [{ text: "" }, ...p])}>+ 분류 없는 항목</button>
               )}
               {plans.map((p2, i) => {
-                const hasHeaders = plans.some((x) => x.kind === "header");
-                const groupEnds = hasHeaders && (i === plans.length - 1 || plans[i + 1]?.kind === "header");
-                const inGroup = plans.slice(0, i + 1).some((x) => x.kind === "header");
+                const hasGroups = plans.some((x) => isChecklistGroup(x.kind));
+                const groupEnds = hasGroups && (i === plans.length - 1 || isChecklistGroup(plans[i + 1]?.kind));
+                const indent = checklistIndent(plans, i) * 22;
                 return (
                 <React.Fragment key={i}>
-                <div ref={planDrag.setRow(i)} className="row dr-todo-row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: p2.kind === "header" ? 0 : (plans.slice(0, i).some((x) => x.kind === "header") ? 22 : 0), marginTop: p2.kind === "header" ? 10 : 0, ...planDrag.rowStyle(i) }}>
-                  <DragHandle onPointerDown={planDrag.startDrag(i)} title={p2.kind === "header" ? "끌어서 대분류 통째로 이동" : "끌어서 순서 변경 · 다른 대분류로 이동"} />
-                  <span style={{ flexShrink: 0, fontWeight: p2.kind === "header" ? 800 : 400 }}>{p2.kind === "header" ? "▾" : "⬜"}</span>
+                <div ref={planDrag.setRow(i)} className="row dr-todo-row" style={{ gap: 8, alignItems: "center", marginBottom: 6, marginLeft: indent, marginTop: p2.kind === "header" ? 10 : 0, ...planDrag.rowStyle(i) }}>
+                  <DragHandle onPointerDown={planDrag.startDrag(i)} title={isChecklistGroup(p2.kind) ? `끌어서 ${p2.kind === "header" ? "대분류" : "소분류"} 통째로 이동` : "끌어서 순서 변경 · 다른 분류로 이동"} />
+                  <span style={{ flexShrink: 0, fontWeight: p2.kind === "header" ? 800 : p2.kind === "sub" ? 700 : 400, color: p2.kind === "sub" ? "var(--muted)" : undefined }}>{p2.kind === "header" ? "▾" : p2.kind === "sub" ? "▸" : "⬜"}</span>
                   <input
                     className="input"
-                    style={{ flex: 1, ...(p2.kind === "header" ? { fontWeight: 800, background: "var(--sand, #F7F3EC)" } : {}) }}
+                    style={{ flex: 1, ...(p2.kind === "header" ? { fontWeight: 800, background: "var(--sand, #F7F3EC)" } : p2.kind === "sub" ? { fontWeight: 700, fontSize: 13.5, background: "var(--card)" } : {}) }}
                     value={p2.text}
-                    placeholder={p2.kind === "header" ? "대분류 이름" : "내일 할 일"}
+                    placeholder={p2.kind === "header" ? "대분류 이름" : p2.kind === "sub" ? "소분류 이름" : "내일 할 일"}
                     onChange={(e) => setPlans((p) => p.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") { e.preventDefault(); setPlans((p) => [...p.slice(0, i + 1), { text: "" }, ...p.slice(i + 1)]); }
                     }}
                   />
-                  {p2.kind !== "header" && (
+                  {!isChecklistGroup(p2.kind) && (
                     <span className="row dr-dates" style={{ gap: 4, alignItems: "center", flexShrink: 0 }} title="기간을 정하면 종료일까지 매일 할 일에 자동 유지됩니다">
                       <input type="date" value={p2.start || ""} onChange={(e) => setPlans((p) => p.map((x, j) => (j === i ? { ...x, start: e.target.value || undefined } : x)))}
                         style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "5px 6px", fontFamily: "inherit", fontSize: 11.5, width: 118, color: p2.start ? "inherit" : "var(--muted)" }} />
@@ -9779,14 +9819,26 @@ export function DailyReportView() {
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPlans((p) => p.filter((_, j) => j !== i))}>✕</button>
                 </div>
                 {groupEnds && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    style={{ marginLeft: inGroup ? 22 : 0, marginBottom: 6, fontSize: 11.5, color: "var(--muted)" }}
-                    onClick={() => setPlans((p) => [...p.slice(0, i + 1), { text: "" }, ...p.slice(i + 1)])}
-                  >
-                    + 항목
-                  </button>
+                  <div className="row" style={{ gap: 4, marginLeft: isChecklistGroup(p2.kind) ? indent + 22 : indent, marginBottom: 6 }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ fontSize: 11.5, color: "var(--muted)" }}
+                      onClick={() => setPlans((p) => [...p.slice(0, i + 1), { text: "" }, ...p.slice(i + 1)])}
+                    >
+                      + 항목
+                    </button>
+                    {checklistIndent(plans, i) < 2 && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: 11.5, color: "var(--muted)" }}
+                        onClick={() => setPlans((p) => [...p.slice(0, i + 1), { text: "", kind: "sub" }, ...p.slice(i + 1)])}
+                      >
+                        + 소분류
+                      </button>
+                    )}
+                  </div>
                 )}
                 </React.Fragment>
                 );
@@ -9794,6 +9846,7 @@ export function DailyReportView() {
               <div className="row" style={{ gap: 6 }}>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPlans((p) => [...p, { text: "" }])}>+ 항목 추가</button>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPlans((p) => [...p, { text: "", kind: "header" }])}>+ 대분류 추가</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPlans((p) => [...p, { text: "", kind: "sub" }])}>+ 소분류 추가</button>
               </div>
 
               <div className="row" style={{ gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
@@ -9811,14 +9864,16 @@ export function DailyReportView() {
               </div>
               <div className="small" style={{ fontWeight: 800, marginBottom: 4 }}>▶ 오늘 무슨 일을 하였나?</div>
               {carriedItems.map((it, i) => (
-                it.kind === "header" ? (
-                  <div key={i} className="small" style={{ fontWeight: 800, margin: "8px 0 2px" }}>▾ {it.text}</div>
+                isChecklistGroup(it.kind) ? (
+                  <div key={i} className="small" style={{ fontWeight: it.kind === "header" ? 800 : 700, margin: it.kind === "header" ? "8px 0 2px" : "5px 0 2px", marginLeft: checklistIndent(carriedItems, i) * 18, color: it.kind === "sub" ? "var(--muted)" : undefined }}>
+                    {it.kind === "header" ? "▾" : "▸"} {it.text}
+                  </div>
                 ) : (
                 <button
                   key={i}
                   type="button"
                   className="small"
-                  style={{ display: "block", background: "none", border: "none", padding: "2px 0", cursor: "pointer", lineHeight: 1.7, textAlign: "left", fontFamily: "inherit", color: "var(--ink)", marginLeft: carriedItems.slice(0, i).some((x) => x.kind === "header") ? 18 : 0 }}
+                  style={{ display: "block", background: "none", border: "none", padding: "2px 0", cursor: "pointer", lineHeight: 1.7, textAlign: "left", fontFamily: "inherit", color: "var(--ink)", marginLeft: checklistIndent(carriedItems, i) * 18 }}
                   onClick={() => saveCarried(i)}
                 >
                   ⬜ {it.text}
@@ -9857,12 +9912,14 @@ export function DailyReportView() {
                       <div className="small" style={{ color: "var(--muted)" }}>－</div>
                     ) : (
                       items.map((it, i) => {
-                        if (it.kind === "header") {
+                        if (isChecklistGroup(it.kind)) {
                           return (
-                            <div key={i} className="small" style={{ fontWeight: 800, margin: "8px 0 2px" }}>▾ {it.text}</div>
+                            <div key={i} className="small" style={{ fontWeight: it.kind === "header" ? 800 : 700, margin: it.kind === "header" ? "8px 0 2px" : "5px 0 2px", marginLeft: checklistIndent(items, i) * 18, color: it.kind === "sub" ? "var(--muted)" : undefined }}>
+                              {it.kind === "header" ? "▾" : "▸"} {it.text}
+                            </div>
                           );
                         }
-                        const indent = items.slice(0, i).some((x) => x.kind === "header");
+                        const indent = checklistIndent(items, i);
                         const anchor = checklistAnchor(it);
                         const tKey = `${r.id}|${q2.key}|${anchor}`;
                         const threads = threadMap.get(tKey) || [];
@@ -9870,7 +9927,7 @@ export function DailyReportView() {
                         const hasOpen = threads.some((t) => t.root.important);
                         return (
                           <React.Fragment key={i}>
-                            <div className="small row" style={{ lineHeight: 1.7, alignItems: "center", gap: 6, flexWrap: "wrap", marginLeft: indent ? 18 : 0 }}>
+                            <div className="small row" style={{ lineHeight: 1.7, alignItems: "center", gap: 6, flexWrap: "wrap", marginLeft: indent * 18 }}>
                               <span
                                 style={{ cursor: clickable ? "pointer" : undefined }}
                                 onClick={clickable ? () => toggleMineItem(r, i) : undefined}
