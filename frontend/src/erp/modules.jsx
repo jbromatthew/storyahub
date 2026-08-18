@@ -4510,15 +4510,31 @@ function buildAssigneeCompareRows(assigneeTables, names, onlyWithData = true) {
     .filter((row) => !onlyWithData || row.byGroup.some((m) => (m?.inquiries ?? 0) > 0));
 }
 
-function PlanMetricsCell({ metrics, firstOfGroup }) {
+/** 여러 달을 묶은 비교군은 개수를 월평균으로 — 기간이 다른 비교군끼리도 바로 비교되도록 */
+function formatMonthlyAvg(value, monthCount) {
+  if (value == null || Number.isNaN(value)) return "-";
+  if (!monthCount || monthCount <= 1) return String(value);
+  const avg = value / monthCount;
+  return avg >= 10 ? avg.toFixed(0) : avg.toFixed(1).replace(/\.0$/, "");
+}
+
+function PlanMetricsCell({ metrics, firstOfGroup, monthCount }) {
   const cls = firstOfGroup ? " grp-border" : "";
   if (!metrics) return <td className={"num rate-plan-cell empty" + cls}>-</td>;
+  const multi = (monthCount || 1) > 1;
   return (
     <td className={"rate-plan-cell" + cls}>
       {PLAN_CELL_METRICS.map((m) => (
         <div key={m.key} className={m.format === "percent" ? "pct" : ""}>
           <span className="lbl">{m.label}</span>
-          <span>{formatRateValue(metrics[m.key], m.format)}</span>
+          <span>
+            {m.format === "percent" ? formatRateValue(metrics[m.key], m.format) : (
+              <>
+                {formatMonthlyAvg(metrics[m.key], monthCount)}
+                {multi && metrics[m.key] != null && <span className="rate-sum" title={`${monthCount}개월 합계`}>({metrics[m.key]})</span>}
+              </>
+            )}
+          </span>
         </div>
       ))}
     </td>
@@ -4526,7 +4542,13 @@ function PlanMetricsCell({ metrics, firstOfGroup }) {
 }
 
 // 담당자별/요금제별 비교표: 오가닉 분리 시 각 비교군을 전체/오가닉/비오가닉 3열로
-function SegCompareHead({ firstLabel, groupLabels, split, selGroups, onSelectGroup }) {
+function SegCompareHead({ firstLabel, groupLabels, split, selGroups, onSelectGroup, monthCounts }) {
+  const groupTitle = (label, i) => (
+    <>
+      {label}
+      {(monthCounts?.[i] || 1) > 1 && <div className="grp-sub">월평균 · {monthCounts[i]}개월</div>}
+    </>
+  );
   const thProps = (i) => ({
     className: "grp-click" + (selGroups?.includes(i) ? " grp-sel" : ""),
     title: "두 비교군을 클릭하면 왼쪽에 증감 색 표시",
@@ -4537,7 +4559,7 @@ function SegCompareHead({ firstLabel, groupLabels, split, selGroups, onSelectGro
       <thead>
         <tr>
           <th className="plan-col">{firstLabel}</th>
-          {groupLabels.map((label, i) => <th key={label} {...thProps(i)} className={thProps(i).className + " grp-border"}>{label}</th>)}
+          {groupLabels.map((label, i) => <th key={label} {...thProps(i)} className={thProps(i).className + " grp-border"}>{groupTitle(label, i)}</th>)}
         </tr>
       </thead>
     );
@@ -4546,7 +4568,7 @@ function SegCompareHead({ firstLabel, groupLabels, split, selGroups, onSelectGro
     <thead>
       <tr>
         <th className="plan-col" rowSpan={2}>{firstLabel}</th>
-        {groupLabels.map((label, i) => <th key={label} colSpan={3} {...thProps(i)} className={thProps(i).className + " grp-border"}>{label}</th>)}
+        {groupLabels.map((label, i) => <th key={label} colSpan={3} {...thProps(i)} className={thProps(i).className + " grp-border"}>{groupTitle(label, i)}</th>)}
       </tr>
       <tr>
         {groupLabels.map((label) => (
@@ -4561,15 +4583,16 @@ function SegCompareHead({ firstLabel, groupLabels, split, selGroups, onSelectGro
   );
 }
 
-function SegCompareCells({ byGroup, byGroupSegments, split }) {
-  if (!split) return byGroup.map((m, i) => <PlanMetricsCell key={i} metrics={m} firstOfGroup />);
+function SegCompareCells({ byGroup, byGroupSegments, split, monthCounts }) {
+  if (!split) return byGroup.map((m, i) => <PlanMetricsCell key={i} metrics={m} firstOfGroup monthCount={monthCounts?.[i]} />);
   return byGroup.map((_, i) => {
     const seg = byGroupSegments?.[i];
+    const mc = monthCounts?.[i];
     return (
       <React.Fragment key={i}>
-        <PlanMetricsCell metrics={seg?.all ?? null} firstOfGroup />
-        <PlanMetricsCell metrics={seg?.organic ?? null} />
-        <PlanMetricsCell metrics={seg?.nonOrganic ?? null} />
+        <PlanMetricsCell metrics={seg?.all ?? null} firstOfGroup monthCount={mc} />
+        <PlanMetricsCell metrics={seg?.organic ?? null} monthCount={mc} />
+        <PlanMetricsCell metrics={seg?.nonOrganic ?? null} monthCount={mc} />
       </React.Fragment>
     );
   });
@@ -5032,6 +5055,9 @@ export function PaymentRateView() {
   };
 
   const groupLabels = result?.groups?.map((g) => g.label) || groups.filter((g) => g.months.length).map((g) => g.label);
+  // 비교군별 개월 수 — 개수를 월평균으로 환산해 기간이 다른 비교군끼리도 바로 비교되게
+  const groupMonthCounts = result?.groups?.map((g) => g.months?.length || 1)
+    || groups.filter((g) => g.months.length).map((g) => g.months.length);
   const planCompareRows = useMemo(() => buildPlanCompareRows(result?.planTables), [result]);
   const compareAssigneeNames = selectedAssignees.length ? selectedAssignees : (meta?.assignees || []);
   const assigneeCompareRows = useMemo(
@@ -5297,12 +5323,12 @@ export function PaymentRateView() {
               ) : (
               <div className="rate-table-wrap rate-table-scroll rate-cmp-sticky">
                 <table className="rate-table rate-plan-compare">
-                  <SegCompareHead firstLabel="담당자" groupLabels={groupLabels} split={splitSegments} selGroups={selGroups} onSelectGroup={toggleSelGroup} />
+                  <SegCompareHead firstLabel="담당자" groupLabels={groupLabels} split={splitSegments} selGroups={selGroups} onSelectGroup={toggleSelGroup} monthCounts={groupMonthCounts} />
                   <tbody>
                     {assigneeCompareRows.map((row) => (
                       <tr key={row.assignee}>
                         <td className="plan-col"><AssigneeBadge name={row.assignee} colorMap={meta?.assigneeColors} /></td>
-                        <SegCompareCells byGroup={row.byGroup} byGroupSegments={row.byGroupSegments} split={splitSegments} />
+                        <SegCompareCells byGroup={row.byGroup} byGroupSegments={row.byGroupSegments} split={splitSegments} monthCounts={groupMonthCounts} />
                       </tr>
                     ))}
                   </tbody>
@@ -5317,12 +5343,12 @@ export function PaymentRateView() {
               <div className="rate-plan-title">요금제별 비교</div>
               <div className="rate-table-wrap rate-table-scroll rate-cmp-sticky">
                 <table className="rate-table rate-plan-compare">
-                  <SegCompareHead firstLabel="요금제" groupLabels={groupLabels} split={splitSegments} selGroups={selGroups} onSelectGroup={toggleSelGroup} />
+                  <SegCompareHead firstLabel="요금제" groupLabels={groupLabels} split={splitSegments} selGroups={selGroups} onSelectGroup={toggleSelGroup} monthCounts={groupMonthCounts} />
                   <tbody>
                     {planCompareRows.map((row) => (
                       <tr key={row.plan}>
                         <td className="plan-col">{row.plan}</td>
-                        <SegCompareCells byGroup={row.byGroup} byGroupSegments={row.byGroupSegments} split={splitSegments} />
+                        <SegCompareCells byGroup={row.byGroup} byGroupSegments={row.byGroupSegments} split={splitSegments} monthCounts={groupMonthCounts} />
                       </tr>
                     ))}
                   </tbody>

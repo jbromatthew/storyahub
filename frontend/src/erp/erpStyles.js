@@ -425,6 +425,8 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .rate-plan-cell div{display:flex;justify-content:space-between;gap:8px;}
 .rate-plan-cell .lbl{color:var(--muted);flex-shrink:0;}
 .rate-plan-cell .pct{font-weight:700;color:var(--accent-deep);}
+.rate-plan-cell .rate-sum{color:var(--muted);font-size:10px;margin-left:4px;font-weight:400;}
+.rate-plan-compare .grp-sub{font-size:10px;font-weight:500;color:var(--muted);margin-top:2px;letter-spacing:0;}
 
 .assignee-badge{display:inline-flex;align-items:center;padding:4px 10px;border-radius:6px;font-size:13px;font-weight:600;line-height:1.3;white-space:nowrap;}
 .assignee-badge.compact{font-size:12px;padding:3px 8px;}
