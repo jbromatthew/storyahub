@@ -5854,6 +5854,8 @@ function ClosingEditLogPanel() {
   const [data, setData] = useState(null);
   const [days, setDays] = useState(60);
   const [editor, setEditor] = useState("");
+  const [assignee, setAssignee] = useState("");
+  const [lq, setLq] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -5867,7 +5869,13 @@ function ClosingEditLogPanel() {
   if (loading) return <div className="spinner" />;
   if (!data) return null;
 
-  const rows = editor ? data.rows.filter((r) => r.editorEmail === editor) : data.rows;
+  const kw = lq.trim().toLowerCase();
+  const rows = data.rows.filter((r) =>
+    (!editor || r.editorEmail === editor) &&
+    (!assignee || r.assignee === assignee) &&
+    (!kw || r.center.toLowerCase().includes(kw) || r.assignee.toLowerCase().includes(kw)
+      || r.editorName.toLowerCase().includes(kw) || r.field.toLowerCase().includes(kw)
+      || String(r.before).toLowerCase().includes(kw) || String(r.after).toLowerCase().includes(kw)));
   const fmtAt = (iso) => {
     const d = new Date(new Date(iso).getTime() + 9 * 3600 * 1000);
     return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
@@ -5884,7 +5892,16 @@ function ClosingEditLogPanel() {
         {[[30, "최근 30일"], [60, "최근 60일"], [180, "최근 6개월"]].map(([d, label]) => (
           <button key={d} type="button" className={"chip" + (days === d ? " on" : "")} onClick={() => setDays(d)}>{label}</button>
         ))}
-        <span className="small" style={{ marginLeft: "auto", color: "var(--muted)" }}>총 {data.rows.length}건 수정</span>
+        <input
+          value={lq}
+          onChange={(e) => setLq(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Escape") setLq(""); }}
+          placeholder="🔍 담당자·센터·수정자·내용 검색"
+          style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, minWidth: 230, background: "#fff" }}
+        />
+        <span className="small" style={{ marginLeft: "auto", color: "var(--muted)" }}>
+          {rows.length !== data.rows.length ? `${rows.length}건 / ` : ""}총 {data.rows.length}건 수정
+        </span>
       </div>
 
       {!data.rows.length ? (
@@ -5908,10 +5925,14 @@ function ClosingEditLogPanel() {
           </div>
 
           <div className="rate-plan-block" style={{ marginTop: 14 }}>
-            <div className="rate-plan-title">리드 담당자(응대자)별 수정 건수</div>
+            <div className="rate-plan-title">리드 담당자(응대자)별 — 클릭하면 그 담당자 기록만</div>
             <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+              <button type="button" className={"chip" + (!assignee ? " on" : "")} onClick={() => setAssignee("")}>전체 {data.rows.length}</button>
               {data.byAssignee.map((a) => (
-                <span key={a.name} className="tag gray" style={{ fontSize: 12 }}>{a.name} {a.count}건</span>
+                <button key={a.name} type="button" className={"chip" + (assignee === a.name ? " on" : "")}
+                  onClick={() => setAssignee(assignee === a.name ? "" : a.name)}>
+                  {a.name} {a.count}
+                </button>
               ))}
             </div>
           </div>
@@ -5941,7 +5962,7 @@ function ClosingEditLogPanel() {
                     <td style={{ textAlign: "left", fontWeight: 600 }}>{short(r.after)}</td>
                   </tr>
                 ))}
-                {!rows.length && <tr><td colSpan={7} className="erp-tbl-empty">선택한 수정자의 기록이 없습니다</td></tr>}
+                {!rows.length && <tr><td colSpan={7} className="erp-tbl-empty">조건에 맞는 수정 기록이 없습니다</td></tr>}
               </tbody>
             </table>
           </div>
