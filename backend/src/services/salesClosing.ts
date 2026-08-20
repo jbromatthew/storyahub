@@ -168,7 +168,8 @@ export const EDITABLE_URGENCIES = ["7일 이내", "30일 이내", "60일 이내"
 /** 상담온도·결제임박률·문의 내용·미도입 사유 수정 → 구글시트 해당 셀에 역기록 + DB 반영 */
 export async function updateClosingLead(
   id: string,
-  patch: { temp?: string; note?: string; urgency?: string; reason?: string }
+  patch: { temp?: string; note?: string; urgency?: string; reason?: string },
+  editor?: { email: string; name: string }
 ): Promise<{ temp: string; note: string; urgency: string; reason: string; stillClosing: boolean }> {
   const row = await prisma.erpSalesInquiry.findUnique({ where: { id } });
   if (!row) throw new Error("리드를 찾을 수 없습니다");
@@ -197,6 +198,24 @@ export async function updateClosingLead(
   const newData = { ...data, ...updates };
   await prisma.erpSalesInquiry.update({ where: { id }, data: { data: newData } });
 
+  // 수정 이력 — 실제로 값이 바뀐 항목만 남긴다
+  const changed = Object.entries(updates).filter(([k, v]) => String(data[k] ?? "").trim() !== String(v).trim());
+  if (changed.length) {
+    await prisma.erpClosingEditLog.createMany({
+      data: changed.map(([field, after]) => ({
+        leadId: id,
+        month: row.sheetName.trim(),
+        center: String(data["센터명"] ?? "").trim(),
+        assignee: String(data["응대자"] ?? "").trim() || "미지정",
+        editorEmail: editor?.email || "unknown",
+        editorName: editor?.name || editor?.email || "알 수 없음",
+        field,
+        before: String(data[field] ?? "").slice(0, 2000),
+        after: String(after).slice(0, 2000),
+      })),
+    }).catch(() => {});
+  }
+
   const temp = String(newData["상담온도"] ?? "");
   return {
     temp,
@@ -204,5 +223,60 @@ export async function updateClosingLead(
     urgency: String(newData["결제임박률"] ?? ""),
     reason: String(newData["*미도입 사유"] ?? ""),
     stillClosing: (POSITIVE_TEMPS as readonly string[]).includes(temp),
+  };
+}
+
+export type ClosingEditLogRow = {
+  id: string;
+  at: string;
+  month: string;
+  center: string;
+  assignee: string;
+  editorName: string;
+  editorEmail: string;
+  field: string;
+  before: string;
+  after: string;
+};
+
+/** 클로징 수정 이력 — 최근 N일, 수정한 사람(editor)·리드 응대자(assignee)별 집계 포함 */
+export async function getClosingEditLogs(opts: { days?: number } = {}): Promise<{
+  rows: ClosingEditLogRow[];
+  byEditor: { name: string; email: string; count: number; fields: Record<string, number> }[];
+  byAssignee: { name: string; count: number }[];
+}> {
+  const days = Math.min(365, Math.max(1, opts.days ?? 60));
+  const since = new Date(Date.now() - days * 24 * 3600 * 1000);
+  const logs = await prisma.erpClosingEditLog.findMany({
+    where: { createdAt: { gte: since } },
+    orderBy: { createdAt: "desc" },
+    take: 1000,
+  });
+
+  const editors = new Map<string, { name: string; email: string; count: number; fields: Record<string, number> }>();
+  const assignees = new Map<string, number>();
+  for (const l of logs) {
+    const e = editors.get(l.editorEmail) ?? { name: l.editorName, email: l.editorEmail, count: 0, fields: {} };
+    e.count += 1;
+    e.fields[l.field] = (e.fields[l.field] || 0) + 1;
+    editors.set(l.editorEmail, e);
+    assignees.set(l.assignee, (assignees.get(l.assignee) || 0) + 1);
+  }
+
+  return {
+    rows: logs.map((l) => ({
+      id: l.id,
+      at: l.createdAt.toISOString(),
+      month: l.month,
+      center: l.center,
+      assignee: l.assignee,
+      editorName: l.editorName,
+      editorEmail: l.editorEmail,
+      field: l.field,
+      before: l.before,
+      after: l.after,
+    })),
+    byEditor: [...editors.values()].sort((a, b) => b.count - a.count),
+    byAssignee: [...assignees.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
   };
 }

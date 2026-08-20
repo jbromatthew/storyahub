@@ -5849,6 +5849,108 @@ function ClosingTextCell({ text, placeholder, onSave }) {
   );
 }
 
+/** 클로징 수정 기록 — 누가(수정자) 어느 담당자(응대자) 리드의 무엇을 바꿨는지 */
+function ClosingEditLogPanel() {
+  const [data, setData] = useState(null);
+  const [days, setDays] = useState(60);
+  const [editor, setEditor] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    api.erpSalesClosingLogs({ days })
+      .then(setData)
+      .catch(notifyError)
+      .finally(() => setLoading(false));
+  }, [days]);
+
+  if (loading) return <div className="spinner" />;
+  if (!data) return null;
+
+  const rows = editor ? data.rows.filter((r) => r.editorEmail === editor) : data.rows;
+  const fmtAt = (iso) => {
+    const d = new Date(new Date(iso).getTime() + 9 * 3600 * 1000);
+    return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+  };
+  const short = (v) => {
+    const t = String(v || "").replace(/\n/g, " ").trim();
+    if (!t) return <span style={{ color: "var(--muted)" }}>(빈값)</span>;
+    return t.length > 40 ? t.slice(0, 40) + "…" : t;
+  };
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+        {[[30, "최근 30일"], [60, "최근 60일"], [180, "최근 6개월"]].map(([d, label]) => (
+          <button key={d} type="button" className={"chip" + (days === d ? " on" : "")} onClick={() => setDays(d)}>{label}</button>
+        ))}
+        <span className="small" style={{ marginLeft: "auto", color: "var(--muted)" }}>총 {data.rows.length}건 수정</span>
+      </div>
+
+      {!data.rows.length ? (
+        <div className="small" style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+          이 기간에 수정 기록이 없습니다. (기록은 이 기능 배포 이후 수정분부터 쌓입니다)
+        </div>
+      ) : (
+        <>
+          <div className="rate-plan-block">
+            <div className="rate-plan-title">수정한 사람별</div>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+              <button type="button" className={"chip" + (!editor ? " on" : "")} onClick={() => setEditor("")}>전체 {data.rows.length}</button>
+              {data.byEditor.map((e) => (
+                <button key={e.email} type="button" className={"chip" + (editor === e.email ? " on" : "")}
+                  onClick={() => setEditor(editor === e.email ? "" : e.email)}
+                  title={Object.entries(e.fields).map(([f, n]) => `${f} ${n}건`).join(" · ")}>
+                  {e.name} {e.count}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="rate-plan-block" style={{ marginTop: 14 }}>
+            <div className="rate-plan-title">리드 담당자(응대자)별 수정 건수</div>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+              {data.byAssignee.map((a) => (
+                <span key={a.name} className="tag gray" style={{ fontSize: 12 }}>{a.name} {a.count}건</span>
+              ))}
+            </div>
+          </div>
+
+          <div className="dash-table-wrap" style={{ marginTop: 14 }}>
+            <table className="dash-table">
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left" }}>시각</th>
+                  <th style={{ textAlign: "left" }}>수정자</th>
+                  <th className="label">센터</th>
+                  <th style={{ textAlign: "left" }}>담당자</th>
+                  <th style={{ textAlign: "left" }}>항목</th>
+                  <th style={{ textAlign: "left" }}>변경 전</th>
+                  <th style={{ textAlign: "left" }}>변경 후</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id}>
+                    <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{fmtAt(r.at)}</td>
+                    <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{r.editorName}</td>
+                    <td className="label">{r.center}</td>
+                    <td style={{ textAlign: "left" }}><AssigneeBadge name={r.assignee} /></td>
+                    <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{r.field}</td>
+                    <td style={{ textAlign: "left", color: "var(--muted)" }}>{short(r.before)}</td>
+                    <td style={{ textAlign: "left", fontWeight: 600 }}>{short(r.after)}</td>
+                  </tr>
+                ))}
+                {!rows.length && <tr><td colSpan={7} className="erp-tbl-empty">선택한 수정자의 기록이 없습니다</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function SalesClosingView() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -5856,6 +5958,7 @@ export function SalesClosingView() {
   const [selected, setSelected] = useState("");
   const [sort, setSort] = useState({ key: "", dir: 1 }); // key ""=기본(임박·긍정 순)
   const [q, setQ] = useState("");
+  const [view, setView] = useState("leads"); // leads | logs
   const refreshedRef = useRef(false);
 
   const toggleSort = (key) =>
@@ -5962,7 +6065,13 @@ export function SalesClosingView() {
         )}
       </div>
 
-      {loading ? (
+      <div className="row" style={{ gap: 6, marginTop: 14 }}>
+        {[["leads", "클로징 리드"], ["logs", "수정 기록"]].map(([k, label]) => (
+          <button key={k} type="button" className={"chip" + (view === k ? " on" : "")} onClick={() => setView(k)}>{label}</button>
+        ))}
+      </div>
+
+      {view === "logs" ? <ClosingEditLogPanel /> : loading ? (
         <div className="spinner" />
       ) : (
         <>

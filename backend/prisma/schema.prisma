@@ -973,3 +973,23 @@ model ErpAccessLog {
   @@index([date])
   @@index([email])
 }
+
+/// 클로징 관리 수정 이력 — 누가 어느 리드의 무엇을 어떻게 바꿨는지 (시트 역기록과 함께 기록)
+model ErpClosingEditLog {
+  id          String   @id @default(cuid())
+  leadId      String
+  month       String   // 문의 시트 월 (2026.08.)
+  center      String   // 센터명 (당시 값)
+  assignee    String   // 리드 응대자 (당시 값)
+  editorEmail String
+  editorName  String
+  field       String   // 상담온도 | 결제임박률 | 문의 내용 | *미도입 사유
+  before      String
+  after       String
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([editorEmail])
+  @@index([assignee])
+  @@index([leadId])
+}

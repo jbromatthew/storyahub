@@ -366,9 +366,22 @@ salesSyncRouter.put("/closing/lead/:id", async (req: AuthedRequest, res: Respons
   if (typeof b.reason === "string") patch.reason = b.reason;
   try {
     const { updateClosingLead } = await import("../services/salesClosing.js");
-    res.json(await updateClosingLead(req.params.id, patch));
+    const { prisma } = await import("../db.js");
+    const me = await prisma.user.findUnique({ where: { id: req.userId! }, select: { email: true, name: true } });
+    const editor = { email: (me?.email || "").toLowerCase(), name: me?.name || me?.email || "" };
+    res.json(await updateClosingLead(req.params.id, patch, editor));
   } catch (e) {
     res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+// 클로징 수정 이력 — 누가 어느 리드의 무엇을 바꿨는지 (담당자별 집계 포함)
+salesSyncRouter.get("/closing/logs", async (req: AuthedRequest, res: Response) => {
+  try {
+    const { getClosingEditLogs } = await import("../services/salesClosing.js");
+    res.json(await getClosingEditLogs({ days: Number(req.query.days) || 60 }));
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 

@@ -329,6 +329,7 @@ export const api = {
   },
   erpSalesClosing: ({ refresh } = {}) => req(`/erp/sales/closing${refresh ? "?refresh=1" : ""}`),
   erpSalesClosingLeadUpdate: (id, body) => req(`/erp/sales/closing/lead/${id}`, { method: "PUT", body }),
+  erpSalesClosingLogs: ({ days } = {}) => req(`/erp/sales/closing/logs${days ? `?days=${days}` : ""}`),
   erpSalesDashboard: ({ month } = {}) => {
     const p = new URLSearchParams();
     if (month) p.set("month", month);
