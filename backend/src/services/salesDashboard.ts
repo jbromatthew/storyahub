@@ -53,6 +53,7 @@ export type DashboardItem = {
   gap: number;
   rate: number | null;
   avg3?: number; // 직전 3개월 월평균 (목표 설정 참고용, 업종별 섹션 등)
+  avg12?: number; // 직전 연도(1~12월) 월평균
   prev1?: number; // 직전월 실적
 };
 
@@ -771,7 +772,8 @@ function buildIndustryDrilldowns(
   inquiryByIndustry: Map<string, number>,
   inquiryGoalByIndustry: Map<string, number> | null,
   prevAvg: PrevAvg,
-  prevMonth: PrevAvg
+  prevMonth: PrevAvg,
+  prevYear?: PrevAvg
 ): Record<string, IndustryDrilldown> {
   const weekLabels = resolveWeekLabels(industryWeek, counts);
   const industries = sortLabels(
@@ -799,6 +801,10 @@ function buildIndustryDrilldowns(
     const avgChMap = prevAvg.byIndustryChannel.get(industry) ?? new Map<string, number>();
     const prevPlanMap = prevMonth.byIndustryPlan.get(industry) ?? new Map<string, number>();
     const prevChMap = prevMonth.byIndustryChannel.get(industry) ?? new Map<string, number>();
+    const yrPlanMap = prevYear?.byIndustryPlan.get(industry) ?? new Map<string, number>();
+    const yrChMap = prevYear?.byIndustryChannel.get(industry) ?? new Map<string, number>();
+    const avg12Of = (map: Map<string, number>, key: string) =>
+      prevYear ? Math.round(((map.get(key) ?? 0) / prevYear.n) * 10) / 10 : 0;
     const avg3Of = (map: Map<string, number>, key: string) =>
       Math.round(((map.get(key) ?? 0) / prevAvg.n) * 10) / 10;
 
@@ -812,9 +818,10 @@ function buildIndustryDrilldowns(
       .map((plan) => ({
         ...item(plan, planGoals[plan] ?? 0, planActuals.get(plan) ?? 0),
         avg3: avg3Of(avgPlanMap, plan),
+        avg12: avg12Of(yrPlanMap, plan),
         prev1: prevPlanMap.get(plan) ?? 0,
       }))
-      .filter((it) => it.goal > 0 || it.actual > 0 || it.avg3 > 0 || (it.prev1 ?? 0) > 0);
+      .filter((it) => it.goal > 0 || it.actual > 0 || it.avg3 > 0 || (it.avg12 ?? 0) > 0 || (it.prev1 ?? 0) > 0);
 
     const channelGoals = overrides.industryChannelGoals[industry] ?? {};
     const channelActuals = counts.byIndustryChannel.get(industry) ?? new Map<string, number>();
@@ -825,9 +832,10 @@ function buildIndustryDrilldowns(
       .map((channel) => ({
         ...item(channel, channelGoals[channel] ?? 0, channelActuals.get(channel) ?? 0),
         avg3: avg3Of(avgChMap, channel),
+        avg12: avg12Of(yrChMap, channel),
         prev1: prevChMap.get(channel) ?? 0,
       }))
-      .filter((it) => it.goal > 0 || it.actual > 0 || it.avg3 > 0 || (it.prev1 ?? 0) > 0);
+      .filter((it) => it.goal > 0 || it.actual > 0 || it.avg3 > 0 || (it.avg12 ?? 0) > 0 || (it.prev1 ?? 0) > 0);
 
     const weekly = weekLabels.map((label, weekIdx) => {
       const weekNum = weekIdx + 1;
@@ -1150,13 +1158,16 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
     const d = new Date(selY, selM - 1 - k, 1);
     prevLabels.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
   }
-  const [grid, goalOverrides, counts, inquiryStats, prevAvg, prevMonthAvg, latest] = await Promise.all([
+  // 직전 연도 1~12월 (2026년 조회 시 2025-01 ~ 2025-12)
+  const prevYearLabels = Array.from({ length: 12 }, (_, i) => `${selY - 1}-${String(i + 1).padStart(2, "0")}`);
+  const [grid, goalOverrides, counts, inquiryStats, prevAvg, prevMonthAvg, prevYearAvg, latest] = await Promise.all([
     fetchSheetGridCached(spreadsheetId, selectedMonth),
     loadDashboardGoalOverrides(selectedMonth),
     loadMonthCounts(monthLabel),
     loadInquiryStats(selectedMonth),
     loadPrevIndustryAvg(prevLabels),
     loadPrevIndustryAvg(prevLabels.slice(0, 1)),
+    loadPrevIndustryAvg(prevYearLabels),
     prisma.erpSalesOrder.findFirst({
       where: { spreadsheetId: env.googleSheets.orderSpreadsheetId },
       orderBy: { syncedAt: "desc" },
@@ -1203,7 +1214,8 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
     inquiryStats.byIndustry,
     inquiryGoalByIndustry,
     prevAvg,
-    prevMonthAvg
+    prevMonthAvg,
+    prevYearAvg
   );
   const drillWeekLabels = resolveWeekLabels(industryWeek ?? channelWeek ?? planWeek, counts);
   const planEff = planGoalsFromMatrix(planParsed, effOverrides.industryPlanGoals);
@@ -1232,6 +1244,12 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
     for (const v of planMap.values()) sum += v;
     industryPrev1.set(ind, sum);
   }
+  const industryAvg12 = new Map<string, number>();
+  for (const [ind, planMap] of prevYearAvg.byIndustryPlan) {
+    let sum = 0;
+    for (const v of planMap.values()) sum += v;
+    industryAvg12.set(ind, Math.round((sum / prevYearAvg.n) * 10) / 10);
+  }
   const industrySection = buildSection(
     "industry",
     "업종별",
@@ -1243,6 +1261,7 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
   industrySection.items = industrySection.items.map((it) => ({
     ...it,
     avg3: industryAvg3.get(it.label) ?? 0,
+    avg12: industryAvg12.get(it.label) ?? 0,
     prev1: industryPrev1.get(it.label) ?? 0,
   }));
 
@@ -1407,12 +1426,15 @@ export async function getMarketingDashboard(month?: string): Promise<SalesDashbo
     prevLabels.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
   }
 
-  const [grid, goalOverrides, counts, prevAvg, prevMonthAvg, latest] = await Promise.all([
+  const prevYearLabels = Array.from({ length: 12 }, (_, i) => `${selY - 1}-${String(i + 1).padStart(2, "0")}`);
+
+  const [grid, goalOverrides, counts, prevAvg, prevMonthAvg, prevYearAvg, latest] = await Promise.all([
     fetchSheetGridCached(spreadsheetId, selectedMonth),
     loadDashboardGoalOverrides(marketingGoalKey(selectedMonth)),
     loadInquiryMonthCounts(selectedMonth),
     loadPrevInquiryAvg(prevLabels),
     loadPrevInquiryAvg(prevLabels.slice(0, 1)),
+    loadPrevInquiryAvg(prevYearLabels),
     prisma.erpSalesInquiry.findFirst({
       where: { spreadsheetId: env.googleSheets.inquirySpreadsheetId },
       orderBy: { syncedAt: "desc" },
@@ -1452,7 +1474,8 @@ export async function getMarketingDashboard(month?: string): Promise<SalesDashbo
     new Map(),
     null,
     prevAvg,
-    prevMonthAvg
+    prevMonthAvg,
+    prevYearAvg
   );
   const drillWeekLabels = resolveWeekLabels(industryWeek ?? channelWeek ?? planWeek, counts);
   const planEff = planGoalsFromMatrix(planParsed, effOverrides.industryPlanGoals);
@@ -1483,6 +1506,12 @@ export async function getMarketingDashboard(month?: string): Promise<SalesDashbo
     for (const v of planMap.values()) sum += v;
     industryPrev1.set(ind, sum);
   }
+  const industryAvg12 = new Map<string, number>();
+  for (const [ind, planMap] of prevYearAvg.byIndustryPlan) {
+    let sum = 0;
+    for (const v of planMap.values()) sum += v;
+    industryAvg12.set(ind, Math.round((sum / prevYearAvg.n) * 10) / 10);
+  }
   const industrySection = buildSection(
     "industry",
     "업종별",
@@ -1494,6 +1523,7 @@ export async function getMarketingDashboard(month?: string): Promise<SalesDashbo
   industrySection.items = industrySection.items.map((it) => ({
     ...it,
     avg3: industryAvg3.get(it.label) ?? 0,
+    avg12: industryAvg12.get(it.label) ?? 0,
     prev1: industryPrev1.get(it.label) ?? 0,
   }));
 

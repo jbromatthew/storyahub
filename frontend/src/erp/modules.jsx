@@ -6375,6 +6375,7 @@ function DrillGoalTable({ title, labelHeader, items, editable, draft, onChange, 
               <th>목표</th>
               <th>직전월</th>
               <th>직전 3개월 평균</th>
+              <th>직전 1년 평균</th>
               <th>현황</th>
               <th>달성률</th>
               <th>미달</th>
@@ -6402,6 +6403,7 @@ function DrillGoalTable({ title, labelHeader, items, editable, draft, onChange, 
                   </td>
                   <td className="num" style={{ color: "var(--muted)" }}>{row.prev1 != null ? row.prev1 : "-"}</td>
                   <td className="num" style={{ color: "var(--muted)" }}>{row.avg3 != null ? row.avg3 : "-"}</td>
+                  <td className="num" style={{ color: "var(--muted)" }}>{row.avg12 != null ? row.avg12 : "-"}</td>
                   <td className="num">{row.actual}</td>
                   <td className="num" style={{ color: dashRateColor(goal > 0 ? rate : null), fontWeight: 700 }}>
                     {goal > 0 ? formatDashRate(rate) : "-"}
@@ -6441,7 +6443,7 @@ export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGo
   const fullPlanItems = useMemo(() => {
     const base = detail?.plans || [];
     const master = planList?.length ? planList : base.map((p) => p.label);
-    return master.map((label) => base.find((p) => p.label === label) || { key: label, label, goal: 0, actual: 0, gap: 0, rate: null, avg3: 0, prev1: 0 });
+    return master.map((label) => base.find((p) => p.label === label) || { key: label, label, goal: 0, actual: 0, gap: 0, rate: null, avg3: 0, avg12: 0, prev1: 0 });
   }, [detail, planList]);
   const planItems = editing ? fullPlanItems : detail?.plans;
 
@@ -7220,6 +7222,7 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
                     <th>목표</th>
                     {tab === "industry" && <th>직전월</th>}
                     {tab === "industry" && <th>직전 3개월 평균</th>}
+                    {tab === "industry" && <th>직전 1년 평균</th>}
                     <th>현황</th>
                     <th>달성률</th>
                     <th>미달</th>
@@ -7274,6 +7277,9 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
                       {tab === "industry" && (
                         <td className="num" style={{ color: "var(--muted)" }}>{row.avg3 != null ? row.avg3 : "-"}</td>
                       )}
+                      {tab === "industry" && (
+                        <td className="num" style={{ color: "var(--muted)" }}>{row.avg12 != null ? row.avg12 : "-"}</td>
+                      )}
                       <td className="num">{row.actual}</td>
                       <td className="num" style={{ color: dashRateColor(rate), fontWeight: 700 }}>
                         {formatDashRate(rate)}
@@ -7306,6 +7312,11 @@ export function SalesDashboardView({ variant = "sales" } = {}) {
                     {tab === "industry" && (
                       <td className="num" style={{ color: "var(--muted)" }}>
                         {Math.round(section.items.reduce((s, r) => s + (r.avg3 || 0), 0) * 10) / 10}
+                      </td>
+                    )}
+                    {tab === "industry" && (
+                      <td className="num" style={{ color: "var(--muted)" }}>
+                        {Math.round(section.items.reduce((s, r) => s + (r.avg12 || 0), 0) * 10) / 10}
                       </td>
                     )}
                     <td className="num">{section.total.actual}</td>
