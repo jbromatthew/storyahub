@@ -55,6 +55,6 @@ INV_ID="$(aws cloudfront create-invalidation \
   --paths "/*" \
   --query 'Invalidation.Id' \
   --output text)"
-echo "   invalidation: $INV_ID (1~3분 후 record.storyahub.com 반영)"
+echo "   invalidation: $INV_ID (1~3분 후 b2b.broj.io · record.storyahub.com 반영)"
 
-echo "✓ 완료 — https://record.storyahub.com"
+echo "✓ 완료 — https://b2b.broj.io (기존 https://record.storyahub.com 도 같은 배포)"

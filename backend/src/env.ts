@@ -40,6 +40,7 @@ function parseCorsOrigins(): string[] {
       "https://www.storyahub.com",
       "https://app.storyahub.com",
       "https://record.storyahub.com",
+      "https://b2b.broj.io",
     ];
   }
   return [];
@@ -102,7 +103,7 @@ export const env = {
   couponAdminSecret: process.env.COUPON_ADMIN_SECRET ?? "",
   publicAppUrl:
     process.env.PUBLIC_APP_URL ||
-    (isProduction ? "https://record.storyahub.com" : "http://localhost:5173"),
+    (isProduction ? "https://b2b.broj.io" : "http://localhost:5173"),
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID ?? "",
     clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
