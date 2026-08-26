@@ -1,5 +1,7 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { prisma } from "../db.js";
+import { env } from "../env.js";
 
 /** 무계정 공개 라우트 — 고객이 스마트상점 가이드에서 접수 정보를 직접 제출.
  *  2단계로 나눠 받는다: 신청 시작 시 리드 정보(연락처 기준) → 신청을 마친 뒤 사업자번호·스마트상점 ID.
@@ -26,6 +28,28 @@ function normalizeBizNo(raw: string): string | null {
   return /준비/.test(raw) ? "준비중" : null;
 }
 
+/** 010****5678 — 조회 결과로 연락처 원문을 내보내지 않는다 */
+function maskPhone(p: string): string {
+  if (p.length < 7) return "*".repeat(p.length);
+  return p.slice(0, 3) + "*".repeat(p.length - 7) + p.slice(-4);
+}
+
+/** 사업자번호로 기존 접수 건 찾기. '준비중'은 여러 센터가 함께 쓰므로 키가 될 수 없다. */
+async function findByBizNo(roundId: string, bizNo: string) {
+  if (bizNo === "준비중") return null;
+  return prisma.erpSmartStoreApply.findFirst({ where: { roundId, bizNo } });
+}
+
+/* 사업자번호는 공개 정보라 훑어가며 연락처를 모을 수 있다.
+   응답을 마스킹하는 것과 별개로, 조회 자체에 별도 한도를 둔다. */
+const lookupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: env.isProduction ? 20 : 500,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "조회 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요." },
+});
+
 /** 회차 정보 — 가이드 페이지가 열릴 때 공개 여부/마감 확인 */
 smartStorePublicRouter.get("/round/:year/:round", async (req, res) => {
   const year = Number(req.params.year);
@@ -36,6 +60,32 @@ smartStorePublicRouter.get("/round/:year/:round", async (req, res) => {
   res.json({ year: r.year, round: r.round, title: r.title, deadline: r.deadline });
 });
 
+/** 마지막 단계에서 사업자번호를 넣으면 앞서 남긴 정보를 되살린다.
+ *  연락처는 마스킹해서만 알려주고, 실제 병합은 서버가 사업자번호로 처리한다. */
+smartStorePublicRouter.get("/lookup", lookupLimiter, async (req, res) => {
+  const year = Number(req.query.year);
+  const round = Number(req.query.round);
+  const bizNo = normalizeBizNo(text(req.query.bizNo, 30));
+  if (!year || !round) return res.status(400).json({ error: "회차 정보가 올바르지 않습니다" });
+  if (!bizNo || bizNo === "준비중") return res.json({ found: false });
+
+  const r = await prisma.erpSmartStoreRound.findUnique({ where: { year_round: { year, round } } });
+  if (!r || !r.active) return res.status(404).json({ error: "접수가 마감되었거나 열리지 않은 회차입니다" });
+
+  const hit = await findByBizNo(r.id, bizNo);
+  if (!hit) return res.json({ found: false });
+
+  res.json({
+    found: true,
+    centerName: hit.centerName,
+    phoneMasked: maskPhone(hit.phone),
+    industry: hit.industry,
+    branchCount: hit.branchCount,
+    products: hit.products,
+    hasStoreId: Boolean(hit.storeId),
+  });
+});
+
 smartStorePublicRouter.post("/apply", async (req, res) => {
   const b = (req.body ?? {}) as Record<string, unknown>;
   const year = Number(b.year);
@@ -44,10 +94,26 @@ smartStorePublicRouter.post("/apply", async (req, res) => {
   const phone = digits(b.phone, 13);
 
   if (!year || !round) return res.status(400).json({ error: "회차 정보가 올바르지 않습니다" });
-  if (phone.length < 9) return res.status(400).json({ error: "연락처를 정확히 입력해 주세요" });
 
   const r = await prisma.erpSmartStoreRound.findUnique({ where: { year_round: { year, round } } });
   if (!r || !r.active) return res.status(404).json({ error: "접수가 마감되었거나 열리지 않은 회차입니다" });
+
+  /* 마무리 단계는 사업자번호만으로도 앞 단계 건을 찾아 이어붙인다.
+     새로고침으로 연락처를 잃어버린 채 돌아와도 새 행이 생기지 않는다. */
+  let existing: { id: string } | null = null;
+  if (stage === "done") {
+    const biz = normalizeBizNo(text(b.bizNo, 30));
+    if (biz) existing = await findByBizNo(r.id, biz);
+  }
+  if (!existing && phone.length < 9) {
+    return res.status(400).json({ error: "연락처를 정확히 입력해 주세요" });
+  }
+  if (!existing && phone.length >= 9) {
+    existing = await prisma.erpSmartStoreApply.findUnique({
+      where: { roundId_phone: { roundId: r.id, phone } },
+      select: { id: true },
+    });
+  }
 
   const data: Record<string, unknown> = {};
 
@@ -82,11 +148,11 @@ smartStorePublicRouter.post("/apply", async (req, res) => {
   if (APPLY_TYPES.has(priorTypeRaw)) data.priorType = priorTypeRaw;
   if (typeof b.hasPrior === "boolean") data.hasPrior = b.hasPrior;
 
-  await prisma.erpSmartStoreApply.upsert({
-    where: { roundId_phone: { roundId: r.id, phone } },
-    create: { roundId: r.id, phone, ...data },
-    update: data,
-  });
+  if (existing) {
+    await prisma.erpSmartStoreApply.update({ where: { id: existing.id }, data });
+  } else {
+    await prisma.erpSmartStoreApply.create({ data: { roundId: r.id, phone, ...data } });
+  }
 
   res.json({ ok: true, message: "접수 정보가 전달되었습니다" });
 });

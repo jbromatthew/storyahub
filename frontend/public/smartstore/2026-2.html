@@ -224,6 +224,11 @@
   .nopen .no-s{display:block;font-size:11.5px;font-weight:600;color:rgba(255,255,255,.82);
     margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .no-hint{font-size:11.5px;color:#9A9A9A;line-height:1.6;margin:9px 0 0;}
+  .bizfind{font-size:12px;line-height:1.6;margin:7px 0 0;font-weight:600;}
+  .bizfind.wait{color:var(--ink-faint);}
+  .bizfind.new{color:var(--ink-soft);}
+  .bizfind.ok{color:var(--green);}
+  .bizfind.ok b{color:var(--green);}
   .no-blocked{font-size:12px;color:var(--red);line-height:1.6;margin:9px 0 0;font-weight:600;}
   .no-blocked a{color:var(--brand);}
   .nopen.inline{margin-top:12px;}
@@ -518,7 +523,7 @@ const IMG = JSON.parse(document.getElementById('stepImagesData').textContent);
 const state = { screen:'intro', hasPrior:null, priorType:null, chosenType:null, checked:new Set(),
   /* 화면을 다시 그려도(뒤로가기·처음으로) 입력값이 날아가지 않도록 여기에 보관한다 */
   lead:{center:'',phone:'',industry:'',branch:'',cust:''}, leadDone:false,
-  apply:{dphone:'',biz:'',store:''}, applyDone:false };
+  apply:{dphone:'',biz:'',store:'',linked:false}, applyDone:false };
 
 /* 제품은 신청 유형과 1:1로 묶인다.
    배리어프리 유형 → 배리어프리 키오스크(32인치) / 보편·일반 유형 → 벽걸이형(10인치) */
@@ -759,10 +764,11 @@ function applyBoxHtml(){
           <input id="d_phone" inputmode="numeric" placeholder="01012345678" maxlength="13" autocomplete="tel" value="${esc(leadPhone||A.dphone)}">
           <span class="hint">앞에서 남기신 번호로 적어주세요</span>
         </div>
-        <div class="fld">
+        <div class="fld full">
           <label for="f_biz">사업자등록번호</label>
           <input id="f_biz" placeholder="0000000000" maxlength="20" autocomplete="off" value="${esc(A.biz)}">
-          <span class="hint">숫자 10자리 · 오픈 전이면 <b>준비 중</b></span>
+          <span class="hint">숫자 10자리 · 오픈 전이면 <b>준비 중</b> · 신청하신 건과 대조할 수 있는 정보라 여기서 한 번만 여쭤봐요</span>
+          <p class="bizfind" id="bizFind" hidden></p>
         </div>
         <div class="fld full">
           <label for="f_store">스마트상점 ID <span style="font-weight:500;color:var(--brand-text)">미선정 지원금 안내용</span></label>
@@ -1016,7 +1022,63 @@ const TEXT_TO_STATE = {
 document.addEventListener("input", (e) => {
   const m = TEXT_TO_STATE[e.target.id];
   if (m) state[m[0]][m[1]] = e.target.value;
+  if (e.target.id === "f_biz") scheduleBizLookup(e.target.value);
 });
+
+/* 사업자번호를 다 적으면 앞서 남긴 정보를 찾아 이어붙인다.
+   찾으면 연락처를 다시 받지 않고, 서버도 같은 건에 덧쓰므로 새 행이 생기지 않는다. */
+let bizTimer = null, bizLast = "";
+function bizMsg(html, kind) {
+  const el = document.getElementById("bizFind");
+  if (!el) return;
+  if (!html) { el.hidden = true; el.innerHTML = ""; return; }
+  el.className = "bizfind " + (kind || "");
+  el.innerHTML = html;
+  el.hidden = false;
+}
+function setPhoneNeeded(needed) {
+  const wrap = document.getElementById("doneePhoneWrap");
+  if (wrap) wrap.style.display = needed ? "" : "none";
+}
+function scheduleBizLookup(raw) {
+  clearTimeout(bizTimer);
+  const d = String(raw || "").replace(/[^0-9]/g, "");
+  if (d.length !== 10) {
+    bizLast = "";
+    state.apply.linked = false;
+    bizMsg("");
+    setPhoneNeeded(!leadPhone);
+    return;
+  }
+  if (d === bizLast) return;
+  bizTimer = setTimeout(() => runBizLookup(d), 400);
+}
+async function runBizLookup(d) {
+  bizLast = d;
+  bizMsg("앞서 남기신 정보를 찾는 중…", "wait");
+  try {
+    const q = `?year=${SS_YEAR}&round=${SS_ROUND}&bizNo=${d}`;
+    const r = await fetch(SS_API + "/public/smartstore/lookup" + q);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "조회에 실패했어요");
+    if (bizLast !== d) return;               // 그새 다시 입력했으면 버린다
+    if (!j.found) {
+      state.apply.linked = false;
+      bizMsg("처음 남기시는 사업자번호예요. 아래 정보만 채워주시면 돼요.", "new");
+      setPhoneNeeded(!leadPhone);
+      return;
+    }
+    state.apply.linked = true;
+    const who = [j.centerName, j.phoneMasked].filter(Boolean).join(" · ");
+    bizMsg(`앞서 남기신 <b>${esc(who)}</b> 정보를 불러왔어요. 이어서 접수되니 연락처는 다시 안 적으셔도 돼요.`, "ok");
+    setPhoneNeeded(false);
+  } catch (err) {
+    if (bizLast !== d) return;
+    state.apply.linked = false;
+    bizMsg("");                              // 조회가 안 되면 조용히 원래대로
+    setPhoneNeeded(!leadPhone);
+  }
+}
 
 function ssMsg(id, text, ok) {
   const el = document.getElementById(id);
@@ -1079,7 +1141,8 @@ document.addEventListener("click", async (e) => {
   const bizDigits = bizRaw.replace(/[^0-9]/g, "");
   const storeId = g("f_store").value.trim();
 
-  if (phone.length < 9) return ssMsg("applyMsg", "연락처를 정확히 입력해 주세요", false);
+  if (!state.apply.linked && phone.length < 9)
+    return ssMsg("applyMsg", "연락처를 정확히 입력해 주세요", false);
   if (!(bizDigits.length === 10 || (!bizDigits.length && /준비/.test(bizRaw))))
     return ssMsg("applyMsg", "사업자등록번호 10자리를 입력해 주세요 (오픈 전이면 '준비 중')", false);
 
