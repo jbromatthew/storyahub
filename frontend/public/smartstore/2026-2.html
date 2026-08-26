@@ -201,6 +201,8 @@
   .opt:hover{border-color:var(--brand);}
   .opt input{margin:2px 0 0;accent-color:var(--brand);flex-shrink:0;}
   .opt.on{border-color:var(--brand);background:var(--orange-soft);}
+  .opt.fixed{border-color:var(--brand);background:var(--orange-soft);cursor:default;}
+  .opt.fixed .chk{color:var(--brand);font-weight:800;flex-shrink:0;line-height:1.35;}
   .opt .m{display:block;font-size:14px;font-weight:700;line-height:1.4;}
   .opt .s{display:block;font-size:12px;color:var(--ink-soft);margin-top:3px;line-height:1.45;}
   .opt-row{display:flex;flex-wrap:wrap;gap:7px;}
@@ -327,7 +329,25 @@
 <script>
 const IMG = JSON.parse(document.getElementById('stepImagesData').textContent);
 
-const state = { screen:'intro', hasPrior:null, priorType:null, chosenType:null, checked:new Set() };
+const state = { screen:'intro', hasPrior:null, priorType:null, chosenType:null, checked:new Set(),
+  /* 화면을 다시 그려도(뒤로가기·처음으로) 입력값이 날아가지 않도록 여기에 보관한다 */
+  lead:{center:'',phone:'',industry:'',branch:'',cust:''}, leadDone:false,
+  apply:{dphone:'',biz:'',store:''}, applyDone:false };
+
+/* 제품은 신청 유형과 1:1로 묶인다.
+   배리어프리 유형 → 배리어프리 키오스크(32인치) / 보편·일반 유형 → 벽걸이형(10인치) */
+const PRODUCT_BY_TYPE = {
+  barrierfree:{ v:'premium32', m:'프리미엄 배리어프리 키오스크 (32인치 스탠드형)',
+    s:'출입제어 &amp; 무인결제 · 배리어프리 무인정보단말기',
+    why:'배리어프리 유형으로 신청하시므로 <b>배리어프리 키오스크</b>가 대상이에요.',
+    other:'벽걸이형 키오스크(10인치)는 <b>보편·일반 유형</b>이라 이번 신청에는 포함되지 않아요.' },
+  general:{ v:'wall10', m:'벽걸이형 키오스크 (10인치 벽걸이형)', s:'출입제어',
+    why:'보편·일반 유형으로 신청하시므로 <b>벽걸이형 키오스크</b>가 대상이에요.',
+    other:'배리어프리 키오스크(32인치)는 <b>배리어프리 유형</b>이라 이번 신청에는 포함되지 않아요.' },
+};
+function esc(v){ return String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function ck(a,b){ return a===b ? ' checked' : ''; }
+function onc(a,b){ return a===b ? ' on' : ''; }
 
 const TYPE_INFO = {
   general:     {label:'구입형 (보편·일반)', sub:'전자칠판·사이니지 등', amount:'최대 500만원', ratio:'국비 50~60%', broj:true},
@@ -472,6 +492,94 @@ function miniHtml(m){
   return `<div class="mini"><div class="mini-t">${m.t}</div><ul>${m.items.map(i=>`<li>${i}</li>`).join('')}</ul></div>`;
 }
 
+/* 접수 폼은 render()가 #app을 통째로 다시 그릴 때마다 사라진다.
+   그래서 마크업을 함수로 만들고 state에 담아둔 값을 되살린다. */
+function leadDoneHtml(){
+  return `<div class="apply-done" id="leadBox"><p class="t">잘 받았어요</p>`
+    + `<p class="d">이제 아래 순서대로 신청을 진행해 주세요.<br>막히는 부분이 있으면 남겨주신 번호로 도와드릴게요.</p></div>`;
+}
+function leadBoxHtml(){
+  if(state.leadDone) return leadDoneHtml();
+  const L=state.lead, P=PRODUCT_BY_TYPE[state.chosenType];
+  const row=(name,val,label,cur)=>`<label class="opt${onc(cur,val)}"><input type="radio" name="${name}" value="${val}"${ck(cur,val)}><span class="m">${label}</span></label>`;
+  return `<div class="apply" id="leadBox">
+      <div class="apply-k">시작 전에</div>
+      <p class="apply-t">몇 가지만 알려주시면 진행을 함께 챙겨드려요</p>
+      <p class="apply-d">신청 중 막히시는 부분이 있으면 저희가 먼저 연락드릴 수 있어요. 지금 남기시고 절차를 시작하세요.</p>
+      <div class="apply-grid">
+        <div class="fld full opts">
+          <label>신청 대상 기술</label>
+          <div class="opt fixed"><span class="chk">✓</span><span><span class="m">${P.m}</span><span class="s">${P.s}</span></span></div>
+          <span class="hint">${P.why} ${P.other}</span>
+        </div>
+        <div class="fld">
+          <label for="f_center">센터명</label>
+          <input id="f_center" placeholder="사업자등록증과 동일하게" maxlength="60" autocomplete="organization" value="${esc(L.center)}">
+          <span class="hint">아직 오픈 전이면 <b>준비 중</b>으로 적어주세요</span>
+        </div>
+        <div class="fld">
+          <label for="f_phone">연락처</label>
+          <input id="f_phone" inputmode="numeric" placeholder="01012345678" maxlength="13" autocomplete="tel" value="${esc(L.phone)}">
+          <span class="hint">알림 받으실 번호로 적어주세요</span>
+        </div>
+        <div class="fld full opts">
+          <label>업종</label>
+          <div class="opt-row">
+            ${['헬스장','PT샵','필라테스','체육관','기타'].map(v=>row('ss_industry',v,v,L.industry)).join('')}
+          </div>
+        </div>
+        <div class="fld full opts">
+          <label>지점 수 <span style="font-weight:500;color:var(--ink-faint)">현재 운영 중인 지점</span></label>
+          <div class="opt-row">
+            ${[['1','1개'],['2','2개'],['3-5','3~5개'],['6-10','6~10개'],['11+','11개 이상']].map(([v,l])=>row('ss_branch',v,l,L.branch)).join('')}
+          </div>
+        </div>
+        <div class="fld full opts">
+          <label>현재 브로제이 서비스를 이용 중이신가요?</label>
+          <div class="opt-row">
+            ${[['yes','네, 이용 중입니다'],['no','아니요']].map(([v,l])=>row('ss_cust',v,l,L.cust)).join('')}
+          </div>
+        </div>
+      </div>
+      <button class="apply-btn" id="leadBtn">남기고 시작하기</button>
+      <p class="apply-msg" id="leadMsg" hidden></p>
+    </div>`;
+}
+function applyDoneHtml(){
+  return `<div class="apply-done" id="applyBox"><p class="t">접수 확인이 끝났어요</p>`
+    + `<p class="d">담당자가 확인 후 필요한 경우 연락드릴게요.<br>키오스크 도입 문의는 아래 카카오톡으로 편하게 남겨주세요.</p></div>`;
+}
+function applyBoxHtml(){
+  if(state.applyDone) return applyDoneHtml();
+  const A=state.apply;
+  const hidePhone = leadPhone ? ' style="display:none"' : '';
+  return `<div class="apply" id="applyBox">
+      <div class="apply-k">신청 완료 확인</div>
+      <p class="apply-t">신청을 마치셨다면 마지막으로 두 가지만</p>
+      <p class="apply-d">접수가 정상 처리됐는지 저희가 함께 확인해드릴게요. 선정 결과에 영향을 주지 않으며, 접수번호나 신청 내용은 여쭤보지 않습니다.</p>
+      <div class="apply-grid">
+        <div class="fld" id="doneePhoneWrap"${hidePhone}>
+          <label for="d_phone">연락처</label>
+          <input id="d_phone" inputmode="numeric" placeholder="01012345678" maxlength="13" autocomplete="tel" value="${esc(leadPhone||A.dphone)}">
+          <span class="hint">앞에서 남기신 번호로 적어주세요</span>
+        </div>
+        <div class="fld">
+          <label for="f_biz">사업자등록번호</label>
+          <input id="f_biz" placeholder="0000000000" maxlength="20" autocomplete="off" value="${esc(A.biz)}">
+          <span class="hint">숫자 10자리 · 오픈 전이면 <b>준비 중</b></span>
+        </div>
+        <div class="fld full">
+          <label for="f_store">스마트상점 ID <span style="font-weight:500;color:var(--ink-faint)">(선택)</span></label>
+          <input id="f_store" placeholder="소상공인24 로그인 ID" maxlength="40" autocomplete="off" value="${esc(A.store)}">
+          <span class="hint">신청에 사용하신 소상공인24 아이디예요</span>
+        </div>
+      </div>
+      <button class="apply-btn" id="applyBtn">접수 완료 알리기</button>
+      <p class="apply-msg" id="applyMsg" hidden></p>
+      <p class="apply-fine">※ 입력하신 정보는 브로제이가 스마트상점 사업 지원 목적으로만 사용하며, 그 외 용도로 활용하지 않습니다.</p>
+    </div>`;
+}
+
 function render(){
   renderRoute();
   const app=document.getElementById('app');
@@ -554,59 +662,7 @@ function render(){
         <div class="summary-item"><div class="k">문의처</div><div class="v">1600-6185</div></div>
       </div>
     </div>
-    <div class="apply" id="leadBox">
-      <div class="apply-k">시작 전에</div>
-      <p class="apply-t">몇 가지만 알려주시면 진행을 함께 챙겨드려요</p>
-      <p class="apply-d">신청 중 막히시는 부분이 있으면 저희가 먼저 연락드릴 수 있어요. 지금 남기시고 절차를 시작하세요.</p>
-      <div class="apply-grid">
-        <div class="fld full opts">
-          <label>관심 있는 스마트 기술 <span style="font-weight:500;color:var(--ink-faint)">중복 선택 가능</span></label>
-          <label class="opt"><input type="checkbox" name="ss_product" value="premium32">
-            <span><span class="m">프리미엄 키오스크 (32인치 스탠드형)</span><span class="s">출입제어 &amp; 무인결제</span></span></label>
-          <label class="opt"><input type="checkbox" name="ss_product" value="wall10">
-            <span><span class="m">벽걸이형 키오스크 (10인치 벽걸이형)</span><span class="s">출입제어</span></span></label>
-        </div>
-        <div class="fld">
-          <label for="f_center">센터명</label>
-          <input id="f_center" placeholder="사업자등록증과 동일하게" maxlength="60" autocomplete="organization">
-          <span class="hint">아직 오픈 전이면 <b>준비 중</b>으로 적어주세요</span>
-        </div>
-        <div class="fld">
-          <label for="f_phone">연락처</label>
-          <input id="f_phone" inputmode="numeric" placeholder="01012345678" maxlength="13" autocomplete="tel">
-          <span class="hint">알림 받으실 번호로 적어주세요</span>
-        </div>
-        <div class="fld full opts">
-          <label>업종</label>
-          <div class="opt-row">
-            <label class="opt"><input type="radio" name="ss_industry" value="헬스장"><span class="m">헬스장</span></label>
-            <label class="opt"><input type="radio" name="ss_industry" value="PT샵"><span class="m">PT샵</span></label>
-            <label class="opt"><input type="radio" name="ss_industry" value="필라테스"><span class="m">필라테스</span></label>
-            <label class="opt"><input type="radio" name="ss_industry" value="체육관"><span class="m">체육관</span></label>
-            <label class="opt"><input type="radio" name="ss_industry" value="기타"><span class="m">기타</span></label>
-          </div>
-        </div>
-        <div class="fld full opts">
-          <label>지점 수 <span style="font-weight:500;color:var(--ink-faint)">현재 운영 중인 지점</span></label>
-          <div class="opt-row">
-            <label class="opt"><input type="radio" name="ss_branch" value="1"><span class="m">1개</span></label>
-            <label class="opt"><input type="radio" name="ss_branch" value="2"><span class="m">2개</span></label>
-            <label class="opt"><input type="radio" name="ss_branch" value="3-5"><span class="m">3~5개</span></label>
-            <label class="opt"><input type="radio" name="ss_branch" value="6-10"><span class="m">6~10개</span></label>
-            <label class="opt"><input type="radio" name="ss_branch" value="11+"><span class="m">11개 이상</span></label>
-          </div>
-        </div>
-        <div class="fld full opts">
-          <label>현재 브로제이 서비스를 이용 중이신가요?</label>
-          <div class="opt-row">
-            <label class="opt"><input type="radio" name="ss_cust" value="yes"><span class="m">네, 이용 중입니다</span></label>
-            <label class="opt"><input type="radio" name="ss_cust" value="no"><span class="m">아니요</span></label>
-          </div>
-        </div>
-      </div>
-      <button class="apply-btn" id="leadBtn">남기고 시작하기</button>
-      <p class="apply-msg" id="leadMsg" hidden></p>
-    </div>
+    ${leadBoxHtml()}
 
     <div class="card">
       <p class="q-title">신청 순서 (${steps.length}단계)</p>
@@ -635,31 +691,7 @@ function render(){
       <div class="progress-pill">${state.checked.size} / ${steps.length}단계 완료</div>
       <div class="actions"><button class="btn ghost" data-action="restart">처음부터 다시</button></div>
     </div>
-    <div class="apply" id="applyBox">
-      <div class="apply-k">신청 완료 확인</div>
-      <p class="apply-t">신청을 마치셨다면 마지막으로 두 가지만</p>
-      <p class="apply-d">접수가 정상 처리됐는지 저희가 함께 확인해드릴게요. 선정 결과에 영향을 주지 않으며, 접수번호나 신청 내용은 여쭤보지 않습니다.</p>
-      <div class="apply-grid">
-        <div class="fld" id="doneePhoneWrap">
-          <label for="d_phone">연락처</label>
-          <input id="d_phone" inputmode="numeric" placeholder="01012345678" maxlength="13" autocomplete="tel">
-          <span class="hint">앞에서 남기신 번호로 적어주세요</span>
-        </div>
-        <div class="fld">
-          <label for="f_biz">사업자등록번호</label>
-          <input id="f_biz" placeholder="0000000000" maxlength="20" autocomplete="off">
-          <span class="hint">숫자 10자리 · 오픈 전이면 <b>준비 중</b></span>
-        </div>
-        <div class="fld full">
-          <label for="f_store">스마트상점 ID <span style="font-weight:500;color:var(--ink-faint)">(선택)</span></label>
-          <input id="f_store" placeholder="소상공인24 로그인 ID" maxlength="40" autocomplete="off">
-          <span class="hint">신청에 사용하신 소상공인24 아이디예요</span>
-        </div>
-      </div>
-      <button class="apply-btn" id="applyBtn">접수 완료 알리기</button>
-      <p class="apply-msg" id="applyMsg" hidden></p>
-      <p class="apply-fine">※ 입력하신 정보는 브로제이가 스마트상점 사업 지원 목적으로만 사용하며, 그 외 용도로 활용하지 않습니다.</p>
-    </div>
+    ${applyBoxHtml()}
     <div class="cta">
       <div class="cta-k">도입 상담</div>
       <p class="cta-t">키오스크 도입이 고민되시면 편하게 물어보세요</p>
@@ -718,7 +750,8 @@ const SS_API = (location.hostname === "localhost" || location.hostname === "127.
 const SS_YEAR = 2026, SS_ROUND = 2;
 let leadPhone = "";
 
-/* 선택 항목 카드 하이라이트 (라디오·체크박스 공통) */
+/* 선택 항목 카드 하이라이트 + 고른 값을 state에 저장 */
+const RADIO_TO_STATE = { ss_industry: "industry", ss_branch: "branch", ss_cust: "cust" };
 document.addEventListener("change", (e) => {
   const inp = e.target.closest(".opt input");
   if (!inp) return;
@@ -726,9 +759,21 @@ document.addEventListener("change", (e) => {
     document.querySelectorAll(`input[name="${inp.name}"]`).forEach((x) => {
       x.closest(".opt")?.classList.toggle("on", x.checked);
     });
+    const key = RADIO_TO_STATE[inp.name];
+    if (key) state.lead[key] = inp.value;
   } else {
     inp.closest(".opt")?.classList.toggle("on", inp.checked);
   }
+});
+
+/* 텍스트 입력도 마찬가지 — 매뉴얼 보다가 뒤로 갔다 와도 지워지지 않게 */
+const TEXT_TO_STATE = {
+  f_center: ["lead", "center"], f_phone: ["lead", "phone"],
+  d_phone: ["apply", "dphone"], f_biz: ["apply", "biz"], f_store: ["apply", "store"],
+};
+document.addEventListener("input", (e) => {
+  const m = TEXT_TO_STATE[e.target.id];
+  if (m) state[m[0]][m[1]] = e.target.value;
 });
 
 function ssMsg(id, text, ok) {
@@ -755,12 +800,11 @@ document.addEventListener("click", async (e) => {
   if (lead) {
     const g = (id) => document.getElementById(id);
     const pick = (n) => document.querySelector(`input[name="${n}"]:checked`)?.value || "";
-    const products = [...document.querySelectorAll('input[name="ss_product"]:checked')].map((x) => x.value);
+    const products = [PRODUCT_BY_TYPE[state.chosenType].v];
     const centerName = g("f_center").value.trim();
     const phone = g("f_phone").value.replace(/[^0-9]/g, "");
     const industry = pick("ss_industry"), branchCount = pick("ss_branch"), cust = pick("ss_cust");
 
-    if (!products.length) return ssMsg("leadMsg", "관심 있는 스마트 기술을 하나 이상 골라주세요", false);
     if (!centerName) return ssMsg("leadMsg", "센터명을 입력해 주세요", false);
     if (phone.length < 9) return ssMsg("leadMsg", "연락처를 정확히 입력해 주세요", false);
     if (!industry) return ssMsg("leadMsg", "업종을 선택해 주세요", false);
@@ -771,10 +815,9 @@ document.addEventListener("click", async (e) => {
     try {
       await ssPost({ stage: "start", products, centerName, phone, industry, branchCount, isCustomer: cust === "yes" });
       leadPhone = phone;
+      state.leadDone = true;
       const box = document.getElementById("leadBox");
-      box.className = "apply-done";
-      box.innerHTML = '<p class="t">잘 받았어요</p>'
-        + '<p class="d">이제 아래 순서대로 신청을 진행해 주세요.<br>막히는 부분이 있으면 남겨주신 번호로 도와드릴게요.</p>';
+      box.outerHTML = leadDoneHtml();
       const dp = document.getElementById("doneePhoneWrap");
       if (dp) { document.getElementById("d_phone").value = phone; dp.style.display = "none"; }
       document.querySelector(".steplist")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -801,11 +844,10 @@ document.addEventListener("click", async (e) => {
   btn.disabled = true; btn.textContent = "보내는 중…";
   try {
     await ssPost({ stage: "done", phone, bizNo: bizRaw, storeId });
+    state.applyDone = true;
     const box = document.getElementById("applyBox");
-    box.className = "apply-done";
-    box.innerHTML = '<p class="t">접수 확인이 끝났어요</p>'
-      + '<p class="d">담당자가 확인 후 필요한 경우 연락드릴게요.<br>키오스크 도입 문의는 아래 카카오톡으로 편하게 남겨주세요.</p>';
-    box.scrollIntoView({ behavior: "smooth", block: "center" });
+    box.outerHTML = applyDoneHtml();
+    document.getElementById("applyBox").scrollIntoView({ behavior: "smooth", block: "center" });
   } catch (err) {
     ssMsg("applyMsg", err.message, false);
     btn.disabled = false; btn.textContent = "접수 완료 알리기";
