@@ -39,7 +39,6 @@ function parseCorsOrigins(): string[] {
       "https://storyahub.com",
       "https://www.storyahub.com",
       "https://app.storyahub.com",
-      "https://record.storyahub.com",
       "https://b2b.broj.io",
     ];
   }
