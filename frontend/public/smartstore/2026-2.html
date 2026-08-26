@@ -218,7 +218,7 @@ document.addEventListener("change", (e) => {
 <div class="wrap">
   <div class="badge-row">
     <span class="badge orange">2026년 2차 모집</span>
-    <span class="badge">구입형 · 렌탈형 · S/W형</span>
+    <span class="badge">구입형 (보편·일반 / 배리어프리)</span>
   </div>
   <h1>스마트상점 사업신청 길잡이</h1>
   <p class="subtitle">질문 두 개에 답하면, 어느 공고로 들어가야 하는지부터 신청 완료까지 실제 화면과 함께 안내해드려요.</p>
@@ -251,8 +251,6 @@ const state = { screen:'intro', hasPrior:null, priorType:null, chosenType:null, 
 const TYPE_INFO = {
   general:     {label:'구입형 (보편·일반)', sub:'전자칠판·사이니지 등', amount:'최대 500만원', ratio:'국비 50~60%', broj:true},
   barrierfree: {label:'구입형 (배리어프리)', sub:'배리어프리 무인정보단말기', amount:'최대 700만원', ratio:'국비 70~80%', broj:true},
-  rental:      {label:'렌탈형', sub:'배리어프리·로봇 렌탈 (최대 2년)', amount:'연 최대 350만원', ratio:'국비 70~80%', broj:false},
-  sw:          {label:'S/W형', sub:'경영관리·마케팅 구독 소프트웨어', amount:'상점당 연 최대 30만원', ratio:'국비 100%(개인)', broj:false},
 };
 
 // 어느 모집공고 카드로 들어가야 하는지
@@ -276,18 +274,16 @@ function noticeFor(type){
 
 function eligibility(){
   if(!state.hasPrior || !state.priorType)
-    return {general:{ok:true},barrierfree:{ok:true},rental:{ok:true},sw:{ok:true}};
+    return {general:{ok:true},barrierfree:{ok:true}};
   const t = state.priorType;
   if(t==='general') return {
     general:{ok:false,why:'이미 보편·일반 기술을 지원받으셨어요'},
-    barrierfree:{ok:true}, rental:{ok:true,note:'배리어프리·로봇만'}, sw:{ok:true}};
+    barrierfree:{ok:true}};
   if(t==='barrierfree') return {
-    general:{ok:true}, barrierfree:{ok:false,why:'이미 배리어프리 기술을 지원받으셨어요'},
-    rental:{ok:false,why:'배리어프리 이력이 있으면 렌탈형은 불가해요'}, sw:{ok:true}};
-  if(t==='sw') return {
-    general:{ok:true}, barrierfree:{ok:true}, rental:{ok:true},
-    sw:{ok:false,why:'S/W형은 상점당 한 번만 지원돼요'}};
-  return {general:{ok:true},barrierfree:{ok:true},rental:{ok:true},sw:{ok:true}};
+    general:{ok:true},
+    barrierfree:{ok:false,why:'이미 배리어프리 기술을 지원받으셨어요'}};
+  // S/W형 수혜 이력은 구입형 신청에 영향이 없어요
+  return {general:{ok:true},barrierfree:{ok:true}};
 }
 
 function getSteps(type){
@@ -431,7 +427,7 @@ function render(){
 
   else if(state.screen==='chooseType'){
     const el=eligibility();
-    const rows=['general','barrierfree','rental','sw'].map(k=>({key:k,...TYPE_INFO[k]}));
+    const rows=['general','barrierfree'].map(k=>({key:k,...TYPE_INFO[k]}));
     const pl = state.hasPrior
       ? (state.priorType==='general'?'보편·일반 지원 이력':state.priorType==='barrierfree'?'배리어프리 지원 이력':'S/W형 지원 이력')
       : '지원 이력 없음';
@@ -454,7 +450,7 @@ function render(){
           <span>${tags}</span></button>`;
       }).join('')}
       </div>
-      <div class="note-box calm">이 안내서는 브로제이가 공급하는 <b>구입형(보편·일반 / 배리어프리)</b> 절차를 담고 있어요. 렌탈형·S/W형도 정부 지원은 그대로 받으실 수 있고, 스마트상점 홈페이지 [스마트기술] → [기술현황]에서 해당 유형 공급기업을 직접 고르시면 돼요.</div>
+      <div class="note-box calm">브로제이는 <b>구입형</b>을 공급해요. 렌탈형·S/W형은 취급하지 않으니, 필요하시면 스마트상점 홈페이지 [스마트기술] → [기술현황]에서 해당 유형 공급기업을 직접 고르시면 돼요.</div>
     </div>`;
   }
 
