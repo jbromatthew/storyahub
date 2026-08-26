@@ -151,7 +151,7 @@
   .cta-btn:hover{filter:brightness(.95);}
   .cta-chip{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.1);
     color:#fff;font-size:13.5px;font-weight:700;padding:12px 16px;border-radius:12px;}
-  .cta-fine{font-size:11.5px;color:#DCB49E;margin:14px 0 0;line-height:1.6;}
+  .cta-fine{font-size:11.5px;color:#F2D9C9;margin:14px 0 0;line-height:1.6;}
 
   .mini{margin-top:10px;background:#F7F9FB;border:1px solid var(--line);border-radius:10px;padding:12px 14px;}
   .mini-t{font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;}
@@ -206,6 +206,50 @@
   .opt-row{display:flex;flex-wrap:wrap;gap:7px;}
   .opt-row .opt{flex:1 1 auto;min-width:72px;justify-content:center;padding:9px 11px;}
   .opt-row .opt .m{font-size:13.5px;font-weight:600;}
+
+  /* ── 최대 지원율 히어로 (첫 화면) ── */
+  .support{background:var(--brand-deep);color:#fff;border-radius:var(--radius);padding:22px 24px;margin:18px 0 2px;}
+  .support-k{font-size:13px;font-weight:700;color:#FFC9A8;margin:0 0 8px;}
+  .support-k b{color:#fff;}
+  .support-big{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+  .support-big .n{font-size:clamp(40px,12vw,56px);font-weight:800;line-height:1;letter-spacing:-.02em;}
+  .support-big .t{font-size:clamp(17px,4.6vw,21px);font-weight:800;}
+  .support-d{font-size:13.5px;color:#F2D9C9;line-height:1.65;margin:12px 0 16px;}
+  .support-rows{display:grid;gap:8px;}
+  .support-row{background:rgba(255,255,255,.1);border-radius:12px;padding:11px 14px;}
+  .support-row .rk{display:block;font-size:13.5px;font-weight:700;}
+  .support-row .rv{display:block;margin-top:3px;font-size:13px;font-weight:800;color:#FFD9C2;
+    font-variant-numeric:tabular-nums;}
+  @media(min-width:520px){
+    .support-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;}
+    .support-row .rv{margin-top:0;}
+  }
+  .support-fine{font-size:11.5px;color:#F2D9C9;line-height:1.65;margin:14px 0 0;}
+  .support-fine b{color:#FFD9C2;}
+
+  /* ── 제품 도입사례 ── */
+  .pshow{margin-top:24px;}
+  .pshow-k{font-size:12px;font-weight:800;color:var(--brand-text);letter-spacing:.04em;margin-bottom:6px;}
+  .pshow-t{font-size:20px;font-weight:800;margin:0 0 6px;line-height:1.4;}
+  .pshow-d{font-size:13.5px;color:var(--ink-soft);line-height:1.65;margin:0 0 14px;}
+  .pcard{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);
+    padding:20px 0 18px;margin-bottom:12px;}
+  .pcard-head{padding:0 20px;}
+  .pc-t{font-size:17px;font-weight:800;margin:0 0 5px;line-height:1.4;}
+  .pc-sub{font-size:12.5px;font-weight:700;color:var(--brand-text);margin:0 0 8px;}
+  .pc-d{font-size:13.5px;color:var(--ink-soft);line-height:1.65;margin:0;}
+  .pc-feat{display:flex;flex-wrap:wrap;gap:6px;padding:0 20px;margin-top:12px;}
+  .pc-feat span{background:var(--orange-soft);color:var(--brand-text);font-size:11.5px;
+    font-weight:700;border-radius:999px;padding:5px 10px;}
+  .pshots{display:flex;gap:10px;overflow-x:auto;padding:14px 20px 6px;
+    scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;}
+  .pshots::-webkit-scrollbar{height:6px;}
+  .pshots::-webkit-scrollbar-thumb{background:#D6DAE0;border-radius:3px;}
+  .pshot{flex:0 0 auto;width:218px;scroll-snap-align:start;}
+  .pshot img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px;
+    border:1px solid var(--line);display:block;cursor:zoom-in;background:#EDEFF1;}
+  .pshot .cap{font-size:11.5px;color:var(--ink-soft);margin-top:7px;line-height:1.45;}
+  .pshots-hint{padding:0 20px;font-size:11.5px;color:var(--ink-faint);margin:8px 0 0;}
 </style>
 </head>
 <body>
@@ -218,8 +262,51 @@
   <p class="subtitle">질문 두 개에 답하면, 어느 공고로 들어가야 하는지부터 신청 완료까지 실제 화면과 함께 안내해드려요.</p>
   <p class="src-note">신청기간 2026.8.26(수) 10:00 ~ 9.30(수) 17:00 · 문의 1600-6185</p>
 
+  <div class="support" id="support">
+    <p class="support-k">지금 <b>스마트상점 기술보급사업</b>을 통해</p>
+    <div class="support-big"><span class="n">최대 80%</span><span class="t">지원받아 도입하세요</span></div>
+    <p class="support-d">키오스크 구입 비용의 상당 부분을 국비로 지원받을 수 있어요.
+      어떤 유형으로 신청하느냐에 따라 지원한도와 국비 비율이 달라져요.</p>
+    <div class="support-rows">
+      <div class="support-row"><span class="rk">배리어프리 무인정보단말기</span><span class="rv">최대 700만원 · 국비 70~80%</span></div>
+      <div class="support-row"><span class="rk">보편·일반 기술</span><span class="rv">최대 500만원 · 국비 50~60%</span></div>
+    </div>
+    <p class="support-fine">국비 비율이 높은 쪽(80% / 60%)은 <b>장애인 사업주·간이과세자·1인 자영업자</b>가
+      자부담금 완화를 신청하고 증빙을 제출했을 때 적용돼요. 해당하지 않으면 각각 70% / 50%예요.</p>
+  </div>
+
   <div class="route" id="route"></div>
   <div id="app"></div>
+
+  <section class="pshow" id="pshow">
+    <div class="pshow-k">브로제이 제품</div>
+    <h2 class="pshow-t">어떤 키오스크인지 먼저 보고 정하세요</h2>
+    <p class="pshow-d">실제 센터에 설치된 모습이에요. 사진을 누르면 크게 볼 수 있어요.</p>
+
+    <article class="pcard">
+      <div class="pcard-head">
+        <p class="pc-t">프리미엄 키오스크 (32인치 스탠드형)</p>
+        <p class="pc-sub">배리어프리 무인정보단말기 · 최대 700만원 · 국비 70~80%</p>
+        <p class="pc-d">출입 인증부터 상품 결제까지 한 대로 처리하는 세로형 스탠드예요.
+          바닥에 세우기만 하면 되고, 배리어프리 유형으로 신청하면 지원 비율이 가장 높아요.</p>
+      </div>
+      <div class="pc-feat"><span>출입제어</span><span>무인결제</span><span>배리어프리</span><span>카드단말기 연동</span></div>
+      <div class="pshots"><div class="pshot"><img src="photos/prem-1.webp" data-full="photos/prem-1@2x.webp" loading="lazy" decoding="async" alt="헬스장 입구 · 로고 옆 자립 설치"><div class="cap">헬스장 입구 · 로고 옆 자립 설치</div></div><div class="pshot"><img src="photos/prem-2.webp" data-full="photos/prem-2@2x.webp" loading="lazy" decoding="async" alt="대형 헬스장 · 라운지 안쪽"><div class="cap">대형 헬스장 · 라운지 안쪽</div></div><div class="pshot"><img src="photos/prem-3.webp" data-full="photos/prem-3@2x.webp" loading="lazy" decoding="async" alt="헬스장 자동문 옆"><div class="cap">헬스장 자동문 옆</div></div><div class="pshot"><img src="photos/prem-4.webp" data-full="photos/prem-4@2x.webp" loading="lazy" decoding="async" alt="상가 내 헬스장 입구"><div class="cap">상가 내 헬스장 입구</div></div><div class="pshot"><img src="photos/prem-5.webp" data-full="photos/prem-5@2x.webp" loading="lazy" decoding="async" alt="공공 생활체육시설"><div class="cap">공공 생활체육시설</div></div><div class="pshot"><img src="photos/prem-6.webp" data-full="photos/prem-6@2x.webp" loading="lazy" decoding="async" alt="엘리베이터 앞 좁은 통로"><div class="cap">엘리베이터 앞 좁은 통로</div></div></div>
+      <p class="pshots-hint">→ 옆으로 넘기면 사례를 더 볼 수 있어요</p>
+    </article>
+
+    <article class="pcard">
+      <div class="pcard-head">
+        <p class="pc-t">벽걸이형 키오스크 (10인치 벽걸이형)</p>
+        <p class="pc-sub">출입제어 전용 · 보편·일반 기술 · 최대 500만원 · 국비 50~60%</p>
+        <p class="pc-d">이미 키오스크가 있는 센터에서 출입제어만 더할 때 좋아요.
+          벽에 붙이는 10인치라 따로 자리를 차지하지 않고, 게이트 옆이나 출입문 옆 어디든 붙일 수 있어요.</p>
+      </div>
+      <div class="pc-feat"><span>출입제어</span><span>벽면 설치</span><span>게이트 연동</span><span>공간 차지 없음</span></div>
+      <div class="pshots"><div class="pshot"><img src="photos/wall-1.webp" data-full="photos/wall-1@2x.webp" loading="lazy" decoding="async" alt="헬스장 출입문 옆 벽면"><div class="cap">헬스장 출입문 옆 벽면</div></div><div class="pshot"><img src="photos/wall-2.webp" data-full="photos/wall-2@2x.webp" loading="lazy" decoding="async" alt="스피드게이트 옆 기둥"><div class="cap">스피드게이트 옆 기둥</div></div><div class="pshot"><img src="photos/wall-3.webp" data-full="photos/wall-3@2x.webp" loading="lazy" decoding="async" alt="턴스타일 게이트 옆"><div class="cap">턴스타일 게이트 옆</div></div><div class="pshot"><img src="photos/wall-4.webp" data-full="photos/wall-4@2x.webp" loading="lazy" decoding="async" alt="커뮤니티센터 출입문"><div class="cap">커뮤니티센터 출입문</div></div><div class="pshot"><img src="photos/wall-5.webp" data-full="photos/wall-5@2x.webp" loading="lazy" decoding="async" alt="짐 출입 유리문 옆"><div class="cap">짐 출입 유리문 옆</div></div><div class="pshot"><img src="photos/wall-6.webp" data-full="photos/wall-6@2x.webp" loading="lazy" decoding="async" alt="매장 출입문 옆"><div class="cap">매장 출입문 옆</div></div><div class="pshot"><img src="photos/wall-7.webp" data-full="photos/wall-7@2x.webp" loading="lazy" decoding="async" alt="오피스 출입문 양쪽"><div class="cap">오피스 출입문 양쪽</div></div></div>
+      <p class="pshots-hint">→ 옆으로 넘기면 사례를 더 볼 수 있어요</p>
+    </article>
+  </section>
 
   <footer>
     문의처 <b>1600-6185</b> (스마트상점 전문기관) · <b>sbiz.or.kr/smst</b><br>
@@ -388,6 +475,9 @@ function miniHtml(m){
 function render(){
   renderRoute();
   const app=document.getElementById('app');
+  const onSteps = state.screen==='steps';
+  document.getElementById('support').style.display = onSteps ? 'none' : '';
+  document.getElementById('pshow').style.display   = onSteps ? 'none' : '';
 
   if(state.screen==='intro'){
     app.innerHTML=`<div class="card">
@@ -602,8 +692,8 @@ lb.addEventListener('click',e=>{
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && lb.classList.contains('on')) closeLB(); });
 
 document.addEventListener('click',e=>{
-  const z=e.target.closest('[data-zoom]');
-  if(z){ openLB(z.getAttribute('src')); return; }
+  const z=e.target.closest('[data-zoom], .pshot img');
+  if(z){ openLB(z.dataset.full || z.getAttribute('src')); return; }
   const b=e.target.closest('[data-action]'); if(!b) return;
   const a=b.dataset.action;
   if(a==='prior-no'){state.hasPrior=false;state.priorType=null;state.screen='chooseType';}
