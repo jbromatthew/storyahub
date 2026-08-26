@@ -60,19 +60,25 @@ smartStorePublicRouter.get("/round/:year/:round", async (req, res) => {
   res.json({ year: r.year, round: r.round, title: r.title, deadline: r.deadline });
 });
 
-/** 마지막 단계에서 사업자번호를 넣으면 앞서 남긴 정보를 되살린다.
- *  연락처는 마스킹해서만 알려주고, 실제 병합은 서버가 사업자번호로 처리한다. */
+/** 앞서 남긴 정보를 되살린다. 시작 화면은 연락처로, 마무리 화면은 사업자번호로 찾는다.
+ *  연락처는 마스킹해서만 내보내고, 실제 병합은 서버가 처리하므로 원문이 나갈 일이 없다. */
 smartStorePublicRouter.get("/lookup", lookupLimiter, async (req, res) => {
   const year = Number(req.query.year);
   const round = Number(req.query.round);
   const bizNo = normalizeBizNo(text(req.query.bizNo, 30));
+  const phone = digits(req.query.phone, 13);
   if (!year || !round) return res.status(400).json({ error: "회차 정보가 올바르지 않습니다" });
-  if (!bizNo || bizNo === "준비중") return res.json({ found: false });
+  if ((!bizNo || bizNo === "준비중") && phone.length < 9) return res.json({ found: false });
 
   const r = await prisma.erpSmartStoreRound.findUnique({ where: { year_round: { year, round } } });
   if (!r || !r.active) return res.status(404).json({ error: "접수가 마감되었거나 열리지 않은 회차입니다" });
 
-  const hit = await findByBizNo(r.id, bizNo);
+  let hit = bizNo ? await findByBizNo(r.id, bizNo) : null;
+  if (!hit && phone.length >= 9) {
+    hit = await prisma.erpSmartStoreApply.findUnique({
+      where: { roundId_phone: { roundId: r.id, phone } },
+    });
+  }
   if (!hit) return res.json({ found: false });
 
   res.json({
@@ -82,6 +88,8 @@ smartStorePublicRouter.get("/lookup", lookupLimiter, async (req, res) => {
     industry: hit.industry,
     branchCount: hit.branchCount,
     products: hit.products,
+    isCustomer: hit.isCustomer,
+    hasBizNo: Boolean(hit.bizNo && hit.bizNo !== "준비중"),
     hasStoreId: Boolean(hit.storeId),
   });
 });
@@ -98,21 +106,22 @@ smartStorePublicRouter.post("/apply", async (req, res) => {
   const r = await prisma.erpSmartStoreRound.findUnique({ where: { year_round: { year, round } } });
   if (!r || !r.active) return res.status(404).json({ error: "접수가 마감되었거나 열리지 않은 회차입니다" });
 
-  /* 마무리 단계는 사업자번호만으로도 앞 단계 건을 찾아 이어붙인다.
-     새로고침으로 연락처를 잃어버린 채 돌아와도 새 행이 생기지 않는다. */
-  let existing: { id: string } | null = null;
-  if (stage === "done") {
-    const biz = normalizeBizNo(text(b.bizNo, 30));
-    if (biz) existing = await findByBizNo(r.id, biz);
+  /* 두 단계 모두 기존 건을 먼저 찾는다. 연락처가 고유 키라 그쪽을 우선 보고,
+     없으면 사업자번호로 찾는다 — 같은 센터가 다른 번호로 다시 적어도 새 행이 생기지 않게. */
+  const bizInput = normalizeBizNo(text(b.bizNo, 30));
+  let existing: { id: string; phone: string } | null = null;
+  if (phone.length >= 9) {
+    existing = await prisma.erpSmartStoreApply.findUnique({
+      where: { roundId_phone: { roundId: r.id, phone } },
+      select: { id: true, phone: true },
+    });
+  }
+  if (!existing && bizInput) {
+    const byBiz = await findByBizNo(r.id, bizInput);
+    if (byBiz) existing = { id: byBiz.id, phone: byBiz.phone };
   }
   if (!existing && phone.length < 9) {
     return res.status(400).json({ error: "연락처를 정확히 입력해 주세요" });
-  }
-  if (!existing && phone.length >= 9) {
-    existing = await prisma.erpSmartStoreApply.findUnique({
-      where: { roundId_phone: { roundId: r.id, phone } },
-      select: { id: true },
-    });
   }
 
   const data: Record<string, unknown> = {};
@@ -127,18 +136,18 @@ smartStorePublicRouter.post("/apply", async (req, res) => {
       .filter((v) => PRODUCTS.has(v));
 
     if (!products.length) return res.status(400).json({ error: "관심 있는 스마트 기술을 하나 이상 선택해 주세요" });
+    if (!bizInput) return res.status(400).json({ error: "사업자등록번호 10자리를 입력해 주세요 (미오픈이면 '준비중')" });
     if (!centerName) return res.status(400).json({ error: "센터명을 입력해 주세요" });
     if (!INDUSTRIES.has(industry)) return res.status(400).json({ error: "업종을 선택해 주세요" });
     if (!BRANCHES.has(branchCount)) return res.status(400).json({ error: "지점 수를 선택해 주세요" });
     if (typeof b.isCustomer !== "boolean") return res.status(400).json({ error: "브로제이 서비스 이용 여부를 선택해 주세요" });
 
-    Object.assign(data, { centerName, industry, branchCount, products, isCustomer: b.isCustomer });
+    Object.assign(data, { centerName, industry, branchCount, products, isCustomer: b.isCustomer, bizNo: bizInput });
   } else {
     // 신청 완료 — 사업자번호·스마트상점 ID
-    const bizNo = normalizeBizNo(text(b.bizNo, 30));
-    if (!bizNo) return res.status(400).json({ error: "사업자등록번호 10자리를 입력해 주세요 (미오픈이면 '준비중')" });
+    if (!bizInput) return res.status(400).json({ error: "사업자등록번호 10자리를 입력해 주세요 (미오픈이면 '준비중')" });
     const storeId = text(b.storeId, 60);
-    Object.assign(data, { bizNo, storeId: storeId || null });
+    Object.assign(data, { bizNo: bizInput, storeId: storeId || null });
   }
 
   // 가이드에서 고른 유형·수혜 이력은 두 단계 모두에서 최신값으로 갱신
@@ -149,6 +158,8 @@ smartStorePublicRouter.post("/apply", async (req, res) => {
   if (typeof b.hasPrior === "boolean") data.hasPrior = b.hasPrior;
 
   if (existing) {
+    // 사업자번호로 찾은 건이면 연락처가 바뀌었을 수 있다. 위에서 이미 비어 있음을 확인한 번호라 충돌하지 않는다.
+    if (phone.length >= 9 && phone !== existing.phone) data.phone = phone;
     await prisma.erpSmartStoreApply.update({ where: { id: existing.id }, data });
   } else {
     await prisma.erpSmartStoreApply.create({ data: { roundId: r.id, phone, ...data } });

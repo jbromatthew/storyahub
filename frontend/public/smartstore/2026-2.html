@@ -522,7 +522,7 @@ const IMG = JSON.parse(document.getElementById('stepImagesData').textContent);
 
 const state = { screen:'intro', hasPrior:null, priorType:null, chosenType:null, checked:new Set(),
   /* 화면을 다시 그려도(뒤로가기·처음으로) 입력값이 날아가지 않도록 여기에 보관한다 */
-  lead:{center:'',phone:'',industry:'',branch:'',cust:''}, leadDone:false,
+  lead:{biz:'',center:'',phone:'',industry:'',branch:'',cust:''}, leadDone:false, leadLinked:false,
   apply:{dphone:'',biz:'',store:'',linked:false}, applyDone:false };
 
 /* 제품은 신청 유형과 1:1로 묶인다.
@@ -711,12 +711,18 @@ function leadBoxHtml(){
           <div class="opt fixed"><span class="chk">✓</span><span><span class="m">${P.m}</span><span class="s">${P.s}</span></span></div>
           <span class="hint">${P.why} ${P.other}</span>
         </div>
+        <div class="fld full">
+          <label for="f_lbiz">사업자등록번호</label>
+          <input id="f_lbiz" placeholder="0000000000" maxlength="20" autocomplete="off" value="${esc(L.biz)}">
+          <span class="hint">숫자 10자리 · 아직 오픈 전이면 <b>준비 중</b>으로 적어주세요</span>
+          <p class="bizfind" id="leadFind" hidden></p>
+        </div>
         <div class="fld">
           <label for="f_center">센터명</label>
           <input id="f_center" placeholder="사업자등록증과 동일하게" maxlength="60" autocomplete="organization" value="${esc(L.center)}">
           <span class="hint">아직 오픈 전이면 <b>준비 중</b>으로 적어주세요</span>
         </div>
-        <div class="fld">
+        <div class="fld" id="leadPhoneWrap">
           <label for="f_phone">연락처</label>
           <input id="f_phone" inputmode="numeric" placeholder="01012345678" maxlength="13" autocomplete="tel" value="${esc(L.phone)}">
           <span class="hint">알림 받으실 번호로 적어주세요</span>
@@ -766,8 +772,8 @@ function applyBoxHtml(){
         </div>
         <div class="fld full">
           <label for="f_biz">사업자등록번호</label>
-          <input id="f_biz" placeholder="0000000000" maxlength="20" autocomplete="off" value="${esc(A.biz)}">
-          <span class="hint">숫자 10자리 · 오픈 전이면 <b>준비 중</b> · 신청하신 건과 대조할 수 있는 정보라 여기서 한 번만 여쭤봐요</span>
+          <input id="f_biz" placeholder="0000000000" maxlength="20" autocomplete="off" value="${esc(A.biz || state.lead.biz)}">
+          <span class="hint">숫자 10자리 · 오픈 전이면 <b>준비 중</b> · 앞에서 적으셨다면 그대로 두시면 돼요</span>
           <p class="bizfind" id="bizFind" hidden></p>
         </div>
         <div class="fld full">
@@ -1016,75 +1022,106 @@ document.addEventListener("change", (e) => {
 
 /* 텍스트 입력도 마찬가지 — 매뉴얼 보다가 뒤로 갔다 와도 지워지지 않게 */
 const TEXT_TO_STATE = {
-  f_center: ["lead", "center"], f_phone: ["lead", "phone"],
+  f_lbiz: ["lead", "biz"], f_center: ["lead", "center"], f_phone: ["lead", "phone"],
   d_phone: ["apply", "dphone"], f_biz: ["apply", "biz"], f_store: ["apply", "store"],
 };
 document.addEventListener("input", (e) => {
   const m = TEXT_TO_STATE[e.target.id];
   if (m) state[m[0]][m[1]] = e.target.value;
-  if (e.target.id === "f_biz") scheduleBizLookup(e.target.value);
+  if (BIZ_CTX[e.target.id]) scheduleBizLookup(e.target.id, e.target.value);
 });
 
 /* 사업자번호를 다 적으면 앞서 남긴 정보를 찾아 이어붙인다.
-   찾으면 연락처를 다시 받지 않고, 서버도 같은 건에 덧쓰므로 새 행이 생기지 않는다. */
-let bizTimer = null, bizLast = "";
-function bizMsg(html, kind) {
-  const el = document.getElementById("bizFind");
+   두 폼(시작·마무리)이 같은 로직을 쓰되 채워 넣는 칸만 다르다.
+   서버도 같은 건에 덧쓰므로 다시 적어도 새 행이 생기지 않는다. */
+const BIZ_CTX = {
+  f_lbiz: { msg: "leadFind", phoneWrap: "leadPhoneWrap", fill: true },
+  f_biz:  { msg: "bizFind",  phoneWrap: "doneePhoneWrap", fill: false },
+};
+const bizTimer = {}, bizLast = {};
+
+function bizMsg(id, html, kind) {
+  const el = document.getElementById(id);
   if (!el) return;
   if (!html) { el.hidden = true; el.innerHTML = ""; return; }
   el.className = "bizfind " + (kind || "");
   el.innerHTML = html;
   el.hidden = false;
 }
-function setPhoneNeeded(needed) {
-  const wrap = document.getElementById("doneePhoneWrap");
-  if (wrap) wrap.style.display = needed ? "" : "none";
+function setLinked(inputId, on) {
+  if (inputId === "f_lbiz") state.leadLinked = on; else state.apply.linked = on;
 }
-function scheduleBizLookup(raw) {
-  clearTimeout(bizTimer);
+function showPhoneField(ctx, show) {
+  const w = document.getElementById(ctx.phoneWrap);
+  if (w) w.style.display = show ? "" : "none";
+}
+function phoneStillNeeded(inputId) {
+  return inputId === "f_lbiz" ? true : !leadPhone;
+}
+
+function scheduleBizLookup(inputId, raw) {
+  const ctx = BIZ_CTX[inputId];
+  if (!ctx) return;
+  clearTimeout(bizTimer[inputId]);
   const d = String(raw || "").replace(/[^0-9]/g, "");
   if (d.length !== 10) {
-    bizLast = "";
-    state.apply.linked = false;
-    bizMsg("");
-    setPhoneNeeded(!leadPhone);
+    bizLast[inputId] = "";
+    setLinked(inputId, false);
+    bizMsg(ctx.msg, "");
+    showPhoneField(ctx, phoneStillNeeded(inputId));
     return;
   }
-  if (d === bizLast) return;
-  bizTimer = setTimeout(() => runBizLookup(d), 400);
+  if (d === bizLast[inputId]) return;
+  bizTimer[inputId] = setTimeout(() => runBizLookup(inputId, d), 400);
 }
-async function runBizLookup(d) {
-  bizLast = d;
-  bizMsg("앞서 남기신 정보를 찾는 중…", "wait");
+
+async function runBizLookup(inputId, d) {
+  const ctx = BIZ_CTX[inputId];
+  bizLast[inputId] = d;
+  bizMsg(ctx.msg, "앞서 남기신 정보를 찾는 중…", "wait");
   try {
-    const q = `?year=${SS_YEAR}&round=${SS_ROUND}&bizNo=${d}`;
-    const r = await fetch(SS_API + "/public/smartstore/lookup" + q);
+    const r = await fetch(`${SS_API}/public/smartstore/lookup?year=${SS_YEAR}&round=${SS_ROUND}&bizNo=${d}`);
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || "조회에 실패했어요");
-    if (bizLast !== d) return;               // 그새 다시 입력했으면 버린다
+    if (bizLast[inputId] !== d) return;          // 그새 다시 입력했으면 버린다
     if (!j.found) {
-      state.apply.linked = false;
-      bizMsg("처음 남기시는 사업자번호예요. 아래 정보만 채워주시면 돼요.", "new");
-      setPhoneNeeded(!leadPhone);
+      setLinked(inputId, false);
+      bizMsg(ctx.msg, "처음 남기시는 사업자번호예요. 아래 정보만 채워주시면 돼요.", "new");
+      showPhoneField(ctx, phoneStillNeeded(inputId));
       return;
     }
-    state.apply.linked = true;
+    setLinked(inputId, true);
+    if (ctx.fill) applyLookupToLead(j);
     const who = [j.centerName, j.phoneMasked].filter(Boolean).join(" · ");
-    bizMsg(`앞서 남기신 <b>${esc(who)}</b> 정보를 불러왔어요. 이어서 접수되니 연락처는 다시 안 적으셔도 돼요.`, "ok");
-    setPhoneNeeded(false);
+    bizMsg(ctx.msg,
+      `앞서 남기신 <b>${esc(who)}</b> 정보를 불러왔어요. 이어서 접수되니 연락처는 다시 안 적으셔도 돼요.`, "ok");
+    showPhoneField(ctx, false);
   } catch (err) {
-    if (bizLast !== d) return;
-    state.apply.linked = false;
-    bizMsg("");                              // 조회가 안 되면 조용히 원래대로
-    setPhoneNeeded(!leadPhone);
+    if (bizLast[inputId] !== d) return;
+    setLinked(inputId, false);
+    bizMsg(ctx.msg, "");                          // 조회가 안 되면 조용히 원래대로
+    showPhoneField(ctx, phoneStillNeeded(inputId));
   }
 }
 
-function ssMsg(id, text, ok) {
-  const el = document.getElementById(id);
-  el.textContent = text;
-  el.className = "apply-msg " + (ok ? "ok" : "err");
-  el.hidden = false;
+/* 비어 있는 칸만 채운다 — 지금 적고 계신 내용을 덮어쓰지 않도록 */
+function applyLookupToLead(j) {
+  const center = document.getElementById("f_center");
+  if (center && !center.value.trim() && j.centerName) {
+    center.value = j.centerName; state.lead.center = j.centerName;
+  }
+  const pick = (name, val, key) => {
+    if (!val) return;
+    if (document.querySelector(`input[name="${name}"]:checked`)) return;
+    const inp = document.querySelector(`input[name="${name}"][value="${val}"]`);
+    if (!inp) return;
+    inp.checked = true;
+    inp.closest(".opt")?.classList.add("on");
+    state.lead[key] = val;
+  };
+  pick("ss_industry", j.industry, "industry");
+  pick("ss_branch", j.branchCount, "branch");
+  if (typeof j.isCustomer === "boolean") pick("ss_cust", j.isCustomer ? "yes" : "no", "cust");
 }
 
 async function ssPost(payload) {
@@ -1105,25 +1142,32 @@ document.addEventListener("click", async (e) => {
     const g = (id) => document.getElementById(id);
     const pick = (n) => document.querySelector(`input[name="${n}"]:checked`)?.value || "";
     const products = [PRODUCT_BY_TYPE[state.chosenType].v];
+    const bizRaw = g("f_lbiz").value.trim();
+    const bizDigits = bizRaw.replace(/[^0-9]/g, "");
     const centerName = g("f_center").value.trim();
     const phone = g("f_phone").value.replace(/[^0-9]/g, "");
     const industry = pick("ss_industry"), branchCount = pick("ss_branch"), cust = pick("ss_cust");
 
+    if (!(bizDigits.length === 10 || (!bizDigits.length && /준비/.test(bizRaw))))
+      return ssMsg("leadMsg", "사업자등록번호 10자리를 입력해 주세요 (오픈 전이면 '준비 중')", false);
     if (!centerName) return ssMsg("leadMsg", "센터명을 입력해 주세요", false);
-    if (phone.length < 9) return ssMsg("leadMsg", "연락처를 정확히 입력해 주세요", false);
+    if (!state.leadLinked && phone.length < 9) return ssMsg("leadMsg", "연락처를 정확히 입력해 주세요", false);
     if (!industry) return ssMsg("leadMsg", "업종을 선택해 주세요", false);
     if (!branchCount) return ssMsg("leadMsg", "지점 수를 선택해 주세요", false);
     if (!cust) return ssMsg("leadMsg", "브로제이 서비스 이용 여부를 선택해 주세요", false);
 
     lead.disabled = true; lead.textContent = "보내는 중…";
     try {
-      await ssPost({ stage: "start", products, centerName, phone, industry, branchCount, isCustomer: cust === "yes" });
+      await ssPost({ stage: "start", products, bizNo: bizRaw, centerName, phone, industry, branchCount, isCustomer: cust === "yes" });
       leadPhone = phone;
+      state.apply.biz = bizRaw;
       state.leadDone = true;
       const box = document.getElementById("leadBox");
       box.outerHTML = leadDoneHtml();
       const dp = document.getElementById("doneePhoneWrap");
       if (dp) { document.getElementById("d_phone").value = phone; dp.style.display = "none"; }
+      const fb = document.getElementById("f_biz");     // 아래 폼은 다시 그려지지 않으므로 직접 채운다
+      if (fb && !fb.value.trim()) { fb.value = bizRaw; bizLast["f_biz"] = bizDigits; }
       document.querySelector(".steplist")?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (err) {
       ssMsg("leadMsg", err.message, false);
