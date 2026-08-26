@@ -5849,6 +5849,302 @@ function ClosingTextCell({ text, placeholder, onSave }) {
   );
 }
 
+/** 스마트상점 — 회차(년도·차수) 관리 + 고객이 공개 가이드에서 제출한 접수 목록 */
+const SS_TYPE = {
+  general: "구입형 (보편·일반)",
+  barrierfree: "구입형 (배리어프리)",
+  rental: "렌탈형",
+  sw: "S/W형",
+};
+const SS_STATUS = [
+  { id: "new", label: "신규" },
+  { id: "checked", label: "확인" },
+  { id: "done", label: "완료" },
+];
+const fmtBizNo = (v) => {
+  const d = String(v || "").replace(/[^0-9]/g, "");
+  return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}` : d;
+};
+const fmtPhone = (v) => {
+  const d = String(v || "").replace(/[^0-9]/g, "");
+  if (d.length === 11) return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+  return d;
+};
+
+export function SmartStoreView() {
+  const [rounds, setRounds] = useState(null);
+  const [applies, setApplies] = useState([]);
+  const [sel, setSel] = useState("");
+  const [tab, setTab] = useState("applies"); // applies | rounds
+  const [q, setQ] = useState("");
+  const [busy, setBusy] = useState("");
+  const now = new Date();
+  const [form, setForm] = useState({ year: now.getFullYear(), round: 1, title: "", deadline: "" });
+
+  const loadRounds = () =>
+    api.erpSmartStoreRounds().then((d) => {
+      setRounds(d.rounds || []);
+      setSel((cur) => cur || d.rounds?.[0]?.id || "");
+      return d.rounds || [];
+    });
+  const loadApplies = (roundId) =>
+    api.erpSmartStoreApplies(roundId ? { roundId } : {}).then((d) => setApplies(d.applies || []));
+
+  useEffect(() => { loadRounds().catch(notifyError); }, []);
+  useEffect(() => { if (rounds) loadApplies(sel).catch(notifyError); }, [sel, rounds]);
+
+  if (!rounds) return <div className="spinner" />;
+
+  const cur = rounds.find((r) => r.id === sel);
+  const publicUrl = cur ? `${location.origin}${cur.guidePath}` : "";
+  const kw = q.trim().toLowerCase();
+  const rows = applies.filter((a) =>
+    !kw || a.centerName.toLowerCase().includes(kw) || a.bizNo.includes(kw.replace(/[^0-9]/g, "")) ||
+    a.phone.includes(kw.replace(/[^0-9]/g, "")) || (a.storeId || "").toLowerCase().includes(kw));
+
+  const addRound = async () => {
+    const year = Number(form.year), round = Number(form.round);
+    if (!year || !round) return notifyError(new Error("연도와 차수를 입력하세요"));
+    try {
+      const r = await api.erpSmartStoreRoundCreate({
+        year, round,
+        title: form.title.trim() || `${year}년 ${round}차`,
+        deadline: form.deadline.trim(),
+      });
+      toastSuccess(`${year}년 ${round}차를 만들었어요`);
+      setForm({ year: now.getFullYear(), round: 1, title: "", deadline: "" });
+      const list = await loadRounds();
+      setSel(r.round?.id || list[0]?.id || "");
+    } catch (e) { notifyError(e); }
+  };
+
+  const patchRound = async (r, body) => {
+    setBusy(r.id);
+    try { await api.erpSmartStoreRoundUpdate(r.id, body); await loadRounds(); }
+    catch (e) { notifyError(e); } finally { setBusy(""); }
+  };
+
+  const delRound = async (r) => {
+    if (!(await confirmAction(`${r.year}년 ${r.round}차를 삭제할까요? 접수 ${r.applyCount}건도 함께 지워집니다.`))) return;
+    try { await api.erpSmartStoreRoundDelete(r.id); toastSuccess("삭제했어요"); setSel(""); await loadRounds(); }
+    catch (e) { notifyError(e); }
+  };
+
+  const patchApply = async (a, body) => {
+    setApplies((prev) => prev.map((x) => (x.id === a.id ? { ...x, ...body } : x)));
+    try { await api.erpSmartStoreApplyUpdate(a.id, body); }
+    catch (e) { notifyError(e); loadApplies(sel); }
+  };
+
+  const delApply = async (a) => {
+    if (!(await confirmAction(`${a.centerName} 접수를 삭제할까요?`))) return;
+    try { await api.erpSmartStoreApplyDelete(a.id); setApplies((p) => p.filter((x) => x.id !== a.id)); }
+    catch (e) { notifyError(e); }
+  };
+
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(publicUrl); toastSuccess("공개 링크를 복사했어요"); }
+    catch { notifyError(new Error("복사에 실패했습니다")); }
+  };
+
+  const copyList = async () => {
+    if (!rows.length) return;
+    const head = ["접수일", "회차", "상호", "사업자번호", "연락처", "스마트상점ID", "신청유형", "수혜이력", "상태", "메모"];
+    const lines = [head.join("\t")];
+    for (const a of rows) {
+      lines.push([
+        new Date(a.createdAt).toLocaleDateString("ko-KR"),
+        a.round ? `${a.round.year}-${a.round.round}차` : "",
+        a.centerName, fmtBizNo(a.bizNo), fmtPhone(a.phone), a.storeId,
+        SS_TYPE[a.applyType] || "", a.hasPrior === true ? "있음" : a.hasPrior === false ? "없음" : "",
+        SS_STATUS.find((s) => s.id === a.status)?.label || a.status, (a.memo || "").replace(/\s+/g, " "),
+      ].join("\t"));
+    }
+    try { await navigator.clipboard.writeText(lines.join("\n")); toastSuccess(`${rows.length}건을 복사했어요 (엑셀에 붙여넣기)`); }
+    catch { notifyError(new Error("복사에 실패했습니다")); }
+  };
+
+  const cnt = (st) => applies.filter((a) => a.status === st).length;
+
+  return (
+    <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">영업지원</div>
+      <div className="h-title">스마트상점</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+        회차별로 공개 가이드 링크를 고객에게 보내면, 고객이 신청 절차를 따라간 뒤 마지막에
+        <strong> 사업자번호 · 상호 · 연락처 · 스마트상점 ID</strong>를 남깁니다. 여기에 바로 쌓입니다.
+      </div>
+
+      <div className="row" style={{ gap: 6, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+        {[["applies", "접수 목록"], ["rounds", "회차 관리"]].map(([k, label]) => (
+          <button key={k} type="button" className={"chip" + (tab === k ? " on" : "")} onClick={() => setTab(k)}>{label}</button>
+        ))}
+        <span style={{ marginLeft: "auto" }} />
+        <select value={sel} onChange={(e) => setSel(e.target.value)}
+          style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff" }}>
+          {!rounds.length && <option value="">회차 없음</option>}
+          {rounds.map((r) => (
+            <option key={r.id} value={r.id}>{r.year}년 {r.round}차 ({r.applyCount}건){r.active ? "" : " · 비공개"}</option>
+          ))}
+        </select>
+      </div>
+
+      {tab === "applies" && (
+        <>
+          <div className="trend-selection-bar" style={{ marginTop: 14 }}>
+            <span className="trend-selection-label">접수 {applies.length}건</span>
+            <span>신규 <strong>{cnt("new")}</strong></span>
+            <span>확인 <strong>{cnt("checked")}</strong></span>
+            <span>완료 <strong>{cnt("done")}</strong></span>
+            {cur && (
+              <span className="small" style={{ marginLeft: "auto" }}>
+                <a href={publicUrl} target="_blank" rel="noreferrer">공개 가이드 열기</a>
+              </span>
+            )}
+          </div>
+
+          <div className="row" style={{ gap: 6, margin: "12px 0 4px", flexWrap: "wrap", alignItems: "center" }}>
+            <input value={q} onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") setQ(""); }}
+              placeholder="🔍 상호·사업자번호·연락처 검색"
+              style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, minWidth: 230, background: "#fff" }} />
+            <button type="button" className="btn btn-ghost btn-sm" onClick={copyLink} disabled={!cur}>공개 링크 복사</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={copyList} disabled={!rows.length}>목록 복사</button>
+          </div>
+
+          {!rows.length ? (
+            <div className="small" style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+              {applies.length ? `"${q.trim()}" 검색 결과가 없습니다.` : "아직 접수된 건이 없습니다. 공개 링크를 고객에게 보내주세요."}
+            </div>
+          ) : (
+            <div className="dash-table-wrap">
+              <table className="dash-table">
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left" }}>접수일</th>
+                    <th className="label">상호</th>
+                    <th style={{ textAlign: "left" }}>사업자번호</th>
+                    <th style={{ textAlign: "left" }}>연락처</th>
+                    <th style={{ textAlign: "left" }}>스마트상점 ID</th>
+                    <th style={{ textAlign: "left" }}>신청유형</th>
+                    <th style={{ textAlign: "left" }}>수혜이력</th>
+                    <th style={{ textAlign: "left" }}>상태</th>
+                    <th style={{ textAlign: "left" }}>메모</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((a) => (
+                    <tr key={a.id}>
+                      <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>
+                        {new Date(a.createdAt).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}
+                      </td>
+                      <td className="label">{a.centerName}</td>
+                      <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{fmtBizNo(a.bizNo)}</td>
+                      <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>
+                        <a href={`tel:${a.phone}`}>{fmtPhone(a.phone)}</a>
+                      </td>
+                      <td style={{ textAlign: "left" }}>{a.storeId}</td>
+                      <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{SS_TYPE[a.applyType] || "-"}</td>
+                      <td style={{ textAlign: "left" }}>{a.hasPrior === true ? "있음" : a.hasPrior === false ? "없음" : "-"}</td>
+                      <td style={{ textAlign: "left" }}>
+                        <select value={a.status} onChange={(e) => patchApply(a, { status: e.target.value })}
+                          style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "3px 6px", fontFamily: "inherit", fontSize: 12, background: a.status === "done" ? "#D3F8DF" : a.status === "checked" ? "#FFF4E0" : "#fff", cursor: "pointer" }}>
+                          {SS_STATUS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                        </select>
+                      </td>
+                      <td style={{ textAlign: "left", minWidth: 180 }}>
+                        <ClosingTextCell text={a.memo} placeholder="메모…" onSave={(v) => patchApply(a, { memo: v })} />
+                      </td>
+                      <td>
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => delApply(a)}>✕</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === "rounds" && (
+        <>
+          <div className="card" style={{ marginTop: 16, padding: "14px 16px" }}>
+            <div className="h-eyebrow" style={{ marginBottom: 10 }}>새 회차 추가</div>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <div>
+                <div className="small" style={{ marginBottom: 4 }}>연도</div>
+                <input type="number" value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })}
+                  style={{ width: 100, border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14 }} />
+              </div>
+              <div>
+                <div className="small" style={{ marginBottom: 4 }}>차수</div>
+                <input type="number" value={form.round} onChange={(e) => setForm({ ...form, round: e.target.value })}
+                  style={{ width: 80, border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14 }} />
+              </div>
+              <div style={{ flex: "1 1 200px" }}>
+                <div className="small" style={{ marginBottom: 4 }}>표시 이름 (선택)</div>
+                <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="2026년 2차"
+                  style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14 }} />
+              </div>
+              <div style={{ flex: "1 1 160px" }}>
+                <div className="small" style={{ marginBottom: 4 }}>마감 안내 (선택)</div>
+                <input value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} placeholder="9.30(수) 17:00"
+                  style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14 }} />
+              </div>
+              <button type="button" className="btn btn-accent" onClick={addRound}>회차 만들기</button>
+            </div>
+            <div className="small" style={{ marginTop: 8, color: "var(--muted)" }}>
+              가이드 경로는 <code>/smartstore/{"{연도}"}-{"{차수}"}.html</code>로 자동 지정됩니다. 새 회차 가이드 파일은 별도로 올려야 합니다.
+            </div>
+          </div>
+
+          <div className="dash-table-wrap" style={{ marginTop: 14 }}>
+            <table className="dash-table">
+              <thead>
+                <tr>
+                  <th className="label">회차</th>
+                  <th style={{ textAlign: "left" }}>표시 이름</th>
+                  <th style={{ textAlign: "left" }}>가이드 경로</th>
+                  <th style={{ textAlign: "left" }}>마감</th>
+                  <th>접수</th>
+                  <th style={{ textAlign: "left" }}>공개</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {rounds.map((r) => (
+                  <tr key={r.id}>
+                    <td className="label" style={{ whiteSpace: "nowrap" }}>{r.year}년 {r.round}차</td>
+                    <td style={{ textAlign: "left" }}>{r.title}</td>
+                    <td style={{ textAlign: "left" }}>
+                      <a href={`${location.origin}${r.guidePath}`} target="_blank" rel="noreferrer">{r.guidePath}</a>
+                    </td>
+                    <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{r.deadline || "-"}</td>
+                    <td className="num">{r.applyCount}</td>
+                    <td style={{ textAlign: "left" }}>
+                      <button type="button" className={"chip" + (r.active ? " on" : "")} disabled={busy === r.id}
+                        onClick={() => patchRound(r, { active: !r.active })}>
+                        {r.active ? "공개 중" : "비공개"}
+                      </button>
+                    </td>
+                    <td>
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => delRound(r)}>삭제</button>
+                    </td>
+                  </tr>
+                ))}
+                {!rounds.length && <tr><td colSpan={7} className="erp-tbl-empty">회차가 없습니다. 위에서 추가하세요.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /** 클로징 수정 기록 — 누가(수정자) 어느 담당자(응대자) 리드의 무엇을 바꿨는지 */
 function ClosingEditLogPanel() {
   const [data, setData] = useState(null);

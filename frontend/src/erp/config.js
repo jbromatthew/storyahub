@@ -25,6 +25,7 @@ export const ERP_MODULES = [
   { id: "vendors", label: "업체 관리", icon: "admin", group: "construction", ownerOnly: true },
   { id: "vendor-orders", label: "크라이저 발주", icon: "sales", group: "bizsupport", groupLabel: "영업지원", vendorGate: true },
   { id: "install-schedule", label: "설치일정 (브로제이)", icon: "board", group: "bizsupport", vendorGate: true },
+  { id: "smart-store", label: "스마트상점", icon: "board", group: "bizsupport" },
   { id: "kb", label: "지식경영", icon: "book", group: "kb", groupLabel: "지식" },
 ];
 

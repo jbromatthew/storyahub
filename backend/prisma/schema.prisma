@@ -993,3 +993,41 @@ model ErpClosingEditLog {
   @@index([assignee])
   @@index([leadId])
 }
+
+/// 스마트상점 기술보급사업 회차 (2026년 2차 등)
+model ErpSmartStoreRound {
+  id        String               @id @default(cuid())
+  year      Int
+  round     Int                  // 차수
+  title     String
+  guidePath String               // 공개 가이드 경로 (/smartstore/2026-2.html)
+  deadline  String?              // 신청 마감 안내 문구
+  active    Boolean              @default(true) // 공개 여부
+  note      String?
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  applies   ErpSmartStoreApply[]
+
+  @@unique([year, round])
+}
+
+/// 스마트상점 신청 접수 — 고객이 공개 가이드 마지막에 직접 제출
+model ErpSmartStoreApply {
+  id         String             @id @default(cuid())
+  roundId    String
+  round      ErpSmartStoreRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  bizNo      String             // 사업자등록번호
+  centerName String
+  phone      String
+  storeId    String             // 스마트상점 ID
+  applyType  String?            // general | barrierfree | rental | sw
+  hasPrior   Boolean?           // 기존 수혜 이력
+  priorType  String?
+  status     String             @default("new") // new | checked | done
+  memo       String?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  @@unique([roundId, bizNo])
+  @@index([roundId, createdAt])
+}

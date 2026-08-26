@@ -12,6 +12,8 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: "autoUpdate",
+        // 스마트상점 공개 가이드는 용량이 커서(수백KB) 서비스워커 프리캐시 대상에서 제외
+        workbox: { globIgnores: ["**/smartstore/**"], navigateFallbackDenylist: [/^\/smartstore\//] },
         manifest: {
           name: erpMode ? "ERP" : "Storyahub",
           short_name: erpMode ? "ERP" : "Storyahub",

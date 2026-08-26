@@ -1314,6 +1314,89 @@ async function requireOwner(req: AuthedRequest, res: Response): Promise<boolean>
   return false;
 }
 
+/* ===================== 스마트상점 기술보급사업 ===================== */
+
+// 회차 목록 (신청 건수 포함)
+erpRouter.get("/smartstore/rounds", async (_req: AuthedRequest, res) => {
+  const rounds = await prisma.erpSmartStoreRound.findMany({
+    orderBy: [{ year: "desc" }, { round: "desc" }],
+    include: { _count: { select: { applies: true } } },
+  });
+  res.json({ rounds: rounds.map((r) => ({ ...r, applyCount: r._count.applies })) });
+});
+
+erpRouter.post("/smartstore/rounds", async (req: AuthedRequest, res) => {
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const year = Number(b.year);
+  const round = Number(b.round);
+  if (!year || !round) return res.status(400).json({ error: "연도와 차수를 입력하세요" });
+  const title = String(b.title ?? "").trim() || `${year}년 ${round}차`;
+  const guidePath = String(b.guidePath ?? "").trim() || `/smartstore/${year}-${round}.html`;
+  try {
+    const created = await prisma.erpSmartStoreRound.create({
+      data: {
+        year, round, title, guidePath,
+        deadline: String(b.deadline ?? "").trim() || null,
+        note: String(b.note ?? "").trim() || null,
+        active: b.active === undefined ? true : !!b.active,
+      },
+    });
+    res.json({ round: created });
+  } catch {
+    res.status(400).json({ error: "이미 있는 회차입니다" });
+  }
+});
+
+erpRouter.patch("/smartstore/rounds/:id", async (req: AuthedRequest, res) => {
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const data: Record<string, unknown> = {};
+  if (b.title !== undefined) data.title = String(b.title).trim();
+  if (b.guidePath !== undefined) data.guidePath = String(b.guidePath).trim();
+  if (b.deadline !== undefined) data.deadline = String(b.deadline).trim() || null;
+  if (b.note !== undefined) data.note = String(b.note).trim() || null;
+  if (b.active !== undefined) data.active = !!b.active;
+  const updated = await prisma.erpSmartStoreRound.update({ where: { id: req.params.id }, data });
+  res.json({ round: updated });
+});
+
+erpRouter.delete("/smartstore/rounds/:id", async (req: AuthedRequest, res) => {
+  await prisma.erpSmartStoreRound.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
+// 접수 목록
+erpRouter.get("/smartstore/applies", async (req: AuthedRequest, res) => {
+  const roundId = typeof req.query.roundId === "string" && req.query.roundId ? req.query.roundId : null;
+  const applies = await prisma.erpSmartStoreApply.findMany({
+    where: roundId ? { roundId } : {},
+    orderBy: { createdAt: "desc" },
+    include: { round: { select: { year: true, round: true, title: true } } },
+    take: 2000,
+  });
+  res.json({ applies });
+});
+
+erpRouter.patch("/smartstore/applies/:id", async (req: AuthedRequest, res) => {
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const data: Record<string, unknown> = {};
+  if (b.status !== undefined) {
+    const s = String(b.status);
+    if (!["new", "checked", "done"].includes(s)) return res.status(400).json({ error: "잘못된 상태" });
+    data.status = s;
+  }
+  if (b.memo !== undefined) data.memo = String(b.memo).slice(0, 1000) || null;
+  if (b.centerName !== undefined) data.centerName = String(b.centerName).trim().slice(0, 120);
+  if (b.phone !== undefined) data.phone = String(b.phone).replace(/[^0-9]/g, "").slice(0, 13);
+  if (b.storeId !== undefined) data.storeId = String(b.storeId).trim().slice(0, 60);
+  const updated = await prisma.erpSmartStoreApply.update({ where: { id: req.params.id }, data });
+  res.json({ apply: updated });
+});
+
+erpRouter.delete("/smartstore/applies/:id", async (req: AuthedRequest, res) => {
+  await prisma.erpSmartStoreApply.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
 /* ===================== 메뉴 접근 제어 + 접속기록 ===================== */
 
 // 내 메뉴 접근 규칙 — 규칙이 설정된 메뉴에 대해 현재 사용자의 허용 여부 (규칙 없는 메뉴는 기본 노출)
