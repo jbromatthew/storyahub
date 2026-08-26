@@ -5903,7 +5903,7 @@ export function SmartStoreView() {
   const publicUrl = cur ? `${location.origin}${cur.guidePath}` : "";
   const kw = q.trim().toLowerCase();
   const rows = applies.filter((a) =>
-    !kw || a.centerName.toLowerCase().includes(kw) || a.bizNo.includes(kw.replace(/[^0-9]/g, "")) ||
+    !kw || (a.centerName || "").toLowerCase().includes(kw) || (a.bizNo || "").includes(kw.replace(/[^0-9]/g, "")) ||
     a.phone.includes(kw.replace(/[^0-9]/g, "")) || (a.storeId || "").toLowerCase().includes(kw) ||
     (a.industry || "").toLowerCase().includes(kw));
 
@@ -5960,8 +5960,8 @@ export function SmartStoreView() {
       lines.push([
         new Date(a.createdAt).toLocaleDateString("ko-KR"),
         a.round ? `${a.round.year}-${a.round.round}차` : "",
-        a.centerName, fmtBizNo(a.bizNo), fmtPhone(a.phone),
-        SS_PRODUCT[a.product] || "", a.industry || "", SS_BRANCH[a.branchCount] || "",
+        a.centerName || "", a.bizNo ? fmtBizNo(a.bizNo) : "", fmtPhone(a.phone),
+        (a.products || []).map((k) => SS_PRODUCT[k] || k).join(" + "), a.industry || "", SS_BRANCH[a.branchCount] || "",
         a.isCustomer === true ? "기존" : a.isCustomer === false ? "신규" : "",
         a.storeId || "",
         SS_TYPE[a.applyType] || "", a.hasPrior === true ? "있음" : a.hasPrior === false ? "없음" : "",
@@ -6033,6 +6033,7 @@ export function SmartStoreView() {
                     <th className="label">상호</th>
                     <th style={{ textAlign: "left" }}>사업자번호</th>
                     <th style={{ textAlign: "left" }}>연락처</th>
+                    <th style={{ textAlign: "left" }}>단계</th>
                     <th style={{ textAlign: "left" }}>관심 기술</th>
                     <th style={{ textAlign: "left" }}>업종</th>
                     <th style={{ textAlign: "left" }}>지점</th>
@@ -6051,12 +6052,21 @@ export function SmartStoreView() {
                       <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>
                         {new Date(a.createdAt).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}
                       </td>
-                      <td className="label">{a.centerName}</td>
-                      <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{fmtBizNo(a.bizNo)}</td>
+                      <td className="label">{a.centerName || <span style={{ color: "var(--muted)" }}>(미입력)</span>}</td>
+                      <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{a.bizNo ? fmtBizNo(a.bizNo) : <span style={{ color: "var(--muted)" }}>대기</span>}</td>
                       <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>
                         <a href={`tel:${a.phone}`}>{fmtPhone(a.phone)}</a>
                       </td>
-                      <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{SS_PRODUCT[a.product] || "-"}</td>
+                      <td style={{ textAlign: "left" }}>
+                        {a.bizNo
+                          ? <span className="tag" style={{ background: "#D3F8DF", color: "#1F6B3A", fontSize: 11.5 }}>신청완료</span>
+                          : <span className="tag" style={{ background: "#FFF4E0", color: "#8A5512", fontSize: 11.5 }}>진행중</span>}
+                      </td>
+                      <td style={{ textAlign: "left" }}>
+                        {(a.products || []).length
+                          ? (a.products || []).map((k) => SS_PRODUCT[k] || k).join(", ")
+                          : "-"}
+                      </td>
                       <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{a.industry || "-"}</td>
                       <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{SS_BRANCH[a.branchCount] || "-"}</td>
                       <td style={{ textAlign: "left" }}>
