@@ -229,6 +229,50 @@
   .support-fine{font-size:11.5px;color:#9A9A9A;line-height:1.65;margin:14px 0 0;}
   .support-fine b{color:#D6D6D6;}
 
+  .support-row .rs{font-weight:600;color:#9A9A9A;font-size:12px;margin-left:5px;}
+  .support-extra{margin-top:14px;border-top:1px solid rgba(255,255,255,.14);padding-top:14px;}
+  .support-extra .se-k{display:inline-block;background:var(--brand);color:#fff;font-size:11px;
+    font-weight:800;border-radius:999px;padding:4px 10px;margin-bottom:8px;}
+  .support-extra .se-d{font-size:13px;color:#D6D6D6;line-height:1.65;margin:0;}
+  .support-extra .se-d b{color:#fff;}
+
+  /* ── 공고문 쉽게 정리 ── */
+  .brief{margin-top:24px;}
+  .brief-k{font-size:12px;font-weight:800;color:var(--brand-text);letter-spacing:.04em;margin-bottom:6px;}
+  .brief-t{font-size:20px;font-weight:800;margin:0 0 6px;line-height:1.4;}
+  .brief-d{font-size:13.5px;color:var(--ink-soft);line-height:1.65;margin:0 0 14px;}
+  .bcard{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);
+    padding:0;margin-bottom:10px;overflow:hidden;}
+  .bcard>summary{list-style:none;cursor:pointer;padding:17px 20px;display:flex;align-items:center;gap:11px;}
+  .bcard>summary::-webkit-details-marker{display:none;}
+  .bcard>summary:hover{background:#FFF9F5;}
+  .bcard .bn{flex:0 0 auto;width:24px;height:24px;border-radius:8px;background:var(--orange-soft);
+    color:var(--brand-text);font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+  .bcard .bq{flex:1 1 auto;font-size:15px;font-weight:700;line-height:1.45;}
+  .bcard .bx{flex:0 0 auto;color:var(--ink-faint);font-size:13px;transition:transform .15s;}
+  .bcard[open] .bx{transform:rotate(180deg);}
+  .bbody{padding:0 20px 18px;font-size:13.5px;color:var(--ink-soft);line-height:1.75;}
+  .bbody p{margin:0 0 10px;}
+  .bbody p:last-child{margin-bottom:0;}
+  .bbody b{color:var(--ink);font-weight:700;}
+  .bbody ul{margin:0 0 10px;padding-left:18px;}
+  .bbody li{margin-bottom:5px;}
+  .btab-wrap{overflow-x:auto;margin:0 0 10px;}
+  .btab{border-collapse:collapse;width:100%;min-width:420px;font-size:12.5px;
+    font-variant-numeric:tabular-nums;}
+  .btab th,.btab td{border-bottom:1px solid var(--line);padding:9px 10px;text-align:right;white-space:nowrap;}
+  .btab th:first-child,.btab td:first-child{text-align:left;white-space:normal;}
+  .btab thead th{background:#F7F8F9;color:var(--ink-soft);font-weight:700;font-size:11.5px;}
+  .btab tbody td{color:var(--ink-soft);}
+  .btab tbody td.hi{color:var(--brand-text);font-weight:800;}
+  .btab tbody th{text-align:left;font-weight:700;color:var(--ink);}
+  .bwarn{background:var(--orange-soft);border-left:3px solid var(--brand);border-radius:0 10px 10px 0;
+    padding:11px 13px;font-size:13px;color:#8A3D14;line-height:1.65;margin:0 0 10px;}
+  .bwarn b{color:#6E2F0F;}
+  .bflow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px;}
+  .bflow span{background:#F2F3F4;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;color:var(--ink-soft);}
+  .bflow i{color:var(--ink-faint);font-style:normal;font-size:11px;}
+
   /* ── 제품 도입사례 ── */
   .pshow{margin-top:24px;}
   .pshow-k{font-size:12px;font-weight:800;color:var(--brand-text);letter-spacing:.04em;margin-bottom:6px;}
@@ -258,7 +302,7 @@
 <div class="wrap">
   <div class="badge-row">
     <span class="badge orange">2026년 2차 모집</span>
-    <span class="badge">구입형 (보편·일반 / 배리어프리)</span>
+    <span class="badge">구입형 (일반 / 배리어프리)</span>
   </div>
   <h1>스마트상점 사업신청 길잡이</h1>
   <p class="subtitle">질문 두 개에 답하면, 어느 공고로 들어가야 하는지부터 신청 완료까지 실제 화면과 함께 안내해드려요.</p>
@@ -270,11 +314,16 @@
     <p class="support-d">키오스크 구입 비용의 상당 부분을 국비로 지원받을 수 있어요.
       어떤 유형으로 신청하느냐에 따라 지원한도와 국비 비율이 달라져요.</p>
     <div class="support-rows">
-      <div class="support-row"><span class="rk">배리어프리 무인정보단말기</span><span class="rv">최대 700만원 · 국비 70~80%</span></div>
-      <div class="support-row"><span class="rk">보편·일반 기술</span><span class="rv">최대 500만원 · 국비 50~60%</span></div>
+      <div class="support-row"><span class="rk">배리어프리 키오스크 <span class="rs">32인치 스탠드형</span></span><span class="rv">최대 700만원 · 국비 70~80%</span></div>
+      <div class="support-row"><span class="rk">일반 기술 <span class="rs">10인치 벽걸이형</span></span><span class="rv">최대 500만원 · 국비 70~80%</span></div>
     </div>
-    <p class="support-fine">국비 비율이 높은 쪽(80% / 60%)은 <b>장애인 사업주·간이과세자·1인 자영업자</b>가
-      자부담금 완화를 신청하고 증빙을 제출했을 때 적용돼요. 해당하지 않으면 각각 70% / 50%예요.</p>
+    <p class="support-fine">80%는 <b>장애인 사업주·간이과세자·1인 자영업자</b> 중 하나에 해당해 자부담금 완화를
+      신청하고 증빙을 낸 경우예요. 해당하지 않으면 70%가 적용돼요.</p>
+    <div class="support-extra">
+      <span class="se-k">미선정 지원금</span>
+      <p class="se-d">선정되지 않더라도 그냥 끝나지 않아요. 신청 후 <b>스마트상점 ID</b>를 남겨주시면
+        브로제이가 따로 연락드려 <b>키오스크 1대당 최대 100만원</b>의 미선정 지원금을 안내해드려요.</p>
+    </div>
   </div>
 
   <div class="route" id="route"></div>
@@ -300,7 +349,7 @@
     <article class="pcard">
       <div class="pcard-head">
         <p class="pc-t">벽걸이형 키오스크 (10인치 벽걸이형)</p>
-        <p class="pc-sub">출입제어 전용 · 보편·일반 기술 · 최대 500만원 · 국비 50~60%</p>
+        <p class="pc-sub">출입제어 전용 · 일반 기술 · 최대 500만원 · 국비 70~80%</p>
         <p class="pc-d">이미 키오스크가 있는 센터에서 출입제어만 더할 때 좋아요.
           벽에 붙이는 10인치라 따로 자리를 차지하지 않고, 게이트 옆이나 출입문 옆 어디든 붙일 수 있어요.</p>
       </div>
@@ -308,6 +357,122 @@
       <div class="pshots"><div class="pshot"><img src="photos/wall-1.webp" data-full="photos/wall-1@2x.webp" loading="lazy" decoding="async" alt="헬스장 출입문 옆 벽면"><div class="cap">헬스장 출입문 옆 벽면</div></div><div class="pshot"><img src="photos/wall-2.webp" data-full="photos/wall-2@2x.webp" loading="lazy" decoding="async" alt="스피드게이트 옆 기둥"><div class="cap">스피드게이트 옆 기둥</div></div><div class="pshot"><img src="photos/wall-3.webp" data-full="photos/wall-3@2x.webp" loading="lazy" decoding="async" alt="턴스타일 게이트 옆"><div class="cap">턴스타일 게이트 옆</div></div><div class="pshot"><img src="photos/wall-4.webp" data-full="photos/wall-4@2x.webp" loading="lazy" decoding="async" alt="커뮤니티센터 출입문"><div class="cap">커뮤니티센터 출입문</div></div><div class="pshot"><img src="photos/wall-5.webp" data-full="photos/wall-5@2x.webp" loading="lazy" decoding="async" alt="짐 출입 유리문 옆"><div class="cap">짐 출입 유리문 옆</div></div><div class="pshot"><img src="photos/wall-6.webp" data-full="photos/wall-6@2x.webp" loading="lazy" decoding="async" alt="매장 출입문 옆"><div class="cap">매장 출입문 옆</div></div><div class="pshot"><img src="photos/wall-7.webp" data-full="photos/wall-7@2x.webp" loading="lazy" decoding="async" alt="오피스 출입문 양쪽"><div class="cap">오피스 출입문 양쪽</div></div></div>
       <p class="pshots-hint">→ 옆으로 넘기면 사례를 더 볼 수 있어요</p>
     </article>
+  </section>
+
+  <section class="brief" id="brief">
+    <div class="brief-k">모집공고 요약</div>
+    <h2 class="brief-t">공고문, 쉬운 말로 정리했어요</h2>
+    <p class="brief-d">2026년 2차 모집공고문에서 브로제이 키오스크에 해당하는 <b>구입형</b> 내용만 뽑았어요. 궁금한 항목을 눌러보세요.</p>
+
+    <details class="bcard">
+      <summary><span class="bn">1</span><span class="bq">어떤 사업이고, 브로제이는 어디에 해당하나요?</span><span class="bx">▾</span></summary>
+      <div class="bbody">
+        <p>중소벤처기업부와 소상공인시장진흥공단이 소상공인 매장의 스마트기술 도입 비용을 대주는 사업이에요.
+          참여 유형은 <b>구입형·렌탈형·S/W형</b> 세 가지인데, 브로제이 키오스크는 전부 <b>구입형</b>이에요.</p>
+        <ul>
+          <li><b>배리어프리 키오스크</b>(32인치 스탠드형) → 구입형 중 <b>배리어프리 무인정보단말기</b></li>
+          <li><b>벽걸이형 키오스크</b>(10인치) → 구입형 중 <b>일반 기술</b></li>
+        </ul>
+        <p>렌탈형과 S/W형은 브로제이가 취급하지 않아요. 유형은 <b>하나만</b> 고를 수 있습니다.</p>
+      </div>
+    </details>
+
+    <details class="bcard">
+      <summary><span class="bn">2</span><span class="bq">그래서 제 돈은 얼마나 나가나요?</span><span class="bx">▾</span></summary>
+      <div class="bbody">
+        <p>국비는 <b>공단이 공급기업에 직접</b> 입금해요. 소상공인 통장으로 들어오는 게 아니라,
+          소상공인은 <b>자부담금과 부가세만</b> 공급기업에 내면 됩니다.</p>
+        <div class="btab-wrap"><table class="btab">
+          <thead><tr><th>신청 기술</th><th>공급가</th><th>국비 70%</th><th>자부담</th><th>부가세</th><th>실제 부담</th></tr></thead>
+          <tbody>
+            <tr><th>배리어프리 키오스크</th><td>700만원</td><td>490만원</td><td>210만원</td><td>70만원</td><td class="hi">280만원</td></tr>
+            <tr><th>일반 기술 (벽걸이형)</th><td>500만원</td><td>350만원</td><td>150만원</td><td>50만원</td><td class="hi">200만원</td></tr>
+          </tbody>
+        </table></div>
+        <p>공고문 p3 계산 예시 기준이에요. <b>장애인 사업주·간이과세자·1인 자영업자</b> 중 하나에만 해당해도
+          자부담금 완화를 신청할 수 있고, 증빙을 내면 국비가 <b>70% → 80%</b>로 올라가 부담이 더 줄어요.</p>
+        <p>자부담금은 공급기업 계좌로 이체하거나 대표자 본인 명의 카드로 결제해요. 매장 상황에 따라
+          <b>추가 설치비</b>가 생길 수 있고, 그건 국비 대상이 아니라 소상공인 부담이에요.</p>
+      </div>
+    </details>
+
+    <details class="bcard">
+      <summary><span class="bn">3</span><span class="bq">예전에 지원받은 적 있는데 또 되나요?</span><span class="bx">▾</span></summary>
+      <div class="bbody">
+        <p>받은 적 있는 기술의 <b>종류</b>에 따라 갈려요. 같은 종류는 두 번 받을 수 없습니다.</p>
+        <ul>
+          <li>배리어프리를 받았다 → 이번엔 <b>일반 기술(벽걸이형)</b>만 가능</li>
+          <li>보편·일반을 받았다 → 이번엔 <b>배리어프리 키오스크</b>만 가능</li>
+          <li>S/W형만 받았다 → <b>둘 다</b> 가능</li>
+          <li>받은 적 없다 → <b>둘 다</b> 가능</li>
+        </ul>
+        <div class="bwarn"><b>이번이 마지막이에요.</b> 공고문에 「보편·일반 ↔ 배리어프리 간 추가지원은
+          본 공고 마감과 함께 종료」라고 못박혀 있어요. 다음 차수에는 이 추가지원이 없습니다.</div>
+        <p>위 질문 하나만 답하시면 어느 쪽에 해당하는지 이 페이지가 자동으로 걸러드려요.</p>
+      </div>
+    </details>
+
+    <details class="bcard">
+      <summary><span class="bn">4</span><span class="bq">신청하면 다 되나요? 어떻게 뽑나요?</span><span class="bx">▾</span></summary>
+      <div class="bbody">
+        <p>선착순이 아니라 <b>점수 평가</b>예요. 서류 확인(적·부) → 서면평가 → 고득점 순으로 선정합니다.</p>
+        <div class="btab-wrap"><table class="btab">
+          <thead><tr><th>평가항목</th><th>배점</th></tr></thead>
+          <tbody>
+            <tr><th>도입 필요성 및 추진 의지</th><td class="hi">30점</td></tr>
+            <tr><th>기술 적합성</th><td class="hi">30점</td></tr>
+            <tr><th>실행 가능성 및 운영 역량</th><td>20점</td></tr>
+            <tr><th>사업 이해도 및 참여 적정성</th><td>20점</td></tr>
+          </tbody>
+        </table></div>
+        <p>100점 중 <b>60점이 "왜 필요한가"와 "우리 매장에 맞는가"</b>예요. 그래서 신청서 3문항을
+          얼마나 구체적으로 쓰느냐가 당락을 가릅니다. 이 페이지 뒤쪽 STEP 06에서 작성 요령을 같이 안내해드려요.</p>
+        <p>동점이면 <b>신청일이 빠른 쪽</b>이 유리해요. 마감일에는 접속이 몰리니 미리 넣는 게 좋습니다.
+          기술별로 개별 평가라 <b>신청한 수량이 다 선정되지 않을 수도</b> 있어요.</p>
+      </div>
+    </details>
+
+    <details class="bcard">
+      <summary><span class="bn">5</span><span class="bq">선정되면 그다음엔 뭘 해야 하나요?</span><span class="bx">▾</span></summary>
+      <div class="bbody">
+        <div class="bflow"><span>사업신청 ~9월</span><i>→</i><span>서류검토·평가·선정 10월</span><i>→</i><span>기술컨설팅·계약 10월</span><i>→</i><span>설치·증빙제출 10월</span></div>
+        <p>선정 결과는 <b>대표자 연락처로 개별 문자</b>가 오고, 홈페이지에서도 확인할 수 있어요.
+          선정 후에는 사업장에서 <b>기술컨설팅</b>을 받아야 하고, 안 받으면 기술 지원이 안 돼요.</p>
+        <p>구입형은 <b>의무사용기간 2년</b>이에요. 그 안에 휴·폐업하거나 매장을 옮겨 못 쓰게 되면
+          공단에 알리고 지원금을 반납하거나 기술 전부를 무상 양도해야 합니다.
+          매년 <b>현장점검</b>도 있고, 정당한 사유 없이 거부하면 국비가 환수될 수 있어요.</p>
+        <p>선정된 뒤 단순 변심이나 상위 사양 선호로는 <b>기술 변경이 안 돼요.</b> 고를 때 신중히 정하세요.</p>
+      </div>
+    </details>
+
+    <details class="bcard">
+      <summary><span class="bn">6</span><span class="bq">이런 경우엔 신청이 안 돼요</span><span class="bx">▾</span></summary>
+      <div class="bbody">
+        <ul>
+          <li>신청일 기준 <b>영업 중이 아닌</b> 경우 (예비창업 포함)</li>
+          <li>사업 추진기간 중 <b>휴·폐업</b> 예정인 경우</li>
+          <li><b>국세·지방세 체납</b> 중인 경우</li>
+          <li>같은 종류 기술을 <b>이미 지원받은</b> 경우 (추가지원 대상은 예외)</li>
+          <li>소상공인 <b>지원제외 업종</b>인 경우</li>
+        </ul>
+        <div class="bwarn"><b>대리신청은 절대 안 됩니다.</b> 공급기업이나 대행업체가 대신 신청하면
+          신청 자체가 불가하고, 공단이 <b>접속기록(IP)으로 검증</b>해요. 같은 IP에서 여러 건이
+          확인되면 선정 제외·선정 취소까지 갈 수 있습니다. 자부담금 대납이나 페이백을 제안하는 곳도
+          부정행위이니 응하지 마세요. 브로제이는 <b>신청을 대신해드리지 않고</b>, 대표자님이 직접
+          하시도록 이 안내만 드립니다.</div>
+      </div>
+    </details>
+
+    <details class="bcard">
+      <summary><span class="bn">7</span><span class="bq">떨어지면 그냥 끝인가요?</span><span class="bx">▾</span></summary>
+      <div class="bbody">
+        <p>아니요. 신청을 마치신 뒤 아래에서 <b>스마트상점 ID</b>를 남겨주시면, 선정 결과가 나온 후
+          미선정되신 분께 브로제이가 <b>따로 연락</b>드려요.</p>
+        <p>브로제이 자체 <b>미선정 지원금</b>으로 <b>키오스크 1대당 최대 100만원</b>까지 도와드립니다.
+          정부 지원과는 별개인 브로제이 혜택이라, 선정 결과와 상관없이 도입을 검토하실 수 있어요.</p>
+        <p>지원 조건과 금액은 기종·수량에 따라 달라져서, 연락드릴 때 정확히 안내해드릴게요.</p>
+      </div>
+    </details>
   </section>
 
   <footer>
@@ -340,9 +505,9 @@ const PRODUCT_BY_TYPE = {
   barrierfree:{ v:'premium32', m:'프리미엄 배리어프리 키오스크 (32인치 스탠드형)',
     s:'출입제어 &amp; 무인결제 · 배리어프리 무인정보단말기',
     why:'배리어프리 유형으로 신청하시므로 <b>배리어프리 키오스크</b>가 대상이에요.',
-    other:'벽걸이형 키오스크(10인치)는 <b>보편·일반 유형</b>이라 이번 신청에는 포함되지 않아요.' },
+    other:'벽걸이형 키오스크(10인치)는 <b>일반 기술</b>이라 이번 신청에는 포함되지 않아요.' },
   general:{ v:'wall10', m:'벽걸이형 키오스크 (10인치 벽걸이형)', s:'출입제어',
-    why:'보편·일반 유형으로 신청하시므로 <b>벽걸이형 키오스크</b>가 대상이에요.',
+    why:'일반 기술로 신청하시므로 <b>벽걸이형 키오스크</b>가 대상이에요.',
     other:'배리어프리 키오스크(32인치)는 <b>배리어프리 유형</b>이라 이번 신청에는 포함되지 않아요.' },
 };
 function esc(v){ return String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -350,7 +515,7 @@ function ck(a,b){ return a===b ? ' checked' : ''; }
 function onc(a,b){ return a===b ? ' on' : ''; }
 
 const TYPE_INFO = {
-  general:     {label:'구입형 (보편·일반)', sub:'전자칠판·사이니지 등', amount:'최대 500만원', ratio:'국비 50~60%', broj:true},
+  general:     {label:'구입형 (일반 기술)', sub:'벽걸이형 출입제어 키오스크', amount:'최대 500만원', ratio:'국비 70~80%', broj:true},
   barrierfree: {label:'구입형 (배리어프리)', sub:'배리어프리 무인정보단말기', amount:'최대 700만원', ratio:'국비 70~80%', broj:true},
 };
 
@@ -547,7 +712,7 @@ function leadBoxHtml(){
 }
 function applyDoneHtml(){
   return `<div class="apply-done" id="applyBox"><p class="t">접수 확인이 끝났어요</p>`
-    + `<p class="d">담당자가 확인 후 필요한 경우 연락드릴게요.<br>키오스크 도입 문의는 아래 카카오톡으로 편하게 남겨주세요.</p></div>`;
+    + `<p class="d">담당자가 확인 후 필요한 경우 연락드릴게요.<br>미선정되시면 브로제이 미선정 지원금 안내로 따로 연락드릴게요.</p></div>`;
 }
 function applyBoxHtml(){
   if(state.applyDone) return applyDoneHtml();
@@ -557,6 +722,8 @@ function applyBoxHtml(){
       <div class="apply-k">신청 완료 확인</div>
       <p class="apply-t">신청을 마치셨다면 마지막으로 두 가지만</p>
       <p class="apply-d">접수가 정상 처리됐는지 저희가 함께 확인해드릴게요. 선정 결과에 영향을 주지 않으며, 접수번호나 신청 내용은 여쭤보지 않습니다.</p>
+      <div class="note-box"><b>미선정되셔도 그냥 끝나지 않아요.</b> 스마트상점 ID를 남겨주시면 결과 발표 후
+        미선정되신 분께 브로제이가 따로 연락드려, 자체 <b>미선정 지원금(키오스크 1대당 최대 100만원)</b>을 안내해드려요.</div>
       <div class="apply-grid">
         <div class="fld" id="doneePhoneWrap"${hidePhone}>
           <label for="d_phone">연락처</label>
@@ -569,9 +736,9 @@ function applyBoxHtml(){
           <span class="hint">숫자 10자리 · 오픈 전이면 <b>준비 중</b></span>
         </div>
         <div class="fld full">
-          <label for="f_store">스마트상점 ID <span style="font-weight:500;color:var(--ink-faint)">(선택)</span></label>
+          <label for="f_store">스마트상점 ID <span style="font-weight:500;color:var(--brand-text)">미선정 지원금 안내용</span></label>
           <input id="f_store" placeholder="소상공인24 로그인 ID" maxlength="40" autocomplete="off" value="${esc(A.store)}">
-          <span class="hint">신청에 사용하신 소상공인24 아이디예요</span>
+          <span class="hint">신청에 사용하신 소상공인24 아이디예요 · 남겨주셔야 미선정 지원금 안내를 드릴 수 있어요</span>
         </div>
       </div>
       <button class="apply-btn" id="applyBtn">접수 완료 알리기</button>
@@ -586,6 +753,7 @@ function render(){
   const onSteps = state.screen==='steps';
   document.getElementById('support').style.display = onSteps ? 'none' : '';
   document.getElementById('pshow').style.display   = onSteps ? 'none' : '';
+  document.getElementById('brief').style.display    = onSteps ? 'none' : '';
 
   if(state.screen==='intro'){
     app.innerHTML=`<div class="card">
@@ -642,7 +810,7 @@ function render(){
           <span>${tags}</span></button>`;
       }).join('')}
       </div>
-      <div class="note-box calm">브로제이는 <b>구입형</b>을 공급해요. 렌탈형·S/W형은 취급하지 않으니, 필요하시면 스마트상점 홈페이지 [스마트기술] → [기술현황]에서 해당 유형 공급기업을 직접 고르시면 돼요.</div>
+      <div class="note-box calm">브로제이는 <b>구입형</b>만 공급해요. 렌탈형·S/W형은 취급하지 않으니, 필요하시면 스마트상점 홈페이지 [스마트기술] → [기술현황]에서 해당 유형 공급기업을 직접 고르시면 돼요.</div>
     </div>`;
   }
 
