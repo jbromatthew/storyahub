@@ -167,6 +167,14 @@
   footer b{color:var(--ink-soft);}
 
   /* ── 접수 정보 제출 ── */
+document.addEventListener("change", (e) => {
+  const inp = e.target.closest('.opt input[type="radio"]');
+  if (!inp) return;
+  document.querySelectorAll(`input[name="${inp.name}"]`).forEach((x) => {
+    x.closest(".opt")?.classList.toggle("on", x.checked);
+  });
+});
+
   .apply{background:var(--paper);border:2px solid var(--navy);border-radius:var(--radius);
     padding:26px;margin-top:14px;}
   .apply-k{font-size:12.5px;font-weight:800;color:var(--navy);letter-spacing:.04em;margin-bottom:6px;}
@@ -193,6 +201,17 @@
   .apply-done .t{font-size:19px;font-weight:800;color:var(--green);margin:0 0 8px;}
   .apply-done .d{font-size:14px;color:var(--ink-soft);line-height:1.65;margin:0;}
   .apply-fine{font-size:11.5px;color:var(--ink-faint);line-height:1.6;margin:14px 0 0;}
+  .fld.opts{gap:7px;}
+  .opt{display:flex;align-items:flex-start;gap:9px;border:1px solid var(--line);border-radius:10px;
+    padding:11px 13px;cursor:pointer;background:#FCFCFD;transition:.15s;}
+  .opt:hover{border-color:var(--navy-soft);}
+  .opt input{margin:2px 0 0;accent-color:var(--navy);flex-shrink:0;}
+  .opt.on{border-color:var(--navy);background:#F4F7FC;}
+  .opt .m{display:block;font-size:14px;font-weight:700;line-height:1.4;}
+  .opt .s{display:block;font-size:12px;color:var(--ink-soft);margin-top:3px;line-height:1.45;}
+  .opt-row{display:flex;flex-wrap:wrap;gap:7px;}
+  .opt-row .opt{flex:1 1 auto;min-width:82px;justify-content:center;padding:9px 12px;}
+  .opt-row .opt .m{font-size:13.5px;font-weight:600;}
 </style>
 </head>
 <body>
@@ -487,22 +506,63 @@ function render(){
       <p class="apply-t">신청을 마치셨다면 접수 정보를 남겨주세요</p>
       <p class="apply-d">브로제이가 진행 상황을 함께 챙겨드리기 위해 필요한 정보예요. 선정 결과에 영향을 주지 않으며, 접수번호나 신청 내용은 여쭤보지 않습니다.</p>
       <div class="apply-grid">
-        <div class="fld">
-          <label for="f_biz">사업자등록번호</label>
-          <input id="f_biz" inputmode="numeric" placeholder="0000000000" maxlength="12" autocomplete="off">
-          <span class="hint">숫자 10자리 (- 없이 입력해도 돼요)</span>
+        <div class="fld full opts">
+          <label>관심 있는 스마트 기술</label>
+          <label class="opt" data-opt="product"><input type="radio" name="ss_product" value="premium32">
+            <span><span class="m">프리미엄 키오스크 (32인치 스탠드형)</span><span class="s">출입제어 &amp; 무인결제</span></span></label>
+          <label class="opt" data-opt="product"><input type="radio" name="ss_product" value="wall10">
+            <span><span class="m">벽걸이형 키오스크 (10인치 벽걸이형)</span><span class="s">출입제어</span></span></label>
         </div>
+
         <div class="fld">
-          <label for="f_center">상호 (센터명)</label>
+          <label for="f_center">센터명</label>
           <input id="f_center" placeholder="사업자등록증과 동일하게" maxlength="60" autocomplete="organization">
+          <span class="hint">아직 오픈 전이면 <b>준비 중</b>으로 적어주세요</span>
         </div>
         <div class="fld">
           <label for="f_phone">연락처</label>
           <input id="f_phone" inputmode="numeric" placeholder="01012345678" maxlength="13" autocomplete="tel">
+          <span class="hint">알림 받으실 번호로 적어주세요</span>
         </div>
         <div class="fld">
-          <label for="f_store">스마트상점 ID</label>
+          <label for="f_biz">사업자등록번호</label>
+          <input id="f_biz" placeholder="0000000000" maxlength="20" autocomplete="off">
+          <span class="hint">숫자 10자리 · 오픈 전이면 <b>준비 중</b></span>
+        </div>
+        <div class="fld">
+          <label for="f_store">스마트상점 ID <span style="font-weight:500;color:var(--ink-faint)">(선택)</span></label>
           <input id="f_store" placeholder="소상공인24 로그인 ID" maxlength="40" autocomplete="off">
+          <span class="hint">신청을 마치셨다면 적어주세요</span>
+        </div>
+
+        <div class="fld full opts">
+          <label>업종</label>
+          <div class="opt-row">
+            <label class="opt" data-opt="industry"><input type="radio" name="ss_industry" value="헬스장"><span class="m">헬스장</span></label>
+            <label class="opt" data-opt="industry"><input type="radio" name="ss_industry" value="PT샵"><span class="m">PT샵</span></label>
+            <label class="opt" data-opt="industry"><input type="radio" name="ss_industry" value="필라테스"><span class="m">필라테스</span></label>
+            <label class="opt" data-opt="industry"><input type="radio" name="ss_industry" value="체육관"><span class="m">체육관</span></label>
+            <label class="opt" data-opt="industry"><input type="radio" name="ss_industry" value="기타"><span class="m">기타</span></label>
+          </div>
+        </div>
+
+        <div class="fld full opts">
+          <label>지점 수 <span style="font-weight:500;color:var(--ink-faint)">현재 운영 중인 지점</span></label>
+          <div class="opt-row">
+            <label class="opt" data-opt="branch"><input type="radio" name="ss_branch" value="1"><span class="m">1개</span></label>
+            <label class="opt" data-opt="branch"><input type="radio" name="ss_branch" value="2"><span class="m">2개</span></label>
+            <label class="opt" data-opt="branch"><input type="radio" name="ss_branch" value="3-5"><span class="m">3~5개</span></label>
+            <label class="opt" data-opt="branch"><input type="radio" name="ss_branch" value="6-10"><span class="m">6~10개</span></label>
+            <label class="opt" data-opt="branch"><input type="radio" name="ss_branch" value="11+"><span class="m">11개 이상</span></label>
+          </div>
+        </div>
+
+        <div class="fld full opts">
+          <label>현재 브로제이 서비스를 이용 중이신가요?</label>
+          <div class="opt-row">
+            <label class="opt" data-opt="cust"><input type="radio" name="ss_cust" value="yes"><span class="m">네, 이용 중입니다</span></label>
+            <label class="opt" data-opt="cust"><input type="radio" name="ss_cust" value="no"><span class="m">아니요</span></label>
+          </div>
         </div>
       </div>
       <button class="apply-btn" id="applyBtn">접수 정보 보내기</button>
@@ -560,6 +620,14 @@ document.addEventListener('click',e=>{
 });
 
 /* ── 접수 정보 제출 ── */
+document.addEventListener("change", (e) => {
+  const inp = e.target.closest('.opt input[type="radio"]');
+  if (!inp) return;
+  document.querySelectorAll(`input[name="${inp.name}"]`).forEach((x) => {
+    x.closest(".opt")?.classList.toggle("on", x.checked);
+  });
+});
+
 const SS_API = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
   ? "http://localhost:4000" : "https://api.storyahub.com";
 const SS_YEAR = 2026, SS_ROUND = 2;
@@ -571,15 +639,23 @@ document.addEventListener("click", async (e) => {
   const msg = g("applyMsg");
   const show = (t, ok) => { msg.textContent = t; msg.className = "apply-msg " + (ok ? "ok" : "err"); msg.hidden = false; };
 
-  const bizNo = g("f_biz").value.replace(/[^0-9]/g, "");
+  const pick = (n) => document.querySelector(`input[name="${n}"]:checked`)?.value || "";
+  const bizRaw = g("f_biz").value.trim();
+  const bizDigits = bizRaw.replace(/[^0-9]/g, "");
   const centerName = g("f_center").value.trim();
   const phone = g("f_phone").value.replace(/[^0-9]/g, "");
   const storeId = g("f_store").value.trim();
+  const product = pick("ss_product"), industry = pick("ss_industry"), branchCount = pick("ss_branch");
+  const cust = pick("ss_cust");
 
-  if (bizNo.length !== 10) return show("사업자등록번호 10자리를 정확히 입력해 주세요", false);
-  if (!centerName) return show("상호(센터명)를 입력해 주세요", false);
+  const bizOk = bizDigits.length === 10 || (!bizDigits.length && /준비/.test(bizRaw));
+  if (!product) return show("관심 있는 스마트 기술을 선택해 주세요", false);
+  if (!centerName) return show("센터명을 입력해 주세요", false);
   if (phone.length < 9) return show("연락처를 정확히 입력해 주세요", false);
-  if (!storeId) return show("스마트상점 ID를 입력해 주세요", false);
+  if (!bizOk) return show("사업자등록번호 10자리를 입력해 주세요 (오픈 전이면 '준비 중')", false);
+  if (!industry) return show("업종을 선택해 주세요", false);
+  if (!branchCount) return show("지점 수를 선택해 주세요", false);
+  if (!cust) return show("브로제이 서비스 이용 여부를 선택해 주세요", false);
 
   btn.disabled = true; btn.textContent = "보내는 중…";
   try {
@@ -587,7 +663,8 @@ document.addEventListener("click", async (e) => {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         year: SS_YEAR, round: SS_ROUND,
-        bizNo, centerName, phone, storeId,
+        bizNo: bizRaw, centerName, phone, storeId,
+        product, industry, branchCount, isCustomer: cust === "yes",
         applyType: state.chosenType, hasPrior: state.hasPrior, priorType: state.priorType,
       }),
     });

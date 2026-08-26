@@ -5856,14 +5856,17 @@ const SS_TYPE = {
   rental: "렌탈형",
   sw: "S/W형",
 };
+const SS_PRODUCT = { premium32: "32인치 스탠드", wall10: "10인치 벽걸이" };
+const SS_BRANCH = { "1": "1개", "2": "2개", "3-5": "3~5개", "6-10": "6~10개", "11+": "11개+" };
 const SS_STATUS = [
   { id: "new", label: "신규" },
   { id: "checked", label: "확인" },
   { id: "done", label: "완료" },
 ];
 const fmtBizNo = (v) => {
-  const d = String(v || "").replace(/[^0-9]/g, "");
-  return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}` : d;
+  const raw = String(v || "");
+  const d = raw.replace(/[^0-9]/g, "");
+  return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}` : raw;
 };
 const fmtPhone = (v) => {
   const d = String(v || "").replace(/[^0-9]/g, "");
@@ -5901,7 +5904,8 @@ export function SmartStoreView() {
   const kw = q.trim().toLowerCase();
   const rows = applies.filter((a) =>
     !kw || a.centerName.toLowerCase().includes(kw) || a.bizNo.includes(kw.replace(/[^0-9]/g, "")) ||
-    a.phone.includes(kw.replace(/[^0-9]/g, "")) || (a.storeId || "").toLowerCase().includes(kw));
+    a.phone.includes(kw.replace(/[^0-9]/g, "")) || (a.storeId || "").toLowerCase().includes(kw) ||
+    (a.industry || "").toLowerCase().includes(kw));
 
   const addRound = async () => {
     const year = Number(form.year), round = Number(form.round);
@@ -5950,13 +5954,16 @@ export function SmartStoreView() {
 
   const copyList = async () => {
     if (!rows.length) return;
-    const head = ["접수일", "회차", "상호", "사업자번호", "연락처", "스마트상점ID", "신청유형", "수혜이력", "상태", "메모"];
+    const head = ["접수일", "회차", "상호", "사업자번호", "연락처", "관심기술", "업종", "지점수", "기존고객", "스마트상점ID", "신청유형", "수혜이력", "상태", "메모"];
     const lines = [head.join("\t")];
     for (const a of rows) {
       lines.push([
         new Date(a.createdAt).toLocaleDateString("ko-KR"),
         a.round ? `${a.round.year}-${a.round.round}차` : "",
-        a.centerName, fmtBizNo(a.bizNo), fmtPhone(a.phone), a.storeId,
+        a.centerName, fmtBizNo(a.bizNo), fmtPhone(a.phone),
+        SS_PRODUCT[a.product] || "", a.industry || "", SS_BRANCH[a.branchCount] || "",
+        a.isCustomer === true ? "기존" : a.isCustomer === false ? "신규" : "",
+        a.storeId || "",
         SS_TYPE[a.applyType] || "", a.hasPrior === true ? "있음" : a.hasPrior === false ? "없음" : "",
         SS_STATUS.find((s) => s.id === a.status)?.label || a.status, (a.memo || "").replace(/\s+/g, " "),
       ].join("\t"));
@@ -6026,6 +6033,10 @@ export function SmartStoreView() {
                     <th className="label">상호</th>
                     <th style={{ textAlign: "left" }}>사업자번호</th>
                     <th style={{ textAlign: "left" }}>연락처</th>
+                    <th style={{ textAlign: "left" }}>관심 기술</th>
+                    <th style={{ textAlign: "left" }}>업종</th>
+                    <th style={{ textAlign: "left" }}>지점</th>
+                    <th style={{ textAlign: "left" }}>기존고객</th>
                     <th style={{ textAlign: "left" }}>스마트상점 ID</th>
                     <th style={{ textAlign: "left" }}>신청유형</th>
                     <th style={{ textAlign: "left" }}>수혜이력</th>
@@ -6045,7 +6056,17 @@ export function SmartStoreView() {
                       <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>
                         <a href={`tel:${a.phone}`}>{fmtPhone(a.phone)}</a>
                       </td>
-                      <td style={{ textAlign: "left" }}>{a.storeId}</td>
+                      <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{SS_PRODUCT[a.product] || "-"}</td>
+                      <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{a.industry || "-"}</td>
+                      <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{SS_BRANCH[a.branchCount] || "-"}</td>
+                      <td style={{ textAlign: "left" }}>
+                        {a.isCustomer === true
+                          ? <span className="tag" style={{ background: "#D3F8DF", color: "#1F6B3A", fontSize: 11.5 }}>기존</span>
+                          : a.isCustomer === false
+                            ? <span className="tag gray" style={{ fontSize: 11.5 }}>신규</span>
+                            : "-"}
+                      </td>
+                      <td style={{ textAlign: "left" }}>{a.storeId || "-"}</td>
                       <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>{SS_TYPE[a.applyType] || "-"}</td>
                       <td style={{ textAlign: "left" }}>{a.hasPrior === true ? "있음" : a.hasPrior === false ? "없음" : "-"}</td>
                       <td style={{ textAlign: "left" }}>

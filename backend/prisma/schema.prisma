@@ -1016,10 +1016,14 @@ model ErpSmartStoreApply {
   id         String             @id @default(cuid())
   roundId    String
   round      ErpSmartStoreRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
-  bizNo      String             // 사업자등록번호
+  bizNo      String             // 사업자등록번호 (미오픈이면 '준비중')
   centerName String
   phone      String
-  storeId    String             // 스마트상점 ID
+  storeId    String?            // 스마트상점 ID (신청 전이면 비어 있을 수 있음)
+  product    String?            // premium32 | wall10 — 관심 기술
+  industry   String?            // 헬스장 | PT샵 | 필라테스 | 체육관 | 기타
+  branchCount String?           // 1 | 2 | 3-5 | 6-10 | 11+
+  isCustomer Boolean?           // 현재 브로제이 서비스 이용 중인지
   applyType  String?            // general | barrierfree | rental | sw
   hasPrior   Boolean?           // 기존 수혜 이력
   priorType  String?
@@ -1028,6 +1032,7 @@ model ErpSmartStoreApply {
   createdAt  DateTime           @default(now())
   updatedAt  DateTime           @updatedAt
 
-  @@unique([roundId, bizNo])
+  // 사업자번호가 '준비중'인 미오픈 센터가 여럿일 수 있어 연락처까지 묶어 중복 판정
+  @@unique([roundId, bizNo, phone])
   @@index([roundId, createdAt])
 }
