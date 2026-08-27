@@ -1142,6 +1142,19 @@ function applyLookupToLead(j) {
   if (typeof j.isCustomer === "boolean") pick("ss_cust", j.isCustomer ? "yes" : "no", "cust");
 }
 
+/* 폼 아래 안내 문구. 화면이 긴 PC에서는 메시지가 접힌 화면 밖에 있을 수 있어 함께 스크롤한다. */
+function ssMsg(id, text, ok) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = "apply-msg " + (ok ? "ok" : "err");
+  el.hidden = false;
+  const r = el.getBoundingClientRect();
+  if (r.top < 0 || r.bottom > window.innerHeight) {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
+
 async function ssPost(payload) {
   const r = await fetch(SS_API + "/public/smartstore/apply", {
     method: "POST", headers: { "Content-Type": "application/json" },
