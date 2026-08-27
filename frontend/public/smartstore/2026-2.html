@@ -278,6 +278,14 @@
   .support-extra .se-d{font-size:13px;color:#D6D6D6;line-height:1.65;margin:0;}
   .support-extra .se-d b{color:#fff;}
 
+  .jump{display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;width:100%;
+    margin-top:10px;background:var(--paper);border:1px solid var(--line);border-radius:12px;
+    padding:13px 14px;font-family:inherit;font-size:13.5px;color:var(--ink-soft);
+    cursor:pointer;transition:border-color .15s,background .15s;}
+  .jump:hover{border-color:var(--brand);background:#FFF9F5;}
+  .jump b{color:var(--brand-text);font-weight:800;}
+  .jump-lead{font-size:14px;color:var(--ink-soft);line-height:1.65;margin:0 0 12px;}
+
   /* ── 공고문 쉽게 정리 ── */
   .brief{margin-top:24px;}
   .brief-k{font-size:12px;font-weight:800;color:var(--brand-text);letter-spacing:.04em;margin-bottom:6px;}
@@ -368,6 +376,10 @@
         브로제이가 따로 연락드려 <b>키오스크 1대당 최대 100만원</b>의 미선정 지원금을 안내해드려요.</p>
     </div>
   </div>
+
+  <button class="jump" id="jump" data-action="go-submit">
+    <span>스마트상점 신청을 이미 마치셨나요?</span> <b>아이디 바로 제출하기 →</b>
+  </button>
 
   <div class="route" id="route"></div>
   <div id="app"></div>
@@ -808,10 +820,13 @@ function applyBoxHtml(){
 function render(){
   renderRoute();
   const app=document.getElementById('app');
-  const onSteps = state.screen==='steps';
-  document.getElementById('support').style.display = onSteps ? 'none' : '';
-  document.getElementById('pshow').style.display   = onSteps ? 'none' : '';
-  document.getElementById('brief').style.display    = onSteps ? 'none' : '';
+  const bare = state.screen==='steps' || state.screen==='submit';   // 본문에 집중시킬 화면
+  document.getElementById('support').style.display = bare ? 'none' : '';
+  document.getElementById('pshow').style.display   = bare ? 'none' : '';
+  document.getElementById('brief').style.display    = bare ? 'none' : '';
+  document.getElementById('jump').style.display     = bare ? 'none' : '';
+  // 제출 전용 화면은 안내 경로 밖이라 진행 표시를 감춘다
+  document.getElementById('route').style.display     = state.screen==='submit' ? 'none' : '';
 
   if(state.screen==='intro'){
     app.innerHTML=`<div class="card">
@@ -873,6 +888,12 @@ function render(){
       </div>
       <div class="note-box calm">브로제이는 <b>구입형</b>만 공급해요. 렌탈형·S/W형은 취급하지 않으니, 필요하시면 스마트상점 홈페이지 [스마트기술] → [기술현황]에서 해당 유형 공급기업을 직접 고르시면 돼요.</div>
     </div>`;
+  }
+
+  else if(state.screen==='submit'){
+    app.innerHTML=`<button class="back-link" data-action="back-to-intro">← 처음으로 (절차 안내 보기)</button>
+    <p class="jump-lead">신청을 이미 마치셨군요. 절차 안내는 건너뛰고 여기서 바로 남기시면 돼요.</p>
+    ${applyBoxHtml()}`;
   }
 
   else if(state.screen==='steps'){
@@ -995,6 +1016,7 @@ document.addEventListener('click',e=>{
   if(a==='prior-no'){state.hasPrior=false;state.priorType=null;state.screen='chooseType';}
   else if(a==='prior-yes'){state.hasPrior=true;state.screen='priorType';}
   else if(a==='back-to-intro'){state.screen='intro';state.hasPrior=null;state.priorType=null;}
+  else if(a==='go-submit'){state.screen='submit';window.scrollTo({top:0,behavior:'smooth'});}
   else if(a==='back-from-choose'){state.screen=state.hasPrior?'priorType':'intro';}
   else if(a==='prior-general'){state.priorType='general';state.screen='chooseType';}
   else if(a==='prior-barrierfree'){state.priorType='barrierfree';state.screen='chooseType';}
