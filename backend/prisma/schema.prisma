@@ -9,35 +9,35 @@ datasource db {
 }
 
 model User {
-  id              String    @id @default(cuid())
-  email           String    @unique          // 어떤 소셜로 들어와도 이메일을 공통 키로 묶음
-  name            String?
-  passwordHash    String?                    // email 가입 시 bcrypt
-  provider        String    @default("email") // email | kakao | naver | google | apple
-  onboardingDone  Boolean   @default(false)
-  trialStartedAt  DateTime?
-  plan            String?                    // lite | pro | ultra | custom
-  planUntil       DateTime?
-  lifetimeAccess  Boolean   @default(false)
-  usedRecordingSec Int      @default(0)       // 체험·유료 플랜 녹음 사용량(초)
-  recordingPeriodStart DateTime?              // 유료 플랜 월간 리셋 기준
-  accessEndedAt   DateTime?                    // 체험/구독 만료 시각 (데이터 삭제 예정일 계산용)
-  preferences     Json?                        // 카테고리·태그 프리셋 (인맥/지식백과/미팅)
-  createdAt       DateTime  @default(now())
+  id                   String    @id @default(cuid())
+  email                String    @unique // 어떤 소셜로 들어와도 이메일을 공통 키로 묶음
+  name                 String?
+  passwordHash         String? // email 가입 시 bcrypt
+  provider             String    @default("email") // email | kakao | naver | google | apple
+  onboardingDone       Boolean   @default(false)
+  trialStartedAt       DateTime?
+  plan                 String? // lite | pro | ultra | custom
+  planUntil            DateTime?
+  lifetimeAccess       Boolean   @default(false)
+  usedRecordingSec     Int       @default(0) // 체험·유료 플랜 녹음 사용량(초)
+  recordingPeriodStart DateTime? // 유료 플랜 월간 리셋 기준
+  accessEndedAt        DateTime? // 체험/구독 만료 시각 (데이터 삭제 예정일 계산용)
+  preferences          Json? // 카테고리·태그 프리셋 (인맥/지식백과/미팅)
+  createdAt            DateTime  @default(now())
 
-  contacts  Contact[]
-  meetings  Meeting[]
-  todos      Todo[]
-  deals      Deal[]
-  events     Event[]
-  kbArticles KbArticle[]
-  savedPlaces SavedPlace[]
-  couponRedemptions CouponRedemption[]
+  contacts             Contact[]
+  meetings             Meeting[]
+  todos                Todo[]
+  deals                Deal[]
+  events               Event[]
+  kbArticles           KbArticle[]
+  savedPlaces          SavedPlace[]
+  couponRedemptions    CouponRedemption[]
   recordingUsageEvents RecordingUsageEvent[]
-  friendsRequested     UserFriend[] @relation("FriendRequester")
-  friendsReceived      UserFriend[] @relation("FriendAddressee")
-  sharesOwned          ResourceShare[] @relation("ShareOwner")
-  sharesReceived       ResourceShare[] @relation("ShareGrantee")
+  friendsRequested     UserFriend[]          @relation("FriendRequester")
+  friendsReceived      UserFriend[]          @relation("FriendAddressee")
+  sharesOwned          ResourceShare[]       @relation("ShareOwner")
+  sharesReceived       ResourceShare[]       @relation("ShareGrantee")
   calendarConnections  CalendarConnection[]
   organizations        Organization[]
   products             Product[]
@@ -56,16 +56,16 @@ model User {
 }
 
 model Coupon {
-  id              String   @id @default(cuid())
-  code            String   @unique
-  kind            String   @default("once")    // once(1회 전체) | multi(유저당1회) | unlimited(무제한)
-  plan            String?                      // lite | pro | ultra
-  planDays        Int?                         // 구독 연장 일수 (기본 30)
-  lifetimeAccess  Boolean  @default(false)
-  note            String?
-  expiresAt       DateTime?
-  useCount        Int      @default(0)
-  createdAt       DateTime @default(now())
+  id             String    @id @default(cuid())
+  code           String    @unique
+  kind           String    @default("once") // once(1회 전체) | multi(유저당1회) | unlimited(무제한)
+  plan           String? // lite | pro | ultra
+  planDays       Int? // 구독 연장 일수 (기본 30)
+  lifetimeAccess Boolean   @default(false)
+  note           String?
+  expiresAt      DateTime?
+  useCount       Int       @default(0)
+  createdAt      DateTime  @default(now())
 
   redemptions CouponRedemption[]
 }
@@ -81,50 +81,50 @@ model CouponRedemption {
   @@unique([couponId, userId])
 }
 
-model Contact {           // 인맥 (사람/거래처)
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  person    String                       // 이름
-  title     String?                      // 직책
-  department String?                     // 부서/팀
-  company   String?
-  phone     String?
-  email     String?
-  address   String?
-  lat       Float?
-  lng       Float?
-  group     String?                       // 1개 소속 (이천/강남/VIP 등)
-  tags      String[]                      // 자유·복수 태그 (결제완료/대기/신규/핫리드 …)
-  cardImageKey String?                    // 명함 원본 R2 키
-  identityKey  String?                    // 이름+연락처 정규화 키 (동일인 묶기)
-  linkedUserId String?                    // Storyahub 친구 계정 연결
-  favorite  Boolean  @default(false)      // 즐겨찾기(별표) — 주관적 중요 표시
-  wonAmount Int      @default(0)          // 직접 성사 딜 합계(원)
-  meetCount Int      @default(0)          // 미팅 횟수(보조 지표)
+model Contact {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  person       String // 이름
+  title        String? // 직책
+  department   String? // 부서/팀
+  company      String?
+  phone        String?
+  email        String?
+  address      String?
+  lat          Float?
+  lng          Float?
+  group        String? // 1개 소속 (이천/강남/VIP 등)
+  tags         String[] // 자유·복수 태그 (결제완료/대기/신규/핫리드 …)
+  cardImageKey String? // 명함 원본 R2 키
+  identityKey  String? // 이름+연락처 정규화 키 (동일인 묶기)
+  linkedUserId String? // Storyahub 친구 계정 연결
+  favorite     Boolean   @default(false) // 즐겨찾기(별표) — 주관적 중요 표시
+  wonAmount    Int       @default(0) // 직접 성사 딜 합계(원)
+  meetCount    Int       @default(0) // 미팅 횟수(보조 지표)
   // 소개 관계(자기참조): referredBy = 나를 소개해준 사람 / referrals = 내가 소개한 사람들
   referredById String?
   referredBy   Contact?  @relation("Referral", fields: [referredById], references: [id])
   referrals    Contact[] @relation("Referral")
   // 영향력 = wonAmount + Σ(소개한 사람 성과 × 단계 가중치)는 조회 시 계산(저장 안 함)
-  createdAt DateTime @default(now())
+  createdAt    DateTime  @default(now())
 
-  meetings  Meeting[]
-  deals     Deal[]
+  meetings Meeting[]
+  deals    Deal[]
 
   @@index([userId, identityKey])
   @@index([userId, linkedUserId])
 }
 
 model UserFriend {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   requesterId String
-  requester   User     @relation("FriendRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  requester   User      @relation("FriendRequester", fields: [requesterId], references: [id], onDelete: Cascade)
   addresseeId String
-  addressee   User     @relation("FriendAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
-  status      String   @default("pending") // pending | accepted | declined
-  contactId   String?                      // 수락 시 요청자 인맥에 생성된 Contact id
-  createdAt   DateTime @default(now())
+  addressee   User      @relation("FriendAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+  status      String    @default("pending") // pending | accepted | declined
+  contactId   String? // 수락 시 요청자 인맥에 생성된 Contact id
+  createdAt   DateTime  @default(now())
   acceptedAt  DateTime?
 
   @@unique([requesterId, addresseeId])
@@ -137,7 +137,7 @@ model ResourceShare {
   owner        User     @relation("ShareOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   granteeId    String
   grantee      User     @relation("ShareGrantee", fields: [granteeId], references: [id], onDelete: Cascade)
-  resourceType String   // meeting | kb
+  resourceType String // meeting | kb
   resourceId   String
   role         String   @default("viewer") // viewer | editor
   createdAt    DateTime @default(now())
@@ -152,7 +152,7 @@ model RecordingUsageEvent {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   seconds   Int
-  source    String   // live | upload | call
+  source    String // live | upload | call
   meetingId String?
   plan      String?
   createdAt DateTime @default(now())
@@ -160,194 +160,194 @@ model RecordingUsageEvent {
   @@index([userId, createdAt])
 }
 
-model Meeting {           // 기록 (녹음/통화/사진)
-  id          String   @id @default(cuid())
+model Meeting {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  contactId     String?
+  contact       Contact? @relation(fields: [contactId], references: [id])
+  source        String // live | call | photo | upload
+  mediaKey      String? // R2 객체 키 (원본 미디어)
+  oneLine       String?
+  summary       Json? // {key_points, actions, next_meeting, attendees, confidence, needs_review}
+  attendees     String[] // 태그된 참석자 contactId 목록
+  category      String? // 사용자 정의 분류 (미팅/통화 등)
+  tags          String[] @default([]) // 사용자 정의 태그
+  processStatus String   @default("done") // processing | done | error
+  processError  String? // 변환 실패 메시지
+  processMeta   Json? // 변환 요청 메타 (재시도용)
+  eventId       String?
+  event         Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now())
+
+  todos Todo[]
+}
+
+model Todo {
+  id          String    @id @default(cuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
+  title       String
+  status      String    @default("todo") // todo | doing | done
+  priority    String    @default("mid") // high | mid | low
+  due         DateTime?
+  detail      String?
+  attachments Json? // [{name, key, kind}]
+  subs        Json? // [{id, text, done}] 하위 할 일
+  history     Json? // [{when, who, what}]
+  result      String?
   contactId   String?
-  contact     Contact? @relation(fields: [contactId], references: [id])
-  source      String                      // live | call | photo | upload
-  mediaKey    String?                     // R2 객체 키 (원본 미디어)
-  oneLine     String?
-  summary     Json?                       // {key_points, actions, next_meeting, attendees, confidence, needs_review}
-  attendees   String[]                    // 태그된 참석자 contactId 목록
-  category    String?                     // 사용자 정의 분류 (미팅/통화 등)
-  tags        String[]  @default([])      // 사용자 정의 태그
-  processStatus String  @default("done")  // processing | done | error
-  processError  String?                   // 변환 실패 메시지
-  processMeta   Json?                     // 변환 요청 메타 (재시도용)
-  eventId     String?
-  event       Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
-  createdAt   DateTime @default(now())
-
-  todos       Todo[]
+  meetingId   String?
+  meeting     Meeting?  @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
 }
 
-model Todo {              // 할 일
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  title     String
-  status    String   @default("todo")     // todo | doing | done
-  priority  String   @default("mid")       // high | mid | low
-  due       DateTime?
-  detail    String?
-  attachments Json?                        // [{name, key, kind}]
-  subs      Json?                          // [{id, text, done}] 하위 할 일
-  history   Json?                          // [{when, who, what}]
-  result    String?
-  contactId String?
-  meetingId String?
-  meeting   Meeting? @relation(fields: [meetingId], references: [id], onDelete: SetNull)
-  createdAt DateTime @default(now())
-}
-
-model Organization {      // 견적 공급자(내 소속/회사) 프로필
+model Organization {
   id           String   @id @default(cuid())
   userId       String
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name         String
   bizNo        String?
   ceoName      String?
-  contactName  String?                      // 견적 담당자 성명
-  contactTitle String?                      // 견적 담당자 직함
+  contactName  String? // 견적 담당자 성명
+  contactTitle String? // 견적 담당자 직함
   address      String?
   phone        String?
   email        String?
-  businessType String?                      // 업태 · 종목
+  businessType String? // 업태 · 종목
   bankName     String?
   bankAccount  String?
   logoKey      String?
-  sealKey      String?                       // 직인·도장 이미지 R2 키
+  sealKey      String? // 직인·도장 이미지 R2 키
   isDefault    Boolean  @default(false)
   sortOrder    Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  deals        Deal[]
+  deals Deal[]
 
   @@index([userId])
 }
 
-model Product {             // 품목 — 판매가·원가
+model Product {
   id          String   @id @default(cuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name        String
-  category    String?                          // 견적서 품목 분류 (IoT, 키오스크 등)
+  category    String? // 견적서 품목 분류 (IoT, 키오스크 등)
   unit        String   @default("식")
-  sellPrice   Int      @default(0)          // 판매 단가(공급가)
-  cost        Int      @default(0)          // 원가 단가
+  sellPrice   Int      @default(0) // 판매 단가(공급가)
+  cost        Int      @default(0) // 원가 단가
   description String?
   active      Boolean  @default(true)
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  lineItems   DealLineItem[]
+  lineItems DealLineItem[]
 
   @@index([userId, active])
 }
 
 model DealLineItem {
-  id        String   @id @default(cuid())
-  dealId    String
-  deal      Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  productId String?
-  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
-  name      String
-  category  String?                              // 품목 분류 (PDF 그룹 헤더)
-  unit      String   @default("식")
-  quantity  Int      @default(1)
-  unitPrice Int      @default(0)              // 공급가 단가 (할인 전)
-  unitCost  Int      @default(0)              // 원가 단가
-  lineDiscount Int  @default(0)              // 개당 할인액(원). 공급가 = qty*unitPrice - qty*lineDiscount
-  sortOrder Int      @default(0)
+  id           String   @id @default(cuid())
+  dealId       String
+  deal         Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  productId    String?
+  product      Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  name         String
+  category     String? // 품목 분류 (PDF 그룹 헤더)
+  unit         String   @default("식")
+  quantity     Int      @default(1)
+  unitPrice    Int      @default(0) // 공급가 단가 (할인 전)
+  unitCost     Int      @default(0) // 원가 단가
+  lineDiscount Int      @default(0) // 개당 할인액(원). 공급가 = qty*unitPrice - qty*lineDiscount
+  sortOrder    Int      @default(0)
 
   @@index([dealId])
 }
 
-model Deal {              // 딜/매출 — 금액은 직접 입력 또는 품목 합산, 부가세/합계는 계산
-  id             String   @id @default(cuid())
+model Deal {
+  id             String        @id @default(cuid())
   userId         String
-  user           User     @relation(fields: [userId], references: [id])
+  user           User          @relation(fields: [userId], references: [id])
   contactId      String?
-  contact        Contact? @relation(fields: [contactId], references: [id])
+  contact        Contact?      @relation(fields: [contactId], references: [id])
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   title          String
-  stage          String   @default("리드")     // 리드|견적|협상|성사|실패
-  supplyAmount   Int      @default(0)          // 공급가액(원). 부가세=*0.1, 합계=*1.1
-  quoteNumber    String?                       // 견적번호
-  validUntil     DateTime?                     // 견적 유효기간
-  notes          String?                       // 비고·특약
-  template       String   @default("standard") // standard|simple|formal
-  quoteKey       String?                       // 첨부/생성 견적서 R2 키
-  wonAt          DateTime?                     // 성사 시각 → 월 매출 집계
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  stage          String        @default("리드") // 리드|견적|협상|성사|실패
+  supplyAmount   Int           @default(0) // 공급가액(원). 부가세=*0.1, 합계=*1.1
+  quoteNumber    String? // 견적번호
+  validUntil     DateTime? // 견적 유효기간
+  notes          String? // 비고·특약
+  template       String        @default("standard") // standard|simple|formal
+  quoteKey       String? // 첨부/생성 견적서 R2 키
+  wonAt          DateTime? // 성사 시각 → 월 매출 집계
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  lineItems      DealLineItem[]
+  lineItems DealLineItem[]
 }
 
-model Event {             // 캘린더 일정
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  title     String
-  startsAt  DateTime
-  endsAt    DateTime?
-  place     String?
-  savedPlaceId String?
-  savedPlace   SavedPlace? @relation(fields: [savedPlaceId], references: [id], onDelete: SetNull)
-  placeLat  Float?                         // 길찾기용 (저장 맛집 선택 시)
-  placeLng  Float?
-  contactId String?
-  contactIds String[] @default([])       // 함께할 인맥 (복수)
-  category  String?                      // 캘린더 분류 (직장, 개인 등)
-  color     String?                        // 표시 색
-  notes     String?                        // 메모
-  shareToken String? @unique               // 일정 공유 링크
-  reminders String[]                        // ["1시간 전","1일 전"] 등 (기본값 자동 적용)
-  repeatYearly Boolean @default(false)    // 매년 반복 (시작일 기준 월·일·시각)
-  googleId  String?                          // Google 캘린더 연동 id
-  eventKitId String?                         // Apple EventKit eventIdentifier
-  externalUpdatedAt DateTime?                // 외부 캘린더 최종 수정 시각
-  syncSource String?                         // storyahub | google | apple
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Event {
+  id                String      @id @default(cuid())
+  userId            String
+  user              User        @relation(fields: [userId], references: [id])
+  title             String
+  startsAt          DateTime
+  endsAt            DateTime?
+  place             String?
+  savedPlaceId      String?
+  savedPlace        SavedPlace? @relation(fields: [savedPlaceId], references: [id], onDelete: SetNull)
+  placeLat          Float? // 길찾기용 (저장 맛집 선택 시)
+  placeLng          Float?
+  contactId         String?
+  contactIds        String[]    @default([]) // 함께할 인맥 (복수)
+  category          String? // 캘린더 분류 (직장, 개인 등)
+  color             String? // 표시 색
+  notes             String? // 메모
+  shareToken        String?     @unique // 일정 공유 링크
+  reminders         String[] // ["1시간 전","1일 전"] 등 (기본값 자동 적용)
+  repeatYearly      Boolean     @default(false) // 매년 반복 (시작일 기준 월·일·시각)
+  googleId          String? // Google 캘린더 연동 id
+  eventKitId        String? // Apple EventKit eventIdentifier
+  externalUpdatedAt DateTime? // 외부 캘린더 최종 수정 시각
+  syncSource        String? // storyahub | google | apple
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
-  meetings  Meeting[]
+  meetings Meeting[]
 
   @@index([userId, googleId])
   @@index([userId, eventKitId])
 }
 
 model CalendarConnection {
-  id            String   @id @default(cuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  provider      String   // google
-  accessToken   String
-  refreshToken  String?
-  tokenExpiry   DateTime?
-  calendarId    String?  // Google calendar id (primary 등)
-  calendarName  String?
-  syncToken     String?  // Google incremental sync token
-  lastSyncedAt  DateTime?
-  enabled       Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider     String // google
+  accessToken  String
+  refreshToken String?
+  tokenExpiry  DateTime?
+  calendarId   String? // Google calendar id (primary 등)
+  calendarName String?
+  syncToken    String? // Google incremental sync token
+  lastSyncedAt DateTime?
+  enabled      Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@unique([userId, provider])
 }
 
-model SavedPlace {        // 맛집·장소 (카카오맵 연동)
+model SavedPlace {
   id           String   @id @default(cuid())
   userId       String
   user         User     @relation(fields: [userId], references: [id])
   name         String
-  category     String?                      // 한식, 카페, 미팅용 등
+  category     String? // 한식, 카페, 미팅용 등
   tags         String[] @default([])
   address      String?
   roadAddress  String?
@@ -355,29 +355,29 @@ model SavedPlace {        // 맛집·장소 (카카오맵 연동)
   lat          Float
   lng          Float
   kakaoPlaceId String?
-  placeUrl     String?                      // 카카오맵 장소 URL
+  placeUrl     String? // 카카오맵 장소 URL
   favorite     Boolean  @default(false)
   notes        String?
-  photoKeys    String[] @default([])           // 장소 사진 (최대 5)
+  photoKeys    String[] @default([]) // 장소 사진 (최대 5)
   createdAt    DateTime @default(now())
 
-  events       Event[]
+  events Event[]
 
   @@unique([userId, kakaoPlaceId])
 }
 
-model KbArticle {         // 지식백과 / 지식경영
+model KbArticle {
   id         String   @id @default(cuid())
   userId     String
   user       User     @relation(fields: [userId], references: [id])
   title      String
-  section    String   @default("knowledge")   // book | lecture | knowledge
+  section    String   @default("knowledge") // book | lecture | knowledge
   category   String?
   tags       String[]
   bookMeta   Json?
   blocks     Json
-  status     String   @default("published")   // draft | published | formal_pending | formal
-  visibility String   @default("private")     // company | private
+  status     String   @default("published") // draft | published | formal_pending | formal
+  visibility String   @default("private") // company | private
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
@@ -439,22 +439,22 @@ model ErpApprovalForm {
 }
 
 model ErpApprovalDocument {
-  id          String          @id @default(cuid())
-  docNo       String          @unique
+  id          String            @id @default(cuid())
+  docNo       String            @unique
   formId      String
-  form        ErpApprovalForm @relation(fields: [formId], references: [id])
+  form        ErpApprovalForm   @relation(fields: [formId], references: [id])
   authorId    String
-  author      User            @relation("ApprovalAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  author      User              @relation("ApprovalAuthor", fields: [authorId], references: [id], onDelete: Cascade)
   title       String
-  body        Json            @default("{}")
+  body        Json              @default("{}")
   attachments Json?
-  status      String          @default("draft")
-  security    String          @default("normal")
-  ccUserIds   String[]        @default([])
+  status      String            @default("draft")
+  security    String            @default("normal")
+  ccUserIds   String[]          @default([])
   submittedAt DateTime?
   completedAt DateTime?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
   steps       ErpApprovalStep[]
 
   @@index([authorId, status])
@@ -478,15 +478,15 @@ model ErpApprovalStep {
 }
 
 model ErpLeaveBalance {
-  id           String @id @default(cuid())
+  id           String  @id @default(cuid())
   userId       String
-  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   year         Int
-  regularTotal Float  @default(15)
-  regularUsed  Float  @default(0)
-  rewardTotal  Float  @default(0)
-  rewardUsed   Float  @default(0)
-  carriedOver  Float  @default(0)
+  regularTotal Float   @default(15)
+  regularUsed  Float   @default(0)
+  rewardTotal  Float   @default(0)
+  rewardUsed   Float   @default(0)
+  carriedOver  Float   @default(0)
   remarks      String?
 
   @@unique([userId, year])
@@ -525,23 +525,23 @@ model ErpLeaveRequest {
 }
 
 model ErpMeetingNote {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   title       String
   startsAt    DateTime
   endsAt      DateTime?
   place       String?
-  attendeeIds String[] @default([])
+  attendeeIds String[]  @default([])
   agenda      String
-  discussion  String   @default("")
+  discussion  String    @default("")
   decisions   String?
   actionItems Json?
   attachments Json?
   eventId     String?
   kbArticleId String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model ErpCompanyEvent {
@@ -708,41 +708,40 @@ model ErpConstructionApartment {
 }
 
 model ErpConstructionQuote {
-  id               String                    @id @default(cuid())
+  id               String                     @id @default(cuid())
   apartmentId      String?
-  apartment        ErpConstructionApartment? @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
+  apartment        ErpConstructionApartment?  @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
   title            String?
-  orderType        String                    @default("아파트너") // 공사 구분: 아파트너 | 브로제이
-  lines            Json                      @default("[]") // [{name, unitPrice, qty}]
-  startDate        String?                   // 공사 예정 시작일 (YYYY-MM-DD)
-  endDate          String?                   // 공사 종료일 (YYYY-MM-DD)
-  status           String                    @default("requested") // requested | confirmed | ongoing | done | billing | settled
-  taxInvoiceIssued Boolean                   @default(false)
-  taxInvoiceDate   String?                   // 세금계산서 발행일자 (YYYY-MM-DD)
-  taxInvoiceNo     String?                   // 세금계산서 승인번호
-  payouts          Json                      @default("[]") // 협력업체 재정산: [{teamId, teamName, amount, paid, memo}]
-  materials        Json                      @default("[]") // 투입 부품/자재 원가: [{stockId, name, qty, unitCost}]
-  complaints       Json                      @default("[]") // 민원: [{date, content, status, resolution}]
-  sitePhotos       Json                      @default("[]") // 개소별 현장 사진: [{name, beforeKey, afterKey, beforeBy, afterBy}]
-  siteCount        Int                       @default(0) // 개소 수 (리스트에서 직접 입력)
-  shareToken       String?                   @unique // 현장 업로드 공유 링크 토큰
-  sharePin         String?                   // 공유 링크 PIN (4자리)
-  shareEnabled     Boolean                   @default(false)
+  orderType        String                     @default("아파트너") // 공사 구분: 아파트너 | 브로제이
+  lines            Json                       @default("[]") // [{name, unitPrice, qty}]
+  startDate        String? // 공사 예정 시작일 (YYYY-MM-DD)
+  endDate          String? // 공사 종료일 (YYYY-MM-DD)
+  status           String                     @default("requested") // requested | confirmed | ongoing | done | billing | settled
+  taxInvoiceIssued Boolean                    @default(false)
+  taxInvoiceDate   String? // 세금계산서 발행일자 (YYYY-MM-DD)
+  taxInvoiceNo     String? // 세금계산서 승인번호
+  payouts          Json                       @default("[]") // 협력업체 재정산: [{teamId, teamName, amount, paid, memo}]
+  materials        Json                       @default("[]") // 투입 부품/자재 원가: [{stockId, name, qty, unitCost}]
+  complaints       Json                       @default("[]") // 민원: [{date, content, status, resolution}]
+  sitePhotos       Json                       @default("[]") // 개소별 현장 사진: [{name, beforeKey, afterKey, beforeBy, afterBy}]
+  siteCount        Int                        @default(0) // 개소 수 (리스트에서 직접 입력)
+  shareToken       String?                    @unique // 현장 업로드 공유 링크 토큰
+  sharePin         String? // 공유 링크 PIN (4자리)
+  shareEnabled     Boolean                    @default(false)
   shareExpiresAt   DateTime?
-  surveyRequest    Json?                     // 실사 요청: {requestType, evLink, hopeDate, content, note}
-  surveyResult     Json?                     // 실사 결과: {visitDate, findings, items: [{itemId, name, qty}], by, at}
-  surveyToken      String?                   @unique // 설치팀 실사 입력 링크 토큰
-  surveyPin        String?                   // 실사 링크 PIN (4자리)
-  surveyEnabled    Boolean                   @default(false)
+  surveyRequest    Json? // 실사 요청: {requestType, evLink, hopeDate, content, note}
+  surveyResult     Json? // 실사 결과: {visitDate, findings, items: [{itemId, name, qty}], by, at}
+  surveyToken      String?                    @unique // 설치팀 실사 입력 링크 토큰
+  surveyPin        String? // 실사 링크 PIN (4자리)
+  surveyEnabled    Boolean                    @default(false)
   surveyExpiresAt  DateTime?
   note             String?
-  createdAt        DateTime                  @default(now())
-  updatedAt        DateTime                  @updatedAt
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
   stockMoves       ErpConstructionStockMove[]
 
   @@index([status])
 }
-
 
 model ErpConstructionTeam {
   id          String   @id @default(cuid())
@@ -774,18 +773,18 @@ model ErpConstructionStock {
 }
 
 model ErpConstructionStockMove {
-  id           String               @id @default(cuid())
-  stockId      String
-  stock        ErpConstructionStock @relation(fields: [stockId], references: [id], onDelete: Cascade)
-  quoteId      String?              // 공사 확정 자동 차감 출처 견적 (수동 기록은 null)
-  quote        ErpConstructionQuote? @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  date         String               // YYYY-MM-DD
-  kind         String               @default("in") // in(입고/매입) | out(출고/사용)
-  qty          Int                  @default(0)
-  unitPrice    Int?                 // 매입 단가 (입고)
-  vatSeparate  Boolean              @default(true) // 부가세 별도 여부
-  memo         String?
-  createdAt    DateTime             @default(now())
+  id          String                @id @default(cuid())
+  stockId     String
+  stock       ErpConstructionStock  @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  quoteId     String? // 공사 확정 자동 차감 출처 견적 (수동 기록은 null)
+  quote       ErpConstructionQuote? @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  date        String // YYYY-MM-DD
+  kind        String                @default("in") // in(입고/매입) | out(출고/사용)
+  qty         Int                   @default(0)
+  unitPrice   Int? // 매입 단가 (입고)
+  vatSeparate Boolean               @default(true) // 부가세 별도 여부
+  memo        String?
+  createdAt   DateTime              @default(now())
 
   @@index([stockId])
   @@index([quoteId])
@@ -794,8 +793,8 @@ model ErpConstructionStockMove {
 // 상담자료(매크로) 컨펌 — 세일즈팀 등록, CEO/COO 승인 체크
 model ErpConsultDoc {
   id          String    @id @default(cuid())
-  title       String    // 매크로명
-  note        String?   // 링크·메모
+  title       String // 매크로명
+  note        String? // 링크·메모
   authorId    String
   authorName  String
   authorEmail String
@@ -813,9 +812,9 @@ model ErpConsultDoc {
 // 브로제이 설치일정 (아파트너와 완전 별개, 시트 동기화 없이 앱에서 직접 관리)
 model ErpInstallSchedule {
   id          String   @id @default(cuid())
-  month       String   // 월 탭 (예: "2025.09")
-  installDate String?  // 시공일 YYYY-MM-DD (정렬용)
-  centerName  String?  // 센터명 (검색용)
+  month       String // 월 탭 (예: "2025.09")
+  installDate String? // 시공일 YYYY-MM-DD (정렬용)
+  centerName  String? // 센터명 (검색용)
   data        Json     @default("{}") // 나머지 필드(구분·요금제·키오스크·연락처·정산 등)
   sortIndex   Int      @default(0)
   createdAt   DateTime @default(now())
@@ -827,7 +826,7 @@ model ErpInstallSchedule {
 // 일일보고 — CEO/COO 전용 (날짜별 3문답)
 model ErpDailyReport {
   id          String   @id @default(cuid())
-  date        String   // YYYY-MM-DD
+  date        String // YYYY-MM-DD
   authorId    String
   authorName  String
   authorEmail String
@@ -843,21 +842,21 @@ model ErpDailyReport {
 
 // 일일보고 항목별 코멘트 스레드 (CEO/COO)
 model ErpDailyComment {
-  id          String   @id @default(cuid())
-  reportId    String
-  section     String   // did | missed | plan
-  itemId      String   // 항목 앵커 (item id 또는 텍스트 키)
-  itemText    String   // 항목 텍스트 스냅샷
-  parentId    String?  // null = 스레드 루트, 값 있으면 답글
-  authorEmail String
-  authorName  String
-  body        String   @default("")
-  files       Json     @default("[]") // [{key, name}]
-  resolved    Boolean  @default(false) // (레거시) 이전 해결 개념 — 더 이상 사용 안 함
-  important   Boolean  @default(false) // 루트에만 의미: ★ 중요 표시 → 스레드함에 남김
-  notionCommentId String? @unique // 노션에서 가져온 댓글의 원본 ID (중복 방지)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(cuid())
+  reportId        String
+  section         String // did | missed | plan
+  itemId          String // 항목 앵커 (item id 또는 텍스트 키)
+  itemText        String // 항목 텍스트 스냅샷
+  parentId        String? // null = 스레드 루트, 값 있으면 답글
+  authorEmail     String
+  authorName      String
+  body            String   @default("")
+  files           Json     @default("[]") // [{key, name}]
+  resolved        Boolean  @default(false) // (레거시) 이전 해결 개념 — 더 이상 사용 안 함
+  important       Boolean  @default(false) // 루트에만 의미: ★ 중요 표시 → 스레드함에 남김
+  notionCommentId String?  @unique // 노션에서 가져온 댓글의 원본 ID (중복 방지)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([reportId])
   @@index([important])
@@ -902,33 +901,33 @@ model ErpVendorPortal {
 
 // 발주 (브로제이 → 협력사) — 선금/잔금, 세금계산서, 부분 입고 히스토리 양사 공유
 model ErpVendorOrder {
-  id                 String    @id @default(cuid())
-  vendorId           String    @default("kreiser")
-  orderDate          String // YYYY-MM-DD
-  items              Json      @default("[]") // [{name, qty, unitPrice, amount}]
-  totalAmount        Int       @default(0)
-  prepayRate         Int       @default(30)
-  prepayAmount       Int       @default(0)
-  balanceAmount      Int       @default(0)
-  status             String    @default("requested") // requested | approved | done | cancelled
-  approvedAt         DateTime?
-  expectedDelivery   String? // 크라이저가 승인 시 입력한 예상 입고일 (YYYY-MM-DD)
-  prepayRequestedAt  DateTime?
-  prepayPaidAt       DateTime?
-  prepayTaxDate      String?
-  prepayTaxNo        String? // 세금계산서 승인번호
-  prepayVerified     Boolean   @default(false) // 브로제이(경영지원) 계산서 더블체크
-  balanceRequestedAt DateTime?
-  balancePaidAt      DateTime?
-  balanceTaxDate     String?
-  balanceTaxNo       String?
-  balanceVerified    Boolean   @default(false)
-  balanceDeliveryDates Json    @default("[]") // 잔금 청구 시 최종 납품일자들 (분할 납품 가능)
-  deliveries         Json      @default("[]") // [{date, name, qty, note, by}]
-  history            Json      @default("[]") // [{at, by, text}]
-  note               String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                   String    @id @default(cuid())
+  vendorId             String    @default("kreiser")
+  orderDate            String // YYYY-MM-DD
+  items                Json      @default("[]") // [{name, qty, unitPrice, amount}]
+  totalAmount          Int       @default(0)
+  prepayRate           Int       @default(30)
+  prepayAmount         Int       @default(0)
+  balanceAmount        Int       @default(0)
+  status               String    @default("requested") // requested | approved | done | cancelled
+  approvedAt           DateTime?
+  expectedDelivery     String? // 크라이저가 승인 시 입력한 예상 입고일 (YYYY-MM-DD)
+  prepayRequestedAt    DateTime?
+  prepayPaidAt         DateTime?
+  prepayTaxDate        String?
+  prepayTaxNo          String? // 세금계산서 승인번호
+  prepayVerified       Boolean   @default(false) // 브로제이(경영지원) 계산서 더블체크
+  balanceRequestedAt   DateTime?
+  balancePaidAt        DateTime?
+  balanceTaxDate       String?
+  balanceTaxNo         String?
+  balanceVerified      Boolean   @default(false)
+  balanceDeliveryDates Json      @default("[]") // 잔금 청구 시 최종 납품일자들 (분할 납품 가능)
+  deliveries           Json      @default("[]") // [{date, name, qty, note, by}]
+  history              Json      @default("[]") // [{at, by, text}]
+  note                 String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   @@index([vendorId, createdAt])
   @@index([status])
@@ -938,10 +937,10 @@ model ErpInstallSettleShare {
   id        String   @id @default(cuid())
   token     String   @unique
   pin       String
-  team      String   // 설치팀명 (ErpInstallSchedule.data.team과 매칭)
-  fromDate  String?  // 공유 범위 시작 (YYYY-MM-DD) — 발급 시 보고 있던 기간만 노출
-  toDate    String?  // 공유 범위 끝
-  payout    Json?    // 지급 정산서: {deductions: [{label, amount}], payees: [{name, amount}], note}
+  team      String // 설치팀명 (ErpInstallSchedule.data.team과 매칭)
+  fromDate  String? // 공유 범위 시작 (YYYY-MM-DD) — 발급 시 보고 있던 기간만 노출
+  toDate    String? // 공유 범위 끝
+  payout    Json? // 지급 정산서: {deductions: [{label, amount}], payees: [{name, amount}], note}
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
@@ -963,7 +962,7 @@ model ErpMenuAccess {
 model ErpAccessLog {
   id      String   @id @default(cuid())
   email   String
-  date    String   // YYYY-MM-DD (KST)
+  date    String // YYYY-MM-DD (KST)
   name    String?
   firstAt DateTime @default(now())
   lastAt  DateTime @default(now())
@@ -978,12 +977,12 @@ model ErpAccessLog {
 model ErpClosingEditLog {
   id          String   @id @default(cuid())
   leadId      String
-  month       String   // 문의 시트 월 (2026.08.)
-  center      String   // 센터명 (당시 값)
-  assignee    String   // 리드 응대자 (당시 값)
+  month       String // 문의 시트 월 (2026.08.)
+  center      String // 센터명 (당시 값)
+  assignee    String // 리드 응대자 (당시 값)
   editorEmail String
   editorName  String
-  field       String   // 상담온도 | 결제임박률 | 문의 내용 | *미도입 사유
+  field       String // 상담온도 | 결제임박률 | 문의 내용 | *미도입 사유
   before      String
   after       String
   createdAt   DateTime @default(now())
@@ -998,10 +997,10 @@ model ErpClosingEditLog {
 model ErpSmartStoreRound {
   id        String               @id @default(cuid())
   year      Int
-  round     Int                  // 차수
+  round     Int // 차수
   title     String
-  guidePath String               // 공개 가이드 경로 (/smartstore/2026-2.html)
-  deadline  String?              // 신청 마감 안내 문구
+  guidePath String // 공개 가이드 경로 (/smartstore/2026-2.html)
+  deadline  String? // 신청 마감 안내 문구
   active    Boolean              @default(true) // 공개 여부
   note      String?
   createdAt DateTime             @default(now())
@@ -1013,25 +1012,27 @@ model ErpSmartStoreRound {
 
 /// 스마트상점 신청 접수 — 고객이 공개 가이드 마지막에 직접 제출
 model ErpSmartStoreApply {
-  id         String             @id @default(cuid())
-  roundId    String
-  round      ErpSmartStoreRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  id          String             @id @default(cuid())
+  roundId     String
+  round       ErpSmartStoreRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
   // 접수는 2단계 — 시작 시 리드 정보(연락처 기준), 신청 후 사업자번호·스마트상점 ID를 채운다
-  phone      String             // 리드 식별 기준
-  centerName String?
-  bizNo      String?            // 사업자등록번호 (미오픈이면 '준비중')
-  storeId    String?            // 스마트상점 ID (신청 완료 후 입력)
-  products   String[]           @default([]) // premium32 | wall10 — 관심 기술 (복수 선택)
-  industry   String?            // 헬스장 | PT샵 | 필라테스 | 체육관 | 기타
-  branchCount String?           // 1 | 2 | 3-5 | 6-10 | 11+
-  isCustomer Boolean?           // 현재 브로제이 서비스 이용 중인지
-  applyType  String?            // general | barrierfree | rental | sw
-  hasPrior   Boolean?           // 기존 수혜 이력
-  priorType  String?
-  status     String             @default("new") // new | checked | done
-  memo       String?
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
+  phone       String // 리드 식별 기준
+  centerName  String?
+  bizNo       String? // 사업자등록번호 (미오픈이면 '준비중')
+  storeId     String? // 스마트상점 ID (신청 완료 후 입력)
+  products    String[]           @default([]) // premium32 | wall10 — 관심 기술 (복수 선택)
+  industry    String? // 헬스장 | PT샵 | 필라테스 | 체육관 | 기타
+  branchCount String? // 1 | 2 | 3-5 | 6-10 | 11+
+  isCustomer  Boolean? // 현재 브로제이 서비스 이용 중인지
+  applyType   String? // general | barrierfree | rental | sw
+  hasPrior    Boolean? // 기존 수혜 이력
+  priorType   String?
+  // 접수 단계 — 시작 폼만 냈으면 start, 마지막 폼까지 제출하면 done
+  stage       String             @default("start") // start | done
+  status      String             @default("new") // new | checked | done
+  memo        String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 
   @@unique([roundId, phone])
   @@index([roundId, createdAt])

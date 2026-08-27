@@ -147,7 +147,7 @@ smartStorePublicRouter.post("/apply", async (req, res) => {
     // 신청 완료 — 사업자번호·스마트상점 ID
     if (!bizInput) return res.status(400).json({ error: "사업자등록번호 10자리를 입력해 주세요 (미오픈이면 '준비중')" });
     const storeId = text(b.storeId, 60);
-    Object.assign(data, { bizNo: bizInput, storeId: storeId || null });
+    Object.assign(data, { bizNo: bizInput, storeId: storeId || null, stage: "done" });
   }
 
   // 가이드에서 고른 유형·수혜 이력은 두 단계 모두에서 최신값으로 갱신

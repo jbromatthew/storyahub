@@ -5954,12 +5954,13 @@ export function SmartStoreView() {
 
   const copyList = async () => {
     if (!rows.length) return;
-    const head = ["접수일", "회차", "상호", "사업자번호", "연락처", "관심기술", "업종", "지점수", "기존고객", "스마트상점ID", "신청유형", "수혜이력", "상태", "메모"];
+    const head = ["접수일", "회차", "단계", "상호", "사업자번호", "연락처", "관심기술", "업종", "지점수", "기존고객", "스마트상점ID", "신청유형", "수혜이력", "상태", "메모"];
     const lines = [head.join("\t")];
     for (const a of rows) {
       lines.push([
         new Date(a.createdAt).toLocaleDateString("ko-KR"),
         a.round ? `${a.round.year}-${a.round.round}차` : "",
+        a.stage === "done" ? "신청완료" : "진행중",
         a.centerName || "", a.bizNo ? fmtBizNo(a.bizNo) : "", fmtPhone(a.phone),
         (a.products || []).map((k) => SS_PRODUCT[k] || k).join(" + "), a.industry || "", SS_BRANCH[a.branchCount] || "",
         a.isCustomer === true ? "기존" : a.isCustomer === false ? "신규" : "",
@@ -6001,6 +6002,8 @@ export function SmartStoreView() {
         <>
           <div className="trend-selection-bar" style={{ marginTop: 14 }}>
             <span className="trend-selection-label">접수 {applies.length}건</span>
+            <span>진행중 <strong>{applies.filter((a) => a.stage !== "done").length}</strong></span>
+            <span>신청완료 <strong>{applies.filter((a) => a.stage === "done").length}</strong></span>
             <span>신규 <strong>{cnt("new")}</strong></span>
             <span>확인 <strong>{cnt("checked")}</strong></span>
             <span>완료 <strong>{cnt("done")}</strong></span>
@@ -6058,7 +6061,7 @@ export function SmartStoreView() {
                         <a href={`tel:${a.phone}`}>{fmtPhone(a.phone)}</a>
                       </td>
                       <td style={{ textAlign: "left" }}>
-                        {a.bizNo
+                        {a.stage === "done"
                           ? <span className="tag" style={{ background: "#D3F8DF", color: "#1F6B3A", fontSize: 11.5 }}>신청완료</span>
                           : <span className="tag" style={{ background: "#FFF4E0", color: "#8A5512", fontSize: 11.5 }}>진행중</span>}
                       </td>
