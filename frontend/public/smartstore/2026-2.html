@@ -234,7 +234,8 @@
   /* ── 공고 새 창 열기 ── */
   .nopen{display:flex;align-items:center;gap:11px;width:100%;margin-top:16px;text-align:left;
     background:var(--brand);color:#fff;border:none;border-radius:12px;padding:13px 15px;
-    font-family:inherit;cursor:pointer;transition:background .15s;}
+    font-family:inherit;font-size:inherit;cursor:pointer;text-decoration:none;transition:background .15s;}
+  .nopen:hover,.nopen:visited,.nopen:active{color:#fff;}
   .nopen:hover{background:var(--brand-press);}
   .nopen .no-ico{flex:0 0 auto;font-size:16px;line-height:1;}
   .nopen .no-txt{flex:1 1 auto;min-width:0;}
@@ -247,8 +248,6 @@
   .bizfind.new{color:var(--ink-soft);}
   .bizfind.ok{color:var(--green);}
   .bizfind.ok b{color:var(--green);}
-  .no-blocked{font-size:12px;color:var(--red);line-height:1.6;margin:9px 0 0;font-weight:600;}
-  .no-blocked a{color:var(--brand);}
   .nopen.inline{margin-top:12px;}
   .step-after{margin-top:12px;}
 
@@ -609,10 +608,10 @@ function getSteps(type){
 
   S.push({title:`모집공고 고르기 — ${N.key==='add'?'추가지원 전용':N.key==='sw'?'S/W형':'구입·렌탈형'}`, imgs:[N.img],
     desc:`사업신청 화면에 공고 카드가 <b>4개</b> 떠요. 그중 <b>「${N.name}」</b>의 [신청하기]를 누르세요. ${N.hint} <span class="warn-inline">다른 카드로 들어가면 자격 미달로 반려될 수 있어요.</span>`,
-    after:`<button class="nopen inline" data-action="open-notice" data-url="${N.url}">
+    after:`<a class="nopen inline" data-action="open-notice" href="${N.url}" target="_blank" rel="noopener">
       <span class="no-ico">⧉</span>
       <span class="no-txt"><span class="no-t">이 공고 바로 열기</span>
-        <span class="no-s">헤매지 않게 해당 공고로 곧장 이동해요</span></span></button>`});
+        <span class="no-s">헤매지 않게 해당 공고로 곧장 이동해요</span></span></a>`});
 
   if(N.detail) S.push({title:'공고 상세에서 [사업신청] 클릭', imgs:[N.detail],
     desc:`공고 개요를 확인하고 우측 <b>[사업신청]</b> 버튼을 누르세요. ${N.key==='new'?'상세 화면에 <b>"수혜 이력이 없는 신규 소상공인만 신청 가능"</b>이라고 적혀 있어요 — 이력이 있다면 뒤로 나가서 추가지원 전용 공고로 가야 해요.':'추가지원 전용 공고라 기존 수혜 이력이 있어도 진행돼요.'}`});
@@ -891,12 +890,12 @@ function render(){
         <div class="summary-item"><div class="k">신청마감</div><div class="v">9.30(수) 17:00</div></div>
         <div class="summary-item"><div class="k">문의처</div><div class="v">1600-6185</div></div>
       </div>
-      <button class="nopen" data-action="open-notice" data-url="${N.url}">
+      <a class="nopen" data-action="open-notice" href="${N.url}" target="_blank" rel="noopener">
         <span class="no-ico">⧉</span>
         <span class="no-txt"><span class="no-t">신청 페이지 새 창으로 열기</span>
           <span class="no-s">${N.name}</span></span>
-      </button>
-      <p class="no-hint">새 창이 옆에 뜨니, 이 안내를 보면서 그대로 따라 하시면 돼요. 창을 닫아도 여기서 다시 열 수 있어요.</p>
+      </a>
+      <p class="no-hint">이 안내를 보면서 그대로 따라 하시면 돼요. 브라우저 설정에 따라 새 창 대신 새 탭으로 열릴 수도 있어요.</p>
     </div>
     ${leadBoxHtml()}
 
@@ -944,37 +943,30 @@ function render(){
   }
 }
 
-/* 공고 페이지를 별도 창으로 띄워 이 길잡이와 나란히 놓고 진행할 수 있게 한다.
-   화면이 좁으면 나란히 배치가 의미 없어 새 탭으로 연다. */
+/* 공고 페이지를 이 길잡이 옆에 나란히 띄운다.
+   버튼 자체가 target="_blank" 링크라, 아래가 실패하면 브라우저가 평소대로 새 탭에서 연다.
+   별도 창을 띄우는 데 성공했을 때만 창을 돌려주고, 그때만 링크 기본 동작을 막는다. */
 let noticeWin = null;
-function openNotice(url, btn){
-  if(!url) return;
-  const narrow = window.innerWidth < 900 || screen.availWidth < 1100;
+function openNotice(url){
+  if(!url) return null;
+  if(window.innerWidth < 900 || screen.availWidth < 1100) return null;  // 좁으면 새 탭이 낫다
 
-  if(!narrow && noticeWin && !noticeWin.closed){
-    noticeWin.location.href = url; noticeWin.focus(); return;
+  if(noticeWin && !noticeWin.closed){                                    // 이미 띄운 창 재사용
+    try{ noticeWin.location.href = url; noticeWin.focus(); return noticeWin; }
+    catch(_){ noticeWin = null; }
   }
-
+  const aw = screen.availWidth, ah = screen.availHeight;
+  const al = screen.availLeft || 0, at = screen.availTop || 0;
+  const w = Math.min(1180, Math.round(aw * 0.56));
   let win = null;
-  if(!narrow){
-    const aw = screen.availWidth, ah = screen.availHeight;
-    const al = screen.availLeft || 0, at = screen.availTop || 0;
-    const w = Math.min(1180, Math.round(aw * 0.56));
+  try{
     win = window.open(url, 'smstNotice',
       `popup=yes,width=${w},height=${ah - 60},left=${al + aw - w},top=${at + 20},resizable=yes,scrollbars=yes`);
-    if(win) noticeWin = win;
-  }
-  if(!win) win = window.open(url, '_blank', 'noopener');   // 팝업 차단 시 새 탭
-  if(win){ try{ win.focus(); }catch(_){} return; }
-
-  /* 새 창도 새 탭도 막힌 경우 — 그냥 끝내지 말고 이동할 길을 남긴다 */
-  const host = btn && btn.parentElement;
-  if(!host || host.querySelector('.no-blocked')) return;
-  const p = document.createElement('p');
-  p.className = 'no-blocked';
-  p.innerHTML = '브라우저가 새 창을 막았어요. 주소창 오른쪽의 팝업 차단 아이콘에서 허용하시거나, '
-    + `<a href="${url}" target="_blank" rel="noopener">이 링크로 이동</a>해 주세요.`;
-  btn.insertAdjacentElement('afterend', p);
+  }catch(_){ win = null; }
+  if(!win) return null;                                                  // 차단됨 → 링크에 맡긴다
+  noticeWin = win;
+  try{ win.focus(); }catch(_){}
+  return win;
 }
 
 const lb=document.getElementById('lightbox'), lbImg=document.getElementById('lbImg');
@@ -999,7 +991,7 @@ document.addEventListener('click',e=>{
   if(z){ openLB(z.dataset.full || z.getAttribute('src')); return; }
   const b=e.target.closest('[data-action]'); if(!b) return;
   const a=b.dataset.action;
-  if(a==='open-notice'){ openNotice(b.dataset.url, b); return; }
+  if(a==='open-notice'){ if(openNotice(b.getAttribute('href'))) e.preventDefault(); return; }
   if(a==='prior-no'){state.hasPrior=false;state.priorType=null;state.screen='chooseType';}
   else if(a==='prior-yes'){state.hasPrior=true;state.screen='priorType';}
   else if(a==='back-to-intro'){state.screen='intro';state.hasPrior=null;state.priorType=null;}
