@@ -5906,6 +5906,7 @@ export function SmartStoreView() {
     !kw || (a.centerName || "").toLowerCase().includes(kw) || (a.bizNo || "").includes(kw.replace(/[^0-9]/g, "")) ||
     a.phone.includes(kw.replace(/[^0-9]/g, "")) || (a.storeId || "").toLowerCase().includes(kw) ||
     (a.source === "sales" ? "세일즈" : a.source === "marketing" ? "마케팅" : "").includes(kw) ||
+    (a.sourceDetail || "").toLowerCase().includes(kw) ||
     (a.industry || "").toLowerCase().includes(kw));
 
   const addRound = async () => {
@@ -5955,7 +5956,7 @@ export function SmartStoreView() {
 
   const copyList = async () => {
     if (!rows.length) return;
-    const head = ["접수일", "회차", "단계", "유입경로", "상호", "사업자번호", "연락처", "관심기술", "업종", "지점수", "기존고객", "스마트상점ID", "신청유형", "수혜이력", "상태", "메모"];
+    const head = ["접수일", "회차", "단계", "유입경로", "세부채널", "상호", "사업자번호", "연락처", "관심기술", "업종", "지점수", "기존고객", "스마트상점ID", "신청유형", "수혜이력", "상태", "메모"];
     const lines = [head.join("\t")];
     for (const a of rows) {
       lines.push([
@@ -5963,6 +5964,7 @@ export function SmartStoreView() {
         a.round ? `${a.round.year}-${a.round.round}차` : "",
         a.stage === "done" ? "신청완료" : "진행중",
         a.source === "sales" ? "세일즈" : a.source === "marketing" ? "마케팅" : "",
+        a.sourceDetail || "",
         a.centerName || "", a.bizNo ? fmtBizNo(a.bizNo) : "", fmtPhone(a.phone),
         (a.products || []).map((k) => SS_PRODUCT[k] || k).join(" + "), a.industry || "", SS_BRANCH[a.branchCount] || "",
         a.isCustomer === true ? "기존" : a.isCustomer === false ? "신규" : "",
@@ -6017,6 +6019,23 @@ export function SmartStoreView() {
               </span>
             )}
           </div>
+
+          {(() => {
+            const by = {};
+            for (const a of applies) if (a.sourceDetail) by[a.sourceDetail] = (by[a.sourceDetail] || 0) + 1;
+            const rows = Object.entries(by).sort((x, y) => y[1] - x[1]);
+            if (!rows.length) return null;
+            return (
+              <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <span className="small" style={{ color: "var(--muted)" }}>세부 채널</span>
+                {rows.map(([k, n]) => (
+                  <span key={k} className="tag" style={{ background: "#F2F3F4", color: "var(--ink)", fontSize: 11.5 }}>
+                    {k} <strong>{n}</strong>
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
 
           <div className="row" style={{ gap: 6, margin: "12px 0 4px", flexWrap: "wrap", alignItems: "center" }}>
             <input value={q} onChange={(e) => setQ(e.target.value)}
@@ -6075,7 +6094,10 @@ export function SmartStoreView() {
                           ? <span className="tag" style={{ background: "#E4F0FF", color: "#1F5AA8", fontSize: 11.5 }}>세일즈</span>
                           : a.source === "marketing"
                             ? <span className="tag" style={{ background: "#F1E8FF", color: "#6B3FA0", fontSize: 11.5 }}>마케팅</span>
-                            : <span style={{ color: "var(--muted)" }}>-</span>}
+                            : !a.sourceDetail ? <span style={{ color: "var(--muted)" }}>-</span> : null}
+                        {a.sourceDetail
+                          ? <span className="small" style={{ marginLeft: a.source ? 5 : 0, color: "var(--muted)" }}>{a.sourceDetail}</span>
+                          : null}
                       </td>
                       <td style={{ textAlign: "left" }}>
                         {(a.products || []).length

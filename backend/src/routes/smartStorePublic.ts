@@ -29,6 +29,13 @@ function normalizeSource(v: unknown): string | null {
   return SOURCES[String(v ?? "").trim().toLowerCase()] ?? null;
 }
 
+/** 세부 채널 — 목록을 고정하지 않고 적은 값을 그대로 쓴다.
+ *  다만 링크에 사람이 손으로 붙이는 값이라 안전한 문자만 남긴다. */
+function sourceDetailOf(v: unknown): string | null {
+  const t = String(v ?? "").trim().replace(/[^0-9A-Za-z가-힣_\-. ]/g, "").slice(0, 40).trim();
+  return t || null;
+}
+
 /** 사업자번호 — 10자리면 숫자만, 미오픈 센터는 '준비중'으로 통일 */
 function normalizeBizNo(raw: string): string | null {
   const d = raw.replace(/[^0-9]/g, "");
@@ -162,14 +169,16 @@ smartStorePublicRouter.post("/apply", async (req, res) => {
   /* 유입 경로는 처음 들어온 링크를 남긴다(first touch).
      이미 기록돼 있으면 덮어쓰지 않고, 파라미터가 없으면 아무것도 건드리지 않는다. */
   const source = normalizeSource(b.source);
-  if (source) {
+  const sourceDetail = sourceDetailOf(b.sourceDetail);
+  if (source || sourceDetail) {
     const prev = existing
       ? await prisma.erpSmartStoreApply.findUnique({
           where: { id: existing.id },
-          select: { source: true },
+          select: { source: true, sourceDetail: true },
         })
       : null;
-    if (!prev?.source) data.source = source;
+    if (source && !prev?.source) data.source = source;
+    if (sourceDetail && !prev?.sourceDetail) data.sourceDetail = sourceDetail;
   }
 
   // 가이드에서 고른 유형·수혜 이력은 두 단계 모두에서 최신값으로 갱신

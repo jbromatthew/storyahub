@@ -1042,12 +1042,22 @@ let leadPhone = "";
    한 번 들어온 값은 세션에 남겨, 페이지 안에서 화면을 옮겨도 유지된다. */
 const SS_SOURCE = (() => {
   const q = new URLSearchParams(location.search);
-  let src = ((q.get("src") || q.get("utm_source") || "").trim()).slice(0, 20);
+  const pick = (keys, max) => {
+    for (const k of keys) {
+      const v = (q.get(k) || "").trim();
+      if (v) return v.slice(0, max);
+    }
+    return "";
+  };
+  let src = pick(["src", "utm_source"], 20);
+  let detail = pick(["by", "utm_medium", "utm_campaign"], 40);   // 메타·포스팅 등 세부 채널
   try {
     if (src) sessionStorage.setItem("ss_src", src);
     else src = sessionStorage.getItem("ss_src") || "";
+    if (detail) sessionStorage.setItem("ss_by", detail);
+    else detail = sessionStorage.getItem("ss_by") || "";
   } catch (_) { /* 시크릿 모드 등에서 저장이 막혀도 그냥 넘어간다 */ }
-  return { source: src };
+  return { source: src, sourceDetail: detail };
 })();
 
 /* 선택 항목 카드 하이라이트 + 고른 값을 state에 저장 */
