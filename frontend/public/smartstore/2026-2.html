@@ -1036,6 +1036,30 @@ const SS_API = (location.hostname === "localhost" || location.hostname === "127.
 const SS_YEAR = 2026, SS_ROUND = 2;
 let leadPhone = "";
 
+/* 유입 경로 — 링크 뒤에 ?src=sales 처럼 붙여 보내면 접수에 함께 기록된다.
+   utm_* 도 같이 받아서 어떤 도구로 만든 링크든 들어온다.
+   파라미터가 없으면 아무것도 보내지 않으므로, 이미 배포된 링크는 지금과 똑같이 동작한다.
+   한 번 들어온 값은 세션에 남겨, 페이지 안에서 화면을 옮겨도 유지된다. */
+const SS_SOURCE = (() => {
+  const q = new URLSearchParams(location.search);
+  const pick = (...keys) => {
+    for (const k of keys) {
+      const v = (q.get(k) || "").trim();
+      if (v) return v.slice(0, 60);
+    }
+    return "";
+  };
+  let src = pick("src", "utm_source");
+  let detail = pick("by", "utm_medium", "utm_campaign");
+  try {
+    if (src) sessionStorage.setItem("ss_src", src);
+    else src = sessionStorage.getItem("ss_src") || "";
+    if (detail) sessionStorage.setItem("ss_src_detail", detail);
+    else detail = sessionStorage.getItem("ss_src_detail") || "";
+  } catch (_) { /* 시크릿 모드 등에서 저장이 막혀도 그냥 넘어간다 */ }
+  return { source: src, sourceDetail: detail };
+})();
+
 /* 선택 항목 카드 하이라이트 + 고른 값을 state에 저장 */
 const RADIO_TO_STATE = { ss_industry: "industry", ss_branch: "branch", ss_cust: "cust" };
 document.addEventListener("change", (e) => {
@@ -1173,7 +1197,8 @@ async function ssPost(payload) {
   const r = await fetch(SS_API + "/public/smartstore/apply", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ year: SS_YEAR, round: SS_ROUND,
-      applyType: state.chosenType, hasPrior: state.hasPrior, priorType: state.priorType, ...payload }),
+      applyType: state.chosenType, hasPrior: state.hasPrior, priorType: state.priorType,
+      ...SS_SOURCE, ...payload }),
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || "전송에 실패했어요");

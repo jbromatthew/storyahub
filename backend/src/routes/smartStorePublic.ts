@@ -20,6 +20,11 @@ function text(v: unknown, max: number): string {
   return String(v ?? "").trim().slice(0, max);
 }
 
+/** 유입 경로 값 — 링크에 사람이 손으로 붙이는 값이라 안전한 문자만 남긴다 */
+function slug(v: unknown, max: number): string {
+  return String(v ?? "").trim().replace(/[^0-9A-Za-z가-힣_\-. ]/g, "").slice(0, max);
+}
+
 /** 사업자번호 — 10자리면 숫자만, 미오픈 센터는 '준비중'으로 통일 */
 function normalizeBizNo(raw: string): string | null {
   const d = raw.replace(/[^0-9]/g, "");
@@ -148,6 +153,21 @@ smartStorePublicRouter.post("/apply", async (req, res) => {
     if (!bizInput) return res.status(400).json({ error: "사업자등록번호 10자리를 입력해 주세요 (미오픈이면 '준비중')" });
     const storeId = text(b.storeId, 60);
     Object.assign(data, { bizNo: bizInput, storeId: storeId || null, stage: "done" });
+  }
+
+  /* 유입 경로는 처음 들어온 링크를 남긴다(first touch).
+     이미 기록돼 있으면 덮어쓰지 않고, 파라미터가 없으면 아무것도 건드리지 않는다. */
+  const source = slug(b.source, 40);
+  const sourceDetail = slug(b.sourceDetail, 60);
+  if (source || sourceDetail) {
+    const prev = existing
+      ? await prisma.erpSmartStoreApply.findUnique({
+          where: { id: existing.id },
+          select: { source: true, sourceDetail: true },
+        })
+      : null;
+    if (source && !prev?.source) data.source = source;
+    if (sourceDetail && !prev?.sourceDetail) data.sourceDetail = sourceDetail;
   }
 
   // 가이드에서 고른 유형·수혜 이력은 두 단계 모두에서 최신값으로 갱신
