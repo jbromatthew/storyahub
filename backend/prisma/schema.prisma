@@ -1012,30 +1012,29 @@ model ErpSmartStoreRound {
 
 /// 스마트상점 신청 접수 — 고객이 공개 가이드 마지막에 직접 제출
 model ErpSmartStoreApply {
-  id           String             @id @default(cuid())
-  roundId      String
-  round        ErpSmartStoreRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  id          String             @id @default(cuid())
+  roundId     String
+  round       ErpSmartStoreRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
   // 접수는 2단계 — 시작 시 리드 정보(연락처 기준), 신청 후 사업자번호·스마트상점 ID를 채운다
-  phone        String // 리드 식별 기준
-  centerName   String?
-  bizNo        String? // 사업자등록번호 (미오픈이면 '준비중')
-  storeId      String? // 스마트상점 ID (신청 완료 후 입력)
-  products     String[]           @default([]) // premium32 | wall10 — 관심 기술 (복수 선택)
-  industry     String? // 헬스장 | PT샵 | 필라테스 | 체육관 | 기타
-  branchCount  String? // 1 | 2 | 3-5 | 6-10 | 11+
-  isCustomer   Boolean? // 현재 브로제이 서비스 이용 중인지
-  applyType    String? // general | barrierfree | rental | sw
-  hasPrior     Boolean? // 기존 수혜 이력
-  priorType    String?
-  // 유입 경로 — 링크에 ?src=... 를 붙였을 때만 기록. 파라미터 없는 기존 링크는 null
-  source       String? // sales | marketing | ... (자유 문자열)
-  sourceDetail String? // 담당자·캠페인 등 세부 (by= 또는 utm_medium/campaign)
+  phone       String // 리드 식별 기준
+  centerName  String?
+  bizNo       String? // 사업자등록번호 (미오픈이면 '준비중')
+  storeId     String? // 스마트상점 ID (신청 완료 후 입력)
+  products    String[]           @default([]) // premium32 | wall10 — 관심 기술 (복수 선택)
+  industry    String? // 헬스장 | PT샵 | 필라테스 | 체육관 | 기타
+  branchCount String? // 1 | 2 | 3-5 | 6-10 | 11+
+  isCustomer  Boolean? // 현재 브로제이 서비스 이용 중인지
+  applyType   String? // general | barrierfree | rental | sw
+  hasPrior    Boolean? // 기존 수혜 이력
+  priorType   String?
+  // 유입 경로 — 링크에 ?src=sales|marketing 을 붙였을 때만 기록. 기존 링크는 null
+  source      String?
   // 접수 단계 — 시작 폼만 냈으면 start, 마지막 폼까지 제출하면 done
-  stage        String             @default("start") // start | done
-  status       String             @default("new") // new | checked | done
-  memo         String?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  stage       String             @default("start") // start | done
+  status      String             @default("new") // new | checked | done
+  memo        String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 
   @@unique([roundId, phone])
   @@index([roundId, createdAt])

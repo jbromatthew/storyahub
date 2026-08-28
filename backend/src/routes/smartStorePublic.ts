@@ -20,9 +20,13 @@ function text(v: unknown, max: number): string {
   return String(v ?? "").trim().slice(0, max);
 }
 
-/** 유입 경로 값 — 링크에 사람이 손으로 붙이는 값이라 안전한 문자만 남긴다 */
-function slug(v: unknown, max: number): string {
-  return String(v ?? "").trim().replace(/[^0-9A-Za-z가-힣_\-. ]/g, "").slice(0, max);
+/** 유입 경로 — 세일즈/마케팅 두 갈래만 인정한다. 오타나 낯선 값은 버려 집계를 흐리지 않는다. */
+const SOURCES: Record<string, string> = {
+  sales: "sales", 세일즈: "sales", s: "sales",
+  marketing: "marketing", 마케팅: "marketing", m: "marketing", mkt: "marketing",
+};
+function normalizeSource(v: unknown): string | null {
+  return SOURCES[String(v ?? "").trim().toLowerCase()] ?? null;
 }
 
 /** 사업자번호 — 10자리면 숫자만, 미오픈 센터는 '준비중'으로 통일 */
@@ -157,17 +161,15 @@ smartStorePublicRouter.post("/apply", async (req, res) => {
 
   /* 유입 경로는 처음 들어온 링크를 남긴다(first touch).
      이미 기록돼 있으면 덮어쓰지 않고, 파라미터가 없으면 아무것도 건드리지 않는다. */
-  const source = slug(b.source, 40);
-  const sourceDetail = slug(b.sourceDetail, 60);
-  if (source || sourceDetail) {
+  const source = normalizeSource(b.source);
+  if (source) {
     const prev = existing
       ? await prisma.erpSmartStoreApply.findUnique({
           where: { id: existing.id },
-          select: { source: true, sourceDetail: true },
+          select: { source: true },
         })
       : null;
-    if (source && !prev?.source) data.source = source;
-    if (sourceDetail && !prev?.sourceDetail) data.sourceDetail = sourceDetail;
+    if (!prev?.source) data.source = source;
   }
 
   // 가이드에서 고른 유형·수혜 이력은 두 단계 모두에서 최신값으로 갱신

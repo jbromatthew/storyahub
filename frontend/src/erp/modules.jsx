@@ -5905,7 +5905,7 @@ export function SmartStoreView() {
   const rows = applies.filter((a) =>
     !kw || (a.centerName || "").toLowerCase().includes(kw) || (a.bizNo || "").includes(kw.replace(/[^0-9]/g, "")) ||
     a.phone.includes(kw.replace(/[^0-9]/g, "")) || (a.storeId || "").toLowerCase().includes(kw) ||
-    (a.source || "").toLowerCase().includes(kw) || (a.sourceDetail || "").toLowerCase().includes(kw) ||
+    (a.source === "sales" ? "세일즈" : a.source === "marketing" ? "마케팅" : "").includes(kw) ||
     (a.industry || "").toLowerCase().includes(kw));
 
   const addRound = async () => {
@@ -5955,15 +5955,14 @@ export function SmartStoreView() {
 
   const copyList = async () => {
     if (!rows.length) return;
-    const head = ["접수일", "회차", "단계", "유입경로", "유입상세", "상호", "사업자번호", "연락처", "관심기술", "업종", "지점수", "기존고객", "스마트상점ID", "신청유형", "수혜이력", "상태", "메모"];
+    const head = ["접수일", "회차", "단계", "유입경로", "상호", "사업자번호", "연락처", "관심기술", "업종", "지점수", "기존고객", "스마트상점ID", "신청유형", "수혜이력", "상태", "메모"];
     const lines = [head.join("\t")];
     for (const a of rows) {
       lines.push([
         new Date(a.createdAt).toLocaleDateString("ko-KR"),
         a.round ? `${a.round.year}-${a.round.round}차` : "",
         a.stage === "done" ? "신청완료" : "진행중",
-        a.source || "",
-        a.sourceDetail || "",
+        a.source === "sales" ? "세일즈" : a.source === "marketing" ? "마케팅" : "",
         a.centerName || "", a.bizNo ? fmtBizNo(a.bizNo) : "", fmtPhone(a.phone),
         (a.products || []).map((k) => SS_PRODUCT[k] || k).join(" + "), a.industry || "", SS_BRANCH[a.branchCount] || "",
         a.isCustomer === true ? "기존" : a.isCustomer === false ? "신규" : "",
@@ -6005,6 +6004,8 @@ export function SmartStoreView() {
         <>
           <div className="trend-selection-bar" style={{ marginTop: 14 }}>
             <span className="trend-selection-label">접수 {applies.length}건</span>
+            <span>세일즈 <strong>{applies.filter((a) => a.source === "sales").length}</strong></span>
+            <span>마케팅 <strong>{applies.filter((a) => a.source === "marketing").length}</strong></span>
             <span>진행중 <strong>{applies.filter((a) => a.stage !== "done").length}</strong></span>
             <span>신청완료 <strong>{applies.filter((a) => a.stage === "done").length}</strong></span>
             <span>신규 <strong>{cnt("new")}</strong></span>
@@ -6070,10 +6071,11 @@ export function SmartStoreView() {
                           : <span className="tag" style={{ background: "#FFF4E0", color: "#8A5512", fontSize: 11.5 }}>진행중</span>}
                       </td>
                       <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>
-                        {a.source
-                          ? <><span className="tag" style={{ background: "#E8EEF9", color: "#2C4A7C", fontSize: 11.5 }}>{a.source}</span>
-                              {a.sourceDetail ? <span className="small" style={{ marginLeft: 5, color: "var(--muted)" }}>{a.sourceDetail}</span> : null}</>
-                          : <span style={{ color: "var(--muted)" }}>-</span>}
+                        {a.source === "sales"
+                          ? <span className="tag" style={{ background: "#E4F0FF", color: "#1F5AA8", fontSize: 11.5 }}>세일즈</span>
+                          : a.source === "marketing"
+                            ? <span className="tag" style={{ background: "#F1E8FF", color: "#6B3FA0", fontSize: 11.5 }}>마케팅</span>
+                            : <span style={{ color: "var(--muted)" }}>-</span>}
                       </td>
                       <td style={{ textAlign: "left" }}>
                         {(a.products || []).length
