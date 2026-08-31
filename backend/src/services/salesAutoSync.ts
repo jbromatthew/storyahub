@@ -9,6 +9,13 @@ import { listAvailableMonthSheets, syncSalesSheet } from "./salesSync.js";
 const SLOTS = Array.from({ length: 11 }, (_, i) => `${String(10 + i).padStart(2, "0")}:00`); // 10:00 ~ 20:00
 let lastRunKey = ""; // "YYYY-MM-DD HH:MM" — 같은 슬롯 중복 실행 방지
 
+/** 시트 탭 이름 "YYYY.MM." — offset 0이면 이번 달, -1이면 지난달 (KST 기준) */
+function kstMonthTab(offset = 0): string {
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const d = new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth() + offset, 1));
+  return `${d.getUTCFullYear()}.${String(d.getUTCMonth() + 1).padStart(2, "0")}.`;
+}
+
 function kstNow(): { date: string; hhmm: string; day: number } {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
@@ -24,8 +31,12 @@ export async function runAutoSync(day: number): Promise<void> {
   for (const kind of ["inquiry", "order"] as const) {
     try {
       const sheets = await listAvailableMonthSheets(kind);
-      // 최신 월 탭 (+ 월초 3일까지는 그 다음 최신 탭 = 지난달도 마감 반영)
-      const targets = sheets.slice(0, day <= 3 ? 2 : 1);
+      /* 이번 달 탭 (+ 월초 3일까지는 지난달 탭도 마감 반영).
+         '최신 탭'을 쓰면 다음 달 탭을 미리 만들어둔 순간 이번 달이 동기화에서 빠진다.
+         이번 달 탭이 아직 없을 때만 최신 탭으로 물러선다. */
+      const wanted = day <= 3 ? [kstMonthTab(0), kstMonthTab(-1)] : [kstMonthTab(0)];
+      let targets = wanted.filter((t) => sheets.includes(t));
+      if (!targets.length) targets = sheets.slice(0, 1);
       for (const sheetName of targets) {
         try {
           const r = await syncSalesSheet(kind, sheetName);
