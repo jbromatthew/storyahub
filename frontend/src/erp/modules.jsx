@@ -2793,8 +2793,9 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
   }
 
   // ===== 목록 화면 (탭) =====
+  // 목록은 열이 많아 폭을 제한하면 넓은 화면에서도 가로 스크롤이 생긴다 (편집 화면은 폼이라 900 유지)
   return (
-    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40, maxWidth: 900 }}>
+    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40 }}>
       <div className="h-eyebrow">Owner</div>
       <div className="h-title">{orderType} 공사관리</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
