@@ -5885,7 +5885,8 @@ export function SmartStoreView() {
   const [fDetail, setFDetail] = useState("");   // 세부 채널 (?by= 값)
   const [fCust, setFCust] = useState("");       // "" | new | existing
   const [fStage, setFStage] = useState("");     // "" | start | done
-  const [sort, setSort] = useState("recent");   // recent | old | center | source | industry
+  const [sortKey, setSortKey] = useState("createdAt");   // 컬럼 헤더를 눌러 바꾼다
+  const [sortDir, setSortDir] = useState("desc");        // asc | desc
   const [busy, setBusy] = useState("");
   const now = new Date();
   const [form, setForm] = useState({ year: now.getFullYear(), round: 1, title: "", deadline: "" });
@@ -5908,7 +5909,40 @@ export function SmartStoreView() {
   const publicUrl = cur ? `${location.origin}${cur.guidePath}` : "";
   const kw = q.trim().toLowerCase();
   const detailOptions = [...new Set(applies.map((a) => a.sourceDetail).filter(Boolean))].sort();
-  const SORTS = { recent: "최신순", old: "오래된순", center: "상호순", source: "유입경로순", industry: "업종순" };
+  /* 컬럼별 정렬 기준. 빈 값은 방향과 상관없이 늘 뒤로 보낸다 */
+  const SORT_VAL = {
+    createdAt: (a) => new Date(a.createdAt).getTime(),
+    centerName: (a) => a.centerName || "",
+    bizNo: (a) => a.bizNo || "",
+    phone: (a) => a.phone || "",
+    stage: (a) => (a.stage === "done" ? 2 : 1),
+    source: (a) => (a.source === "sales" ? "1세일즈" : a.source === "marketing" ? "2마케팅" : ""),
+    sourceDetail: (a) => a.sourceDetail || "",
+    industry: (a) => a.industry || "",
+    branchCount: (a) => ["1", "2", "3-5", "6-10", "11+"].indexOf(a.branchCount) + 1,
+    isCustomer: (a) => (a.isCustomer === true ? 2 : a.isCustomer === false ? 1 : 0),
+    storeId: (a) => a.storeId || "",
+    applyType: (a) => a.applyType || "",
+    hasPrior: (a) => (a.hasPrior === true ? 2 : a.hasPrior === false ? 1 : 0),
+    status: (a) => ["new", "checked", "done"].indexOf(a.status) + 1,
+  };
+  const toggleSort = (key) => {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    // 날짜는 최신부터, 나머지는 오름차순부터 보는 게 자연스럽다
+    else { setSortKey(key); setSortDir(key === "createdAt" ? "desc" : "asc"); }
+  };
+  const Th = ({ k, children, className }) => (
+    <th className={className}
+      style={{ textAlign: "left", whiteSpace: "nowrap", userSelect: "none", cursor: k ? "pointer" : "default" }}
+      onClick={k ? () => toggleSort(k) : undefined} title={k ? "눌러서 정렬" : undefined}>
+      {children}
+      {k && (
+        <span style={{ marginLeft: 3, fontSize: 10, color: sortKey === k ? "var(--brand, #FA6400)" : "#CBD0D6" }}>
+          {sortKey === k ? (sortDir === "asc" ? "▲" : "▼") : "▲"}
+        </span>
+      )}
+    </th>
+  );
   const rows = applies
     .filter((a) =>
       !kw || (a.centerName || "").toLowerCase().includes(kw) || (a.bizNo || "").includes(kw.replace(/[^0-9]/g, "")) ||
@@ -5922,13 +5956,12 @@ export function SmartStoreView() {
     .filter((a) => !fCust || (fCust === "existing" ? a.isCustomer === true : a.isCustomer === false))
     .filter((a) => !fStage || a.stage === fStage)
     .sort((x, y) => {
-      if (sort === "old") return new Date(x.createdAt) - new Date(y.createdAt);
-      if (sort === "center") return (x.centerName || "").localeCompare(y.centerName || "", "ko");
-      if (sort === "industry") return (x.industry || "").localeCompare(y.industry || "", "ko")
-        || new Date(y.createdAt) - new Date(x.createdAt);
-      if (sort === "source") return ((x.source || "zz") + (x.sourceDetail || "")).localeCompare((y.source || "zz") + (y.sourceDetail || ""), "ko")
-        || new Date(y.createdAt) - new Date(x.createdAt);
-      return new Date(y.createdAt) - new Date(x.createdAt);
+      const get = SORT_VAL[sortKey] || SORT_VAL.createdAt;
+      const a = get(x), b = get(y);
+      const blank = (v) => v === "" || v === 0;
+      if (blank(a) !== blank(b)) return blank(a) ? 1 : -1;   // 빈 값은 늘 뒤로
+      const c = typeof a === "string" ? a.localeCompare(b, "ko") : a - b;
+      return (sortDir === "asc" ? c : -c) || new Date(y.createdAt) - new Date(x.createdAt);
     });
   const filtered = Boolean(fSource || fDetail || fCust || fStage || kw);
 
@@ -6091,9 +6124,6 @@ export function SmartStoreView() {
               <option value="start">진행중</option>
               <option value="done">신청완료</option>
             </select>
-            <select value={sort} onChange={(e) => setSort(e.target.value)} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff" }}>
-              {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
             {filtered && (
               <button type="button" className="btn btn-ghost btn-sm"
                 onClick={() => { setQ(""); setFSource(""); setFDetail(""); setFCust(""); setFStage(""); }}>
@@ -6114,22 +6144,22 @@ export function SmartStoreView() {
               <table className="dash-table">
                 <thead>
                   <tr>
-                    <th style={{ textAlign: "left" }}>접수일</th>
-                    <th className="label">상호</th>
-                    <th style={{ textAlign: "left" }}>사업자번호</th>
-                    <th style={{ textAlign: "left" }}>연락처</th>
-                    <th style={{ textAlign: "left" }}>단계</th>
-                    <th style={{ textAlign: "left" }}>유입경로</th>
-                    <th style={{ textAlign: "left" }}>세부채널</th>
-                    <th style={{ textAlign: "left" }}>관심 기술</th>
-                    <th style={{ textAlign: "left" }}>업종</th>
-                    <th style={{ textAlign: "left" }}>지점</th>
-                    <th style={{ textAlign: "left" }}>기존고객</th>
-                    <th style={{ textAlign: "left" }}>스마트상점 ID</th>
-                    <th style={{ textAlign: "left" }}>신청유형</th>
-                    <th style={{ textAlign: "left" }}>수혜이력</th>
-                    <th style={{ textAlign: "left" }}>상태</th>
-                    <th style={{ textAlign: "left" }}>메모</th>
+                    <Th k="createdAt">접수일</Th>
+                    <Th k="centerName" className="label">상호</Th>
+                    <Th k="bizNo">사업자번호</Th>
+                    <Th k="phone">연락처</Th>
+                    <Th k="stage">단계</Th>
+                    <Th k="source">유입경로</Th>
+                    <Th k="sourceDetail">세부채널</Th>
+                    <Th>관심 기술</Th>
+                    <Th k="industry">업종</Th>
+                    <Th k="branchCount">지점</Th>
+                    <Th k="isCustomer">기존고객</Th>
+                    <Th k="storeId">스마트상점 ID</Th>
+                    <Th k="applyType">신청유형</Th>
+                    <Th k="hasPrior">수혜이력</Th>
+                    <Th k="status">상태</Th>
+                    <Th>메모</Th>
                     <th />
                   </tr>
                 </thead>
