@@ -6006,6 +6006,8 @@ export function SmartStoreView() {
   const [sel, setSel] = useState("");
   const [tab, setTab] = useState("applies"); // applies | rounds
   const [q, setQ] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadedAt, setLoadedAt] = useState(null);
   const [fSource, setFSource] = useState("");   // "" | sales | marketing | none
   const [fDetail, setFDetail] = useState("");   // 세부 채널 (?by= 값)
   const [fCust, setFCust] = useState("");       // "" | new | existing
@@ -6023,10 +6025,33 @@ export function SmartStoreView() {
       return d.rounds || [];
     });
   const loadApplies = (roundId) =>
-    api.erpSmartStoreApplies(roundId ? { roundId } : {}).then((d) => setApplies(d.applies || []));
+    api.erpSmartStoreApplies(roundId ? { roundId } : {}).then((d) => {
+      setApplies(d.applies || []);
+      setLoadedAt(new Date());
+    });
 
   useEffect(() => { loadRounds().catch(notifyError); }, []);
   useEffect(() => { if (rounds) loadApplies(sel).catch(notifyError); }, [sel, rounds]);
+
+  /* 접수는 고객이 아무 때나 남기므로, 화면을 열어둔 채로도 최신이어야 한다.
+     다른 탭에 갔다 돌아오면 자동으로 다시 불러오고, 버튼으로도 즉시 받는다. */
+  const refreshApplies = async (silent) => {
+    if (!silent) setRefreshing(true);
+    try {
+      // 회차 드롭다운의 건수도 같이 맞춘다
+      await Promise.all([loadApplies(sel), loadRounds()]);
+    } catch (e) { if (!silent) notifyError(e); }
+    finally { if (!silent) setRefreshing(false); }
+  };
+  useEffect(() => {
+    const onFocus = () => { if (document.visibilityState === "visible" && rounds) void refreshApplies(true); };
+    document.addEventListener("visibilitychange", onFocus);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onFocus);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [rounds, sel]);
 
   if (!rounds) return <div className="spinner" />;
 
@@ -6254,6 +6279,14 @@ export function SmartStoreView() {
               </button>
             )}
             <span className="small" style={{ color: "var(--muted)" }}>{rows.length}건</span>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => refreshApplies(false)} disabled={refreshing}>
+              {refreshing ? "불러오는 중…" : "↻ 새로고침"}
+            </button>
+            {loadedAt && (
+              <span className="small" style={{ color: "var(--muted)" }}>
+                {loadedAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 기준
+              </span>
+            )}
             <button type="button" className="btn btn-ghost btn-sm" onClick={copyLink} disabled={!cur}>공개 링크 복사</button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={copyList} disabled={!rows.length}>목록 복사</button>
           </div>
