@@ -5875,6 +5875,54 @@ const fmtPhone = (v) => {
   return d;
 };
 
+/** 세부채널 셀 — 칩을 누르면 그 채널만 걸러 보고, 연필을 누르면 고친다.
+ *  잘못 눌러 값이 바뀌는 일이 없도록 저장 직전에 무엇이 어떻게 바뀌는지 확인받는다. */
+function SourceDetailCell({ value, options, active, onFilter, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value || "");
+  useEffect(() => { setDraft(value || ""); }, [value]);
+
+  const commit = async () => {
+    const next = draft.trim();
+    if (next === (value || "")) { setEditing(false); return; }
+    const label = value
+      ? (next ? `세부채널을 '${value}' → '${next}' 으로 바꿀까요?` : `세부채널 '${value}' 을 지울까요?`)
+      : `세부채널을 '${next}' 으로 지정할까요?`;
+    if (!(await confirmAction(label))) return;      // 취소하면 입력값은 그대로 두고 머문다
+    await onSave(next);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <span className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
+        <input autoFocus value={draft} maxLength={40}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setDraft(value || ""); setEditing(false); } }}
+          placeholder="meta, 포스팅 …" list="ss-detail-options"
+          style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "3px 6px", fontFamily: "inherit", fontSize: 12, width: 110 }} />
+        <button type="button" className="btn btn-ghost btn-sm" onClick={commit}>저장</button>
+        <button type="button" className="btn btn-ghost btn-sm"
+          onClick={() => { setDraft(value || ""); setEditing(false); }}>취소</button>
+        {options.length > 0 && (
+          <datalist id="ss-detail-options">{options.map((o) => <option key={o} value={o} />)}</datalist>
+        )}
+      </span>
+    );
+  }
+  return (
+    <span className="row" style={{ gap: 4, flexWrap: "nowrap", alignItems: "center" }}>
+      {value
+        ? <button type="button" onClick={onFilter} className="tag" title="이 채널만 보기"
+            style={{ background: active ? "var(--brand, #FA6400)" : "#FFF0E6", color: active ? "#fff" : "#B4501E",
+                     fontSize: 11.5, border: "none", cursor: "pointer", fontFamily: "inherit" }}>{value}</button>
+        : <span style={{ color: "var(--muted)" }}>-</span>}
+      <button type="button" onClick={() => setEditing(true)} title="세부채널 고치기"
+        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", fontSize: 12, padding: "0 2px" }}>✎</button>
+    </span>
+  );
+}
+
 export function SmartStoreView() {
   const [rounds, setRounds] = useState(null);
   const [applies, setApplies] = useState([]);
@@ -6187,14 +6235,12 @@ export function SmartStoreView() {
                             : <span style={{ color: "var(--muted)" }}>-</span>}
                       </td>
                       <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>
-                        {a.sourceDetail
-                          ? <button type="button" onClick={() => setFDetail(fDetail === a.sourceDetail ? "" : a.sourceDetail)}
-                              className="tag"
-                              style={{ background: "#FFF0E6", color: "#B4501E", fontSize: 11.5,
-                                       border: "none", cursor: "pointer", fontFamily: "inherit" }}>
-                              {a.sourceDetail}
-                            </button>
-                          : <span style={{ color: "var(--muted)" }}>-</span>}
+                        <SourceDetailCell
+                          value={a.sourceDetail}
+                          options={detailOptions}
+                          active={fDetail === a.sourceDetail}
+                          onFilter={() => setFDetail(fDetail === a.sourceDetail ? "" : a.sourceDetail)}
+                          onSave={(v) => patchApply(a, { sourceDetail: v })} />
                       </td>
                       <td style={{ textAlign: "left" }}>
                         {(a.products || []).length
