@@ -5908,6 +5908,47 @@ const fmtPhone = (v) => {
   return d;
 };
 
+const SS_STAGES = [
+  { id: "start", label: "진행중", bg: "#FFF4E0", fg: "#8A5512" },
+  { id: "done", label: "신청완료", bg: "#D3F8DF", fg: "#1F6B3A" },
+];
+
+/** 접수 단계 셀 — 칩을 누르면 그 단계만 걸러 보고, 연필로 고친다.
+ *  고객이 마지막 폼을 안 냈지만 실제로는 신청을 마친 경우를 손으로 맞출 수 있어야 한다. */
+function StageCell({ value, active, onFilter, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const cur = SS_STAGES.find((s) => s.id === (value || "start")) || SS_STAGES[0];
+
+  const pick = async (next) => {
+    if (next === (value || "start")) { setEditing(false); return; }
+    const name = (id) => SS_STAGES.find((s) => s.id === id)?.label || id;
+    if (!(await confirmAction(`단계를 '${name(value || "start")}' → '${name(next)}' 으로 바꿀까요?`))) return;
+    await onSave(next);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <span className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
+        <select autoFocus value={value || "start"} onChange={(e) => pick(e.target.value)}
+          style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "3px 6px", fontFamily: "inherit", fontSize: 12 }}>
+          {SS_STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>취소</button>
+      </span>
+    );
+  }
+  return (
+    <span className="row" style={{ gap: 4, flexWrap: "nowrap", alignItems: "center" }}>
+      <button type="button" onClick={onFilter} className="tag" title="이 단계만 보기"
+        style={{ background: active ? "var(--brand, #FA6400)" : cur.bg, color: active ? "#fff" : cur.fg,
+                 fontSize: 11.5, border: "none", cursor: "pointer", fontFamily: "inherit" }}>{cur.label}</button>
+      <button type="button" onClick={() => setEditing(true)} title="단계 고치기"
+        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", fontSize: 12, padding: "0 2px" }}>✎</button>
+    </span>
+  );
+}
+
 const SS_SOURCES = [
   { id: "sales", label: "세일즈", bg: "#E4F0FF", fg: "#1F5AA8" },
   { id: "marketing", label: "마케팅", bg: "#F1E8FF", fg: "#6B3FA0" },
@@ -6331,9 +6372,11 @@ export function SmartStoreView() {
                         <a href={`tel:${a.phone}`}>{fmtPhone(a.phone)}</a>
                       </td>
                       <td style={{ textAlign: "left" }}>
-                        {a.stage === "done"
-                          ? <span className="tag" style={{ background: "#D3F8DF", color: "#1F6B3A", fontSize: 11.5 }}>신청완료</span>
-                          : <span className="tag" style={{ background: "#FFF4E0", color: "#8A5512", fontSize: 11.5 }}>진행중</span>}
+                        <StageCell
+                          value={a.stage}
+                          active={fStage === (a.stage || "start")}
+                          onFilter={() => setFStage(fStage === (a.stage || "start") ? "" : (a.stage || "start"))}
+                          onSave={(v) => patchApply(a, { stage: v })} />
                       </td>
                       <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>
                         <SourceCell
