@@ -1388,6 +1388,12 @@ erpRouter.patch("/smartstore/applies/:id", async (req: AuthedRequest, res) => {
   if (b.centerName !== undefined) data.centerName = String(b.centerName).trim().slice(0, 120);
   if (b.phone !== undefined) data.phone = String(b.phone).replace(/[^0-9]/g, "").slice(0, 13);
   if (b.storeId !== undefined) data.storeId = String(b.storeId).trim().slice(0, 60);
+  if (b.source !== undefined) {
+    // 유입경로는 집계의 축이라 세일즈/마케팅 두 값만 허용하고, 비우면 '경로 없음'으로 되돌린다
+    const v = String(b.source).trim().toLowerCase();
+    if (v && !["sales", "marketing"].includes(v)) return res.status(400).json({ error: "잘못된 유입경로" });
+    data.source = v || null;
+  }
   if (b.sourceDetail !== undefined) {
     // 공개 페이지의 ?by= 와 같은 규칙으로 정리한다. 비우면 '경로 없음'으로 되돌린다
     const v = String(b.sourceDetail).trim().replace(/[^0-9A-Za-z가-힣_\-. ]/g, "").slice(0, 40).trim();

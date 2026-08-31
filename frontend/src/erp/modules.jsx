@@ -5875,6 +5875,50 @@ const fmtPhone = (v) => {
   return d;
 };
 
+const SS_SOURCES = [
+  { id: "sales", label: "세일즈", bg: "#E4F0FF", fg: "#1F5AA8" },
+  { id: "marketing", label: "마케팅", bg: "#F1E8FF", fg: "#6B3FA0" },
+];
+
+/** 유입경로 셀 — 칩을 누르면 그 경로만 걸러 보고, 연필을 누르면 고친다.
+ *  집계의 축이라 값은 두 가지로 고정하고, 저장 전에 무엇이 바뀌는지 확인받는다. */
+function SourceCell({ value, active, onFilter, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const cur = SS_SOURCES.find((s) => s.id === value);
+
+  const pick = async (next) => {
+    if (next === (value || "")) { setEditing(false); return; }
+    const name = (id) => SS_SOURCES.find((s) => s.id === id)?.label || "경로 없음";
+    if (!(await confirmAction(`유입경로를 '${name(value)}' → '${name(next)}' 으로 바꿀까요?`))) return;
+    await onSave(next);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <span className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
+        <select autoFocus value={value || ""} onChange={(e) => pick(e.target.value)}
+          style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "3px 6px", fontFamily: "inherit", fontSize: 12 }}>
+          <option value="">경로 없음</option>
+          {SS_SOURCES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>취소</button>
+      </span>
+    );
+  }
+  return (
+    <span className="row" style={{ gap: 4, flexWrap: "nowrap", alignItems: "center" }}>
+      {cur
+        ? <button type="button" onClick={onFilter} className="tag" title="이 경로만 보기"
+            style={{ background: active ? "var(--brand, #FA6400)" : cur.bg, color: active ? "#fff" : cur.fg,
+                     fontSize: 11.5, border: "none", cursor: "pointer", fontFamily: "inherit" }}>{cur.label}</button>
+        : <span style={{ color: "var(--muted)" }}>-</span>}
+      <button type="button" onClick={() => setEditing(true)} title="유입경로 고치기"
+        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", fontSize: 12, padding: "0 2px" }}>✎</button>
+    </span>
+  );
+}
+
 /** 세부채널 셀 — 칩을 누르면 그 채널만 걸러 보고, 연필을 누르면 고친다.
  *  잘못 눌러 값이 바뀌는 일이 없도록 저장 직전에 무엇이 어떻게 바뀌는지 확인받는다. */
 function SourceDetailCell({ value, options, active, onFilter, onSave }) {
@@ -6226,11 +6270,11 @@ export function SmartStoreView() {
                           : <span className="tag" style={{ background: "#FFF4E0", color: "#8A5512", fontSize: 11.5 }}>진행중</span>}
                       </td>
                       <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>
-                        {a.source === "sales"
-                          ? <span className="tag" style={{ background: "#E4F0FF", color: "#1F5AA8", fontSize: 11.5 }}>세일즈</span>
-                          : a.source === "marketing"
-                            ? <span className="tag" style={{ background: "#F1E8FF", color: "#6B3FA0", fontSize: 11.5 }}>마케팅</span>
-                            : <span style={{ color: "var(--muted)" }}>-</span>}
+                        <SourceCell
+                          value={a.source}
+                          active={fSource === a.source}
+                          onFilter={() => setFSource(fSource === a.source ? "" : a.source)}
+                          onSave={(v) => patchApply(a, { source: v })} />
                       </td>
                       <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>
                         <SourceDetailCell
