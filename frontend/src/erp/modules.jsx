@@ -2389,14 +2389,26 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
     if (qTo && dk && dk > qTo) return false;
     return true;
   }), [typedQuotes, qStatus, qFrom, qTo]);
+  /* 마진 = 견적 합계(매출) − 공사팀 정산 − 부품/자재 원가. 모두 부가세 포함 기준으로,
+     견적 편집 화면의 '수익(마진) 요약'과 같은 식을 쓴다. */
+  const quoteMargin = (q) => {
+    const revenue = quoteTotals(q.lines).total;
+    const payout = (q.payouts || []).reduce((a, p) => a + cstNum(p.amount), 0);
+    const material = (q.materials || []).reduce((a, m) => a + cstNum(m.qty) * cstNum(m.unitCost), 0);
+    const margin = revenue - payout - material;
+    return { revenue, margin, rate: revenue > 0 ? (margin / revenue) * 100 : 0, hasCost: payout > 0 || material > 0 };
+  };
+
   const quoteSummary = useMemo(() => {
-    let total = 0, settled = 0, unsettled = 0;
+    let total = 0, settled = 0, unsettled = 0, margin = 0;
     for (const q of filteredQuotes) {
       const amt = quoteTotals(q.lines).total;
       total += amt;
+      margin += quoteMargin(q).margin;
       if (q.status === "settled") settled += amt; else unsettled += amt;
     }
-    return { count: filteredQuotes.length, total, settled, unsettled };
+    const rate = total > 0 ? (margin / total) * 100 : 0;
+    return { count: filteredQuotes.length, total, settled, unsettled, margin, rate };
   }, [filteredQuotes]);
 
   if (loading) return <div className="spinner" />;
@@ -2879,6 +2891,13 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
             <div className="cst-sum-card"><div className="lbl">총 {quoteSummary.count}건 합계</div><div className="val">{formatWon(quoteSummary.total)}</div></div>
             <div className="cst-sum-card unsettled"><div className="lbl">미정산 금액</div><div className="val">{formatWon(quoteSummary.unsettled)}</div></div>
             <div className="cst-sum-card settled"><div className="lbl">정산 완료 금액</div><div className="val">{formatWon(quoteSummary.settled)}</div></div>
+            <div className="cst-sum-card">
+              <div className="lbl">마진 합계 <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>· 팀 정산·부품 원가 차감</span></div>
+              <div className="val" style={{ color: quoteSummary.margin >= 0 ? "#0D7A3E" : "#C5221F" }}>
+                {formatWon(quoteSummary.margin)}
+                <span className="small" style={{ marginLeft: 6, fontWeight: 700 }}>({quoteSummary.rate.toFixed(1)}%)</span>
+              </div>
+            </div>
           </div>
 
           {/* 공사일정 캘린더 — 공사기간(시작~종료) 표시, 호버로 참여 팀, 팀 클릭 → 정산 탭 */}
@@ -2953,6 +2972,7 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
                   <th className="shrink ctr">상태</th>
                   <th className="shrink">공사기간</th>
                   <th className="shrink num">합계</th>
+                  <th className="shrink num">마진</th>
                   <th className="shrink ctr">민원</th>
                   <th className="shrink ctr">세금계산서</th>
                 </tr>
@@ -2960,6 +2980,7 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
               <tbody>
                 {filteredQuotes.map((q) => {
                   const t = quoteTotals(q.lines);
+                  const mg = quoteMargin(q);
                   const st = CST_STATUS[q.status] || CST_STATUS.before;
                   const comps = q.complaints || [];
                   const openComp = comps.filter((c) => c.status !== "완료").length;
@@ -2985,12 +3006,23 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
                       <td className="shrink ctr"><span className={"cst-badge " + st.cls}>{st.label}</span></td>
                       <td className="shrink"><span className="cell-sub" style={{ margin: 0 }}>{q.startDate ? `${q.startDate}${q.endDate ? ` ~ ${q.endDate}` : " ~"}` : "—"}</span></td>
                       <td className="shrink num" style={{ fontWeight: 700 }}>{formatWon(t.total)}</td>
+                      <td className="shrink num">
+                        {mg.hasCost ? (
+                          <span style={{ fontWeight: 700, color: mg.margin >= 0 ? "#0D7A3E" : "#C5221F" }}>
+                            {formatWon(mg.margin)}
+                            <span className="small" style={{ marginLeft: 4, fontWeight: 600 }}>({mg.rate.toFixed(0)}%)</span>
+                          </span>
+                        ) : (
+                          // 팀 정산·부품 원가가 아직 안 들어간 건은 매출이 그대로 마진으로 잡혀 오해를 부른다
+                          <span style={{ color: "var(--muted)" }} title="공사팀 정산·부품 원가가 아직 입력되지 않았습니다">원가 미입력</span>
+                        )}
+                      </td>
                       <td className="shrink ctr">{comps.length ? <span className={"erp-badge " + (openComp ? "orange" : "green")}>{comps.length}건{openComp ? ` · 미해결 ${openComp}` : ""}</span> : <span style={{ color: "var(--muted)" }}>—</span>}</td>
                       <td className="shrink ctr"><span className={"erp-badge " + (q.taxInvoiceIssued ? "green" : "gray")}>{q.taxInvoiceIssued ? "발행" : "미발행"}</span></td>
                     </tr>
                   );
                 })}
-                {!filteredQuotes.length && <tr><td colSpan={7} className="erp-tbl-empty">{typedQuotes.length ? "조건에 맞는 공사가 없습니다." : "아직 공사 건이 없습니다. “새 견적”으로 시작하세요."}</td></tr>}
+                {!filteredQuotes.length && <tr><td colSpan={8} className="erp-tbl-empty">{typedQuotes.length ? "조건에 맞는 공사가 없습니다." : "아직 공사 건이 없습니다. “새 견적”으로 시작하세요."}</td></tr>}
               </tbody>
             </table>
           </div>
