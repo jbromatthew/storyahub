@@ -6081,7 +6081,6 @@ export function SmartStoreView() {
     catch { notifyError(new Error("복사에 실패했습니다")); }
   };
 
-  const cnt = (st) => applies.filter((a) => a.status === st).length;
 
   return (
     <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
@@ -6114,9 +6113,8 @@ export function SmartStoreView() {
             <span>마케팅 <strong>{applies.filter((a) => a.source === "marketing").length}</strong></span>
             <span>진행중 <strong>{applies.filter((a) => a.stage !== "done").length}</strong></span>
             <span>신청완료 <strong>{applies.filter((a) => a.stage === "done").length}</strong></span>
-            <span>신규 <strong>{cnt("new")}</strong></span>
-            <span>확인 <strong>{cnt("checked")}</strong></span>
-            <span>완료 <strong>{cnt("done")}</strong></span>
+            <span>기존고객 <strong>{applies.filter((a) => a.isCustomer === true).length}</strong></span>
+            <span>신규 <strong>{applies.filter((a) => a.isCustomer === false).length}</strong></span>
             {cur && (
               <span className="small" style={{ marginLeft: "auto" }}>
                 <a href={publicUrl} target="_blank" rel="noreferrer">공개 가이드 열기</a>
