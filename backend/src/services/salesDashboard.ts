@@ -429,6 +429,31 @@ function buildWeeklyBreakdown(
   };
 }
 
+/** 선택한 달의 잔여일·잔여영업일.
+ *  시트에 적힌 값은 TODAY() 기준이라 이번 달이 아니면 뜻이 없다 — 8월 말에 9월을 열면 '잔여일 1'이 뜬다.
+ *  이번 달은 공휴일까지 반영된 시트 값을 그대로 쓰고, 과거(0)·미래(그 달 전체)는 직접 계산한다. (KST) */
+function remainingOrSheet(
+  monthLabel: string,
+  sheetValue: number | null,
+  kind: "days" | "businessDays",
+): number | null {
+  const m = monthLabel.match(/(\d{4})[.\-\s]*(\d{1,2})/);
+  if (!m) return sheetValue;
+  const y = Number(m[1]), mm = Number(m[2]);
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const cmp = y * 100 + mm - (kst.getUTCFullYear() * 100 + kst.getUTCMonth() + 1);
+  if (cmp === 0) return sheetValue;                          // 이번 달 — 시트 값 유지
+  if (cmp < 0) return 0;                                     // 이미 지난 달
+  const lastDay = new Date(Date.UTC(y, mm, 0)).getUTCDate();
+  if (kind === "days") return lastDay;
+  let b = 0;
+  for (let d = 1; d <= lastDay; d++) {
+    const dow = new Date(Date.UTC(y, mm - 1, d)).getUTCDay();
+    if (dow !== 0 && dow !== 6) b++;                          // 공휴일은 알 수 없어 주말만 제외
+  }
+  return b;
+}
+
 function parseSummary(grid: string[][]) {
   const row2 = grid[1] ?? [];
   const row3 = grid[2] ?? [];
@@ -1278,8 +1303,8 @@ export async function getSalesDashboard(month?: string): Promise<SalesDashboardD
       actual,
       gap: actual - totalGoal,
       rate: totalGoal > 0 ? Math.round((actual / totalGoal) * 1000) / 10 : null,
-      remainingDays: summaryMeta.remainingDays,
-      remainingBusinessDays: summaryMeta.remainingBusinessDays,
+      remainingDays: remainingOrSheet(monthLabel, summaryMeta.remainingDays, "days"),
+      remainingBusinessDays: remainingOrSheet(monthLabel, summaryMeta.remainingBusinessDays, "businessDays"),
       sheetActual: summaryMeta.sheetActual,
       inquiryGoal,
       inquiryActual,
@@ -1454,8 +1479,9 @@ export async function getMarketingDashboard(month?: string): Promise<SalesDashbo
   const industryWeek = industryRow >= 0 ? parseSectionWeekData(grid, industryRow) : null;
   const planWeek = planRow >= 0 ? parseSectionWeekData(grid, planRow) : null;
 
-  const remainingDays = findLabeledNumber(grid, /^잔여일$/) ?? null;
-  const remainingBusinessDays = findLabeledNumber(grid, /^잔여영업일$/) ?? null;
+  // 세일즈 계기판과 같은 규칙 — 이번 달만 시트 값, 과거·미래는 달력 기준
+  const remainingDays = remainingOrSheet(monthLabel, findLabeledNumber(grid, /^잔여일$/) ?? null, "days");
+  const remainingBusinessDays = remainingOrSheet(monthLabel, findLabeledNumber(grid, /^잔여영업일$/) ?? null, "businessDays");
 
   // 세일즈 계기판과 동일: '5. 업종X요금제' 시트 매트릭스 우선 + DB 오버라이드 보충
   const sheetIPG = parseIndustryPlanSheet(grid);
