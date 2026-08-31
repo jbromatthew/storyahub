@@ -474,6 +474,8 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
   .app-sidebar{display:flex;}
   .screen{padding:20px 32px 40px;}
   .pad{max-width:840px;margin:0 auto;}
+  /* 열이 많은 목록 화면 — 840으로 묶으면 넓은 화면에서도 표가 가로로 잘린다 */
+  .pad.wide{max-width:1440px;}
   .widget-grid{grid-template-columns:repeat(2,1fr);}
   .kbh-list.kbh-board{gap:12px;}
   .kbh-fab{right:32px;bottom:32px;}
@@ -618,6 +620,8 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .erp-tbl th.shrink,.erp-tbl td.shrink{width:1%;white-space:nowrap;}
 .erp-tbl .cell-ttl{font-weight:700;color:var(--ink);}
 .erp-tbl .cell-sub{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.35;}
+.erp-tbl .cell-ttl{word-break:keep-all;}
+.erp-tbl td:first-child,.erp-tbl th:first-child{min-width:220px;}
 .erp-tbl .cell-sub.clip{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;max-width:420px;}
 .erp-tbl .row-actions{display:flex;gap:6px;justify-content:flex-end;white-space:nowrap;}
 .erp-tbl-empty{text-align:center;padding:46px 16px;color:var(--muted);font-size:13px;line-height:1.6;}
