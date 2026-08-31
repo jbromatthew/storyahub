@@ -5881,6 +5881,11 @@ export function SmartStoreView() {
   const [sel, setSel] = useState("");
   const [tab, setTab] = useState("applies"); // applies | rounds
   const [q, setQ] = useState("");
+  const [fSource, setFSource] = useState("");   // "" | sales | marketing | none
+  const [fDetail, setFDetail] = useState("");   // 세부 채널 (?by= 값)
+  const [fCust, setFCust] = useState("");       // "" | new | existing
+  const [fStage, setFStage] = useState("");     // "" | start | done
+  const [sort, setSort] = useState("recent");   // recent | old | center | source | industry
   const [busy, setBusy] = useState("");
   const now = new Date();
   const [form, setForm] = useState({ year: now.getFullYear(), round: 1, title: "", deadline: "" });
@@ -5902,12 +5907,30 @@ export function SmartStoreView() {
   const cur = rounds.find((r) => r.id === sel);
   const publicUrl = cur ? `${location.origin}${cur.guidePath}` : "";
   const kw = q.trim().toLowerCase();
-  const rows = applies.filter((a) =>
-    !kw || (a.centerName || "").toLowerCase().includes(kw) || (a.bizNo || "").includes(kw.replace(/[^0-9]/g, "")) ||
-    a.phone.includes(kw.replace(/[^0-9]/g, "")) || (a.storeId || "").toLowerCase().includes(kw) ||
-    (a.source === "sales" ? "세일즈" : a.source === "marketing" ? "마케팅" : "").includes(kw) ||
-    (a.sourceDetail || "").toLowerCase().includes(kw) ||
-    (a.industry || "").toLowerCase().includes(kw));
+  const detailOptions = [...new Set(applies.map((a) => a.sourceDetail).filter(Boolean))].sort();
+  const SORTS = { recent: "최신순", old: "오래된순", center: "상호순", source: "유입경로순", industry: "업종순" };
+  const rows = applies
+    .filter((a) =>
+      !kw || (a.centerName || "").toLowerCase().includes(kw) || (a.bizNo || "").includes(kw.replace(/[^0-9]/g, "")) ||
+      a.phone.includes(kw.replace(/[^0-9]/g, "")) || (a.storeId || "").toLowerCase().includes(kw) ||
+      (a.source === "sales" ? "세일즈" : a.source === "marketing" ? "마케팅" : "").includes(kw) ||
+      (a.sourceDetail || "").toLowerCase().includes(kw) ||
+      (a.industry || "").toLowerCase().includes(kw))
+    .filter((a) => !fSource || (fSource === "none" ? !a.source : a.source === fSource))
+    .filter((a) => !fDetail || a.sourceDetail === fDetail)
+    // 기존고객 여부는 고객이 직접 고른 값이라, 답을 안 한 건(null)은 어느 쪽에도 넣지 않는다
+    .filter((a) => !fCust || (fCust === "existing" ? a.isCustomer === true : a.isCustomer === false))
+    .filter((a) => !fStage || a.stage === fStage)
+    .sort((x, y) => {
+      if (sort === "old") return new Date(x.createdAt) - new Date(y.createdAt);
+      if (sort === "center") return (x.centerName || "").localeCompare(y.centerName || "", "ko");
+      if (sort === "industry") return (x.industry || "").localeCompare(y.industry || "", "ko")
+        || new Date(y.createdAt) - new Date(x.createdAt);
+      if (sort === "source") return ((x.source || "zz") + (x.sourceDetail || "")).localeCompare((y.source || "zz") + (y.sourceDetail || ""), "ko")
+        || new Date(y.createdAt) - new Date(x.createdAt);
+      return new Date(y.createdAt) - new Date(x.createdAt);
+    });
+  const filtered = Boolean(fSource || fDetail || fCust || fStage || kw);
 
   const addRound = async () => {
     const year = Number(form.year), round = Number(form.round);
@@ -6029,9 +6052,13 @@ export function SmartStoreView() {
               <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <span className="small" style={{ color: "var(--muted)" }}>세부 채널</span>
                 {rows.map(([k, n]) => (
-                  <span key={k} className="tag" style={{ background: "#F2F3F4", color: "var(--ink)", fontSize: 11.5 }}>
+                  <button key={k} type="button" onClick={() => setFDetail(fDetail === k ? "" : k)}
+                    className="tag"
+                    style={{ background: fDetail === k ? "var(--brand, #FA6400)" : "#F2F3F4",
+                             color: fDetail === k ? "#fff" : "var(--ink)",
+                             fontSize: 11.5, border: "none", cursor: "pointer", fontFamily: "inherit" }}>
                     {k} <strong>{n}</strong>
-                  </span>
+                  </button>
                 ))}
               </div>
             );
@@ -6042,13 +6069,45 @@ export function SmartStoreView() {
               onKeyDown={(e) => { if (e.key === "Escape") setQ(""); }}
               placeholder="🔍 상호·사업자번호·연락처 검색"
               style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, minWidth: 230, background: "#fff" }} />
+            <select value={fSource} onChange={(e) => { setFSource(e.target.value); setFDetail(""); }} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff" }}>
+              <option value="">유입경로 전체</option>
+              <option value="sales">세일즈</option>
+              <option value="marketing">마케팅</option>
+              <option value="none">경로 없음</option>
+            </select>
+            {detailOptions.length > 0 && (
+              <select value={fDetail} onChange={(e) => setFDetail(e.target.value)} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff" }}>
+                <option value="">세부채널 전체</option>
+                {detailOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            )}
+            <select value={fCust} onChange={(e) => setFCust(e.target.value)} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff" }}>
+              <option value="">신규/기존 전체</option>
+              <option value="new">신규</option>
+              <option value="existing">기존고객</option>
+            </select>
+            <select value={fStage} onChange={(e) => setFStage(e.target.value)} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff" }}>
+              <option value="">단계 전체</option>
+              <option value="start">진행중</option>
+              <option value="done">신청완료</option>
+            </select>
+            <select value={sort} onChange={(e) => setSort(e.target.value)} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff" }}>
+              {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            {filtered && (
+              <button type="button" className="btn btn-ghost btn-sm"
+                onClick={() => { setQ(""); setFSource(""); setFDetail(""); setFCust(""); setFStage(""); }}>
+                조건 지우기
+              </button>
+            )}
+            <span className="small" style={{ color: "var(--muted)" }}>{rows.length}건</span>
             <button type="button" className="btn btn-ghost btn-sm" onClick={copyLink} disabled={!cur}>공개 링크 복사</button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={copyList} disabled={!rows.length}>목록 복사</button>
           </div>
 
           {!rows.length ? (
             <div className="small" style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
-              {applies.length ? `"${q.trim()}" 검색 결과가 없습니다.` : "아직 접수된 건이 없습니다. 공개 링크를 고객에게 보내주세요."}
+              {applies.length ? "조건에 맞는 접수가 없습니다." : "아직 접수된 건이 없습니다. 공개 링크를 고객에게 보내주세요."}
             </div>
           ) : (
             <div className="dash-table-wrap">
@@ -6061,6 +6120,7 @@ export function SmartStoreView() {
                     <th style={{ textAlign: "left" }}>연락처</th>
                     <th style={{ textAlign: "left" }}>단계</th>
                     <th style={{ textAlign: "left" }}>유입경로</th>
+                    <th style={{ textAlign: "left" }}>세부채널</th>
                     <th style={{ textAlign: "left" }}>관심 기술</th>
                     <th style={{ textAlign: "left" }}>업종</th>
                     <th style={{ textAlign: "left" }}>지점</th>
@@ -6094,10 +6154,17 @@ export function SmartStoreView() {
                           ? <span className="tag" style={{ background: "#E4F0FF", color: "#1F5AA8", fontSize: 11.5 }}>세일즈</span>
                           : a.source === "marketing"
                             ? <span className="tag" style={{ background: "#F1E8FF", color: "#6B3FA0", fontSize: 11.5 }}>마케팅</span>
-                            : !a.sourceDetail ? <span style={{ color: "var(--muted)" }}>-</span> : null}
+                            : <span style={{ color: "var(--muted)" }}>-</span>}
+                      </td>
+                      <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>
                         {a.sourceDetail
-                          ? <span className="small" style={{ marginLeft: a.source ? 5 : 0, color: "var(--muted)" }}>{a.sourceDetail}</span>
-                          : null}
+                          ? <button type="button" onClick={() => setFDetail(fDetail === a.sourceDetail ? "" : a.sourceDetail)}
+                              className="tag"
+                              style={{ background: "#FFF0E6", color: "#B4501E", fontSize: 11.5,
+                                       border: "none", cursor: "pointer", fontFamily: "inherit" }}>
+                              {a.sourceDetail}
+                            </button>
+                          : <span style={{ color: "var(--muted)" }}>-</span>}
                       </td>
                       <td style={{ textAlign: "left" }}>
                         {(a.products || []).length
