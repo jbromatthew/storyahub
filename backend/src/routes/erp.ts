@@ -1317,7 +1317,36 @@ async function requireOwner(req: AuthedRequest, res: Response): Promise<boolean>
 /* ===================== 스마트상점 기술보급사업 ===================== */
 
 // 회차 목록 (신청 건수 포함)
-/* ===================== 인센티브 (소유자 전용) ===================== */
+/* ===================== 인센티브 (소유자 전용) =====================
+ * 규칙 (세일즈팀 인센티브 운영 방안 v5)
+ *  - 재원 = 분기 합산 NBM 매출(이카운트 HW + 렌탈) × 0.5%
+ *  - 지급 조건: 분기 3개월 평균 매출 ≥ 월 목표(1.5억). 미달이면 전액 미지급
+ *  - 배분: 오웬(영업지원) 15% 고정 + 영업 3명 각 25%, 종합 1위에게 +10%
+ *  - 종합 점수 = 결제수 비율×0.4 + 매출 비율×0.4 + 팀장평가 비율×0.2 (영업 3명만)
+ *  - 재원은 NBM 기준, 개인 기여도는 결제주문내역(신규센터) 기준 — 두 합계는 다를 수 있다
+ */
+const INCENTIVE_SALES = ["Jo", "Jeff", "Sofia"] as const;   // 영업 (1위 경쟁 대상)
+const INCENTIVE_SUPPORT = "Owen";                            // 영업지원 (고정 비율)
+const INCENTIVE_DEFAULTS = {
+  monthlyTarget: 150_000_000,  // 월 매출 목표
+  poolRate: 0.5,               // 재원 = 매출 × %
+  supportShare: 15,            // 오웬 고정 %
+  baseShare: 25,               // 영업 기본 %
+  topBonus: 10,                // 1위 추가 %
+  wCount: 40, wRevenue: 40, wLeader: 20,  // 종합 점수 가중치 %
+  leaderMax: 10,               // 팀장 평가 만점
+};
+type IncentiveSettings = typeof INCENTIVE_DEFAULTS;
+
+function incentiveSettingsOf(saved: unknown): IncentiveSettings {
+  const s = (saved ?? {}) as Record<string, unknown>;
+  const out = { ...INCENTIVE_DEFAULTS };
+  for (const k of Object.keys(INCENTIVE_DEFAULTS) as Array<keyof IncentiveSettings>) {
+    const v = Number(s[k]);
+    if (Number.isFinite(v) && v >= 0) out[k] = v;
+  }
+  return out;
+}
 
 // 분기별 결제주문내역 담당자별 마감 카운트 (+ NBM HW매출은 이카운트 연동 예정)
 erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
@@ -1336,6 +1365,9 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
   // 신규센터 결제만 카운트 (인센티브 대상)
   type Agg = { name: string; monthCounts: number[]; total: number };
   const byAssignee = new Map<string, Agg>();
+  // 개인 기여 매출은 결제주문내역의 신규센터 결제 합계로 본다 (NBM 총액과는 기준이 다르다)
+  const revenueByAssignee = new Map<string, number>();
+  const orderMoney = (v: unknown) => Math.round(Number(String(v ?? "").replace(/[^0-9.-]/g, "")) || 0);
   let totalCount = 0;
   for (const row of rows) {
     const data = row.data as Record<string, string>;
@@ -1347,11 +1379,69 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
     agg.monthCounts[mi] += 1;
     agg.total += 1;
     byAssignee.set(name, agg);
+    revenueByAssignee.set(name, (revenueByAssignee.get(name) ?? 0) + orderMoney(data["합계"] ?? data["총매출"]));
     totalCount += 1;
   }
 
   const saved = await prisma.erpIncentiveQuarter.findUnique({ where: { year_quarter: { year, quarter } } });
   const assignees = [...byAssignee.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "ko"));
+
+  /* ---- 인센티브 산정 ---- */
+  const cfg = incentiveSettingsOf(saved?.settings);
+  const money = (a: unknown): Array<number | null> =>
+    [0, 1, 2].map((i) => {
+      const v = Array.isArray(a) ? Number((a as unknown[])[i]) : NaN;
+      return Number.isFinite(v) ? v : null;
+    });
+  const hwSales = money(saved?.hwSales);
+  const rentalSales = money(saved?.rentalSales);
+  const nbmMonthly = [0, 1, 2].map((i) => (hwSales[i] ?? 0) + (rentalSales[i] ?? 0));
+  const nbmTotal = nbmMonthly.reduce((a, b) => a + b, 0);
+  const nbmAvg = nbmTotal / 3;
+  const eligible = nbmAvg >= cfg.monthlyTarget;
+  const pool = Math.round(nbmTotal * (cfg.poolRate / 100));
+
+  const scoresRaw = (saved?.leaderScores ?? {}) as Record<string, unknown>;
+  const salesRows = INCENTIVE_SALES.map((name) => {
+    const agg = byAssignee.get(name);
+    const leaderRaw = Number(scoresRaw[name]);
+    return {
+      name,
+      count: agg?.total ?? 0,
+      revenue: revenueByAssignee.get(name) ?? 0,
+      leaderScore: Number.isFinite(leaderRaw) ? Math.max(0, Math.min(cfg.leaderMax, leaderRaw)) : null,
+    };
+  });
+  const sumCount = salesRows.reduce((a, r) => a + r.count, 0);
+  const sumRevenue = salesRows.reduce((a, r) => a + r.revenue, 0);
+  const sumLeader = salesRows.reduce((a, r) => a + (r.leaderScore ?? 0), 0);
+  const ratio = (v: number, total: number) => (total > 0 ? v / total : 0);
+
+  const scored = salesRows.map((r) => {
+    const countRatio = ratio(r.count, sumCount);
+    const revenueRatio = ratio(r.revenue, sumRevenue);
+    const leaderRatio = ratio(r.leaderScore ?? 0, sumLeader);
+    return {
+      ...r, countRatio, revenueRatio, leaderRatio,
+      score: countRatio * (cfg.wCount / 100) + revenueRatio * (cfg.wRevenue / 100) + leaderRatio * (cfg.wLeader / 100),
+    };
+  });
+  // 동점이면 결제 수가 많은 사람이 1위 (그래도 동점이면 팀장이 결정 — 이름순으로 고정 표기)
+  const ranked = [...scored].sort((a, b) => b.score - a.score || b.count - a.count || a.name.localeCompare(b.name));
+  const topName = sumLeader > 0 || sumCount > 0 || sumRevenue > 0 ? ranked[0]?.name ?? null : null;
+  const tied = ranked.length > 1 && ranked[0].score === ranked[1].score && ranked[0].count === ranked[1].count;
+
+  const shareOf = (name: string) => cfg.baseShare + (name === topName ? cfg.topBonus : 0);
+  const distribution = [
+    {
+      name: INCENTIVE_SUPPORT, role: "영업지원", share: cfg.supportShare, top: false,
+      amount: eligible ? Math.round(pool * (cfg.supportShare / 100)) : 0,
+    },
+    ...ranked.map((r) => ({
+      name: r.name, role: "영업", share: shareOf(r.name), top: r.name === topName,
+      amount: eligible ? Math.round(pool * (shareOf(r.name) / 100)) : 0,
+    })),
+  ];
   res.json({
     year,
     quarter,
@@ -1359,8 +1449,16 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
     assignees,
     totalCount,
     // NBM은 두 갈래 수기 입력 — 이카운트 HW매출 + 렌탈 매출 (이카운트 손익 조회 API 미제공)
-    hwSales: Array.isArray(saved?.hwSales) ? saved.hwSales : [null, null, null],
-    rentalSales: Array.isArray(saved?.rentalSales) ? saved.rentalSales : [null, null, null],
+    hwSales,
+    rentalSales,
+    leaderScores: Object.fromEntries(salesRows.map((r) => [r.name, r.leaderScore])),
+    settings: cfg,
+    nbm: { monthly: nbmMonthly, total: nbmTotal, avg: nbmAvg },
+    payout: { eligible, target: cfg.monthlyTarget, pool },
+    scored: ranked.map((r, i) => ({ ...r, rank: i + 1 })),
+    topName,
+    tied,
+    distribution,
   });
 });
 
@@ -1377,12 +1475,30 @@ erpRouter.put("/incentive", async (req: AuthedRequest, res) => {
   const patch: Record<string, unknown> = {};
   if (b.hwSales !== undefined) patch.hwSales = money(b.hwSales);
   if (b.rentalSales !== undefined) patch.rentalSales = money(b.rentalSales);
+  if (b.leaderScores !== undefined) {
+    const src = (b.leaderScores ?? {}) as Record<string, unknown>;
+    const out: Record<string, number | null> = {};
+    for (const name of INCENTIVE_SALES) {
+      const v = Number(src[name]);
+      out[name] = Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : null;
+    }
+    patch.leaderScores = out;
+  }
+  if (b.settings !== undefined) patch.settings = incentiveSettingsOf(b.settings);
   const saved = await prisma.erpIncentiveQuarter.upsert({
     where: { year_quarter: { year, quarter } },
-    create: { year, quarter, hwSales: patch.hwSales ?? [], rentalSales: patch.rentalSales ?? [] },
+    create: {
+      year, quarter,
+      hwSales: patch.hwSales ?? [], rentalSales: patch.rentalSales ?? [],
+      leaderScores: (patch.leaderScores ?? {}) as object,
+      settings: (patch.settings ?? {}) as object,
+    },
     update: patch,
   });
-  res.json({ hwSales: saved.hwSales, rentalSales: saved.rentalSales });
+  res.json({
+    hwSales: saved.hwSales, rentalSales: saved.rentalSales,
+    leaderScores: saved.leaderScores, settings: saved.settings,
+  });
 });
 
 erpRouter.get("/smartstore/rounds", async (_req: AuthedRequest, res) => {
