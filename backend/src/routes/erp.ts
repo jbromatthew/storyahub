@@ -1358,7 +1358,9 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
     months: monthNums.map((m) => `${m}월`),
     assignees,
     totalCount,
-    hwSales: Array.isArray(saved?.hwSales) ? saved.hwSales : [null, null, null], // NBM — 수기 입력 (이카운트 손익 조회 API 미제공)
+    // NBM은 두 갈래 수기 입력 — 이카운트 HW매출 + 렌탈 매출 (이카운트 손익 조회 API 미제공)
+    hwSales: Array.isArray(saved?.hwSales) ? saved.hwSales : [null, null, null],
+    rentalSales: Array.isArray(saved?.rentalSales) ? saved.rentalSales : [null, null, null],
   });
 });
 
@@ -1369,14 +1371,18 @@ erpRouter.put("/incentive", async (req: AuthedRequest, res) => {
   const year = Number(b.year);
   const quarter = Number(b.quarter);
   if (!year || quarter < 1 || quarter > 4) return res.status(400).json({ error: "year/quarter 필요" });
-  const hwSales = (Array.isArray(b.hwSales) ? b.hwSales : []).slice(0, 3)
+  const money = (arr: unknown) => (Array.isArray(arr) ? arr : []).slice(0, 3)
     .map((v) => (v === null || v === "" ? null : Math.max(0, Math.round(Number(v) || 0))));
+  // 보내온 항목만 갱신한다 — 한쪽만 저장해도 다른 쪽이 지워지지 않게
+  const patch: Record<string, unknown> = {};
+  if (b.hwSales !== undefined) patch.hwSales = money(b.hwSales);
+  if (b.rentalSales !== undefined) patch.rentalSales = money(b.rentalSales);
   const saved = await prisma.erpIncentiveQuarter.upsert({
     where: { year_quarter: { year, quarter } },
-    create: { year, quarter, hwSales },
-    update: { hwSales },
+    create: { year, quarter, hwSales: patch.hwSales ?? [], rentalSales: patch.rentalSales ?? [] },
+    update: patch,
   });
-  res.json({ hwSales: saved.hwSales });
+  res.json({ hwSales: saved.hwSales, rentalSales: saved.rentalSales });
 });
 
 erpRouter.get("/smartstore/rounds", async (_req: AuthedRequest, res) => {

@@ -3567,7 +3567,9 @@ export function IncentiveView() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // NBM은 두 갈래 — 이카운트 HW매출 / 렌탈 매출
   const [hwDraft, setHwDraft] = useState(["", "", ""]);
+  const [rentalDraft, setRentalDraft] = useState(["", "", ""]);
   const [hwSaving, setHwSaving] = useState(false);
 
   useEffect(() => {
@@ -3575,7 +3577,9 @@ export function IncentiveView() {
     api.erpIncentive({ year, quarter })
       .then((d) => {
         setData(d);
-        setHwDraft((d.hwSales || [null, null, null]).map((v) => (v == null ? "" : String(v))));
+        const asDraft = (a) => [0, 1, 2].map((i) => (a?.[i] == null ? "" : String(a[i])));
+        setHwDraft(asDraft(d.hwSales));
+        setRentalDraft(asDraft(d.rentalSales));
       })
       .catch(notifyError)
       .finally(() => setLoading(false));
@@ -3584,15 +3588,18 @@ export function IncentiveView() {
   const years = [];
   for (let y = kstNow.getUTCFullYear(); y >= 2023; y--) years.push(y);
 
-  const hwTotal = hwDraft.reduce((s, v) => s + (Number(String(v).replace(/[^0-9]/g, "")) || 0), 0);
+  const sumOf = (arr) => arr.reduce((s, v) => s + (Number(String(v).replace(/[^0-9]/g, "")) || 0), 0);
+  const hwTotal = sumOf(hwDraft);
+  const rentalTotal = sumOf(rentalDraft);
+  const nbmTotal = hwTotal + rentalTotal;          // NBM = 이카운트 HW매출 + 렌탈 매출
+  const toNums = (arr) => arr.map((v) => {
+    const n = String(v).replace(/[^0-9]/g, "");
+    return n === "" ? null : Number(n);
+  });
   const saveHw = async () => {
     setHwSaving(true);
     try {
-      const hwSales = hwDraft.map((v) => {
-        const n = String(v).replace(/[^0-9]/g, "");
-        return n === "" ? null : Number(n);
-      });
-      await api.erpIncentiveSave({ year, quarter, hwSales });
+      await api.erpIncentiveSave({ year, quarter, hwSales: toNums(hwDraft), rentalSales: toNums(rentalDraft) });
       toastSuccess("NBM 매출을 저장했어요");
     } catch (e) { notifyError(e); } finally { setHwSaving(false); }
   };
@@ -3603,7 +3610,7 @@ export function IncentiveView() {
       <div className="h-title">인센티브</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
         분기를 선택하면 <strong>결제주문내역의 신규센터 결제만</strong> 담당자별로 카운트합니다.
-        NBM 매출(HW매출)은 이카운트 월별손익분석 값을 월별로 입력해 관리합니다.
+        NBM 매출은 <strong>이카운트 ERP(HW매출)</strong>와 <strong>렌탈 매출</strong> 두 가지를 월별로 입력해 합산합니다.
       </div>
 
       <div className="row" style={{ gap: 8, margin: "16px 0 4px", alignItems: "center", flexWrap: "wrap" }}>
@@ -3622,34 +3629,50 @@ export function IncentiveView() {
         <>
           <div className="trend-selection-bar" style={{ marginTop: 10 }}>
             <span className="trend-selection-label">{data.year}년 {data.quarter}분기 신규센터 마감 {data.totalCount}건</span>
-            <span>NBM 합계 <strong>{hwTotal ? formatWon(hwTotal) : "-"}</strong></span>
+            <span>이카운트 HW <strong>{hwTotal ? formatWon(hwTotal) : "-"}</strong></span>
+            <span>렌탈 <strong>{rentalTotal ? formatWon(rentalTotal) : "-"}</strong></span>
+            <span>NBM 합계 <strong>{nbmTotal ? formatWon(nbmTotal) : "-"}</strong></span>
           </div>
 
           <div className="card" style={{ marginTop: 14, padding: "14px 16px" }}>
-            <div className="h-eyebrow" style={{ marginBottom: 8 }}>NBM 매출 (HW매출 · 공급가액)</div>
-            <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-              {data.months.map((m, i) => (
-                <div key={m}>
-                  <div className="small" style={{ marginBottom: 4 }}>{m}</div>
-                  <input
-                    value={hwDraft[i] ? Number(String(hwDraft[i]).replace(/[^0-9]/g, "")).toLocaleString() : ""}
-                    onChange={(e) => setHwDraft((prev) => prev.map((v, j) => (j === i ? e.target.value.replace(/[^0-9]/g, "") : v)))}
-                    placeholder="0"
-                    inputMode="numeric"
-                    style={{ width: 150, border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14, textAlign: "right" }}
-                  />
+            <div className="h-eyebrow" style={{ marginBottom: 10 }}>NBM 매출 입력 (공급가액)</div>
+            {[
+              { key: "hw", label: "① 이카운트 ERP (HW매출)", draft: hwDraft, set: setHwDraft, total: hwTotal },
+              { key: "rental", label: "② 렌탈 매출", draft: rentalDraft, set: setRentalDraft, total: rentalTotal },
+            ].map((row) => (
+              <div key={row.key} style={{ marginBottom: 12 }}>
+                <div className="small" style={{ fontWeight: 700, marginBottom: 6 }}>{row.label}</div>
+                <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+                  {data.months.map((m, i) => (
+                    <div key={m}>
+                      <div className="small" style={{ marginBottom: 4, color: "var(--muted)" }}>{m}</div>
+                      <input
+                        value={row.draft[i] ? Number(String(row.draft[i]).replace(/[^0-9]/g, "")).toLocaleString() : ""}
+                        onChange={(e) => row.set((prev) => prev.map((v, j) => (j === i ? e.target.value.replace(/[^0-9]/g, "") : v)))}
+                        placeholder="0"
+                        inputMode="numeric"
+                        style={{ width: 150, border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14, textAlign: "right" }}
+                      />
+                    </div>
+                  ))}
+                  <div>
+                    <div className="small" style={{ marginBottom: 4, color: "var(--muted)" }}>소계</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, padding: "9px 0" }}>{row.total ? formatWon(row.total) : "-"}</div>
+                  </div>
                 </div>
-              ))}
-              <div>
-                <div className="small" style={{ marginBottom: 4 }}>분기 합계</div>
-                <div style={{ fontWeight: 800, fontSize: 16, padding: "9px 0" }}>{hwTotal ? formatWon(hwTotal) : "-"}</div>
               </div>
-              <button type="button" className="btn btn-accent btn-sm" onClick={saveHw} disabled={hwSaving} style={{ marginBottom: 2 }}>
+            ))}
+            <div className="row" style={{ gap: 12, alignItems: "center", borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+              <div>
+                <div className="small" style={{ color: "var(--muted)" }}>NBM 분기 합계 (① + ②)</div>
+                <div style={{ fontWeight: 800, fontSize: 18 }}>{nbmTotal ? formatWon(nbmTotal) : "-"}</div>
+              </div>
+              <button type="button" className="btn btn-accent btn-sm" onClick={saveHw} disabled={hwSaving} style={{ marginLeft: "auto" }}>
                 {hwSaving ? "저장 중…" : "저장"}
               </button>
             </div>
             <div className="small" style={{ marginTop: 8, color: "var(--muted)" }}>
-              이카운트 Open API가 손익 조회를 제공하지 않아 월별손익분석의 HW매출을 직접 입력합니다.
+              이카운트 Open API가 손익 조회를 제공하지 않아 월별손익분석의 HW매출을 직접 입력합니다. 렌탈 매출은 별도로 집계해 넣습니다.
             </div>
           </div>
 
