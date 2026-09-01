@@ -1435,11 +1435,12 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
   const distribution = [
     {
       name: INCENTIVE_SUPPORT, role: "영업지원", share: cfg.supportShare, top: false,
-      amount: eligible ? Math.round(pool * (cfg.supportShare / 100)) : 0,
+      // 금액은 조건과 무관하게 계산해 두고(예상 지급액), 실제 지급 여부는 eligible로 판단한다
+      amount: Math.round(pool * (cfg.supportShare / 100)),
     },
     ...ranked.map((r) => ({
       name: r.name, role: "영업", share: shareOf(r.name), top: r.name === topName,
-      amount: eligible ? Math.round(pool * (shareOf(r.name) / 100)) : 0,
+      amount: Math.round(pool * (shareOf(r.name) / 100)),
     })),
   ];
   res.json({

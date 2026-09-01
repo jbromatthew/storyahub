@@ -3637,9 +3637,9 @@ export function IncentiveView() {
     const distribution = [
       { name: data.distribution.find((d) => !data.scored.some((x) => x.name === d.name))?.name || "Owen",
         role: "영업지원", share: cfg.supportShare, top: false,
-        amount: eligible ? Math.round(pool * (cfg.supportShare / 100)) : 0 },
+        amount: Math.round(pool * (cfg.supportShare / 100)) },
       ...ranked.map((r) => ({ name: r.name, role: "영업", share: shareOf(r.name), top: r.name === top,
-        amount: eligible ? Math.round(pool * (shareOf(r.name) / 100)) : 0 })),
+        amount: Math.round(pool * (shareOf(r.name) / 100)) })),
     ];
     // 팀장 평가를 아무도 안 넣으면 가중치 20%가 통째로 빠진 채 순위가 난다
     const leaderMissing = rows.filter((r) => r.leaderScore == null).length;
@@ -3729,7 +3729,7 @@ export function IncentiveView() {
           <div className="rate-plan-title" style={{ marginTop: 20 }}>
             인센티브 분배
             <span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 8 }}>
-              종합 점수 = 결제수 {data.settings.wCount}% + 매출 {data.settings.wRevenue}% + 팀장평가 {data.settings.wLeader}%
+              종합 점수 = 결제수 {data.settings.wCount} + 매출 {data.settings.wRevenue} + 팀장평가 {data.settings.wLeader}점 · 영업 3명 합계 100점
             </span>
           </div>
           <div className="inc-grid">
@@ -3745,11 +3745,14 @@ export function IncentiveView() {
                     </span>
                   </div>
                   <div className={"inc-amt" + (live.payout.eligible ? "" : " off")}>
-                    {live.payout.eligible ? formatWon(row.amount) : "미지급"}
+                    {formatWon(row.amount)}
                   </div>
                   <div className="inc-share">
                     {row.share}%
                     {row.top ? ` (기본 ${data.settings.baseShare} + 1위 ${data.settings.topBonus})` : ""}
+                    {!live.payout.eligible && (
+                      <span style={{ color: "#B3261E", fontWeight: 700 }}> · 조건 미달 시 미지급</span>
+                    )}
                   </div>
 
                   {sc && (
@@ -3757,7 +3760,7 @@ export function IncentiveView() {
                       <div className="inc-sep" />
                       <div className="inc-metric">
                         <span className="k">종합 점수</span>
-                        <span className="v">{sc.score.toFixed(3)}</span>
+                        <span className="v" style={{ fontSize: 15 }}>{(sc.score * 100).toFixed(1)}<span style={{ color: "var(--muted)", fontWeight: 500, fontSize: 12 }}>점</span></span>
                       </div>
                       <div className="inc-score"><i style={{ width: `${(sc.score / maxScore) * 100}%` }} /></div>
                       <div className="inc-metric" style={{ marginTop: 10 }}>
@@ -3798,7 +3801,7 @@ export function IncentiveView() {
           )}
           {live.leaderMissing > 0 && (
             <div className="small" style={{ marginTop: 8, color: "#8A5512", background: "#FFF4E0", border: "1px solid #F2D9A8", borderRadius: 10, padding: "9px 12px", lineHeight: 1.5 }}>
-              팀장 평가가 {live.leaderMissing === live.scored.length ? "아직 비어 있어" : "일부 비어 있어"} 가중치 {data.settings.wLeader}%가 순위에 반영되지 않았습니다.
+              팀장 평가가 {live.leaderMissing === live.scored.length ? "아직 비어 있어" : "일부 비어 있어"} {data.settings.wLeader}점이 순위에 반영되지 않았습니다 (지금 세 명 합계 {(live.scored.reduce((a, r) => a + r.score, 0) * 100).toFixed(0)}점).
               점수를 넣으면 바로 다시 계산되고, <strong>저장</strong>을 눌러야 기록에 남습니다.
             </div>
           )}
