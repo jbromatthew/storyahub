@@ -3744,16 +3744,20 @@ export function IncentiveView() {
                       {sc ? `${sc.rank}위` : "영업지원"}
                     </span>
                   </div>
-                  <div className={"inc-amt" + (live.payout.eligible ? "" : " off")}>
+                  <div className="small" style={{ color: "var(--muted)", marginTop: 10 }}>분기 예상 지급액</div>
+                  <div className={"inc-amt" + (live.payout.eligible ? "" : " off")} style={{ marginTop: 2 }}>
                     {formatWon(row.amount)}
                   </div>
                   <div className="inc-share">
-                    {row.share}%
+                    배분 {row.share}%
                     {row.top ? ` (기본 ${data.settings.baseShare} + 1위 ${data.settings.topBonus})` : ""}
-                    {!live.payout.eligible && (
-                      <span style={{ color: "#B3261E", fontWeight: 700 }}> · 조건 미달 시 미지급</span>
-                    )}
+                    {" · 연간 환산 "}<strong>{formatWon(row.amount * 4)}</strong>
                   </div>
+                  {!live.payout.eligible && (
+                    <div className="small" style={{ color: "#B3261E", fontWeight: 700, marginTop: 4 }}>
+                      지급 조건 미달 — 현재는 미지급
+                    </div>
+                  )}
 
                   {sc && (
                     <>
