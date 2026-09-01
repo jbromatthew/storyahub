@@ -3599,6 +3599,64 @@ export function IncentiveView() {
     const n = String(v).replace(/[^0-9]/g, "");
     return n === "" ? null : Number(n);
   });
+  /* 입력하는 즉시 순위·금액이 바뀌어야 하므로, 저장을 기다리지 않고 화면에서 바로 다시 계산한다.
+     서버도 저장 시 같은 식으로 계산하므로 결과는 일치한다. */
+  const live = useMemo(() => {
+    if (!data) return null;
+    const cfg = data.settings;
+    const nbmMonthly = [0, 1, 2].map((i) =>
+      (Number(String(hwDraft[i]).replace(/[^0-9]/g, "")) || 0)
+      + (Number(String(rentalDraft[i]).replace(/[^0-9]/g, "")) || 0));
+    const total = nbmMonthly.reduce((a, b) => a + b, 0);
+    const avg = total / 3;
+    const eligible = avg >= cfg.monthlyTarget;
+    const pool = Math.round(total * (cfg.poolRate / 100));
+
+    const rows = data.scored.map((r) => {
+      const raw = leaderDraft[r.name];
+      const v = raw === "" || raw == null ? null : Number(raw);
+      return { ...r, leaderScore: Number.isFinite(v) ? Math.max(0, Math.min(cfg.leaderMax, v)) : null };
+    });
+    const sumC = rows.reduce((a, r) => a + r.count, 0);
+    const sumR = rows.reduce((a, r) => a + r.revenue, 0);
+    const sumL = rows.reduce((a, r) => a + (r.leaderScore ?? 0), 0);
+    const rat = (v, t) => (t > 0 ? v / t : 0);
+    const scored = rows.map((r) => {
+      const countRatio = rat(r.count, sumC);
+      const revenueRatio = rat(r.revenue, sumR);
+      const leaderRatio = rat(r.leaderScore ?? 0, sumL);
+      return { ...r, countRatio, revenueRatio, leaderRatio,
+        score: countRatio * (cfg.wCount / 100) + revenueRatio * (cfg.wRevenue / 100) + leaderRatio * (cfg.wLeader / 100) };
+    });
+    const ranked = [...scored]
+      .sort((a, b) => b.score - a.score || b.count - a.count || a.name.localeCompare(b.name))
+      .map((r, i) => ({ ...r, rank: i + 1 }));
+    const top = ranked[0]?.name ?? null;
+    const tied = ranked.length > 1 && ranked[0].score === ranked[1].score && ranked[0].count === ranked[1].count;
+    const shareOf = (n) => cfg.baseShare + (n === top ? cfg.topBonus : 0);
+    const distribution = [
+      { name: data.distribution.find((d) => !data.scored.some((x) => x.name === d.name))?.name || "Owen",
+        role: "영업지원", share: cfg.supportShare, top: false,
+        amount: eligible ? Math.round(pool * (cfg.supportShare / 100)) : 0 },
+      ...ranked.map((r) => ({ name: r.name, role: "영업", share: shareOf(r.name), top: r.name === top,
+        amount: eligible ? Math.round(pool * (shareOf(r.name) / 100)) : 0 })),
+    ];
+    // 팀장 평가를 아무도 안 넣으면 가중치 20%가 통째로 빠진 채 순위가 난다
+    const leaderMissing = rows.filter((r) => r.leaderScore == null).length;
+    return { nbm: { monthly: nbmMonthly, total, avg }, payout: { eligible, target: cfg.monthlyTarget, pool },
+             scored: ranked, tied, distribution, leaderMissing };
+  }, [data, hwDraft, rentalDraft, leaderDraft]);
+
+  const sameArr = (a, b) => [0, 1, 2].every((i) =>
+    String(a?.[i] ?? "").replace(/[^0-9]/g, "") === String(b?.[i] ?? "").replace(/[^0-9]/g, ""));
+  const dirty = !data ? false : !(
+    sameArr(hwDraft, (data.hwSales || []).map((v) => (v == null ? "" : v)))
+    && sameArr(rentalDraft, (data.rentalSales || []).map((v) => (v == null ? "" : v)))
+    && Object.keys({ ...(data.leaderScores || {}), ...leaderDraft }).every((k) => {
+      const a = data.leaderScores?.[k]; const b = leaderDraft[k];
+      return String(a ?? "") === String(b ?? "");
+    }));
+
   const saveHw = async () => {
     setHwSaving(true);
     try {
@@ -3637,9 +3695,9 @@ export function IncentiveView() {
         <>
           {/* 지급 조건 — 이 분기에 돈이 나가는지부터 */}
           {(() => {
-            const ok = data.payout.eligible;
-            const pct = data.payout.target > 0 ? Math.min(100, (data.nbm.avg / data.payout.target) * 100) : 0;
-            const gap = data.payout.target - data.nbm.avg;
+            const ok = live.payout.eligible;
+            const pct = live.payout.target > 0 ? Math.min(100, (live.nbm.avg / live.payout.target) * 100) : 0;
+            const gap = live.payout.target - live.nbm.avg;
             return (
               <div className={"inc-banner " + (ok ? "ok" : "no")}>
                 <div className="lead">
@@ -3647,20 +3705,20 @@ export function IncentiveView() {
                     {ok ? "지급 조건 달성" : "지급 조건 미달"}
                   </span>
                   <div className="small" style={{ marginTop: 8 }}>
-                    분기 평균 <strong>{formatWon(Math.round(data.nbm.avg))}</strong>
-                    <span style={{ color: "var(--muted)" }}> / 월 목표 {formatWon(data.payout.target)}</span>
+                    분기 평균 <strong>{formatWon(Math.round(live.nbm.avg))}</strong>
+                    <span style={{ color: "var(--muted)" }}> / 월 목표 {formatWon(live.payout.target)}</span>
                     {!ok && gap > 0 && (
                       <span style={{ color: "#C5221F", fontWeight: 700 }}> · {formatWon(Math.round(gap))} 부족</span>
                     )}
                   </div>
                   <div className={"inc-bar " + (ok ? "" : "no")}><i style={{ width: `${pct}%` }} /></div>
                   <div className="small" style={{ color: "var(--muted)", marginTop: 8 }}>
-                    분기 합산 NBM {formatWon(data.nbm.total)} · 신규센터 마감 {data.totalCount}건
+                    분기 합산 NBM {formatWon(live.nbm.total)} · 신규센터 마감 {data.totalCount}건
                   </div>
                 </div>
                 <div className="inc-pool">
                   <div className="small" style={{ color: "var(--muted)" }}>분기 재원 (NBM × {data.settings.poolRate}%)</div>
-                  <div className="n" style={{ color: ok ? "var(--ink)" : "var(--muted)" }}>{formatWon(data.payout.pool)}</div>
+                  <div className="n" style={{ color: ok ? "var(--ink)" : "var(--muted)" }}>{formatWon(live.payout.pool)}</div>
                   {!ok && <div className="small" style={{ color: "#C5221F", fontWeight: 700 }}>미달 시 전액 미지급</div>}
                 </div>
               </div>
@@ -3675,9 +3733,9 @@ export function IncentiveView() {
             </span>
           </div>
           <div className="inc-grid">
-            {data.distribution.map((row) => {
-              const sc = data.scored.find((x) => x.name === row.name);
-              const maxScore = Math.max(...data.scored.map((x) => x.score), 0.0001);
+            {live.distribution.map((row) => {
+              const sc = live.scored.find((x) => x.name === row.name);
+              const maxScore = Math.max(...live.scored.map((x) => x.score), 0.0001);
               return (
                 <div key={row.name} className={"inc-card" + (row.top ? " top" : "")}>
                   <div className="who">
@@ -3686,8 +3744,8 @@ export function IncentiveView() {
                       {sc ? `${sc.rank}위` : "영업지원"}
                     </span>
                   </div>
-                  <div className={"inc-amt" + (data.payout.eligible ? "" : " off")}>
-                    {data.payout.eligible ? formatWon(row.amount) : "미지급"}
+                  <div className={"inc-amt" + (live.payout.eligible ? "" : " off")}>
+                    {live.payout.eligible ? formatWon(row.amount) : "미지급"}
                   </div>
                   <div className="inc-share">
                     {row.share}%
@@ -3733,9 +3791,15 @@ export function IncentiveView() {
               );
             })}
           </div>
-          {data.tied && (
+          {live.tied && (
             <div className="small" style={{ marginTop: 8, color: "#B3261E", fontWeight: 700 }}>
               1·2위의 점수와 결제 수가 같습니다 — 팀장 확정이 필요합니다.
+            </div>
+          )}
+          {live.leaderMissing > 0 && (
+            <div className="small" style={{ marginTop: 8, color: "#8A5512", background: "#FFF4E0", border: "1px solid #F2D9A8", borderRadius: 10, padding: "9px 12px", lineHeight: 1.5 }}>
+              팀장 평가가 {live.leaderMissing === live.scored.length ? "아직 비어 있어" : "일부 비어 있어"} 가중치 {data.settings.wLeader}%가 순위에 반영되지 않았습니다.
+              점수를 넣으면 바로 다시 계산되고, <strong>저장</strong>을 눌러야 기록에 남습니다.
             </div>
           )}
 
@@ -3790,8 +3854,10 @@ export function IncentiveView() {
               <span className="small" style={{ color: "var(--muted)" }}>
                 재원은 NBM 기준, 개인 기여도는 결제주문내역(신규센터) 기준이라 두 합계는 다를 수 있어요.
               </span>
-              <button type="button" className="btn btn-accent btn-sm" onClick={saveHw} disabled={hwSaving} style={{ marginLeft: "auto" }}>
-                {hwSaving ? "저장 중…" : "저장하고 다시 계산"}
+              {dirty && <span className="small" style={{ color: "#8A5512", fontWeight: 700 }}>저장 안 된 변경</span>}
+              <button type="button" className={"btn btn-sm " + (dirty ? "btn-accent" : "btn-ghost")} onClick={saveHw}
+                disabled={hwSaving || !dirty} style={{ marginLeft: dirty ? 0 : "auto" }}>
+                {hwSaving ? "저장 중…" : dirty ? "저장" : "저장됨"}
               </button>
             </div>
           </div>
