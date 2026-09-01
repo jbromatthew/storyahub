@@ -3617,8 +3617,8 @@ export function IncentiveView() {
       <div className="h-eyebrow">Sales</div>
       <div className="h-title">인센티브</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
-        분기를 선택하면 <strong>결제주문내역의 신규센터 결제만</strong> 담당자별로 카운트합니다.
-        NBM 매출은 <strong>이카운트 ERP(HW매출)</strong>와 <strong>렌탈 매출</strong> 두 가지를 월별로 입력해 합산합니다.
+        재원은 <strong>분기 합산 NBM 매출의 일정 비율</strong>, 지급은 <strong>분기 평균이 월 목표 이상</strong>일 때만 나갑니다.
+        영업 3명은 결제수·매출·팀장평가로 종합 순위를 내어 1위에게 보너스를 더하고, 영업지원은 고정 비율입니다.
       </div>
 
       <div className="row" style={{ gap: 8, margin: "16px 0 4px", alignItems: "center", flexWrap: "wrap" }}>
@@ -3635,128 +3635,169 @@ export function IncentiveView() {
         <div className="spinner" />
       ) : !data ? null : (
         <>
-          <div className="trend-selection-bar" style={{ marginTop: 10 }}>
-            <span className="trend-selection-label">{data.year}년 {data.quarter}분기 신규센터 마감 {data.totalCount}건</span>
-            <span>NBM 합계 <strong>{formatWon(data.nbm.total)}</strong></span>
-            <span>분기 평균 <strong>{formatWon(Math.round(data.nbm.avg))}</strong></span>
-            <span>재원 <strong>{formatWon(data.payout.pool)}</strong></span>
-            <span style={{ color: data.payout.eligible ? "#0D7A3E" : "#C5221F", fontWeight: 700 }}>
-              {data.payout.eligible ? "지급 조건 달성" : `미달 — 월 ${formatWon(data.payout.target)} 필요`}
-            </span>
-          </div>
-
-          <div className="card" style={{ marginTop: 14, padding: "14px 16px" }}>
-            <div className="h-eyebrow" style={{ marginBottom: 10 }}>NBM 매출 입력 (공급가액)</div>
-            {[
-              { key: "hw", label: "① 이카운트 ERP (HW매출)", draft: hwDraft, set: setHwDraft, total: hwTotal },
-              { key: "rental", label: "② 렌탈 매출", draft: rentalDraft, set: setRentalDraft, total: rentalTotal },
-            ].map((row) => (
-              <div key={row.key} style={{ marginBottom: 12 }}>
-                <div className="small" style={{ fontWeight: 700, marginBottom: 6 }}>{row.label}</div>
-                <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-                  {data.months.map((m, i) => (
-                    <div key={m}>
-                      <div className="small" style={{ marginBottom: 4, color: "var(--muted)" }}>{m}</div>
-                      <input
-                        value={row.draft[i] ? Number(String(row.draft[i]).replace(/[^0-9]/g, "")).toLocaleString() : ""}
-                        onChange={(e) => row.set((prev) => prev.map((v, j) => (j === i ? e.target.value.replace(/[^0-9]/g, "") : v)))}
-                        placeholder="0"
-                        inputMode="numeric"
-                        style={{ width: 150, border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 14, textAlign: "right" }}
-                      />
-                    </div>
-                  ))}
-                  <div>
-                    <div className="small" style={{ marginBottom: 4, color: "var(--muted)" }}>소계</div>
-                    <div style={{ fontWeight: 700, fontSize: 15, padding: "9px 0" }}>{row.total ? formatWon(row.total) : "-"}</div>
+          {/* 지급 조건 — 이 분기에 돈이 나가는지부터 */}
+          {(() => {
+            const ok = data.payout.eligible;
+            const pct = data.payout.target > 0 ? Math.min(100, (data.nbm.avg / data.payout.target) * 100) : 0;
+            const gap = data.payout.target - data.nbm.avg;
+            return (
+              <div className={"inc-banner " + (ok ? "ok" : "no")}>
+                <div className="lead">
+                  <span className={"inc-state " + (ok ? "ok" : "no")}>
+                    {ok ? "지급 조건 달성" : "지급 조건 미달"}
+                  </span>
+                  <div className="small" style={{ marginTop: 8 }}>
+                    분기 평균 <strong>{formatWon(Math.round(data.nbm.avg))}</strong>
+                    <span style={{ color: "var(--muted)" }}> / 월 목표 {formatWon(data.payout.target)}</span>
+                    {!ok && gap > 0 && (
+                      <span style={{ color: "#C5221F", fontWeight: 700 }}> · {formatWon(Math.round(gap))} 부족</span>
+                    )}
+                  </div>
+                  <div className={"inc-bar " + (ok ? "" : "no")}><i style={{ width: `${pct}%` }} /></div>
+                  <div className="small" style={{ color: "var(--muted)", marginTop: 8 }}>
+                    분기 합산 NBM {formatWon(data.nbm.total)} · 신규센터 마감 {data.totalCount}건
                   </div>
                 </div>
+                <div className="inc-pool">
+                  <div className="small" style={{ color: "var(--muted)" }}>분기 재원 (NBM × {data.settings.poolRate}%)</div>
+                  <div className="n" style={{ color: ok ? "var(--ink)" : "var(--muted)" }}>{formatWon(data.payout.pool)}</div>
+                  {!ok && <div className="small" style={{ color: "#C5221F", fontWeight: 700 }}>미달 시 전액 미지급</div>}
+                </div>
               </div>
-            ))}
-            <div className="row" style={{ gap: 12, alignItems: "center", borderTop: "1px solid var(--line)", paddingTop: 12 }}>
-              <div>
-                <div className="small" style={{ color: "var(--muted)" }}>NBM 분기 합계 (① + ②)</div>
-                <div style={{ fontWeight: 800, fontSize: 18 }}>{nbmTotal ? formatWon(nbmTotal) : "-"}</div>
-              </div>
-              <button type="button" className="btn btn-accent btn-sm" onClick={saveHw} disabled={hwSaving} style={{ marginLeft: "auto" }}>
-                {hwSaving ? "저장 중…" : "저장"}
-              </button>
-            </div>
-            <div className="small" style={{ marginTop: 8, color: "var(--muted)" }}>
-              이카운트 Open API가 손익 조회를 제공하지 않아 월별손익분석의 HW매출을 직접 입력합니다. 렌탈 매출은 별도로 집계해 넣습니다.
-            </div>
-          </div>
+            );
+          })()}
 
-          <div className="rate-plan-block" style={{ marginTop: 18 }}>
-            <div className="rate-plan-title">
-              종합 순위 · 인센티브 분배
-              <span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 8 }}>
-                결제수 {data.settings.wCount}% · 매출 {data.settings.wRevenue}% · 팀장평가 {data.settings.wLeader}%
-              </span>
+          {/* 분배 — 1위가 한눈에 */}
+          <div className="rate-plan-title" style={{ marginTop: 20 }}>
+            인센티브 분배
+            <span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 8 }}>
+              종합 점수 = 결제수 {data.settings.wCount}% + 매출 {data.settings.wRevenue}% + 팀장평가 {data.settings.wLeader}%
+            </span>
+          </div>
+          <div className="inc-grid">
+            {data.distribution.map((row) => {
+              const sc = data.scored.find((x) => x.name === row.name);
+              const maxScore = Math.max(...data.scored.map((x) => x.score), 0.0001);
+              return (
+                <div key={row.name} className={"inc-card" + (row.top ? " top" : "")}>
+                  <div className="who">
+                    <AssigneeBadge name={row.name} />
+                    <span className={"inc-rank" + (row.top ? " top" : "")}>
+                      {sc ? `${sc.rank}위` : "영업지원"}
+                    </span>
+                  </div>
+                  <div className={"inc-amt" + (data.payout.eligible ? "" : " off")}>
+                    {data.payout.eligible ? formatWon(row.amount) : "미지급"}
+                  </div>
+                  <div className="inc-share">
+                    {row.share}%
+                    {row.top ? ` (기본 ${data.settings.baseShare} + 1위 ${data.settings.topBonus})` : ""}
+                  </div>
+
+                  {sc && (
+                    <>
+                      <div className="inc-sep" />
+                      <div className="inc-metric">
+                        <span className="k">종합 점수</span>
+                        <span className="v">{sc.score.toFixed(3)}</span>
+                      </div>
+                      <div className="inc-score"><i style={{ width: `${(sc.score / maxScore) * 100}%` }} /></div>
+                      <div className="inc-metric" style={{ marginTop: 10 }}>
+                        <span className="k">결제 수</span>
+                        <span className="v">{sc.count}건 <span style={{ color: "var(--muted)", fontWeight: 500 }}>{(sc.countRatio * 100).toFixed(1)}%</span></span>
+                      </div>
+                      <div className="inc-metric">
+                        <span className="k">기여 매출</span>
+                        <span className="v">{formatWon(sc.revenue)} <span style={{ color: "var(--muted)", fontWeight: 500 }}>{(sc.revenueRatio * 100).toFixed(1)}%</span></span>
+                      </div>
+                      <div className="inc-metric">
+                        <span className="k">팀장 평가</span>
+                        <span className="v">
+                          <input className="inc-lead-in" value={leaderDraft[row.name] ?? ""} inputMode="decimal"
+                            onChange={(e) => setLeaderDraft((prev) => ({ ...prev, [row.name]: e.target.value.replace(/[^0-9.]/g, "") }))}
+                            placeholder="-" />
+                          <span style={{ color: "var(--muted)", fontWeight: 500 }}> / {data.settings.leaderMax}</span>
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  {!sc && (
+                    <>
+                      <div className="inc-sep" />
+                      <div className="small" style={{ color: "var(--muted)", lineHeight: 1.5 }}>
+                        고정 비율이라 순위 경쟁에 포함되지 않아요.
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {data.tied && (
+            <div className="small" style={{ marginTop: 8, color: "#B3261E", fontWeight: 700 }}>
+              1·2위의 점수와 결제 수가 같습니다 — 팀장 확정이 필요합니다.
+            </div>
+          )}
+
+          {/* 입력 — 결과를 본 뒤 고치는 자리라 아래에 둔다 */}
+          <div className="card" style={{ marginTop: 20, padding: "16px 18px" }}>
+            <div className="h-eyebrow" style={{ marginBottom: 4 }}>NBM 매출 입력 (공급가액)</div>
+            <div className="small" style={{ color: "var(--muted)", marginBottom: 10 }}>
+              재원 산정 기준입니다. 팀장 평가와 함께 저장돼요.
             </div>
             <div className="dash-table-wrap">
-              <table className="dash-table">
+              <table className="inc-nbm">
                 <thead>
                   <tr>
-                    <th className="label">이름</th>
-                    <th>역할</th>
-                    <th>결제 수</th>
-                    <th>기여 매출</th>
-                    <th>팀장 평가<div className="small" style={{ fontWeight: 500 }}>{data.settings.leaderMax}점 만점</div></th>
-                    <th>종합 점수</th>
-                    <th>순위</th>
-                    <th>배분</th>
-                    <th>분기 수령</th>
+                    <th>구분</th>
+                    {data.months.map((m) => <th key={m}>{m}</th>)}
+                    <th>소계</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.distribution.map((row) => {
-                    const sc = data.scored.find((x) => x.name === row.name);
-                    return (
-                      <tr key={row.name}>
-                        <td className="label"><AssigneeBadge name={row.name} />{row.top ? <span className="tag" style={{ marginLeft: 5, background: "#FFF0E6", color: "#B4501E", fontSize: 11 }}>1위</span> : null}</td>
-                        <td>{row.role}</td>
-                        <td className="num">{sc ? `${sc.count}건` : "—"}</td>
-                        <td className="num">{sc ? formatWon(sc.revenue) : "—"}</td>
-                        <td className="num" onClick={(e) => e.stopPropagation()}>
-                          {sc ? (
-                            <input
-                              value={leaderDraft[row.name] ?? ""}
-                              onChange={(e) => setLeaderDraft((prev) => ({ ...prev, [row.name]: e.target.value.replace(/[^0-9.]/g, "") }))}
-                              placeholder="-" inputMode="decimal"
-                              style={{ width: 56, border: "1px solid var(--line)", borderRadius: 8, padding: "5px 8px", fontFamily: "inherit", fontSize: 13, textAlign: "right" }}
-                            />
-                          ) : "—"}
+                  {[
+                    { label: "이카운트 ERP (HW매출)", draft: hwDraft, set: setHwDraft, total: hwTotal },
+                    { label: "렌탈 매출", draft: rentalDraft, set: setRentalDraft, total: rentalTotal },
+                  ].map((row) => (
+                    <tr key={row.label}>
+                      <td>{row.label}</td>
+                      {data.months.map((m, i) => (
+                        <td key={m}>
+                          <input
+                            value={row.draft[i] ? Number(String(row.draft[i]).replace(/[^0-9]/g, "")).toLocaleString() : ""}
+                            onChange={(e) => row.set((prev) => prev.map((v, j) => (j === i ? e.target.value.replace(/[^0-9]/g, "") : v)))}
+                            placeholder="0" inputMode="numeric" />
                         </td>
-                        <td className="num">{sc ? sc.score.toFixed(3) : "—"}</td>
-                        <td className="num">{sc ? `${sc.rank}위` : "—"}</td>
-                        <td className="num">{row.share}%</td>
-                        <td className="num" style={{ fontWeight: 800 }}>{data.payout.eligible ? formatWon(row.amount) : "미지급"}</td>
-                      </tr>
-                    );
-                  })}
-                  <tr style={{ borderTop: "2px solid var(--line)" }}>
-                    <td className="label" style={{ fontWeight: 800 }}>합계</td>
-                    <td colSpan={6} />
-                    <td className="num" style={{ fontWeight: 800 }}>
-                      {data.distribution.reduce((a, r) => a + r.share, 0)}%
-                    </td>
-                    <td className="num" style={{ fontWeight: 800 }}>
-                      {data.payout.eligible ? formatWon(data.distribution.reduce((a, r) => a + r.amount, 0)) : "미지급"}
-                    </td>
-                  </tr>
+                      ))}
+                      <td style={{ fontWeight: 700 }}>{row.total ? formatWon(row.total) : "-"}</td>
+                    </tr>
+                  ))}
                 </tbody>
+                <tfoot>
+                  <tr>
+                    <td>NBM 합계</td>
+                    {[0, 1, 2].map((i) => {
+                      const v = (Number(String(hwDraft[i]).replace(/[^0-9]/g, "")) || 0)
+                        + (Number(String(rentalDraft[i]).replace(/[^0-9]/g, "")) || 0);
+                      return <td key={i}>{v ? formatWon(v) : "-"}</td>;
+                    })}
+                    <td>{nbmTotal ? formatWon(nbmTotal) : "-"}</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
-            <div className="small" style={{ marginTop: 8, color: "var(--muted)" }}>
-              팀장 평가를 입력하고 위 <strong>저장</strong>을 누르면 순위와 금액이 다시 계산됩니다.
-              재원은 NBM 기준, 개인 기여도는 결제주문내역(신규센터) 기준이라 두 합계는 다를 수 있어요.
-              {data.tied ? " 1·2위 점수와 결제 수가 같아 팀장 확정이 필요합니다." : ""}
+            <div className="row" style={{ marginTop: 12, alignItems: "center", gap: 10 }}>
+              <span className="small" style={{ color: "var(--muted)" }}>
+                재원은 NBM 기준, 개인 기여도는 결제주문내역(신규센터) 기준이라 두 합계는 다를 수 있어요.
+              </span>
+              <button type="button" className="btn btn-accent btn-sm" onClick={saveHw} disabled={hwSaving} style={{ marginLeft: "auto" }}>
+                {hwSaving ? "저장 중…" : "저장하고 다시 계산"}
+              </button>
             </div>
           </div>
 
-          <div className="rate-plan-block" style={{ marginTop: 18 }}>
-            <div className="rate-plan-title">담당자별 마감 건수</div>
+          <div className="rate-plan-block" style={{ marginTop: 20 }}>
+            <div className="rate-plan-title">담당자별 마감 건수 <span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 6 }}>· 결제주문내역 신규센터 전체</span></div>
             <div className="dash-table-wrap">
               <table className="dash-table">
                 <thead>
