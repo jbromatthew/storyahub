@@ -238,6 +238,13 @@ export const api = {
   erpSmartStoreRoundCreate: (body) => req("/erp/smartstore/rounds", { method: "POST", body }),
   erpSmartStoreRoundUpdate: (id, body) => req(`/erp/smartstore/rounds/${id}`, { method: "PATCH", body }),
   erpSmartStoreRoundDelete: (id) => req(`/erp/smartstore/rounds/${id}`, { method: "DELETE" }),
+  erpIncentive: ({ year, quarter } = {}) => {
+    const p = new URLSearchParams();
+    if (year) p.set("year", year);
+    if (quarter) p.set("quarter", quarter);
+    return req(`/erp/incentive?${p}`);
+  },
+  erpIncentiveSave: (body) => req("/erp/incentive", { method: "PUT", body }),
   erpSmartStoreApplies: ({ roundId } = {}) => req(`/erp/smartstore/applies${roundId ? `?roundId=${roundId}` : ""}`),
   erpSmartStoreApplyUpdate: (id, body) => req(`/erp/smartstore/applies/${id}`, { method: "PATCH", body }),
   erpSmartStoreApplyDelete: (id) => req(`/erp/smartstore/applies/${id}`, { method: "DELETE" }),
