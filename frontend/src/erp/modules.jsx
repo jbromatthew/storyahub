@@ -12830,7 +12830,7 @@ function OaConfigTab({ onSaved }) {
           빈칸으로 저장하면 기존 값이 그대로 유지됩니다.
         </div>
 
-        <OaField label="게이트웨이 주소 (베이스 URL)" hint="예: https://openapi.broj.io — https만 됩니다">
+        <OaField label="게이트웨이 주소 (베이스 URL)" hint="예: https://api.broj.co.kr — https만 됩니다">
           <input className="input" value={draft.baseUrl} onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })} placeholder="https://…" />
         </OaField>
         <div style={{ height: 12 }} />
@@ -12843,9 +12843,9 @@ function OaConfigTab({ onSaved }) {
             onChange={(e) => setDraft({ ...draft, masterToken: e.target.value })} placeholder={cfg.hasMasterToken ? "바꿀 때만 입력" : "CRM 마스터 JWT"} />
         </OaField>
         <div style={{ height: 12 }} />
-        <OaField label="SessionToken (선택)" hint={cfg.hasSessionToken ? `저장됨: ${cfg.sessionTokenMasked}` : "게이트웨이가 요구할 때만 넣으세요"}>
+        <OaField label="SessionToken (필수)" hint={cfg.hasSessionToken ? `저장됨: ${cfg.sessionTokenMasked}` : "필수 — JWT만으로는 401이 납니다. 로그인 때 함께 받은 값을 넣으세요."}>
           <input className="input" type="password" autoComplete="off" value={draft.sessionToken}
-            onChange={(e) => setDraft({ ...draft, sessionToken: e.target.value })} placeholder="선택" />
+            onChange={(e) => setDraft({ ...draft, sessionToken: e.target.value })} placeholder={cfg.hasSessionToken ? "바꿀 때만 입력" : "CRM 마스터 session_token"} />
         </OaField>
         <div style={{ height: 12 }} />
         <OaField label="공개 API용 API-KEY (선택)" hint={cfg.hasPublicApiKey ? `저장됨: ${cfg.publicApiKeyMasked}` : "센터조회(/v1/groups)에만 쓰입니다"}>
@@ -12870,7 +12870,8 @@ function OaConfigTab({ onSaved }) {
       <div className="card" style={{ marginTop: 14, padding: "16px 18px", maxWidth: 720 }}>
         <div className="h-eyebrow" style={{ marginBottom: 8 }}>알아둘 것</div>
         <ul className="oa-notes">
-          <li>마스터 토큰은 CRM 로그인 세션에서 나오는 JWT라 <b>만료되면 401이 납니다.</b> 그때 여기서 새로 넣으면 됩니다.</li>
+          <li><b>JWT와 SessionToken 두 개가 다 있어야</b> 마스터 API가 열립니다. 하나만 넣으면 401이 납니다.</li>
+          <li>둘은 CRM 로그인으로 받습니다 — <code>POST /v1/master/auth</code>로 인증코드를 받고 <code>POST /v1/master/auth-code</code>로 교환합니다. <b>만료되면 401</b>이 나니 그때 여기서 새로 넣으면 됩니다.</li>
           <li>게이트웨이에 <b>발급된 키 전체 목록 API가 없어서</b>, ERP에서 발급한 키만 대장에 남습니다. 다른 경로로 발급한 키는 보이지 않습니다.</li>
           <li>발급에 필요한 <b>group_key는 CRM 내부 정수키</b>입니다. 공개 센터조회 API가 주는 group_id(문자 ID)와 다릅니다.</li>
           <li>API Key 원문은 저장하지 않습니다. 발급·재발급 직후 한 번만 보이고, 놓치면 재발급해야 합니다.</li>

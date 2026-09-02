@@ -1,7 +1,8 @@
 /**
  * OPEN API 게이트웨이(BroJOpenAPI) 호출 래퍼.
  *
- * 마스터 API는 CRM 마스터 Bearer JWT(+선택 SessionToken)로 인증한다.
+ * 마스터 API는 CRM 마스터 Bearer JWT와 SessionToken을 둘 다 요구한다.
+ * 둘은 CRM 로그인(POST /v1/master/auth → /v1/master/auth-code)으로 함께 받는다.
  * 접속 정보는 ErpOpenApiConfig 단일 행에 보관하고 ERP 설정 화면에서 넣는다.
  *
  * 주의: 문서상 발급/재발급/정지/폐기는 `/master/...`, 센터·요청 API는
@@ -87,7 +88,7 @@ export function normalizeBaseUrl(raw: string): string {
   try {
     u = new URL(v);
   } catch {
-    fail("게이트웨이 주소 형식이 올바르지 않습니다 (예: https://openapi.broj.io)");
+    fail("게이트웨이 주소 형식이 올바르지 않습니다 (예: https://api.broj.co.kr)");
   }
   if (u.protocol !== "https:") fail("게이트웨이 주소는 https 여야 합니다");
   return v;
@@ -146,8 +147,10 @@ export async function gatewayCall<T = unknown>(path: string, opts: CallOpts = {}
     headers["API-KEY"] = cfg.publicApiKey;
   } else {
     if (!cfg.masterToken) fail("마스터 토큰이 설정되지 않았습니다. 설정 탭에서 먼저 입력하세요.");
+    // 게이트웨이는 Bearer JWT와 SessionToken을 둘 다 요구한다 (하나만 있으면 401)
+    if (!cfg.sessionToken) fail("SessionToken이 설정되지 않았습니다. 마스터 로그인에서 JWT와 함께 받은 값을 넣어주세요.");
     headers.Authorization = `Bearer ${cfg.masterToken}`;
-    if (cfg.sessionToken) headers.SessionToken = cfg.sessionToken;
+    headers.SessionToken = cfg.sessionToken;
   }
 
   const prefix = opts.publicApi ? "" : (cfg.masterPrefix || "").replace(/\/+$/, "");
