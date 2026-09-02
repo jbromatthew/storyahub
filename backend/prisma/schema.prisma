@@ -367,19 +367,22 @@ model SavedPlace {
 }
 
 model KbArticle {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  title      String
-  section    String   @default("knowledge") // book | lecture | knowledge
-  category   String?
-  tags       String[]
-  bookMeta   Json?
-  blocks     Json
-  status     String   @default("published") // draft | published | formal_pending | formal
-  visibility String   @default("private") // company | private
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  title       String
+  section     String    @default("knowledge") // book | lecture | knowledge | sales_case
+  category    String?
+  tags        String[]
+  bookMeta    Json?
+  blocks      Json
+  status      String    @default("published") // draft | published | formal_pending | formal
+  visibility  String    @default("private") // company | private
+  // 상담 성공사례(section = sales_case)만 사용 — COO 승인분이 인센티브에 집계된다
+  cooApproved Boolean   @default(false)
+  cooAt       DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 // ── 사내 ERP ─────────────────────────────────────────────
@@ -799,24 +802,6 @@ model ErpConsultDoc {
   authorName  String
   authorEmail String
   cooApproved Boolean   @default(false) // 승인은 COO 단독 (CEO 단계 폐지)
-  cooAt       DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  @@index([createdAt])
-  @@index([authorEmail])
-}
-
-/// 상담 성공·실패 사례 공유 — 상담자료와 같은 승인 흐름, COO 승인분만 인센티브에 반영
-model ErpSalesCase {
-  id          String    @id @default(cuid())
-  title       String
-  outcome     String    @default("success") // success | fail
-  note        String?
-  authorId    String
-  authorName  String
-  authorEmail String
-  cooApproved Boolean   @default(false)
   cooAt       DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

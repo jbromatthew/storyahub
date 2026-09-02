@@ -1418,9 +1418,9 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
       where: { cooApproved: true, cooAt: { gte: qStart, lt: qEnd } },
       select: { authorName: true },
     }),
-    prisma.erpSalesCase.findMany({
-      where: { cooApproved: true, cooAt: { gte: qStart, lt: qEnd } },
-      select: { authorName: true },
+    prisma.kbArticle.findMany({
+      where: { section: "sales_case", cooApproved: true, cooAt: { gte: qStart, lt: qEnd } },
+      select: { user: { select: { name: true, email: true } } },
     }),
   ]);
   const tally = (rows: Array<{ authorName: string }>) => {
@@ -1429,7 +1429,7 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
     return m;
   };
   const docCount = tally(docRows);
-  const caseCount = tally(caseRows);
+  const caseCount = tally(caseRows.map((r) => ({ authorName: r.user?.name || r.user?.email || "" })));
   const usageRaw = (saved?.channelUsage ?? {}) as Record<string, unknown>;
 
   const salesRows = INCENTIVE_SALES.map((name) => {
@@ -2408,56 +2408,44 @@ erpRouter.post("/consult-docs/:id/approve", async (req: AuthedRequest, res) => {
   res.json(doc);
 });
 
-/* ---- 상담 성공·실패 사례 (상담자료와 같은 권한·승인 흐름) ---- */
+/* ---- 상담 성공사례 — 지식경영 글(section=sales_case)에 COO 승인만 얹는다 ---- */
 erpRouter.get("/sales-cases", async (req: AuthedRequest, res) => {
   const a = await consultAccess(req.userId!);
   if (!a.visible) return res.status(403).json({ error: "세일즈팀 및 승인권자 전용 메뉴입니다" });
   const from = cstDate(req.query.from);
   const to = cstDate(req.query.to);
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = { section: "sales_case" };
   if (from || to) {
     where.createdAt = {
       ...(from ? { gte: new Date(`${from}T00:00:00+09:00`) } : {}),
       ...(to ? { lte: new Date(`${to}T23:59:59+09:00`) } : {}),
     };
   }
-  const cases = await prisma.erpSalesCase.findMany({ where, orderBy: { createdAt: "desc" } });
-  res.json({ cases, canUpload: a.canUpload, role: a.role });
-});
-
-erpRouter.post("/sales-cases", async (req: AuthedRequest, res) => {
-  const a = await consultAccess(req.userId!);
-  if (!a.canUpload) return res.status(403).json({ error: "사례 등록은 세일즈팀만 할 수 있습니다" });
-  const title = String(req.body?.title ?? "").trim();
-  const note = String(req.body?.note ?? "").trim();
-  const outcome = String(req.body?.outcome ?? "success") === "fail" ? "fail" : "success";
-  if (!title) return res.status(400).json({ error: "사례 제목을 입력하세요" });
-  const row = await prisma.erpSalesCase.create({
-    data: {
-      title, outcome, note: note || null,
-      authorId: a.user!.id, authorName: a.displayName,
-      authorEmail: (a.user!.email || "").toLowerCase(),
+  const rows = await prisma.kbArticle.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true, title: true, createdAt: true, cooApproved: true, cooAt: true,
+      user: { select: { name: true, email: true } },
     },
   });
-  res.json(row);
+  const cases = rows.map((r) => ({
+    id: r.id, title: r.title, createdAt: r.createdAt,
+    cooApproved: r.cooApproved, cooAt: r.cooAt,
+    authorName: r.user?.name || r.user?.email || "(미상)",
+  }));
+  res.json({ cases, canUpload: a.canUpload, role: a.role });
 });
 
 erpRouter.post("/sales-cases/:id/approve", async (req: AuthedRequest, res) => {
   const a = await consultAccess(req.userId!);
   if (a.role !== "coo") return res.status(403).json({ error: "승인은 COO만 할 수 있습니다" });
   const value = !!req.body?.value;
-  const row = await prisma.erpSalesCase.update({
+  const row = await prisma.kbArticle.update({
     where: { id: req.params.id },
     data: { cooApproved: value, cooAt: value ? new Date() : null },
   });
-  res.json(row);
-});
-
-erpRouter.delete("/sales-cases/:id", async (req: AuthedRequest, res) => {
-  const a = await consultAccess(req.userId!);
-  if (a.role !== "coo") return res.status(403).json({ error: "삭제 권한이 없습니다 (COO 전용)" });
-  await prisma.erpSalesCase.delete({ where: { id: req.params.id } });
-  res.json({ ok: true });
+  res.json({ id: row.id, cooApproved: row.cooApproved });
 });
 
 erpRouter.delete("/consult-docs/:id", async (req: AuthedRequest, res) => {

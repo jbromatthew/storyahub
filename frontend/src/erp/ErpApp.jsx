@@ -431,7 +431,16 @@ export default function ErpApp() {
       case "vendors": return <VendorsView />;
       case "install-schedule": return <InstallScheduleView />;
       case "consult-docs": return <ConsultDocsView />;
-      case "sales-cases": return <SalesCasesView />;
+      case "sales-cases": return (
+        <SalesCasesView
+          articles={kbArticles}
+          openWrite={(a) => setKbView({
+            article: a || { section: "sales_case", visibility: "company",
+              blocks: [{ type: "h", val: "" }, { type: "text", val: "" }] },
+            mode: a?.id ? "read" : "edit",
+          })}
+        />
+      );
       case "sales-daily": return <SalesDailyView />;
       default: return <KnowledgeFeed articles={kbArticles} section="knowledge" openWrite={openKbWrite} erpMode />;
     }

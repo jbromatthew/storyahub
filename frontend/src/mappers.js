@@ -259,12 +259,14 @@ export const KB_SECTIONS = [
   { id: "knowledge", label: "지식", icon: "💡", desc: "노하우 · 레퍼런스" },
   { id: "lecture", label: "강연", icon: "🎤", desc: "세미나 · 강의 정리" },
   { id: "book", label: "책", icon: "📚", desc: "독후감 · 책 표지" },
+  { id: "sales_case", label: "성공사례", icon: "🏆", desc: "성공·실패 상담 사례" },
 ];
 
 export const KB_SECTION_DEFAULT_CATS = {
   book: ["문학", "비즈니스", "자기계발", "에세이"],
   lecture: ["세미나", "컨퍼런스", "강의", "워크숍", "사내교육"],
   knowledge: ["노하우", "레퍼런스", "메모", "아이디어"],
+  sales_case: ["성공", "실패", "가격", "경쟁사", "기능문의"],
 };
 
 export function kbSectionLabel(section) {
