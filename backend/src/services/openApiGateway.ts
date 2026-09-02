@@ -211,11 +211,27 @@ export async function gatewayCall<T = unknown>(path: string, opts: CallOpts = {}
     const hint =
       res.status === 401 ? " — 설정 탭에서 마스터 로그인을 다시 해주세요."
       : res.status === 403 ? " — 이 계정에 마스터 권한이 없습니다."
-      : res.status === 404 ? " — 경로를 찾을 수 없습니다. 설정의 마스터 경로를 확인하세요."
+      : res.status === 404 ? " — 이 API가 게이트웨이에 아직 배포되지 않았습니다. 개발팀에 확인이 필요합니다."
       : "";
     fail(String(msg) + hint, res.status === 401 || res.status === 403 ? res.status : 502);
   }
   return data as T;
+}
+
+/**
+ * 연결·인증 점검. 발급 경로에 GET을 보내 405(Method Not Allowed)가 오면
+ * 경로가 살아있고 인증도 통과했다는 뜻이라 정상으로 본다.
+ */
+export async function pingGateway(): Promise<string> {
+  const cfg = await getOpenApiConfig();
+  const { res, data } = await attempt(cfg, "/master/api-keys", {});
+  if (res.status === 405 || res.ok) return "연결 정상 — 게이트웨이 인증까지 통과했습니다";
+  const msg =
+    (data && typeof data === "object" && "error" in data && String((data as { error: unknown }).error)) ||
+    `게이트웨이 오류 (${res.status})`;
+  if (res.status === 401) fail(String(msg) + " — 마스터 로그인을 다시 해주세요.", 401);
+  if (res.status === 403) fail(String(msg) + " — 이 계정에 마스터 권한이 없습니다.", 403);
+  fail(String(msg), 502);
 }
 
 // ─── 마스터 로그인 ─────────────────────────────────────────────────────────

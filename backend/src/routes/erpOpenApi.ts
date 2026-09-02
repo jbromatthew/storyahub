@@ -25,6 +25,7 @@ import {
   listGroups,
   masterLogin,
   toPasswordHash,
+  pingGateway,
 } from "../services/openApiGateway.js";
 
 export const erpOpenApiRouter = Router();
@@ -193,8 +194,7 @@ erpOpenApiRouter.post("/config/test", async (req: AuthedRequest, res) => {
   const actor = await actorOf(req, res);
   if (!actor) return;
   try {
-    const page = await listKeyRequests({ page: 0, size: 1 });
-    res.json({ ok: true, message: `연결 정상 — 발급 요청 ${page?.total_elements ?? 0}건 확인` });
+    res.json({ ok: true, message: await pingGateway() });
   } catch (e) {
     res.status(errStatus(e)).json({ error: errMsg(e) });
   }
