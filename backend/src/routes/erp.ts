@@ -1628,8 +1628,55 @@ erpRouter.patch("/smartstore/applies/:id", async (req: AuthedRequest, res) => {
     const v = String(b.sourceDetail).trim().replace(/[^0-9A-Za-z가-힣_\-. ]/g, "").slice(0, 40).trim();
     data.sourceDetail = v || null;
   }
+  // 바뀐 항목만 이전/이후 값을 남긴다 — 무엇이 언제 누구에 의해 바뀌었는지 되짚을 수 있게
+  const before = await prisma.erpSmartStoreApply.findUnique({
+    where: { id: req.params.id },
+    include: { round: { select: { year: true, round: true } } },
+  });
   const updated = await prisma.erpSmartStoreApply.update({ where: { id: req.params.id }, data });
+
+  if (before) {
+    const editor = await prisma.user.findUnique({ where: { id: req.userId! }, select: { name: true, email: true } });
+    const emp = await prisma.erpEmployee.findFirst({
+      where: { OR: [{ userId: req.userId! }, { email: (editor?.email || "").toLowerCase() }] },
+      select: { name: true },
+    });
+    const show = (f: string, v: unknown) => {
+      if (v === null || v === undefined || v === "") return "(비움)";
+      if (f === "stage") return v === "done" ? "신청완료" : "진행중";
+      if (f === "source") return v === "sales" ? "세일즈" : v === "marketing" ? "마케팅" : String(v);
+      if (f === "status") return v === "done" ? "완료" : v === "checked" ? "확인" : "신규";
+      return String(v);
+    };
+    const rows = Object.keys(data)
+      .filter((f) => show(f, (before as Record<string, unknown>)[f]) !== show(f, (data as Record<string, unknown>)[f]))
+      .map((f) => ({
+        applyId: before.id,
+        roundLabel: before.round ? `${before.round.year}년 ${before.round.round}차` : "",
+        center: before.centerName || "",
+        editorEmail: (editor?.email || "").toLowerCase(),
+        editorName: emp?.name || editor?.name || editor?.email || "",
+        field: f,
+        before: show(f, (before as Record<string, unknown>)[f]),
+        after: show(f, (data as Record<string, unknown>)[f]),
+      }));
+    if (rows.length) await prisma.erpSmartStoreEditLog.createMany({ data: rows });
+  }
   res.json({ apply: updated });
+});
+
+/** 스마트상점 수정 기록 */
+erpRouter.get("/smartstore/edit-logs", async (req: AuthedRequest, res) => {
+  const days = Math.min(365, Math.max(1, Number(req.query.days) || 30));
+  const since = new Date(Date.now() - days * 24 * 3600 * 1000);
+  const logs = await prisma.erpSmartStoreEditLog.findMany({
+    where: { createdAt: { gte: since } },
+    orderBy: { createdAt: "desc" },
+    take: 500,
+  });
+  const byEditor: Record<string, number> = {};
+  for (const l of logs) byEditor[l.editorName] = (byEditor[l.editorName] ?? 0) + 1;
+  res.json({ logs, byEditor, days });
 });
 
 erpRouter.delete("/smartstore/applies/:id", async (req: AuthedRequest, res) => {

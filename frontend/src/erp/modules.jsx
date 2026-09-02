@@ -6441,6 +6441,99 @@ function SourceDetailCell({ value, options, active, onFilter, onSave }) {
   );
 }
 
+const SS_LOG_FIELD = {
+  stage: "단계", source: "유입경로", sourceDetail: "세부채널", status: "상태",
+  centerName: "센터명", phone: "연락처", storeId: "스마트상점 ID", memo: "메모",
+};
+
+/** 스마트상점 수정 기록 — 누가·언제·무엇을 어떻게 바꿨는지. 값을 되짚을 수 있게 남긴다. */
+function SmartStoreEditLogs() {
+  const [days, setDays] = useState(30);
+  const [data, setData] = useState(null);
+  const [field, setField] = useState("");
+  const [editor, setEditor] = useState("");
+  const [q, setQ] = useState("");
+
+  useEffect(() => {
+    setData(null);
+    api.erpSmartStoreEditLogs({ days }).then(setData).catch(notifyError);
+  }, [days]);
+
+  if (!data) return <div className="spinner" />;
+
+  const kw = q.trim().toLowerCase();
+  const rows = data.logs
+    .filter((l) => !field || l.field === field)
+    .filter((l) => !editor || l.editorName === editor)
+    .filter((l) => !kw || (l.center || "").toLowerCase().includes(kw)
+      || (l.before || "").toLowerCase().includes(kw) || (l.after || "").toLowerCase().includes(kw));
+  const fields = [...new Set(data.logs.map((l) => l.field))];
+  const sel = { border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff" };
+
+  return (
+    <>
+      <div className="trend-selection-bar" style={{ marginTop: 14 }}>
+        <span className="trend-selection-label">최근 {data.days}일 · 수정 {data.logs.length}건</span>
+        {Object.entries(data.byEditor).map(([name, n]) => (
+          <span key={name}>{name} <strong>{n}</strong></span>
+        ))}
+      </div>
+
+      <div className="row" style={{ gap: 6, margin: "12px 0 4px", flexWrap: "wrap", alignItems: "center" }}>
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} style={sel}>
+          {[7, 30, 90, 365].map((d) => <option key={d} value={d}>최근 {d}일</option>)}
+        </select>
+        <select value={field} onChange={(e) => setField(e.target.value)} style={sel}>
+          <option value="">항목 전체</option>
+          {fields.map((f) => <option key={f} value={f}>{SS_LOG_FIELD[f] || f}</option>)}
+        </select>
+        <select value={editor} onChange={(e) => setEditor(e.target.value)} style={sel}>
+          <option value="">수정자 전체</option>
+          {Object.keys(data.byEditor).map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 센터명 · 값 검색"
+          style={{ ...sel, minWidth: 200 }} />
+        <span className="small" style={{ color: "var(--muted)" }}>{rows.length}건</span>
+      </div>
+
+      {!rows.length ? (
+        <div className="small" style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+          {data.logs.length ? "조건에 맞는 기록이 없습니다." : "이 기간에 수정된 기록이 없습니다."}
+        </div>
+      ) : (
+        <div className="dash-table-wrap">
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left" }}>시각</th>
+                <th className="label">센터명</th>
+                <th style={{ textAlign: "left" }}>항목</th>
+                <th style={{ textAlign: "left" }}>이전</th>
+                <th style={{ textAlign: "left" }}>이후</th>
+                <th style={{ textAlign: "left" }}>수정자</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((l) => (
+                <tr key={l.id}>
+                  <td style={{ textAlign: "left", whiteSpace: "nowrap" }}>
+                    {new Date(l.createdAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  </td>
+                  <td className="label">{l.center || <span style={{ color: "var(--muted)" }}>(미입력)</span>}</td>
+                  <td style={{ textAlign: "left" }}>{SS_LOG_FIELD[l.field] || l.field}</td>
+                  <td style={{ textAlign: "left", color: "var(--muted)" }}>{l.before}</td>
+                  <td style={{ textAlign: "left", fontWeight: 700 }}>{l.after}</td>
+                  <td style={{ textAlign: "left" }}><AssigneeBadge name={l.editorName} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function SmartStoreView() {
   const [rounds, setRounds] = useState(null);
   const [applies, setApplies] = useState([]);
@@ -6648,7 +6741,7 @@ export function SmartStoreView() {
       </div>
 
       <div className="row" style={{ gap: 6, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
-        {[["applies", "접수 목록"], ["rounds", "회차 관리"]].map(([k, label]) => (
+        {[["applies", "접수 목록"], ["rounds", "회차 관리"], ["logs", "수정 기록"]].map(([k, label]) => (
           <button key={k} type="button" className={"chip" + (tab === k ? " on" : "")} onClick={() => setTab(k)}>{label}</button>
         ))}
         <span style={{ marginLeft: "auto" }} />
@@ -6843,6 +6936,8 @@ export function SmartStoreView() {
           )}
         </>
       )}
+
+      {tab === "logs" && <SmartStoreEditLogs />}
 
       {tab === "rounds" && (
         <>

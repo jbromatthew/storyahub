@@ -975,6 +975,24 @@ model ErpAccessLog {
 }
 
 /// 클로징 관리 수정 이력 — 누가 어느 리드의 무엇을 어떻게 바꿨는지 (시트 역기록과 함께 기록)
+/// 스마트상점 접수 수정 기록 — 누가·언제·무엇을 어떻게 바꿨는지
+model ErpSmartStoreEditLog {
+  id          String   @id @default(cuid())
+  applyId     String
+  roundLabel  String // 2026년 2차 (당시 값)
+  center      String // 센터명 (당시 값)
+  editorEmail String
+  editorName  String
+  field       String // stage | source | sourceDetail | status | centerName | phone | storeId | memo
+  before      String
+  after       String
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([applyId])
+  @@index([editorEmail])
+}
+
 model ErpClosingEditLog {
   id          String   @id @default(cuid())
   leadId      String

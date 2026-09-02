@@ -253,6 +253,7 @@ export const api = {
   },
   erpIncentiveSave: (body) => req("/erp/incentive", { method: "PUT", body }),
   erpSmartStoreApplies: ({ roundId } = {}) => req(`/erp/smartstore/applies${roundId ? `?roundId=${roundId}` : ""}`),
+  erpSmartStoreEditLogs: ({ days } = {}) => req(`/erp/smartstore/edit-logs?days=${days || 30}`),
   erpSmartStoreApplyUpdate: (id, body) => req(`/erp/smartstore/applies/${id}`, { method: "PATCH", body }),
   erpSmartStoreApplyDelete: (id) => req(`/erp/smartstore/applies/${id}`, { method: "DELETE" }),
   erpMenuAccess: () => req("/erp/menu-access"),
