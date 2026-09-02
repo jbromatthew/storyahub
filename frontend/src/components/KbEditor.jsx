@@ -1043,7 +1043,7 @@ function KbTagBar({ tags, setTags, tagPresets, tagInput, setTagInput, onDirty, h
   );
 }
 
-export default function KbEditor({ article, back, onSaved, onDeleted, categories = [], prefs, onUserUpdated, initialBookSearchOpen = false, erpMode = false }) {
+export default function KbEditor({ article, back, onSaved, onDeleted, categories = [], prefs, onUserUpdated, initialBookSearchOpen = false, erpMode = false, lockSection = false, titleLabel }) {
   const isNew = !article?.id;
   const titleRef = useRef(null);
   const initial = parseArticleBlocks(article);
@@ -1462,11 +1462,11 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
   };
 
   return (
-    <div className="fade kbe-wrap">
+    <div className={"fade kbe-wrap" + (lockSection ? " kbe-locked" : "")}>
       <div className="kbe-bar">
         <div className="kbe-inner kbe-bar-inner">
           <button type="button" className="iconbtn" onClick={exit} aria-label="닫기" style={{ border: "none", background: "transparent", width: 36, height: 36 }}>←</button>
-          <div className="kbe-bar-title">{isNew ? "글쓰기" : (article?.t || "글 수정")}</div>
+          <div className="kbe-bar-title">{isNew ? (titleLabel || "글쓰기") : (article?.t || "글 수정")}</div>
           <div className="kbe-actions">
             <button
               type="button"
@@ -1492,7 +1492,7 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
         </div>
       </div>
 
-      {erpMode && isOwner && (
+      {erpMode && isOwner && !lockSection && (
         <div className="kbe-vis-strip">
           <span className="kbe-vis-label">공개 범위</span>
           <KbVisibilityToggle visibility={visibility} onChange={(v) => { setVisibility(v); setSaved(false); }} />
@@ -1542,9 +1542,9 @@ export default function KbEditor({ article, back, onSaved, onDeleted, categories
               </div>
             </div>
 
-            {isNew && (
+            {isNew && !lockSection && (
               <div className="seg" style={{ marginBottom: 14 }}>
-                {KB_SECTIONS.map((s) => (
+                {KB_SECTIONS.filter((s) => s.id !== "sales_case").map((s) => (
                   <button
                     key={s.id}
                     type="button"

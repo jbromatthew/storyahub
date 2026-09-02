@@ -62,6 +62,9 @@ export const KB_CSS = `
 .kbe-wrap,.kbe-read{display:flex;flex-direction:column;height:100%;width:100%;min-height:0;background:#F4F5F7;}
 .kbe-inner{width:100%;max-width:100%;margin:0 auto;}
 .kbe-bar{flex:0 0 auto;background:#fff;z-index:6;border-bottom:1px solid #E8EAED;padding:10px 16px;}
+/* 섹션이 고정된 모드(성공사례) — 종류 전환·공개 범위가 없어 여백을 조금 줄인다 */
+.kbe-locked .kbe-sheet{padding-top:22px;}
+.kbe-locked .kbe-page-head{margin-bottom:10px;}
 .kbe-bar-inner{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;}
 .kbe-bar-title{flex:1;min-width:0;font-size:15px;font-weight:700;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .kbe-actions{display:flex;align-items:center;gap:4px;flex-shrink:0;}

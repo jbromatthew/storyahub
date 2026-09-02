@@ -9848,16 +9848,19 @@ export function ConsultDocsView() { return <ApprovalListView kind="doc" />; }
 export function SalesCasesView({ articles, prefs, reload }) {
   // 글쓰기·읽기를 이 페이지 안에서 처리한다 (지식경영 화면으로 넘어가지 않음)
   const [view, setView] = useState(null); // {article, mode: "edit"|"read"}
-  const blank = () => ({ section: "sales_case", visibility: "company",
+  // 팀이 함께 보는 게 전제라 공개 범위는 팀 공개로 고정한다
+  const blank = () => ({ section: "sales_case", visibility: "company", c: "성공",
     blocks: [{ type: "h", val: "" }, { type: "text", val: "" }] });
 
   if (view?.mode === "edit") {
     return (
       <KbEditor article={view.article} erpMode prefs={prefs}
+        lockSection titleLabel="성공사례 작성"
         back={() => setView(null)}
         onSaved={() => { setView(null); reload?.(); }}
         onDeleted={() => { setView(null); reload?.(); }}
-        categories={[...new Set(articles.filter((a) => a.section === "sales_case").map((a) => a.c).filter(Boolean))]} />
+        categories={[...new Set(articles.filter((a) => a.section === "sales_case")
+          .map((a) => a.c).filter((c) => c && c !== "미분류"))]} />
     );
   }
   if (view?.mode === "read") {
