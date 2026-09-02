@@ -3581,7 +3581,7 @@ export function IncentiveView() {
         const asDraft = (a) => [0, 1, 2].map((i) => (a?.[i] == null ? "" : String(a[i])));
         setHwDraft(asDraft(d.hwSales));
         setRentalDraft(asDraft(d.rentalSales));
-        setLeaderDraft(Object.fromEntries(
+        setUsageDraft(Object.fromEntries(
           Object.entries(d.channelUsage || {}).map(([k, v]) => [k, v == null ? "" : String(v)])));
       })
       .catch(notifyError)
