@@ -1390,9 +1390,12 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
   const cfg = incentiveSettingsOf(saved?.settings);
   // 각 지표는 '3명 중 최댓값 = 100점' 비례 환산 (계획서 IV-3)
   const to100 = (v: number, max: number) => (max > 0 ? (v / max) * 100 : 0);
+  // Number(null)은 0이라, 빈칸으로 저장한 값이 0으로 되살아나면 안 된다
   const money = (a: unknown): Array<number | null> =>
     [0, 1, 2].map((i) => {
-      const v = Array.isArray(a) ? Number((a as unknown[])[i]) : NaN;
+      const raw = Array.isArray(a) ? (a as unknown[])[i] : undefined;
+      if (raw === null || raw === undefined || raw === "") return null;
+      const v = Number(raw);
       return Number.isFinite(v) ? v : null;
     });
   const hwSales = money(saved?.hwSales);

@@ -3672,9 +3672,14 @@ export function IncentiveView() {
       const channelUsage = Object.fromEntries(
         Object.entries(usageDraft).map(([k, v]) => [k, v === "" ? null : Number(v)]));
       await api.erpIncentiveSave({ year, quarter, hwSales: toNums(hwDraft), rentalSales: toNums(rentalDraft), channelUsage });
-      // 저장 후 재계산된 순위·배분을 다시 받는다
+      // 저장 후 서버에 실제로 남은 값으로 화면을 다시 맞춘다 — 안 들어갔으면 여기서 바로 드러난다
       const d = await api.erpIncentive({ year, quarter });
       setData(d);
+      const asDraft = (a) => [0, 1, 2].map((i) => (a?.[i] == null ? "" : String(a[i])));
+      setHwDraft(asDraft(d.hwSales));
+      setRentalDraft(asDraft(d.rentalSales));
+      setUsageDraft(Object.fromEntries(
+        Object.entries(d.channelUsage || {}).map(([k, v]) => [k, v == null ? "" : String(v)])));
       toastSuccess("저장했어요");
     } catch (e) { notifyError(e); } finally { setHwSaving(false); }
   };
