@@ -7803,8 +7803,10 @@ function formatDashRate(rate) {
 }
 
 function formatDashGap(gap) {
-  if (gap > 0) return `+${gap}`;
-  return String(gap);
+  // 금액·건수 모두 쓰이므로 자릿수 구분을 넣는다 (부호는 앞에 그대로)
+  if (gap == null || Number.isNaN(gap)) return "-";
+  const n = Math.round(gap).toLocaleString();
+  return gap > 0 ? `+${n}` : n;
 }
 
 function GaugeRing({ rate, size = 132 }) {
