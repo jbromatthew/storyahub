@@ -30,6 +30,9 @@ export const ERP_MODULES = [
   { id: "smart-store", label: "스마트상점", icon: "board", group: "bizsupport", groupLabel: "영업지원" },
   { id: "vendor-orders", label: "크라이저 발주", icon: "sales", group: "bizsupport", vendorGate: true },
   { id: "install-schedule", label: "설치일정 (브로제이)", icon: "board", group: "bizsupport", vendorGate: true },
+  // OPEN API 센터관리 — 키를 발급·폐기하는 화면이라 기본은 소유자·시스템관리자만.
+  // 메뉴 권한(ErpMenuAccess) 규칙을 걸면 그 규칙이 우선한다.
+  { id: "openapi-center", label: "OPEN API 센터관리", icon: "admin", group: "openapi", groupLabel: "OPEN API", ownerOnly: true },
   { id: "kb", label: "지식경영", icon: "book", group: "kb", groupLabel: "지식" },
 ];
 

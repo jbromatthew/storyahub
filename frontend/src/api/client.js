@@ -234,6 +234,31 @@ export const api = {
   erpProfile: () => req("/erp/me/profile"),
   erpMembers: () => req("/erp/members"),
   // 스마트상점
+  // OPEN API 센터관리
+  erpOpenApiConfig: () => req("/erp/openapi/config"),
+  erpOpenApiConfigSave: (body) => req("/erp/openapi/config", { method: "PUT", body }),
+  erpOpenApiConfigTest: () => req("/erp/openapi/config/test", { method: "POST" }),
+  erpOpenApiCenters: ({ search } = {}) => req(`/erp/openapi/centers${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+  erpOpenApiCenterSave: (body) => req("/erp/openapi/centers", { method: "POST", body }),
+  erpOpenApiCenterDelete: (id) => req(`/erp/openapi/centers/${id}`, { method: "DELETE" }),
+  erpOpenApiCentersImport: (body) => req("/erp/openapi/centers/import-from-requests", { method: "POST", body: body || {} }),
+  erpOpenApiKeys: ({ status } = {}) => req(`/erp/openapi/keys${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  erpOpenApiKeyIssue: (body) => req("/erp/openapi/keys", { method: "POST", body }),
+  erpOpenApiKeyRotate: (keyId) => req(`/erp/openapi/keys/${encodeURIComponent(keyId)}/rotate`, { method: "POST" }),
+  erpOpenApiKeySuspend: (keyId) => req(`/erp/openapi/keys/${encodeURIComponent(keyId)}/suspend`, { method: "PATCH" }),
+  erpOpenApiKeyRevoke: (keyId) => req(`/erp/openapi/keys/${encodeURIComponent(keyId)}/revoke`, { method: "PATCH" }),
+  erpOpenApiKeyTenants: (keyId, body) => req(`/erp/openapi/keys/${encodeURIComponent(keyId)}/tenants`, { method: "POST", body }),
+  erpOpenApiKeyMemo: (keyId, body) => req(`/erp/openapi/keys/${encodeURIComponent(keyId)}`, { method: "PATCH", body }),
+  erpOpenApiRequests: ({ status, search, page, size } = {}) => {
+    const p = new URLSearchParams();
+    if (status) p.set("status", status);
+    if (search) p.set("search", search);
+    p.set("page", String(page ?? 0));
+    p.set("size", String(size ?? 20));
+    return req(`/erp/openapi/requests?${p}`);
+  },
+  erpOpenApiRequestDetail: (no) => req(`/erp/openapi/requests/${encodeURIComponent(no)}`),
+  erpOpenApiLogs: ({ days } = {}) => req(`/erp/openapi/logs?days=${days || 90}`),
   erpSmartStoreRounds: () => req("/erp/smartstore/rounds"),
   erpSmartStoreRoundCreate: (body) => req("/erp/smartstore/rounds", { method: "POST", body }),
   erpSmartStoreRoundUpdate: (id, body) => req(`/erp/smartstore/rounds/${id}`, { method: "PATCH", body }),

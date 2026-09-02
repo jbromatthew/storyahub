@@ -12073,3 +12073,898 @@ export function VendorOrdersView() {
     </div>
   );
 }
+
+// ─── OPEN API 센터관리 ──────────────────────────────────────────────────────
+
+const OA_TABS = [
+  ["centers", "센터"],
+  ["keys", "발급 키"],
+  ["requests", "발급 요청"],
+  ["logs", "작업 기록"],
+  ["config", "설정"],
+];
+
+const OA_KEY_STATUS = {
+  ACTIVE: { label: "정상", bg: "#D3F8DF", fg: "#1F6B3A" },
+  SUSPENDED: { label: "정지", bg: "#FFF0CC", fg: "#8A5A00" },
+  REVOKED: { label: "폐기", bg: "#F2E3E3", fg: "#A33" },
+};
+
+const OA_REQ_STATUS = {
+  SUBMITTED: "접수", REVIEWING: "검토중", NEEDS_REVISION: "보완요청",
+  APPROVAL_PENDING: "승인대기", APPROVED: "승인", REJECTED: "반려", ISSUED: "발급완료",
+};
+
+const OA_ACTION = {
+  issue: "발급", rotate: "재발급", suspend: "정지", revoke: "폐기",
+  tenants_add: "센터 추가", tenants_replace: "센터 전체교체", tenants_remove: "센터 삭제",
+};
+
+const OA_SCOPE_PRESETS = [
+  "member:read", "schedule:read", "sales:read", "locker:read",
+  "visitor:read", "visitor:write", "parking:read", "parking:write",
+];
+
+function OaStatusTag({ status }) {
+  if (!status) return <span className="small" style={{ color: "var(--muted)" }}>없음</span>;
+  const s = OA_KEY_STATUS[status] || { label: status, bg: "#EEE", fg: "#555" };
+  return <span className="tag" style={{ background: s.bg, color: s.fg, fontSize: 11.5 }}>{s.label}</span>;
+}
+
+function oaFmtBiz(v) {
+  const d = String(v || "").replace(/[^\d]/g, "");
+  return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}` : d;
+}
+
+function oaFmtDate(v) {
+  if (!v) return "";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" });
+}
+
+/** 발급/재발급 직후에만 볼 수 있는 키 원문 — 저장하지 않으므로 여기서 놓치면 재발급뿐이다 */
+function OaKeyOnce({ value, onClose }) {
+  if (!value) return null;
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(value); toastSuccess("API Key를 복사했어요"); }
+    catch { notifyError(new Error("복사에 실패했습니다")); }
+  };
+  return (
+    <div className="oa-once">
+      <div className="oa-once-hd">지금만 보이는 API Key</div>
+      <div className="oa-once-body">{value}</div>
+      <div className="row" style={{ gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <button type="button" className="btn btn-accent btn-sm" onClick={copy}>복사</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>닫기</button>
+        <span className="small" style={{ color: "var(--muted)" }}>
+          ERP에 저장하지 않습니다. 창을 닫으면 다시 볼 수 없고, 재발급만 가능합니다.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function OaOverlay({ title, onClose, children, wide }) {
+  return (
+    <div className="oa-ov" onClick={onClose}>
+      <div className={"oa-ov-panel" + (wide ? " wide" : "")} onClick={(e) => e.stopPropagation()}>
+        <div className="oa-ov-hd">
+          <span>{title}</span>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>닫기</button>
+        </div>
+        <div className="oa-ov-body">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function OaField({ label, hint, children }) {
+  return (
+    <label className="oa-field">
+      <div className="small" style={{ marginBottom: 4 }}>{label}</div>
+      {children}
+      {hint && <div className="small" style={{ marginTop: 4, color: "var(--muted)" }}>{hint}</div>}
+    </label>
+  );
+}
+
+/** 키 발급 폼 — 센터를 고른 상태에서 연다 */
+function OaIssueForm({ center, onDone, onCancel }) {
+  const [name, setName] = useState(center ? `${center.centerName} 연동 키` : "");
+  const [grade, setGrade] = useState(center ? "CENTER" : "BRAND");
+  const [brandKey, setBrandKey] = useState(center?.brandKey ?? "");
+  const [scopes, setScopes] = useState([]);
+  const [custom, setCustom] = useState("");
+  const [expiredAt, setExpiredAt] = useState("");
+  const [memo, setMemo] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const toggle = (s) => setScopes((p) => (p.includes(s) ? p.filter((x) => x !== s) : [...p, s]));
+  const addCustom = () => {
+    const v = custom.trim();
+    if (!v) return;
+    setScopes((p) => (p.includes(v) ? p : [...p, v]));
+    setCustom("");
+  };
+
+  const submit = async () => {
+    if (!name.trim()) return notifyError(new Error("키 용도(이름)를 입력하세요"));
+    const target = grade === "CENTER" ? `${center?.centerName || ""} 센터` : "브랜드 전체";
+    if (!(await confirmAction(`${target}에 ${grade} 등급 API Key를 발급할까요?\n\n키 원문은 발급 직후 한 번만 보여집니다.`))) return;
+    setBusy(true);
+    try {
+      const res = await api.erpOpenApiKeyIssue({
+        name: name.trim(),
+        apiGrade: grade,
+        groupKey: grade === "CENTER" ? center?.groupKey : undefined,
+        brandKey: brandKey === "" ? undefined : Number(brandKey),
+        scopes,
+        expiredAt: expiredAt ? new Date(expiredAt).toISOString() : "",
+        memo: memo.trim(),
+      });
+      toastSuccess("API Key를 발급했어요");
+      onDone(res);
+    } catch (e) { notifyError(e); } finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      {center && (
+        <div className="oa-target">
+          {center.centerName}
+          <span className="small" style={{ color: "var(--muted)", marginLeft: 8 }}>group_key {center.groupKey}</span>
+        </div>
+      )}
+      <div className="oa-form">
+        <OaField label="키 용도 (이름)">
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 필라테스 예약 연동 키" />
+        </OaField>
+        <OaField label="권한 등급">
+          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+            {["CENTER", "BRAND", "SUPER"].map((g) => (
+              <button key={g} type="button" className={"chip" + (grade === g ? " on" : "")}
+                disabled={g === "CENTER" && !center} onClick={() => setGrade(g)}>{g}</button>
+            ))}
+          </div>
+        </OaField>
+        {grade !== "CENTER" && (
+          <OaField label="브랜드 내부키 (brand_key)" hint="BRAND·SUPER 등급은 브랜드 키가 필요합니다">
+            <input className="input" inputMode="numeric" value={brandKey} onChange={(e) => setBrandKey(e.target.value)} placeholder="예: 10" />
+          </OaField>
+        )}
+        <OaField label="만료일 (선택)" hint="비우면 게이트웨이 기본 장기 만료값이 쓰입니다">
+          <input className="input" type="date" value={expiredAt} onChange={(e) => setExpiredAt(e.target.value)} />
+        </OaField>
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <div className="small" style={{ marginBottom: 6 }}>허용 scope</div>
+        <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+          {[...new Set([...OA_SCOPE_PRESETS, ...scopes])].map((s) => (
+            <button key={s} type="button" className={"chip" + (scopes.includes(s) ? " on" : "")} onClick={() => toggle(s)}>{s}</button>
+          ))}
+        </div>
+        <div className="row" style={{ gap: 6, marginTop: 8, alignItems: "center" }}>
+          <input className="input" style={{ maxWidth: 220 }} value={custom} placeholder="직접 추가 (예: sales:write)"
+            onChange={(e) => setCustom(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }} />
+          <button type="button" className="btn btn-ghost btn-sm" onClick={addCustom}>추가</button>
+          <span className="small" style={{ color: "var(--muted)" }}>
+            {scopes.length ? `${scopes.length}개 선택` : "선택 안 하면 게이트웨이 기본값"}
+          </span>
+        </div>
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <OaField label="메모 (선택)">
+          <input className="input" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="어디에 쓰는 키인지" />
+        </OaField>
+      </div>
+      <div className="row" style={{ gap: 8, marginTop: 16 }}>
+        <button type="button" className="btn btn-accent" onClick={submit} disabled={busy}>{busy ? "발급 중…" : "발급"}</button>
+        <button type="button" className="btn btn-ghost" onClick={onCancel}>취소</button>
+      </div>
+    </>
+  );
+}
+
+/** 연결 센터 관리 — 추가(병합) · 전체 교체 · 삭제 */
+function OaTenantForm({ apiKey, centers, onDone, onCancel }) {
+  const linked = Array.isArray(apiKey.groupKeys) ? apiKey.groupKeys.map(Number) : [];
+  const [mode, setMode] = useState("add");
+  const [picked, setPicked] = useState([]);
+  const [q, setQ] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const pool = mode === "remove" ? centers.filter((c) => linked.includes(c.groupKey)) : centers;
+  const kw = q.trim().toLowerCase();
+  const list = pool.filter((c) => !kw || c.centerName.toLowerCase().includes(kw) || String(c.groupKey).includes(kw)).slice(0, 60);
+  const toggle = (k) => setPicked((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
+
+  const nameOf = (k) => centers.find((c) => c.groupKey === k)?.centerName || `group_key ${k}`;
+
+  const submit = async () => {
+    if (!picked.length) return notifyError(new Error("센터를 한 곳 이상 선택하세요"));
+    const verb = mode === "add" ? "추가" : mode === "replace" ? "전체 교체" : "삭제";
+    const warn = mode === "replace"
+      ? `\n\n지금 연결된 ${linked.length}곳은 모두 끊기고 선택한 ${picked.length}곳으로 바뀝니다.`
+      : mode === "remove" ? "\n\n키에는 센터가 최소 한 곳 남아 있어야 합니다." : "";
+    if (!(await confirmAction(`${picked.map(nameOf).join(", ")}\n\n연결 센터를 ${verb}할까요?${warn}`))) return;
+    setBusy(true);
+    try {
+      await api.erpOpenApiKeyTenants(apiKey.keyId, { mode, groupKeys: picked });
+      toastSuccess(`연결 센터를 ${verb}했어요`);
+      onDone();
+    } catch (e) { notifyError(e); } finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <div className="oa-target">
+        {apiKey.name}
+        <span className="small" style={{ color: "var(--muted)", marginLeft: 8 }}>
+          지금 연결 {linked.length}곳{linked.length ? ` — ${linked.map(nameOf).join(", ")}` : ""}
+        </span>
+      </div>
+      <div className="row" style={{ gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+        {[["add", "추가 (기존 유지)"], ["replace", "전체 교체"], ["remove", "선택 삭제"]].map(([m, label]) => (
+          <button key={m} type="button" className={"chip" + (mode === m ? " on" : "")}
+            onClick={() => { setMode(m); setPicked([]); }}>{label}</button>
+        ))}
+      </div>
+      <input className="input" style={{ marginTop: 10 }} value={q} onChange={(e) => setQ(e.target.value)} placeholder="센터명·group_key 검색" />
+      <div className="oa-picklist">
+        {list.length === 0 && <div className="small" style={{ padding: 14, color: "var(--muted)" }}>해당하는 센터가 없습니다</div>}
+        {list.map((c) => (
+          <button key={c.groupKey} type="button" className={"oa-pick" + (picked.includes(c.groupKey) ? " on" : "")}
+            onClick={() => toggle(c.groupKey)}>
+            <span>{c.centerName}</span>
+            <span className="small" style={{ color: "var(--muted)" }}>
+              {c.groupKey}{linked.includes(c.groupKey) ? " · 연결됨" : ""}
+            </span>
+          </button>
+        ))}
+      </div>
+      <div className="row" style={{ gap: 8, marginTop: 14, alignItems: "center" }}>
+        <button type="button" className="btn btn-accent" onClick={submit} disabled={busy || !picked.length}>
+          {busy ? "적용 중…" : `${picked.length}곳 적용`}
+        </button>
+        <button type="button" className="btn btn-ghost" onClick={onCancel}>취소</button>
+      </div>
+    </>
+  );
+}
+
+function OaCentersTab({ centers, keys, loading, reload, onIssue, onTenants, onKeyAction }) {
+  const [q, setQ] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({ groupKey: "", centerName: "", groupId: "", brandKey: "", bizNo: "", memo: "" });
+  const [busy, setBusy] = useState("");
+
+  const kw = q.trim().toLowerCase();
+  const rows = centers.filter((c) =>
+    !kw || c.centerName.toLowerCase().includes(kw) || String(c.groupKey).includes(kw) ||
+    (c.groupId || "").toLowerCase().includes(kw) || (c.bizNo || "").includes(kw.replace(/[^\d]/g, "")));
+
+  const save = async () => {
+    if (!form.groupKey || !form.centerName.trim()) return notifyError(new Error("센터명과 group_key는 반드시 필요합니다"));
+    setBusy("add");
+    try {
+      await api.erpOpenApiCenterSave({ ...form, groupKey: Number(form.groupKey) });
+      toastSuccess("센터를 등록했어요");
+      setForm({ groupKey: "", centerName: "", groupId: "", brandKey: "", bizNo: "", memo: "" });
+      setAdding(false);
+      reload();
+    } catch (e) { notifyError(e); } finally { setBusy(""); }
+  };
+
+  const remove = async (c) => {
+    if (!(await confirmAction(`${c.centerName}을(를) 센터 대장에서 지울까요?\n\n게이트웨이의 센터가 지워지는 건 아니고, ERP 목록에서만 빠집니다.`))) return;
+    try { await api.erpOpenApiCenterDelete(c.id); toastSuccess("삭제했어요"); reload(); }
+    catch (e) { notifyError(e); }
+  };
+
+  const importFromRequests = async () => {
+    if (!(await confirmAction("발급 요청 내역에서 센터(group_key)를 끌어와 대장을 채울까요?"))) return;
+    setBusy("import");
+    try {
+      const r = await api.erpOpenApiCentersImport({ size: 50 });
+      toastSuccess(`요청 ${r.scanned}건에서 센터 ${r.added}곳 추가 · ${r.updated}곳 갱신`);
+      reload();
+    } catch (e) { notifyError(e); } finally { setBusy(""); }
+  };
+
+  return (
+    <>
+      <div className="row" style={{ gap: 8, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <input className="input" style={{ maxWidth: 260 }} value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder="센터명·group_key·사업자번호 검색" />
+        <span className="small" style={{ color: "var(--muted)" }}>{rows.length}곳</span>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={reload} disabled={loading}>
+          {loading ? "불러오는 중…" : "새로고침"}
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={importFromRequests} disabled={busy === "import"}>
+          {busy === "import" ? "가져오는 중…" : "발급 요청에서 센터 가져오기"}
+        </button>
+        <button type="button" className="btn btn-accent btn-sm" style={{ marginLeft: "auto" }} onClick={() => setAdding((v) => !v)}>
+          {adding ? "닫기" : "+ 센터 등록"}
+        </button>
+      </div>
+
+      {adding && (
+        <div className="card" style={{ marginTop: 12, padding: "14px 16px" }}>
+          <div className="h-eyebrow" style={{ marginBottom: 10 }}>센터 등록</div>
+          <div className="oa-form">
+            <OaField label="센터명">
+              <input className="input" value={form.centerName} onChange={(e) => setForm({ ...form, centerName: e.target.value })} placeholder="예: 브로제이짐 강남점" />
+            </OaField>
+            <OaField label="센터 내부키 (group_key)" hint="CRM 내부 정수키. 공개 group_id가 아닙니다.">
+              <input className="input" inputMode="numeric" value={form.groupKey} onChange={(e) => setForm({ ...form, groupKey: e.target.value })} placeholder="예: 158003" />
+            </OaField>
+            <OaField label="공개 센터 ID (group_id)" hint="선택 — 발급 응답에서 자동으로 채워지기도 합니다">
+              <input className="input" value={form.groupId} onChange={(e) => setForm({ ...form, groupId: e.target.value })} placeholder="01KXFXD2FS…" />
+            </OaField>
+            <OaField label="브랜드 내부키 (brand_key)">
+              <input className="input" inputMode="numeric" value={form.brandKey} onChange={(e) => setForm({ ...form, brandKey: e.target.value })} placeholder="선택" />
+            </OaField>
+            <OaField label="사업자번호">
+              <input className="input" value={form.bizNo} onChange={(e) => setForm({ ...form, bizNo: e.target.value })} placeholder="선택" />
+            </OaField>
+            <OaField label="메모">
+              <input className="input" value={form.memo} onChange={(e) => setForm({ ...form, memo: e.target.value })} placeholder="선택" />
+            </OaField>
+          </div>
+          <div className="row" style={{ gap: 8, marginTop: 12 }}>
+            <button type="button" className="btn btn-accent" onClick={save} disabled={busy === "add"}>등록</button>
+            <button type="button" className="btn btn-ghost" onClick={() => setAdding(false)}>취소</button>
+          </div>
+        </div>
+      )}
+
+      {rows.length === 0 ? (
+        <div className="small" style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+          {centers.length === 0
+            ? "등록된 센터가 없습니다. 발급 요청에서 가져오거나 직접 등록하세요."
+            : "검색 결과가 없습니다."}
+        </div>
+      ) : (
+        <div className="dash-table-wrap" style={{ marginTop: 14 }}>
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th className="label">센터</th>
+                <th>group_key</th>
+                <th>사업자번호</th>
+                <th>키 상태</th>
+                <th>발급 키</th>
+                <th style={{ minWidth: 260 }}>작업</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((c) => {
+                const active = keys.find((k) => k.keyId === c.activeKeyId);
+                return (
+                  <tr key={c.id}>
+                    <td className="label">
+                      {c.centerName}
+                      {c.groupId && <div className="small" style={{ color: "var(--muted)" }}>{c.groupId}</div>}
+                    </td>
+                    <td className="num">{c.groupKey}</td>
+                    <td>{c.bizNo ? oaFmtBiz(c.bizNo) : <span style={{ color: "var(--muted)" }}>-</span>}</td>
+                    <td><OaStatusTag status={c.keyStatus} /></td>
+                    <td>
+                      {c.keys.length === 0
+                        ? <span className="small" style={{ color: "var(--muted)" }}>-</span>
+                        : c.keys.map((k) => (
+                            <div key={k.keyId} className="small" style={{ whiteSpace: "nowrap" }}>
+                              {k.name}{k.keyPrefix ? ` · ${k.keyPrefix}` : ""}
+                            </div>
+                          ))}
+                    </td>
+                    <td>
+                      <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onIssue(c)}>발급</button>
+                        {active && <>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onKeyAction(active, "rotate")}>재발급</button>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onKeyAction(active, "suspend")}>정지</button>
+                          <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => onKeyAction(active, "revoke")}>폐기</button>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onTenants(active)}>연결 센터</button>
+                        </>}
+                        {!c.keys.length && (
+                          <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => remove(c)}>✕</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+function OaKeysTab({ keys, centers, loading, reload, onTenants, onKeyAction }) {
+  const [f, setF] = useState("");
+  const rows = keys.filter((k) => !f || k.status === f);
+  const nameOf = (gk) => centers.find((c) => c.groupKey === Number(gk))?.centerName || `group_key ${gk}`;
+  return (
+    <>
+      <div className="row" style={{ gap: 6, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+        {[["", "전체"], ["ACTIVE", "정상"], ["SUSPENDED", "정지"], ["REVOKED", "폐기"]].map(([v, label]) => (
+          <button key={v || "all"} type="button" className={"chip" + (f === v ? " on" : "")} onClick={() => setF(v)}>{label}</button>
+        ))}
+        <span className="small" style={{ color: "var(--muted)" }}>{rows.length}건</span>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={reload} disabled={loading}>새로고침</button>
+      </div>
+      {rows.length === 0 ? (
+        <div className="small" style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+          발급한 키가 없습니다. 센터 탭에서 발급하세요.
+        </div>
+      ) : (
+        <div className="dash-table-wrap" style={{ marginTop: 14 }}>
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th className="label">키 이름</th>
+                <th>등급</th>
+                <th>연결 센터</th>
+                <th>prefix</th>
+                <th>상태</th>
+                <th>만료</th>
+                <th>발급</th>
+                <th style={{ minWidth: 240 }}>작업</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((k) => (
+                <tr key={k.keyId}>
+                  <td className="label">
+                    {k.name}
+                    <div className="small" style={{ color: "var(--muted)" }}>{k.keyId}</div>
+                  </td>
+                  <td>{k.apiGrade}</td>
+                  <td>
+                    {(Array.isArray(k.groupKeys) && k.groupKeys.length
+                      ? k.groupKeys.map(nameOf).join(", ")
+                      : k.centerName) || <span style={{ color: "var(--muted)" }}>-</span>}
+                  </td>
+                  <td className="small">{k.keyPrefix || "-"}</td>
+                  <td><OaStatusTag status={k.status} /></td>
+                  <td className="small">{oaFmtDate(k.expiredAt) || "-"}</td>
+                  <td className="small">
+                    {oaFmtDate(k.issuedAt)}
+                    <div style={{ color: "var(--muted)" }}>{k.issuedBy}</div>
+                  </td>
+                  <td>
+                    <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                      {k.status !== "REVOKED" && <>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onKeyAction(k, "rotate")}>재발급</button>
+                        {k.status === "ACTIVE" && (
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onKeyAction(k, "suspend")}>정지</button>
+                        )}
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => onKeyAction(k, "revoke")}>폐기</button>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onTenants(k)}>연결 센터</button>
+                      </>}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+function OaRequestsTab() {
+  const [status, setStatus] = useState("");
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(0);
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [detail, setDetail] = useState(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setErr("");
+    api.erpOpenApiRequests({ status, search: q.trim(), page, size: 20 })
+      .then((d) => setData(d))
+      .catch((e) => { setErr(e.message || "불러오지 못했습니다"); setData(null); })
+      .finally(() => setLoading(false));
+  }, [status, q, page]);
+
+  useEffect(() => { load(); }, [status, page]); // 검색어는 엔터로만
+
+  const open = async (no) => {
+    try { setDetail(await api.erpOpenApiRequestDetail(no)); }
+    catch (e) { notifyError(e); }
+  };
+
+  const rows = data?.content ?? [];
+  const form = detail?.key_request ?? {};
+
+  return (
+    <>
+      <div className="row" style={{ gap: 6, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <button type="button" className={"chip" + (status === "" ? " on" : "")} onClick={() => { setStatus(""); setPage(0); }}>전체</button>
+        {Object.entries(OA_REQ_STATUS).map(([v, label]) => (
+          <button key={v} type="button" className={"chip" + (status === v ? " on" : "")} onClick={() => { setStatus(v); setPage(0); }}>{label}</button>
+        ))}
+      </div>
+      <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <input className="input" style={{ maxWidth: 300 }} value={q} onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { setPage(0); load(); } }}
+          placeholder="요청번호·센터명·서비스명·신청자 검색 (엔터)" />
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setPage(0); load(); }} disabled={loading}>
+          {loading ? "불러오는 중…" : "조회"}
+        </button>
+        {data && <span className="small" style={{ color: "var(--muted)" }}>
+          전체 {data.total_elements}건 · {data.page + 1}/{Math.max(data.total_pages, 1)}쪽
+        </span>}
+      </div>
+
+      {err && <div className="oa-err">{err}</div>}
+
+      {!err && rows.length === 0 && !loading && (
+        <div className="small" style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>발급 요청이 없습니다</div>
+      )}
+
+      {rows.length > 0 && (
+        <div className="dash-table-wrap" style={{ marginTop: 14 }}>
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th className="label">센터 / 서비스</th>
+                <th>상태</th>
+                <th>신청자</th>
+                <th>요청번호</th>
+                <th>접수</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.key_request_no}>
+                  <td className="label">
+                    {r.center_name}
+                    <div className="small" style={{ color: "var(--muted)" }}>{r.service_name}</div>
+                  </td>
+                  <td><span className="tag">{OA_REQ_STATUS[r.status] || r.status}</span></td>
+                  <td className="small">
+                    {r.applicant_name}
+                    <div style={{ color: "var(--muted)" }}>{r.applicant_email}</div>
+                  </td>
+                  <td className="small">{r.key_request_no}</td>
+                  <td className="small">{oaFmtDate(r.created_at)}</td>
+                  <td>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => open(r.key_request_no)}>상세</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {data && data.total_pages > 1 && (
+        <div className="row" style={{ gap: 8, marginTop: 12, justifyContent: "center" }}>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={page <= 0} onClick={() => setPage((p) => p - 1)}>이전</button>
+          <span className="small" style={{ alignSelf: "center" }}>{page + 1} / {data.total_pages}</span>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={page + 1 >= data.total_pages} onClick={() => setPage((p) => p + 1)}>다음</button>
+        </div>
+      )}
+
+      {detail && (
+        <OaOverlay wide title={`발급 요청 ${detail.key_request_no}`} onClose={() => setDetail(null)}>
+          <div className="oa-kv">
+            <div><span>상태</span><b>{OA_REQ_STATUS[detail.status] || detail.status}</b></div>
+            <div><span>센터</span><b>{form.center_name}</b></div>
+            <div><span>서비스</span><b>{form.service_name}</b></div>
+            <div><span>서비스 주소</span><b>{form.service_url || "-"}</b></div>
+            <div><span>신청자</span><b>{form.applicant_name} {form.position ? `(${form.position})` : ""}</b></div>
+            <div><span>연락처</span><b>{form.email} · {form.phone}</b></div>
+            <div><span>개발 담당</span><b>{form.developer_name} · {form.developer_email}</b></div>
+            <div><span>일 평균 호출</span><b>{Number(form.average_daily_calls ?? 0).toLocaleString()}회</b></div>
+            <div><span>최대 동시 사용자</span><b>{Number(form.max_concurrent_users ?? 0).toLocaleString()}명</b></div>
+          </div>
+
+          <div className="oa-sec">연동 대상 센터</div>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+            {(form.target_centers ?? []).map((c, i) => (
+              <span key={i} className="tag">{c.center_name}{c.group_key ? ` · ${c.group_key}` : ""}</span>
+            ))}
+            {!(form.target_centers ?? []).length && <span className="small" style={{ color: "var(--muted)" }}>없음</span>}
+          </div>
+
+          <div className="oa-sec">필요 API</div>
+          <div className="dash-table-wrap">
+            <table className="dash-table">
+              <thead><tr><th className="label">API</th><th>메서드</th><th>경로</th><th>용도</th></tr></thead>
+              <tbody>
+                {(form.required_apis ?? []).map((a, i) => (
+                  <tr key={i}>
+                    <td className="label">{a.api_name}{a.category ? <div className="small" style={{ color: "var(--muted)" }}>{a.category}</div> : null}</td>
+                    <td className="small">{a.method || "-"}</td>
+                    <td className="small">{a.endpoint || "-"}</td>
+                    <td className="small">{a.purpose}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {form.api_usage_plan && <><div className="oa-sec">활용 계획</div><div className="small" style={{ lineHeight: 1.6 }}>{form.api_usage_plan}</div></>}
+
+          <div className="oa-sec">허용 도메인 · IP</div>
+          <div className="small" style={{ lineHeight: 1.7 }}>
+            <div>CORS: {(form.cors_domains ?? []).join(", ") || "-"}</div>
+            <div>서버 IP: {(form.server_ips ?? []).join(", ") || "-"}</div>
+            <div>콜백: {(form.callback_urls ?? []).join(", ") || "-"}</div>
+          </div>
+
+          {(detail.approvals ?? []).length > 0 && <>
+            <div className="oa-sec">승인</div>
+            {(detail.approvals ?? []).map((ap) => (
+              <div key={ap.approval_request_no} className="card" style={{ padding: "10px 12px", marginBottom: 8 }}>
+                <div className="small">
+                  <b>{ap.round}차</b> · {ap.status} · {ap.approval_mode === "ALL" ? "전원 승인" : "1인 이상 승인"}
+                </div>
+                <div className="small" style={{ color: "var(--muted)", marginTop: 4 }}>
+                  요청 {ap.requested_by} → 승인자 {(ap.approver_subjects ?? []).join(", ")}
+                </div>
+                {ap.request_memo && <div className="small" style={{ marginTop: 4 }}>{ap.request_memo}</div>}
+              </div>
+            ))}
+          </>}
+
+          <div className="oa-sec">이력</div>
+          <div className="small" style={{ lineHeight: 1.8 }}>
+            {(detail.audits ?? []).map((a, i) => (
+              <div key={i}>
+                <span style={{ color: "var(--muted)" }}>{new Date(a.created_at).toLocaleString("ko-KR")}</span>
+                {" · "}{a.action}{" · "}{a.actor_subject}{a.reason ? ` — ${a.reason}` : ""}
+              </div>
+            ))}
+          </div>
+        </OaOverlay>
+      )}
+    </>
+  );
+}
+
+function OaLogsTab() {
+  const [days, setDays] = useState(90);
+  const [logs, setLogs] = useState(null);
+  useEffect(() => {
+    setLogs(null);
+    api.erpOpenApiLogs({ days }).then((d) => setLogs(d.logs || [])).catch(notifyError);
+  }, [days]);
+  return (
+    <>
+      <div className="row" style={{ gap: 6, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+        {[7, 30, 90, 365].map((d) => (
+          <button key={d} type="button" className={"chip" + (days === d ? " on" : "")} onClick={() => setDays(d)}>
+            {d === 365 ? "1년" : `${d}일`}
+          </button>
+        ))}
+        <span className="small" style={{ color: "var(--muted)" }}>{logs ? `${logs.length}건` : "불러오는 중…"}</span>
+      </div>
+      {logs && logs.length === 0 && (
+        <div className="small" style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>기록이 없습니다</div>
+      )}
+      {logs && logs.length > 0 && (
+        <div className="dash-table-wrap" style={{ marginTop: 14 }}>
+          <table className="dash-table">
+            <thead>
+              <tr><th className="label">시각</th><th>작업</th><th>키</th><th>센터</th><th>바뀐 내용</th><th>수정자</th></tr>
+            </thead>
+            <tbody>
+              {logs.map((l) => (
+                <tr key={l.id}>
+                  <td className="small label">{new Date(l.createdAt).toLocaleString("ko-KR")}</td>
+                  <td><span className="tag">{OA_ACTION[l.action] || l.action}</span></td>
+                  <td className="small">{l.keyName || l.keyId}</td>
+                  <td className="small">{l.centerName || "-"}</td>
+                  <td className="small">
+                    {l.before || l.after
+                      ? <>{l.before || "(없음)"} <span style={{ color: "var(--muted)" }}>→</span> {l.after || "(없음)"}</>
+                      : l.detail}
+                  </td>
+                  <td className="small">{l.actorName}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+function OaConfigTab({ onSaved }) {
+  const [cfg, setCfg] = useState(null);
+  const [draft, setDraft] = useState({ baseUrl: "", masterPrefix: "", masterToken: "", sessionToken: "", publicApiKey: "" });
+  const [busy, setBusy] = useState("");
+  const [result, setResult] = useState(null);
+
+  const load = useCallback(() => {
+    api.erpOpenApiConfig().then((d) => {
+      setCfg(d);
+      setDraft({ baseUrl: d.baseUrl || "", masterPrefix: d.masterPrefix || "", masterToken: "", sessionToken: "", publicApiKey: "" });
+    }).catch(notifyError);
+  }, []);
+  useEffect(load, [load]);
+
+  if (!cfg) return <div className="spinner" />;
+
+  const save = async () => {
+    setBusy("save");
+    try {
+      await api.erpOpenApiConfigSave(draft);
+      toastSuccess("설정을 저장했어요");
+      load();
+      onSaved?.();
+    } catch (e) { notifyError(e); } finally { setBusy(""); }
+  };
+
+  const test = async () => {
+    setBusy("test");
+    setResult(null);
+    try {
+      const r = await api.erpOpenApiConfigTest();
+      setResult({ ok: true, message: r.message });
+    } catch (e) {
+      setResult({ ok: false, message: e.message || "연결하지 못했습니다" });
+    } finally { setBusy(""); }
+  };
+
+  return (
+    <>
+      <div className="card" style={{ marginTop: 14, padding: "16px 18px", maxWidth: 720 }}>
+        <div className="h-eyebrow" style={{ marginBottom: 4 }}>게이트웨이 접속</div>
+        <div className="small" style={{ color: "var(--muted)", marginBottom: 14, lineHeight: 1.6 }}>
+          여기 넣은 토큰은 서버에만 저장되고 화면에는 다시 나오지 않습니다.
+          빈칸으로 저장하면 기존 값이 그대로 유지됩니다.
+        </div>
+
+        <OaField label="게이트웨이 주소 (베이스 URL)" hint="예: https://openapi.broj.io — https만 됩니다">
+          <input className="input" value={draft.baseUrl} onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })} placeholder="https://…" />
+        </OaField>
+        <div style={{ height: 12 }} />
+        <OaField label="마스터 API 경로" hint="문서 기준 /BroJOpenAPI/v1 — 이 경로로 404가 나면 접두어 없이 한 번 더 시도합니다">
+          <input className="input" value={draft.masterPrefix} onChange={(e) => setDraft({ ...draft, masterPrefix: e.target.value })} placeholder="/BroJOpenAPI/v1" />
+        </OaField>
+        <div style={{ height: 12 }} />
+        <OaField label="마스터 Bearer 토큰" hint={cfg.hasMasterToken ? `저장됨: ${cfg.masterTokenMasked}` : "아직 없음 — 이 값이 있어야 발급·폐기가 됩니다"}>
+          <input className="input" type="password" autoComplete="off" value={draft.masterToken}
+            onChange={(e) => setDraft({ ...draft, masterToken: e.target.value })} placeholder={cfg.hasMasterToken ? "바꿀 때만 입력" : "CRM 마스터 JWT"} />
+        </OaField>
+        <div style={{ height: 12 }} />
+        <OaField label="SessionToken (선택)" hint={cfg.hasSessionToken ? `저장됨: ${cfg.sessionTokenMasked}` : "게이트웨이가 요구할 때만 넣으세요"}>
+          <input className="input" type="password" autoComplete="off" value={draft.sessionToken}
+            onChange={(e) => setDraft({ ...draft, sessionToken: e.target.value })} placeholder="선택" />
+        </OaField>
+        <div style={{ height: 12 }} />
+        <OaField label="공개 API용 API-KEY (선택)" hint={cfg.hasPublicApiKey ? `저장됨: ${cfg.publicApiKeyMasked}` : "센터조회(/v1/groups)에만 쓰입니다"}>
+          <input className="input" type="password" autoComplete="off" value={draft.publicApiKey}
+            onChange={(e) => setDraft({ ...draft, publicApiKey: e.target.value })} placeholder="선택" />
+        </OaField>
+
+        <div className="row" style={{ gap: 8, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
+          <button type="button" className="btn btn-accent" onClick={save} disabled={busy === "save"}>저장</button>
+          <button type="button" className="btn btn-ghost" onClick={test} disabled={busy === "test"}>
+            {busy === "test" ? "확인 중…" : "연결 점검"}
+          </button>
+          {cfg.updatedAt && (
+            <span className="small" style={{ color: "var(--muted)" }}>
+              최근 수정 {new Date(cfg.updatedAt).toLocaleString("ko-KR")} · {cfg.updatedBy}
+            </span>
+          )}
+        </div>
+        {result && <div className={result.ok ? "oa-ok" : "oa-err"}>{result.message}</div>}
+      </div>
+
+      <div className="card" style={{ marginTop: 14, padding: "16px 18px", maxWidth: 720 }}>
+        <div className="h-eyebrow" style={{ marginBottom: 8 }}>알아둘 것</div>
+        <ul className="oa-notes">
+          <li>마스터 토큰은 CRM 로그인 세션에서 나오는 JWT라 <b>만료되면 401이 납니다.</b> 그때 여기서 새로 넣으면 됩니다.</li>
+          <li>게이트웨이에 <b>발급된 키 전체 목록 API가 없어서</b>, ERP에서 발급한 키만 대장에 남습니다. 다른 경로로 발급한 키는 보이지 않습니다.</li>
+          <li>발급에 필요한 <b>group_key는 CRM 내부 정수키</b>입니다. 공개 센터조회 API가 주는 group_id(문자 ID)와 다릅니다.</li>
+          <li>API Key 원문은 저장하지 않습니다. 발급·재발급 직후 한 번만 보이고, 놓치면 재발급해야 합니다.</li>
+        </ul>
+      </div>
+    </>
+  );
+}
+
+export function OpenApiCenterView() {
+  const [tab, setTab] = useState("centers");
+  const [centers, setCenters] = useState([]);
+  const [keys, setKeys] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [issueFor, setIssueFor] = useState(null);
+  const [tenantFor, setTenantFor] = useState(null);
+  const [once, setOnce] = useState("");
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setErr("");
+    Promise.all([api.erpOpenApiCenters(), api.erpOpenApiKeys()])
+      .then(([c, k]) => { setCenters(c.centers || []); setKeys(k.keys || []); })
+      .catch((e) => setErr(e.message || "불러오지 못했습니다"))
+      .finally(() => setLoading(false));
+  }, []);
+  useEffect(load, [load]);
+
+  const onKeyAction = async (k, action) => {
+    const label = { rotate: "재발급", suspend: "정지", revoke: "폐기" }[action];
+    const warn = action === "rotate"
+      ? "\n\n이전 키는 즉시 쓸 수 없게 되고, 새 키는 이 화면에서 한 번만 보입니다."
+      : action === "revoke" ? "\n\n폐기하면 되돌릴 수 없습니다." : "\n\n정지 중에는 호출이 막힙니다.";
+    if (!(await confirmAction(`${k.name}\n\n이 API Key를 ${label}할까요?${warn}`))) return;
+    try {
+      const res = action === "rotate" ? await api.erpOpenApiKeyRotate(k.keyId)
+        : action === "suspend" ? await api.erpOpenApiKeySuspend(k.keyId)
+        : await api.erpOpenApiKeyRevoke(k.keyId);
+      toastSuccess(`${label}했어요`);
+      if (res?.apiKey) setOnce(res.apiKey);
+      load();
+    } catch (e) { notifyError(e); }
+  };
+
+  return (
+    <div className="fade pad wide" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">OPEN API</div>
+      <div className="h-title">센터관리</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5, color: "var(--muted)" }}>
+        센터별로 OPEN API Key를 발급하고, 정지·폐기·재발급하고, 키에 연결된 센터를 관리합니다.
+      </div>
+
+      <div className="row" style={{ gap: 6, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+        {OA_TABS.map(([k, label]) => (
+          <button key={k} type="button" className={"chip" + (tab === k ? " on" : "")} onClick={() => setTab(k)}>{label}</button>
+        ))}
+      </div>
+
+      <OaKeyOnce value={once} onClose={() => setOnce("")} />
+
+      {err && tab !== "config" && (
+        <div className="oa-err">
+          {err}
+          <div style={{ marginTop: 6 }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTab("config")}>설정 확인</button>
+          </div>
+        </div>
+      )}
+
+      {tab === "centers" && (
+        <OaCentersTab centers={centers} keys={keys} loading={loading} reload={load}
+          onIssue={setIssueFor} onTenants={setTenantFor} onKeyAction={onKeyAction} />
+      )}
+      {tab === "keys" && (
+        <OaKeysTab keys={keys} centers={centers} loading={loading} reload={load}
+          onTenants={setTenantFor} onKeyAction={onKeyAction} />
+      )}
+      {tab === "requests" && <OaRequestsTab />}
+      {tab === "logs" && <OaLogsTab />}
+      {tab === "config" && <OaConfigTab onSaved={load} />}
+
+      {issueFor && (
+        <OaOverlay title="API Key 발급" onClose={() => setIssueFor(null)}>
+          <OaIssueForm center={issueFor} onCancel={() => setIssueFor(null)}
+            onDone={(res) => { setIssueFor(null); if (res?.apiKey) setOnce(res.apiKey); load(); }} />
+        </OaOverlay>
+      )}
+      {tenantFor && (
+        <OaOverlay title="연결 센터 관리" onClose={() => setTenantFor(null)}>
+          <OaTenantForm apiKey={tenantFor} centers={centers} onCancel={() => setTenantFor(null)}
+            onDone={() => { setTenantFor(null); load(); }} />
+        </OaOverlay>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash scripts/deploy-backend.sh)",
+      "Bash(bash scripts/deploy-frontend.sh)"
+    ]
+  }
+}

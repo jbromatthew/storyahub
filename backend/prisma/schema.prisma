@@ -1076,3 +1076,78 @@ model ErpIncentiveQuarter {
 
   @@unique([year, quarter])
 }
+
+/// OPEN API 게이트웨이 접속 설정 — 단일 행(id="default")
+model ErpOpenApiConfig {
+  id           String   @id @default("default")
+  baseUrl      String   @default("") // 예: https://openapi.broj.io
+  masterPrefix String   @default("/BroJOpenAPI/v1")
+  masterToken  String   @default("") // CRM 마스터 Bearer JWT
+  sessionToken String   @default("") // SessionToken 헤더 (선택)
+  publicApiKey String   @default("") // 공개 API용 API-KEY (센터 조회)
+  updatedBy    String   @default("")
+  updatedAt    DateTime @updatedAt
+}
+
+/// 발급된 OPEN API Key 대장 — 게이트웨이에 전체 목록 API가 없어 ERP가 직접 기록한다.
+/// api_key 원문은 발급 응답에서 한 번만 보여주고 저장하지 않는다 (prefix만 보관).
+model ErpOpenApiKey {
+  id         String    @id @default(cuid())
+  keyId      String    @unique
+  keyPrefix  String    @default("")
+  name       String
+  apiGrade   String    @default("CENTER") // SUPER | BRAND | CENTER
+  brandKey   Int?
+  groupKey   Int?
+  brandId    String    @default("")
+  groupId    String    @default("")
+  centerName String    @default("")
+  scopes     Json      @default("[]")
+  groupKeys  Json      @default("[]") // 연결 센터 내부키 목록
+  groupIds   Json      @default("[]") // 연결 센터 공개 ID 목록
+  status     String    @default("ACTIVE") // ACTIVE | SUSPENDED | REVOKED
+  expiredAt  DateTime?
+  issuedBy   String    @default("")
+  issuedAt   DateTime  @default(now())
+  rotatedAt  DateTime?
+  memo       String    @default("")
+  updatedAt  DateTime  @updatedAt
+
+  @@index([status])
+  @@index([groupKey])
+}
+
+/// OPEN API Key 작업 기록 (발급·재발급·정지·폐기·센터 변경)
+model ErpOpenApiKeyLog {
+  id         String   @id @default(cuid())
+  keyId      String
+  keyName    String   @default("")
+  centerName String   @default("")
+  action     String // issue | rotate | suspend | revoke | tenants_add | tenants_replace | tenants_remove
+  actorEmail String
+  actorName  String
+  before     String   @default("")
+  after      String   @default("")
+  detail     String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([keyId])
+}
+
+/// 센터 대장 — 발급에 필요한 group_key(CRM 내부 정수키)와 공개 group_id를 함께 보관
+model ErpOpenApiCenter {
+  id         String   @id @default(cuid())
+  groupKey   Int      @unique
+  groupId    String   @default("")
+  brandKey   Int?
+  brandId    String   @default("")
+  centerName String
+  bizNo      String   @default("")
+  source     String   @default("manual") // manual | request | groups_api
+  memo       String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([centerName])
+}
