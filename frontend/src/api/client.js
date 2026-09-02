@@ -238,6 +238,7 @@ export const api = {
   erpOpenApiConfig: () => req("/erp/openapi/config"),
   erpOpenApiConfigSave: (body) => req("/erp/openapi/config", { method: "PUT", body }),
   erpOpenApiConfigTest: () => req("/erp/openapi/config/test", { method: "POST" }),
+  erpOpenApiLogin: (body) => req("/erp/openapi/login", { method: "POST", body: body || {} }),
   erpOpenApiCenters: ({ search } = {}) => req(`/erp/openapi/centers${search ? `?search=${encodeURIComponent(search)}` : ""}`),
   erpOpenApiCenterSave: (body) => req("/erp/openapi/centers", { method: "POST", body }),
   erpOpenApiCenterDelete: (id) => req(`/erp/openapi/centers/${id}`, { method: "DELETE" }),

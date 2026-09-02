@@ -1082,11 +1082,20 @@ model ErpOpenApiConfig {
   id           String   @id @default("default")
   baseUrl      String   @default("") // 예: https://openapi.broj.io
   masterPrefix String   @default("/BroJOpenAPI/v1")
-  masterToken  String   @default("") // CRM 마스터 Bearer JWT
-  sessionToken String   @default("") // SessionToken 헤더 (선택)
+  masterToken  String   @default("") // CRM 마스터 Bearer JWT (로그인으로 받음)
+  sessionToken String   @default("") // SessionToken 헤더 (JWT와 함께 받음, 필수)
   publicApiKey String   @default("") // 공개 API용 API-KEY (센터 조회)
-  updatedBy    String   @default("")
-  updatedAt    DateTime @updatedAt
+
+  // 마스터 로그인 — 토큰이 만료되면 이 정보로 다시 받아온다
+  authBaseUrl    String    @default("https://brojserver.broj.co.kr")
+  authPrefix     String    @default("/BroJServer/v1")
+  authType       String    @default("EMAIL")
+  memberId       String    @default("")
+  memberPassword String    @default("") // SHA-256 hex만 저장 — 평문은 해싱 후 버린다
+  tokenAt        DateTime?
+
+  updatedBy String   @default("")
+  updatedAt DateTime @updatedAt
 }
 
 /// 발급된 OPEN API Key 대장 — 게이트웨이에 전체 목록 API가 없어 ERP가 직접 기록한다.

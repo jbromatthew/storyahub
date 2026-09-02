@@ -11,6 +11,7 @@
  */
 import { lookup } from "node:dns/promises";
 import net from "node:net";
+import { createHash } from "node:crypto";
 import { prisma } from "../db.js";
 
 export type OpenApiConfig = {
@@ -19,6 +20,12 @@ export type OpenApiConfig = {
   masterToken: string;
   sessionToken: string;
   publicApiKey: string;
+  authBaseUrl: string;
+  authPrefix: string;
+  authType: string;
+  memberId: string;
+  memberPassword: string;
+  tokenAt: Date | null;
   updatedBy: string;
   updatedAt: Date | null;
 };
@@ -33,6 +40,12 @@ export async function getOpenApiConfig(): Promise<OpenApiConfig> {
     masterToken: row?.masterToken ?? "",
     sessionToken: row?.sessionToken ?? "",
     publicApiKey: row?.publicApiKey ?? "",
+    authBaseUrl: row?.authBaseUrl ?? "https://brojserver.broj.co.kr",
+    authPrefix: row?.authPrefix ?? "/BroJServer/v1",
+    authType: row?.authType ?? "EMAIL",
+    memberId: row?.memberId ?? "",
+    memberPassword: row?.memberPassword ?? "",
+    tokenAt: row?.tokenAt ?? null,
     updatedBy: row?.updatedBy ?? "",
     updatedAt: row?.updatedAt ?? null,
   };
@@ -134,8 +147,7 @@ function buildUrl(base: string, path: string, query?: CallOpts["query"]): string
  * 게이트웨이 호출. `path`는 마스터 접두어를 뺀 경로(예: "/master/api-keys").
  * 접두어를 붙여 호출하고 404가 나오면 접두어 없이 한 번 더 시도한다.
  */
-export async function gatewayCall<T = unknown>(path: string, opts: CallOpts = {}): Promise<T> {
-  const cfg = await getOpenApiConfig();
+async function attempt(cfg: OpenApiConfig, path: string, opts: CallOpts) {
   const base = normalizeBaseUrl(cfg.baseUrl);
   await assertPublicHost(new URL(base).hostname);
 
@@ -146,9 +158,10 @@ export async function gatewayCall<T = unknown>(path: string, opts: CallOpts = {}
     if (!cfg.publicApiKey) fail("공개 API용 API-KEY가 설정되지 않았습니다");
     headers["API-KEY"] = cfg.publicApiKey;
   } else {
-    if (!cfg.masterToken) fail("마스터 토큰이 설정되지 않았습니다. 설정 탭에서 먼저 입력하세요.");
+    if (!cfg.masterToken || !cfg.sessionToken) {
+      fail("마스터 토큰이 없습니다. 설정 탭에서 마스터 로그인을 먼저 하세요.", 401);
+    }
     // 게이트웨이는 Bearer JWT와 SessionToken을 둘 다 요구한다 (하나만 있으면 401)
-    if (!cfg.sessionToken) fail("SessionToken이 설정되지 않았습니다. 마스터 로그인에서 JWT와 함께 받은 값을 넣어주세요.");
     headers.Authorization = `Bearer ${cfg.masterToken}`;
     headers.SessionToken = cfg.sessionToken;
   }
@@ -172,6 +185,23 @@ export async function gatewayCall<T = unknown>(path: string, opts: CallOpts = {}
       data = text;
     }
   }
+  return { res, data };
+}
+
+export async function gatewayCall<T = unknown>(path: string, opts: CallOpts = {}): Promise<T> {
+  let cfg = await getOpenApiConfig();
+  let { res, data } = await attempt(cfg, path, opts);
+
+  // 토큰 만료(401)면 저장된 계정으로 다시 로그인해 한 번만 재시도한다
+  if (res.status === 401 && !opts.publicApi && cfg.memberId && cfg.memberPassword) {
+    try {
+      await masterLogin();
+      cfg = await getOpenApiConfig();
+      ({ res, data } = await attempt(cfg, path, opts));
+    } catch {
+      // 재로그인 실패는 아래에서 원래 401 메시지로 알린다
+    }
+  }
 
   if (!res.ok) {
     const msg =
@@ -179,13 +209,116 @@ export async function gatewayCall<T = unknown>(path: string, opts: CallOpts = {}
       (typeof data === "string" && data.slice(0, 200)) ||
       `게이트웨이 오류 (${res.status})`;
     const hint =
-      res.status === 401 ? " — 마스터 토큰이 만료되었을 수 있습니다. 설정에서 새로 넣어주세요."
-      : res.status === 403 ? " — 이 토큰에 마스터 권한이 없습니다."
+      res.status === 401 ? " — 설정 탭에서 마스터 로그인을 다시 해주세요."
+      : res.status === 403 ? " — 이 계정에 마스터 권한이 없습니다."
       : res.status === 404 ? " — 경로를 찾을 수 없습니다. 설정의 마스터 경로를 확인하세요."
       : "";
     fail(String(msg) + hint, res.status === 401 || res.status === 403 ? res.status : 502);
   }
   return data as T;
+}
+
+// ─── 마스터 로그인 ─────────────────────────────────────────────────────────
+//
+// 2단계다. POST /master/auth 로 인증코드를 받고, POST /master/auth-code 로
+// 교환해 JWT와 session_token을 받는다. CRM 웹앱이 비밀번호를 SHA-256으로
+// 해싱해 보내므로 여기서도 같은 형태로 맞춘다 — 평문은 저장하지 않는다.
+
+/** 이미 SHA-256 hex면 그대로, 평문이면 해싱해서 돌려준다 */
+export function toPasswordHash(input: string): string {
+  const v = String(input || "").trim();
+  if (!v) return "";
+  if (/^[0-9a-f]{64}$/i.test(v)) return v.toLowerCase();
+  return createHash("sha256").update(v, "utf8").digest("hex");
+}
+
+/** 응답 키 이름이 문서화돼 있지 않아 흔한 표기를 모두 받아준다 */
+function pick(data: unknown, ...keys: string[]): string {
+  if (!data || typeof data !== "object") return "";
+  const o = data as Record<string, unknown>;
+  for (const k of keys) {
+    const v = o[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  // { data: {...} } / { result: {...} } 로 한 겹 감싸는 경우
+  for (const wrap of ["data", "result", "body"]) {
+    const inner = o[wrap];
+    if (inner && typeof inner === "object") {
+      const got = pick(inner, ...keys);
+      if (got) return got;
+    }
+  }
+  return "";
+}
+
+async function authCall(cfg: OpenApiConfig, path: string, body: unknown) {
+  const base = normalizeBaseUrl(cfg.authBaseUrl);
+  await assertPublicHost(new URL(base).hostname);
+  const url = base + (cfg.authPrefix || "").replace(/\/+$/, "") + path;
+  const res = await once(url, { Accept: "application/json", "Content-Type": "application/json" }, {
+    method: "POST",
+    body,
+  });
+  const text = await res.text().catch(() => "");
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+  if (!res.ok) {
+    const reason = pick(data, "reason", "error", "message") || `로그인 오류 (${res.status})`;
+    fail(reason, res.status === 401 || res.status === 403 ? 401 : 502);
+  }
+  return data;
+}
+
+export type LoginResult =
+  | { ok: true; needsCode?: false }
+  | { ok: false; needsCode: true; message: string };
+
+/**
+ * 마스터 로그인. `authCode`를 주면 2단계만 수행한다.
+ * 1단계 응답에 인증코드가 없으면 (메일/문자로 보내는 방식이면)
+ * needsCode를 돌려주고 화면에서 코드를 받아 다시 부른다.
+ */
+export async function masterLogin(authCode?: string): Promise<LoginResult> {
+  const cfg = await getOpenApiConfig();
+  if (!cfg.memberId) fail("마스터 아이디가 설정되지 않았습니다");
+  if (!authCode && !cfg.memberPassword) fail("마스터 비밀번호가 설정되지 않았습니다");
+
+  let code = String(authCode || "").trim();
+  if (!code) {
+    const step1 = await authCall(cfg, "/master/auth", {
+      auth_type: cfg.authType || "EMAIL",
+      member_id: cfg.memberId,
+      member_password: cfg.memberPassword,
+    });
+    code = pick(step1, "auth_code", "authCode", "code", "certification_code");
+    if (!code) {
+      return {
+        ok: false,
+        needsCode: true,
+        message: "인증코드가 응답에 없습니다. 메일이나 문자로 받은 인증코드를 아래에 입력해 주세요.",
+      };
+    }
+  }
+
+  const step2 = await authCall(cfg, "/master/auth-code", { member_id: cfg.memberId, auth_code: code });
+  const jwt = pick(step2, "jwt", "token", "access_token", "accessToken", "master_token");
+  const session = pick(step2, "session_token", "sessionToken", "session");
+  if (!jwt || !session) {
+    fail("로그인 응답에서 jwt 또는 session_token을 찾지 못했습니다", 502);
+  }
+
+  await prisma.erpOpenApiConfig.upsert({
+    where: { id: "default" },
+    create: { id: "default", masterToken: jwt, sessionToken: session, tokenAt: new Date() },
+    update: { masterToken: jwt, sessionToken: session, tokenAt: new Date() },
+  });
+  return { ok: true };
 }
 
 // ─── 마스터 API ────────────────────────────────────────────────────────────

@@ -12787,6 +12787,8 @@ function OaLogsTab() {
 function OaConfigTab({ onSaved }) {
   const [cfg, setCfg] = useState(null);
   const [draft, setDraft] = useState({ baseUrl: "", masterPrefix: "", masterToken: "", sessionToken: "", publicApiKey: "" });
+  const [login, setLogin] = useState({ memberId: "", memberPassword: "", authCode: "" });
+  const [needsCode, setNeedsCode] = useState("");
   const [busy, setBusy] = useState("");
   const [result, setResult] = useState(null);
 
@@ -12794,11 +12796,36 @@ function OaConfigTab({ onSaved }) {
     api.erpOpenApiConfig().then((d) => {
       setCfg(d);
       setDraft({ baseUrl: d.baseUrl || "", masterPrefix: d.masterPrefix || "", masterToken: "", sessionToken: "", publicApiKey: "" });
+      setLogin((p) => ({ ...p, memberId: d.memberId || "" }));
     }).catch(notifyError);
   }, []);
   useEffect(load, [load]);
 
   if (!cfg) return <div className="spinner" />;
+
+  const signIn = async () => {
+    setBusy("login");
+    setResult(null);
+    try {
+      // 아이디·비밀번호가 새로 입력됐으면 먼저 저장한다 (비밀번호는 서버에서 해싱)
+      if (login.memberId !== cfg.memberId || login.memberPassword) {
+        await api.erpOpenApiConfigSave({ memberId: login.memberId, memberPassword: login.memberPassword });
+      }
+      const r = await api.erpOpenApiLogin(needsCode ? { authCode: login.authCode } : {});
+      if (r.needsCode) {
+        setNeedsCode(r.message);
+        setResult({ ok: false, message: r.message });
+      } else {
+        setNeedsCode("");
+        setLogin((p) => ({ ...p, memberPassword: "", authCode: "" }));
+        setResult({ ok: true, message: r.message || "로그인했습니다" });
+        load();
+        onSaved?.();
+      }
+    } catch (e) {
+      setResult({ ok: false, message: e.message || "로그인하지 못했습니다" });
+    } finally { setBusy(""); }
+  };
 
   const save = async () => {
     setBusy("save");
@@ -12824,6 +12851,47 @@ function OaConfigTab({ onSaved }) {
   return (
     <>
       <div className="card" style={{ marginTop: 14, padding: "16px 18px", maxWidth: 720 }}>
+        <div className="h-eyebrow" style={{ marginBottom: 4 }}>마스터 로그인</div>
+        <div className="small" style={{ color: "var(--muted)", marginBottom: 14, lineHeight: 1.6 }}>
+          여기서 로그인하면 JWT와 SessionToken을 받아 아래에 자동으로 채웁니다.
+          토큰이 만료돼 401이 나면 이 계정으로 알아서 다시 받아옵니다.
+          비밀번호는 서버에서 SHA-256으로 바꿔 저장하고 원문은 남기지 않습니다.
+        </div>
+
+        <div className="oa-form">
+          <OaField label="마스터 아이디">
+            <input className="input" autoComplete="off" value={login.memberId}
+              onChange={(e) => setLogin({ ...login, memberId: e.target.value })} placeholder="member_id" />
+          </OaField>
+          <OaField label="비밀번호" hint={cfg.hasPassword ? "저장돼 있음 — 바꿀 때만 입력" : "평문·SHA-256 해시 둘 다 됩니다"}>
+            <input className="input" type="password" autoComplete="off" value={login.memberPassword}
+              onChange={(e) => setLogin({ ...login, memberPassword: e.target.value })}
+              placeholder={cfg.hasPassword ? "바꿀 때만 입력" : "비밀번호"} />
+          </OaField>
+        </div>
+
+        {needsCode && (
+          <div style={{ marginTop: 12 }}>
+            <OaField label="인증코드" hint={needsCode}>
+              <input className="input" value={login.authCode} autoComplete="off"
+                onChange={(e) => setLogin({ ...login, authCode: e.target.value })} placeholder="받은 인증코드" />
+            </OaField>
+          </div>
+        )}
+
+        <div className="row" style={{ gap: 8, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
+          <button type="button" className="btn btn-accent" onClick={signIn} disabled={busy === "login" || !login.memberId}>
+            {busy === "login" ? "로그인 중…" : needsCode ? "인증코드로 로그인" : "로그인"}
+          </button>
+          <span className="small" style={{ color: "var(--muted)" }}>
+            {cfg.hasMasterToken && cfg.hasSessionToken
+              ? `토큰 있음${cfg.tokenAt ? ` · ${new Date(cfg.tokenAt).toLocaleString("ko-KR")} 발급` : ""}`
+              : "토큰 없음 — 로그인이 필요합니다"}
+          </span>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 14, padding: "16px 18px", maxWidth: 720 }}>
         <div className="h-eyebrow" style={{ marginBottom: 4 }}>게이트웨이 접속</div>
         <div className="small" style={{ color: "var(--muted)", marginBottom: 14, lineHeight: 1.6 }}>
           여기 넣은 토큰은 서버에만 저장되고 화면에는 다시 나오지 않습니다.
@@ -12838,14 +12906,14 @@ function OaConfigTab({ onSaved }) {
           <input className="input" value={draft.masterPrefix} onChange={(e) => setDraft({ ...draft, masterPrefix: e.target.value })} placeholder="/BroJOpenAPI/v1" />
         </OaField>
         <div style={{ height: 12 }} />
-        <OaField label="마스터 Bearer 토큰" hint={cfg.hasMasterToken ? `저장됨: ${cfg.masterTokenMasked}` : "아직 없음 — 이 값이 있어야 발급·폐기가 됩니다"}>
+        <OaField label="마스터 Bearer 토큰 (자동)" hint={cfg.hasMasterToken ? `저장됨: ${cfg.masterTokenMasked}` : "위에서 로그인하면 채워집니다. 직접 넣어도 됩니다."}>
           <input className="input" type="password" autoComplete="off" value={draft.masterToken}
-            onChange={(e) => setDraft({ ...draft, masterToken: e.target.value })} placeholder={cfg.hasMasterToken ? "바꿀 때만 입력" : "CRM 마스터 JWT"} />
+            onChange={(e) => setDraft({ ...draft, masterToken: e.target.value })} placeholder={cfg.hasMasterToken ? "바꿀 때만 입력" : "보통은 비워둡니다"} />
         </OaField>
         <div style={{ height: 12 }} />
-        <OaField label="SessionToken (필수)" hint={cfg.hasSessionToken ? `저장됨: ${cfg.sessionTokenMasked}` : "필수 — JWT만으로는 401이 납니다. 로그인 때 함께 받은 값을 넣으세요."}>
+        <OaField label="SessionToken (자동 · 필수)" hint={cfg.hasSessionToken ? `저장됨: ${cfg.sessionTokenMasked}` : "필수 — JWT만으로는 401이 납니다. 로그인하면 함께 채워집니다."}>
           <input className="input" type="password" autoComplete="off" value={draft.sessionToken}
-            onChange={(e) => setDraft({ ...draft, sessionToken: e.target.value })} placeholder={cfg.hasSessionToken ? "바꿀 때만 입력" : "CRM 마스터 session_token"} />
+            onChange={(e) => setDraft({ ...draft, sessionToken: e.target.value })} placeholder={cfg.hasSessionToken ? "바꿀 때만 입력" : "보통은 비워둡니다"} />
         </OaField>
         <div style={{ height: 12 }} />
         <OaField label="공개 API용 API-KEY (선택)" hint={cfg.hasPublicApiKey ? `저장됨: ${cfg.publicApiKeyMasked}` : "센터조회(/v1/groups)에만 쓰입니다"}>
@@ -12870,8 +12938,8 @@ function OaConfigTab({ onSaved }) {
       <div className="card" style={{ marginTop: 14, padding: "16px 18px", maxWidth: 720 }}>
         <div className="h-eyebrow" style={{ marginBottom: 8 }}>알아둘 것</div>
         <ul className="oa-notes">
-          <li><b>JWT와 SessionToken 두 개가 다 있어야</b> 마스터 API가 열립니다. 하나만 넣으면 401이 납니다.</li>
-          <li>둘은 CRM 로그인으로 받습니다 — <code>POST /v1/master/auth</code>로 인증코드를 받고 <code>POST /v1/master/auth-code</code>로 교환합니다. <b>만료되면 401</b>이 나니 그때 여기서 새로 넣으면 됩니다.</li>
+          <li><b>JWT와 SessionToken 두 개가 다 있어야</b> 마스터 API가 열립니다. 하나만 있으면 401이 납니다.</li>
+          <li>로그인은 2단계입니다 — <code>POST /master/auth</code>로 인증코드를 받고 <code>POST /master/auth-code</code>로 교환해 둘을 받습니다. <b>만료되면 저장된 계정으로 자동 재로그인</b>하니 손댈 일이 없습니다.</li>
           <li>게이트웨이에 <b>발급된 키 전체 목록 API가 없어서</b>, ERP에서 발급한 키만 대장에 남습니다. 다른 경로로 발급한 키는 보이지 않습니다.</li>
           <li>발급에 필요한 <b>group_key는 CRM 내부 정수키</b>입니다. 공개 센터조회 API가 주는 group_id(문자 ID)와 다릅니다.</li>
           <li>API Key 원문은 저장하지 않습니다. 발급·재발급 직후 한 번만 보이고, 놓치면 재발급해야 합니다.</li>

@@ -23,6 +23,8 @@ import {
   listKeyRequests,
   getKeyRequest,
   listGroups,
+  masterLogin,
+  toPasswordHash,
 } from "../services/openApiGateway.js";
 
 export const erpOpenApiRouter = Router();
@@ -115,6 +117,12 @@ erpOpenApiRouter.get("/config", async (req: AuthedRequest, res) => {
     hasMasterToken: !!cfg.masterToken,
     hasSessionToken: !!cfg.sessionToken,
     hasPublicApiKey: !!cfg.publicApiKey,
+    authBaseUrl: cfg.authBaseUrl,
+    authPrefix: cfg.authPrefix,
+    authType: cfg.authType,
+    memberId: cfg.memberId,
+    hasPassword: !!cfg.memberPassword,
+    tokenAt: cfg.tokenAt,
     updatedBy: cfg.updatedBy,
     updatedAt: cfg.updatedAt,
   });
@@ -150,10 +158,34 @@ erpOpenApiRouter.put("/config", async (req: AuthedRequest, res) => {
     masterToken: keep(b.masterToken, cur.masterToken),
     sessionToken: b.clearSessionToken ? "" : keep(b.sessionToken, cur.sessionToken),
     publicApiKey: keep(b.publicApiKey, cur.publicApiKey),
+    authBaseUrl: typeof b.authBaseUrl === "string" && b.authBaseUrl.trim() ? b.authBaseUrl.trim().replace(/\/+$/, "") : cur.authBaseUrl,
+    authPrefix: typeof b.authPrefix === "string" ? b.authPrefix.trim().replace(/\/+$/, "") : cur.authPrefix,
+    authType: typeof b.authType === "string" && b.authType.trim() ? b.authType.trim().toUpperCase() : cur.authType,
+    memberId: typeof b.memberId === "string" ? b.memberId.trim() : cur.memberId,
+    // 평문이 오면 여기서 바로 SHA-256으로 바꿔 저장한다 — DB에 평문은 남지 않는다
+    memberPassword: typeof b.memberPassword === "string" && b.memberPassword.trim()
+      ? toPasswordHash(b.memberPassword)
+      : cur.memberPassword,
     updatedBy: actor.email,
   };
   await prisma.erpOpenApiConfig.upsert({ where: { id: "default" }, create: { id: "default", ...data }, update: data });
   res.json({ ok: true });
+});
+
+/** 마스터 로그인 — 인증코드까지 한 번에. 코드가 응답에 없으면 needsCode로 알린다 */
+erpOpenApiRouter.post("/login", async (req: AuthedRequest, res) => {
+  const actor = await actorOf(req, res);
+  if (!actor) return;
+  try {
+    const out = await masterLogin(String(req.body?.authCode ?? "").trim() || undefined);
+    if (out.ok) {
+      await writeLog({ keyId: "-", action: "login", actor, detail: "마스터 로그인 — 토큰 갱신" });
+      return res.json({ ok: true, message: "로그인했습니다. 토큰을 갱신했어요." });
+    }
+    res.json(out);
+  } catch (e) {
+    res.status(errStatus(e)).json({ error: errMsg(e) });
+  }
 });
 
 /** 설정 점검 — 발급 요청 목록을 1건만 불러 연결·인증 상태를 확인한다 */
