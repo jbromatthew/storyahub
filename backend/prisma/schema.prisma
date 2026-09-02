@@ -798,10 +798,26 @@ model ErpConsultDoc {
   authorId    String
   authorName  String
   authorEmail String
+  cooApproved Boolean   @default(false) // 승인은 COO 단독 (CEO 단계 폐지)
+  cooAt       DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([createdAt])
+  @@index([authorEmail])
+}
+
+/// 상담 성공·실패 사례 공유 — 상담자료와 같은 승인 흐름, COO 승인분만 인센티브에 반영
+model ErpSalesCase {
+  id          String    @id @default(cuid())
+  title       String
+  outcome     String    @default("success") // success | fail
+  note        String?
+  authorId    String
+  authorName  String
+  authorEmail String
   cooApproved Boolean   @default(false)
   cooAt       DateTime?
-  ceoApproved Boolean   @default(false)
-  ceoAt       DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -1049,7 +1065,7 @@ model ErpIncentiveQuarter {
   quarter      Int
   hwSales      Json     @default("[]") // [월1, 월2, 월3] 이카운트 HW매출 공급가액
   rentalSales  Json     @default("[]") // [월1, 월2, 월3] 렌탈 매출
-  leaderScores Json     @default("{}") // 팀장 평가 10점 만점 — {"Jo":8,"Jeff":7,"Sofia":6}
+  channelUsage Json     @default("{}") // 상담자료 채널톡 활용 횟수 (수기) — {"Jo":220,"Jeff":180}
   settings     Json     @default("{}") // 분기별 규칙 값 (목표·요율·배분·가중치). 비면 기본값
   note         String?
   createdAt    DateTime @default(now())

@@ -3570,7 +3570,7 @@ export function IncentiveView() {
   // NBM은 두 갈래 — 이카운트 HW매출 / 렌탈 매출
   const [hwDraft, setHwDraft] = useState(["", "", ""]);
   const [rentalDraft, setRentalDraft] = useState(["", "", ""]);
-  const [leaderDraft, setLeaderDraft] = useState({});   // 팀장 평가 10점 만점
+  const [usageDraft, setUsageDraft] = useState({});   // 채널톡 활용 횟수 (수기 입력)
   const [hwSaving, setHwSaving] = useState(false);
 
   useEffect(() => {
@@ -3582,7 +3582,7 @@ export function IncentiveView() {
         setHwDraft(asDraft(d.hwSales));
         setRentalDraft(asDraft(d.rentalSales));
         setLeaderDraft(Object.fromEntries(
-          Object.entries(d.leaderScores || {}).map(([k, v]) => [k, v == null ? "" : String(v)])));
+          Object.entries(d.channelUsage || {}).map(([k, v]) => [k, v == null ? "" : String(v)])));
       })
       .catch(notifyError)
       .finally(() => setLoading(false));
@@ -3609,24 +3609,31 @@ export function IncentiveView() {
       + (Number(String(rentalDraft[i]).replace(/[^0-9]/g, "")) || 0));
     const total = nbmMonthly.reduce((a, b) => a + b, 0);
     const avg = total / 3;
-    const eligible = avg >= cfg.monthlyTarget;
+    // 지급 조건 두 가지 — 둘 다 충족해야 지급
+    const countAvg = data.totalCount / 3;
+    const revenueOk = avg >= cfg.monthlyTarget;
+    const countOk = countAvg >= cfg.countTarget;
+    const eligible = revenueOk && countOk;
     const pool = Math.round(total * (cfg.poolRate / 100));
 
+    /* 각 지표는 '3명 중 최댓값 = 100점' 비례 환산 (계획서 IV-3) */
     const rows = data.scored.map((r) => {
-      const raw = leaderDraft[r.name];
-      const v = raw === "" || raw == null ? null : Number(raw);
-      return { ...r, leaderScore: Number.isFinite(v) ? Math.max(0, Math.min(cfg.leaderMax, v)) : null };
+      const raw = usageDraft[r.name];
+      const v = raw === "" || raw == null ? 0 : Number(raw);
+      return { ...r, usage: Number.isFinite(v) && v >= 0 ? v : 0 };
     });
-    const sumC = rows.reduce((a, r) => a + r.count, 0);
-    const sumR = rows.reduce((a, r) => a + r.revenue, 0);
-    const sumL = rows.reduce((a, r) => a + (r.leaderScore ?? 0), 0);
-    const rat = (v, t) => (t > 0 ? v / t : 0);
+    const mx = (k) => Math.max(...rows.map((r) => r[k] || 0), 0);
+    const M = { count: mx("count"), revenue: mx("revenue"), docs: mx("docs"), cases: mx("cases"), usage: mx("usage") };
+    const to100 = (v, m) => (m > 0 ? (v / m) * 100 : 0);
     const scored = rows.map((r) => {
-      const countRatio = rat(r.count, sumC);
-      const revenueRatio = rat(r.revenue, sumR);
-      const leaderRatio = rat(r.leaderScore ?? 0, sumL);
-      return { ...r, countRatio, revenueRatio, leaderRatio,
-        score: countRatio * (cfg.wCount / 100) + revenueRatio * (cfg.wRevenue / 100) + leaderRatio * (cfg.wLeader / 100) };
+      const docScore = to100(r.docs, M.docs);
+      const usageScore = to100(r.usage, M.usage);
+      const caseScore = to100(r.cases, M.cases);
+      const leaderScore = (docScore + usageScore + caseScore) / 3;   // 3개 지표 동일 가중
+      const countScore = to100(r.count, M.count);
+      const revenueScore = to100(r.revenue, M.revenue);
+      return { ...r, docScore, usageScore, caseScore, leaderScore, countScore, revenueScore,
+        score: leaderScore * (cfg.wLeader / 100) + countScore * (cfg.wCount / 100) + revenueScore * (cfg.wRevenue / 100) };
     });
     const ranked = [...scored]
       .sort((a, b) => b.score - a.score || b.count - a.count || a.name.localeCompare(b.name))
@@ -3642,27 +3649,29 @@ export function IncentiveView() {
         amount: Math.round(pool * (shareOf(r.name) / 100)) })),
     ];
     // 팀장 평가를 아무도 안 넣으면 가중치 20%가 통째로 빠진 채 순위가 난다
-    const leaderMissing = rows.filter((r) => r.leaderScore == null).length;
-    return { nbm: { monthly: nbmMonthly, total, avg }, payout: { eligible, target: cfg.monthlyTarget, pool },
-             scored: ranked, tied, distribution, leaderMissing };
-  }, [data, hwDraft, rentalDraft, leaderDraft]);
+    const usageMissing = rows.filter((r) => !r.usage).length;
+    return { nbm: { monthly: nbmMonthly, total, avg },
+             payout: { eligible, revenueOk, countOk, target: cfg.monthlyTarget,
+                       countTarget: cfg.countTarget, countAvg, pool },
+             scored: ranked, tied, distribution, usageMissing };
+  }, [data, hwDraft, rentalDraft, usageDraft]);
 
   const sameArr = (a, b) => [0, 1, 2].every((i) =>
     String(a?.[i] ?? "").replace(/[^0-9]/g, "") === String(b?.[i] ?? "").replace(/[^0-9]/g, ""));
   const dirty = !data ? false : !(
     sameArr(hwDraft, (data.hwSales || []).map((v) => (v == null ? "" : v)))
     && sameArr(rentalDraft, (data.rentalSales || []).map((v) => (v == null ? "" : v)))
-    && Object.keys({ ...(data.leaderScores || {}), ...leaderDraft }).every((k) => {
-      const a = data.leaderScores?.[k]; const b = leaderDraft[k];
+    && Object.keys({ ...(data.channelUsage || {}), ...usageDraft }).every((k) => {
+      const a = data.channelUsage?.[k]; const b = usageDraft[k];
       return String(a ?? "") === String(b ?? "");
     }));
 
   const saveHw = async () => {
     setHwSaving(true);
     try {
-      const leaderScores = Object.fromEntries(
-        Object.entries(leaderDraft).map(([k, v]) => [k, v === "" ? null : Number(v)]));
-      await api.erpIncentiveSave({ year, quarter, hwSales: toNums(hwDraft), rentalSales: toNums(rentalDraft), leaderScores });
+      const channelUsage = Object.fromEntries(
+        Object.entries(usageDraft).map(([k, v]) => [k, v === "" ? null : Number(v)]));
+      await api.erpIncentiveSave({ year, quarter, hwSales: toNums(hwDraft), rentalSales: toNums(rentalDraft), channelUsage });
       // 저장 후 재계산된 순위·배분을 다시 받는다
       const d = await api.erpIncentive({ year, quarter });
       setData(d);
@@ -3675,8 +3684,9 @@ export function IncentiveView() {
       <div className="h-eyebrow">Sales</div>
       <div className="h-title">인센티브</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
-        재원은 <strong>분기 합산 NBM 매출의 일정 비율</strong>, 지급은 <strong>분기 평균이 월 목표 이상</strong>일 때만 나갑니다.
-        영업 3명은 결제수·매출·팀장평가로 종합 순위를 내어 1위에게 보너스를 더하고, 영업지원은 고정 비율입니다.
+        재원은 <strong>3개월 누적 NBM 매출 × 0.5%</strong>이고, <strong>매출·개수 두 조건을 모두 충족</strong>해야 지급됩니다.
+        영업 3명은 결제수·매출·팀장평가로 순위를 내어 1위에게 보너스를 더하고, 영업지원은 고정 비율입니다.
+        팀장 평가는 상담자료 승인·채널톡 활용·사례 공유 3개 지표로 자동 산정되며, 채널톡 활용 횟수만 직접 입력합니다.
       </div>
 
       <div className="row" style={{ gap: 8, margin: "16px 0 4px", alignItems: "center", flexWrap: "wrap" }}>
@@ -3705,15 +3715,31 @@ export function IncentiveView() {
                     {ok ? "지급 조건 달성" : "지급 조건 미달"}
                   </span>
                   <div className="small" style={{ marginTop: 8 }}>
+                    <span style={{ color: live.payout.revenueOk ? "#1F6B3A" : "#C5221F", fontWeight: 700 }}>
+                      {live.payout.revenueOk ? "✓" : "✕"} 매출
+                    </span>{" "}
                     분기 평균 <strong>{formatWon(Math.round(live.nbm.avg))}</strong>
-                    <span style={{ color: "var(--muted)" }}> / 월 목표 {formatWon(live.payout.target)}</span>
-                    {!ok && gap > 0 && (
+                    <span style={{ color: "var(--muted)" }}> / 기준 {formatWon(live.payout.target)}</span>
+                    {!live.payout.revenueOk && gap > 0 && (
                       <span style={{ color: "#C5221F", fontWeight: 700 }}> · {formatWon(Math.round(gap))} 부족</span>
                     )}
                   </div>
-                  <div className={"inc-bar " + (ok ? "" : "no")}><i style={{ width: `${pct}%` }} /></div>
-                  <div className="small" style={{ color: "var(--muted)", marginTop: 8 }}>
-                    분기 합산 NBM {formatWon(live.nbm.total)} · 신규센터 마감 {data.totalCount}건
+                  <div className={"inc-bar " + (live.payout.revenueOk ? "" : "no")}><i style={{ width: `${pct}%` }} /></div>
+                  <div className="small" style={{ marginTop: 10 }}>
+                    <span style={{ color: live.payout.countOk ? "#1F6B3A" : "#C5221F", fontWeight: 700 }}>
+                      {live.payout.countOk ? "✓" : "✕"} 개수
+                    </span>{" "}
+                    분기 평균 <strong>{live.payout.countAvg.toFixed(1)}개</strong>
+                    <span style={{ color: "var(--muted)" }}> / 기준 {live.payout.countTarget}개</span>
+                    {!live.payout.countOk && (
+                      <span style={{ color: "#C5221F", fontWeight: 700 }}> · {(live.payout.countTarget - live.payout.countAvg).toFixed(1)}개 부족</span>
+                    )}
+                  </div>
+                  <div className={"inc-bar " + (live.payout.countOk ? "" : "no")}>
+                    <i style={{ width: `${Math.min(100, (live.payout.countAvg / live.payout.countTarget) * 100)}%` }} />
+                  </div>
+                  <div className="small" style={{ color: "var(--muted)", marginTop: 10 }}>
+                    분기 합산 NBM {formatWon(live.nbm.total)} · 신규센터 마감 {data.totalCount}건 · 두 조건을 모두 채워야 지급됩니다
                   </div>
                 </div>
                 <div className="inc-pool">
@@ -3729,13 +3755,12 @@ export function IncentiveView() {
           <div className="rate-plan-title" style={{ marginTop: 20 }}>
             인센티브 분배
             <span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 8 }}>
-              종합 점수 = 결제수 {data.settings.wCount} + 매출 {data.settings.wRevenue} + 팀장평가 {data.settings.wLeader}점 · 영업 3명 합계 100점
+              최종 점수 = 결제수 {data.settings.wCount}% + 매출 {data.settings.wRevenue}% + 팀장평가 {data.settings.wLeader}% · 각 지표는 3명 중 최댓값을 100점으로 환산
             </span>
           </div>
           <div className="inc-grid">
             {live.distribution.map((row) => {
               const sc = live.scored.find((x) => x.name === row.name);
-              const maxScore = Math.max(...live.scored.map((x) => x.score), 0.0001);
               return (
                 <div key={row.name} className={"inc-card" + (row.top ? " top" : "")}>
                   <div className="who">
@@ -3764,25 +3789,38 @@ export function IncentiveView() {
                       <div className="inc-sep" />
                       <div className="inc-metric">
                         <span className="k">종합 점수</span>
-                        <span className="v" style={{ fontSize: 15 }}>{(sc.score * 100).toFixed(1)}<span style={{ color: "var(--muted)", fontWeight: 500, fontSize: 12 }}>점</span></span>
+                        <span className="v" style={{ fontSize: 15 }}>{sc.score.toFixed(1)}<span style={{ color: "var(--muted)", fontWeight: 500, fontSize: 12 }}>점</span></span>
                       </div>
-                      <div className="inc-score"><i style={{ width: `${(sc.score / maxScore) * 100}%` }} /></div>
+                      <div className="inc-score"><i style={{ width: `${Math.min(100, sc.score)}%` }} /></div>
                       <div className="inc-metric" style={{ marginTop: 10 }}>
                         <span className="k">결제 수</span>
-                        <span className="v">{sc.count}건 <span style={{ color: "var(--muted)", fontWeight: 500 }}>{(sc.countRatio * 100).toFixed(1)}%</span></span>
+                        <span className="v">{sc.count}건 <span style={{ color: "var(--muted)", fontWeight: 500 }}>{sc.countScore.toFixed(0)}점</span></span>
                       </div>
                       <div className="inc-metric">
                         <span className="k">기여 매출</span>
-                        <span className="v">{formatWon(sc.revenue)} <span style={{ color: "var(--muted)", fontWeight: 500 }}>{(sc.revenueRatio * 100).toFixed(1)}%</span></span>
+                        <span className="v">{formatWon(sc.revenue)} <span style={{ color: "var(--muted)", fontWeight: 500 }}>{sc.revenueScore.toFixed(0)}점</span></span>
+                      </div>
+                      <div className="inc-sep" />
+                      <div className="inc-metric">
+                        <span className="k" style={{ fontWeight: 700, color: "var(--ink)" }}>팀장 평가</span>
+                        <span className="v">{sc.leaderScore.toFixed(1)}<span style={{ color: "var(--muted)", fontWeight: 500, fontSize: 12 }}>점</span></span>
                       </div>
                       <div className="inc-metric">
-                        <span className="k">팀장 평가</span>
+                        <span className="k">· 상담자료 선정</span>
+                        <span className="v">{sc.docs}건 <span style={{ color: "var(--muted)", fontWeight: 500 }}>{sc.docScore.toFixed(0)}점</span></span>
+                      </div>
+                      <div className="inc-metric">
+                        <span className="k">· 채널톡 활용</span>
                         <span className="v">
-                          <input className="inc-lead-in" value={leaderDraft[row.name] ?? ""} inputMode="decimal"
-                            onChange={(e) => setLeaderDraft((prev) => ({ ...prev, [row.name]: e.target.value.replace(/[^0-9.]/g, "") }))}
-                            placeholder="-" />
-                          <span style={{ color: "var(--muted)", fontWeight: 500 }}> / {data.settings.leaderMax}</span>
+                          <input className="inc-lead-in" value={usageDraft[row.name] ?? ""} inputMode="numeric"
+                            onChange={(e) => setUsageDraft((prev) => ({ ...prev, [row.name]: e.target.value.replace(/[^0-9]/g, "") }))}
+                            placeholder="0" />
+                          <span style={{ color: "var(--muted)", fontWeight: 500 }}> 회 {sc.usageScore.toFixed(0)}점</span>
                         </span>
+                      </div>
+                      <div className="inc-metric">
+                        <span className="k">· 사례 공유</span>
+                        <span className="v">{sc.cases}건 <span style={{ color: "var(--muted)", fontWeight: 500 }}>{sc.caseScore.toFixed(0)}점</span></span>
                       </div>
                     </>
                   )}
@@ -3803,10 +3841,10 @@ export function IncentiveView() {
               1·2위의 점수와 결제 수가 같습니다 — 팀장 확정이 필요합니다.
             </div>
           )}
-          {live.leaderMissing > 0 && (
+          {live.usageMissing > 0 && (
             <div className="small" style={{ marginTop: 8, color: "#8A5512", background: "#FFF4E0", border: "1px solid #F2D9A8", borderRadius: 10, padding: "9px 12px", lineHeight: 1.5 }}>
-              팀장 평가가 {live.leaderMissing === live.scored.length ? "아직 비어 있어" : "일부 비어 있어"} {data.settings.wLeader}점이 순위에 반영되지 않았습니다 (지금 세 명 합계 {(live.scored.reduce((a, r) => a + r.score, 0) * 100).toFixed(0)}점).
-              점수를 넣으면 바로 다시 계산되고, <strong>저장</strong>을 눌러야 기록에 남습니다.
+              채널톡 활용 횟수가 {live.usageMissing === live.scored.length ? "아직 비어 있어" : "일부 비어 있어"} 팀장 평가 3개 지표 중 하나가 0점으로 잡혀 있습니다.
+              숫자를 넣으면 바로 다시 계산되고, <strong>저장</strong>을 눌러야 기록에 남습니다.
             </div>
           )}
 
@@ -9564,191 +9602,220 @@ function ConsultApproveCell({ approved, at, mine, busy, onToggle }) {
   );
 }
 
-export function ConsultDocsView() {
+/** 상담자료·성공사례 공용 화면 — 세일즈팀이 등록하고 COO가 승인한다.
+ *  승인된 건수가 인센티브의 팀장 평가 지표로 그대로 넘어간다. */
+function ApprovalListView({ kind }) {
+  const isCase = kind === "case";
+  const T = isCase
+    ? { title: "성공사례", eyebrow: "Sales", label: "사례 제목",
+        desc: "성공·실패 상담 사례를 등록하면 COO가 승인합니다. 승인된 건수가 인센티브 팀장 평가의 '상담 사례공유 건수'로 반영됩니다.",
+        listTitle: "사례 목록", ph: "예) 필라테스 3지점 계약 — 견적 분리 제안", notePh: "노션·슬랙 링크나 핵심 요약" }
+    : { title: "상담자료", eyebrow: "Sales", label: "매크로명",
+        desc: "상담자료(매크로)를 등록하면 COO가 승인합니다. 승인된 건수가 인센티브 팀장 평가의 '상담자료선정 개수'로 반영됩니다.",
+        listTitle: "자료 목록", ph: "예) 26_2차_스마트상점", notePh: "링크·메모" };
+
   const today = new Date();
   const curQ = Math.floor(today.getMonth() / 3) + 1;
   const [range, setRange] = useState(() => quarterRangeOf(today.getFullYear(), curQ));
-  const [docs, setDocs] = useState([]);
+  const [rows, setRows] = useState([]);
   const [canUpload, setCanUpload] = useState(false);
-  const [role, setRole] = useState(null); // "ceo" | "coo" | null
+  const [role, setRole] = useState(null); // "coo" | null
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ title: "", note: "" });
+  const [form, setForm] = useState({ title: "", note: "", outcome: "success" });
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState("");
 
   const load = useCallback(async ([from, to]) => {
     setLoading(true);
     try {
-      const res = await api.erpConsultDocs(from || to ? { from, to } : {});
-      setDocs(res.docs || []);
+      const q = from || to ? { from, to } : {};
+      const res = isCase ? await api.erpSalesCases(q) : await api.erpConsultDocs(q);
+      setRows((isCase ? res.cases : res.docs) || []);
       setCanUpload(!!res.canUpload);
       setRole(res.role || null);
     } catch (e) { notifyError(e); }
     finally { setLoading(false); }
-  }, []);
+  }, [isCase]);
 
   useEffect(() => { load(range); }, [range, load]);
 
   const submit = async () => {
-    if (!form.title.trim()) { notifyError(new Error("매크로명을 입력하세요")); return; }
+    if (!form.title.trim()) { notifyError(new Error(`${T.label}을 입력하세요`)); return; }
     setSaving(true);
     try {
-      await api.erpConsultCreate({ title: form.title, note: form.note });
+      if (isCase) await api.erpSalesCaseCreate({ title: form.title, note: form.note, outcome: form.outcome });
+      else await api.erpConsultCreate({ title: form.title, note: form.note });
       toastSuccess("등록했습니다");
-      setForm({ title: "", note: "" });
+      setForm({ title: "", note: "", outcome: "success" });
       load(range);
     } catch (e) { notifyError(e); }
     finally { setSaving(false); }
   };
 
-  const toggleApprove = async (doc) => {
-    const cur = role === "ceo" ? doc.ceoApproved : doc.cooApproved;
-    setBusyId(doc.id);
+  const toggle = async (row) => {
+    if (role !== "coo") return;
+    setBusyId(row.id);
     try {
-      const updated = await api.erpConsultApprove(doc.id, !cur);
-      setDocs((prev) => prev.map((d) => (d.id === doc.id ? updated : d)));
+      const next = !row.cooApproved;
+      if (isCase) await api.erpSalesCaseApprove(row.id, next);
+      else await api.erpConsultApprove(row.id, next);
+      setRows((prev) => prev.map((x) => (x.id === row.id ? { ...x, cooApproved: next } : x)));
     } catch (e) { notifyError(e); }
     finally { setBusyId(""); }
   };
 
-  const removeDoc = async (doc) => {
-    const ok = await confirmAction(`'${doc.title}' 자료를 삭제할까요?`, `${doc.authorName} · ${new Date(doc.createdAt).toLocaleDateString("ko-KR")}`);
-    if (!ok) return;
-    try { await api.erpConsultDelete(doc.id); toastSuccess("삭제했습니다"); load(range); } catch (e) { notifyError(e); }
+  const remove = async (row) => {
+    if (!(await confirmAction(`'${row.title}' 을 삭제할까요?`))) return;
+    try {
+      if (isCase) await api.erpSalesCaseDelete(row.id); else await api.erpConsultDelete(row.id);
+      setRows((prev) => prev.filter((x) => x.id !== row.id));
+    } catch (e) { notifyError(e); }
   };
 
-  // 담당자별 통계: 등록 / COO 승인 / CEO 승인 / 완료(둘 다) / 완료율
-  const stats = useMemo(() => {
+  // 담당자별 등록 / 승인 / 승인율 — 인센티브에 들어가는 숫자가 이 '승인' 열이다
+  const stats = (() => {
     const map = new Map();
-    for (const d of docs) {
-      const k = d.authorName || d.authorEmail;
-      const s = map.get(k) || { name: k, total: 0, coo: 0, ceo: 0, done: 0 };
+    for (const d of rows) {
+      const k = d.authorName || "(미상)";
+      const s = map.get(k) || { name: k, total: 0, ok: 0 };
       s.total += 1;
-      if (d.cooApproved) s.coo += 1;
-      if (d.ceoApproved) s.ceo += 1;
-      if (d.cooApproved && d.ceoApproved) s.done += 1;
+      if (d.cooApproved) s.ok += 1;
       map.set(k, s);
     }
-    const rows = [...map.values()].sort((a, b) => b.total - a.total);
-    const sum = rows.reduce((acc, r) => ({ total: acc.total + r.total, coo: acc.coo + r.coo, ceo: acc.ceo + r.ceo, done: acc.done + r.done }), { total: 0, coo: 0, ceo: 0, done: 0 });
-    return { rows, sum };
-  }, [docs]);
-
-  const pct = (a, b) => (b > 0 ? `${Math.round((a / b) * 100)}%` : "-");
-  const presetQ = (offset) => {
-    const base = new Date(today.getFullYear(), today.getMonth() + offset * 3, 1);
-    const q = Math.floor(base.getMonth() / 3) + 1;
-    setRange(quarterRangeOf(base.getFullYear(), q));
-  };
+    const list = [...map.values()].sort((a, b) => b.ok - a.ok || b.total - a.total);
+    const sum = list.reduce((a, r) => ({ total: a.total + r.total, ok: a.ok + r.ok }), { total: 0, ok: 0 });
+    return { list, sum };
+  })();
 
   return (
-    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40 }}>
-      <div className="h-eyebrow">Sales</div>
-      <div className="h-title">상담자료 컨펌</div>
+    <div className="fade pad wide" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">{T.eyebrow}</div>
+      <div className="h-title">{T.title}</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
-        세일즈팀이 상담자료(매크로)를 등록하면 COO·CEO가 각각 승인합니다. 담당자는 올린 사람으로 자동 지정됩니다.
-        {role && <> · <strong>{role === "ceo" ? "CEO" : "COO"} 승인 권한</strong>으로 접속 중</>}
+        {T.desc}
+        {role === "coo" && <> · <strong>승인 권한</strong>으로 접속 중</>}
       </div>
 
-      <div className="sales-toolbar" style={{ marginTop: 14, gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <div className="row" style={{ gap: 6, margin: "14px 0 4px", flexWrap: "wrap", alignItems: "center" }}>
         <span className="small" style={{ fontWeight: 700 }}>기간</span>
         <input className="input" type="date" style={{ maxWidth: 150 }} value={range[0]} onChange={(e) => setRange([e.target.value, range[1]])} />
         <span className="small">~</span>
         <input className="input" type="date" style={{ maxWidth: 150 }} value={range[1]} onChange={(e) => setRange([range[0], e.target.value])} />
-        <button type="button" className="btn btn-sm btn-ghost" onClick={() => presetQ(0)}>이번 분기</button>
-        <button type="button" className="btn btn-sm btn-ghost" onClick={() => presetQ(-1)}>지난 분기</button>
-        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setRange(monthRangeOf(today.getFullYear(), today.getMonth() + 1))}>이번 달</button>
+        {[0, -1].map((off) => (
+          <button key={off} type="button" className="btn btn-sm btn-ghost" onClick={() => {
+            const base = new Date(today.getFullYear(), today.getMonth() + off * 3, 1);
+            setRange(quarterRangeOf(base.getFullYear(), Math.floor(base.getMonth() / 3) + 1));
+          }}>{off === 0 ? "이번 분기" : "지난 분기"}</button>
+        ))}
         <button type="button" className="btn btn-sm btn-ghost" onClick={() => setRange(["", ""])}>전체</button>
       </div>
 
       {canUpload && (
-        <div className="card" style={{ marginTop: 12, padding: 14 }}>
-          <div className="small" style={{ fontWeight: 800, marginBottom: 8, color: "var(--accent-deep)" }}>새 상담자료 등록</div>
-          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-            <input className="input" style={{ flex: "2 1 220px" }} placeholder="매크로명 (예: 신규상담_요금안내_v3)" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-            <input className="input" style={{ flex: "3 1 260px" }} placeholder="링크·메모 (선택)" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
-            <button type="button" className="btn btn-accent btn-sm" style={{ flex: "0 0 auto" }} disabled={saving} onClick={submit}>{saving ? "등록 중…" : "등록"}</button>
+        <div className="card" style={{ marginTop: 14, padding: "16px 18px" }}>
+          <div className="h-eyebrow" style={{ marginBottom: 10 }}>새로 등록</div>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+            {isCase && (
+              <div>
+                <div className="small" style={{ marginBottom: 4, color: "var(--muted)" }}>구분</div>
+                <select value={form.outcome} onChange={(e) => setForm((f) => ({ ...f, outcome: e.target.value }))}
+                  style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "9px 10px", fontFamily: "inherit", fontSize: 13.5 }}>
+                  <option value="success">성공</option>
+                  <option value="fail">실패</option>
+                </select>
+              </div>
+            )}
+            <div style={{ flex: "1 1 240px", minWidth: 0 }}>
+              <div className="small" style={{ marginBottom: 4, color: "var(--muted)" }}>{T.label}</div>
+              <input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                placeholder={T.ph}
+                style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 13.5 }} />
+            </div>
+            <div style={{ flex: "1 1 240px", minWidth: 0 }}>
+              <div className="small" style={{ marginBottom: 4, color: "var(--muted)" }}>메모 (선택)</div>
+              <input value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
+                placeholder={T.notePh}
+                style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontFamily: "inherit", fontSize: 13.5 }} />
+            </div>
+            <button type="button" className="btn btn-accent btn-sm" onClick={submit} disabled={saving}>
+              {saving ? "등록 중…" : "등록"}
+            </button>
           </div>
         </div>
       )}
 
       {loading ? <div className="spinner" /> : (
         <>
-          <div className="rate-plan-block">
-            <div className="rate-plan-title">담당자별 통계</div>
-            <div className="erp-tbl-wrap">
-              <table className="erp-tbl erp-tbl-center">
-                <thead>
-                  <tr>
-                    <th>담당자</th>
-                    <th>등록</th>
-                    <th>COO 승인</th>
-                    <th>CEO 승인</th>
-                    <th>완료(둘 다)</th>
-                    <th>완료율</th>
-                  </tr>
-                </thead>
+          <div className="rate-plan-block" style={{ marginTop: 18 }}>
+            <div className="rate-plan-title">담당자별 승인 현황 <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>· 인센티브에 반영되는 건 '승인' 열입니다</span></div>
+            <div className="dash-table-wrap">
+              <table className="dash-table">
+                <thead><tr><th className="label">담당자</th><th>등록</th><th>승인</th><th>승인율</th></tr></thead>
                 <tbody>
-                  {stats.rows.map((r) => (
+                  {stats.list.map((r) => (
                     <tr key={r.name}>
-                      <td style={{ fontWeight: 700 }}>{r.name}</td>
+                      <td className="label"><AssigneeBadge name={r.name} /></td>
                       <td className="num">{r.total}</td>
-                      <td className="num">{r.coo}</td>
-                      <td className="num">{r.ceo}</td>
-                      <td className="num" style={{ fontWeight: 800 }}>{r.done}</td>
-                      <td className="num">{pct(r.done, r.total)}</td>
+                      <td className="num" style={{ fontWeight: 800 }}>{r.ok}</td>
+                      <td className="num">{r.total ? `${Math.round((r.ok / r.total) * 100)}%` : "-"}</td>
                     </tr>
                   ))}
-                  {stats.rows.length > 0 && (
-                    <tr style={{ background: "#FFF8F0", fontWeight: 800 }}>
-                      <td>합계</td>
-                      <td className="num">{stats.sum.total}</td>
-                      <td className="num">{stats.sum.coo}</td>
-                      <td className="num">{stats.sum.ceo}</td>
-                      <td className="num">{stats.sum.done}</td>
-                      <td className="num">{pct(stats.sum.done, stats.sum.total)}</td>
+                  {!stats.list.length && <tr><td colSpan={4} className="erp-tbl-empty">이 기간에 등록된 건이 없습니다.</td></tr>}
+                  {stats.list.length > 1 && (
+                    <tr style={{ borderTop: "2px solid var(--line)" }}>
+                      <td className="label" style={{ fontWeight: 800 }}>합계</td>
+                      <td className="num" style={{ fontWeight: 800 }}>{stats.sum.total}</td>
+                      <td className="num" style={{ fontWeight: 800 }}>{stats.sum.ok}</td>
+                      <td />
                     </tr>
                   )}
-                  {!stats.rows.length && <tr><td colSpan={6} className="erp-tbl-empty">이 기간에 등록된 자료가 없습니다</td></tr>}
                 </tbody>
               </table>
             </div>
           </div>
 
-          <div className="rate-plan-block">
-            <div className="rate-plan-title">자료 목록 <span className="small" style={{ fontWeight: 500 }}>({docs.length}건)</span></div>
-            <div className="erp-tbl-wrap">
-              <table className="erp-tbl erp-tbl-center">
+          <div className="rate-plan-block" style={{ marginTop: 18 }}>
+            <div className="rate-plan-title">{T.listTitle} <span className="small" style={{ fontWeight: 500 }}>({rows.length}건)</span></div>
+            <div className="dash-table-wrap">
+              <table className="dash-table">
                 <thead>
                   <tr>
-                    <th style={{ whiteSpace: "nowrap" }}>등록일</th>
-                    <th style={{ whiteSpace: "nowrap" }}>담당자</th>
-                    <th>매크로명</th>
-                    <th>링크·메모</th>
-                    <th>COO 승인</th>
-                    <th>CEO 승인</th>
-                    <th>관리</th>
+                    <th className="label">제목</th>
+                    {isCase && <th>구분</th>}
+                    <th>담당자</th>
+                    <th>등록일</th>
+                    <th>승인</th>
+                    {role === "coo" && <th />}
                   </tr>
                 </thead>
                 <tbody>
-                  {docs.map((d) => (
+                  {rows.map((d) => (
                     <tr key={d.id}>
-                      <td style={{ whiteSpace: "nowrap" }}>{new Date(d.createdAt).toLocaleDateString("ko-KR", { year: "2-digit", month: "numeric", day: "numeric" })}</td>
-                      <td style={{ whiteSpace: "nowrap", fontWeight: 700 }}>{d.authorName}</td>
-                      <td style={{ fontWeight: 700 }}>{d.title}</td>
-                      <td style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.note || ""}>
-                        {/^https?:\/\//.test(d.note || "") ? <a href={d.note} target="_blank" rel="noreferrer">{d.note}</a> : (d.note || "-")}
+                      <td className="label">
+                        <div className="cell-ttl">{d.title}</div>
+                        {d.note && <div className="cell-sub">{d.note}</div>}
                       </td>
-                      <td><ConsultApproveCell approved={d.cooApproved} at={d.cooAt} mine={role === "coo"} busy={busyId === d.id} onToggle={() => toggleApprove(d)} /></td>
-                      <td><ConsultApproveCell approved={d.ceoApproved} at={d.ceoAt} mine={role === "ceo"} busy={busyId === d.id} onToggle={() => toggleApprove(d)} /></td>
-                      <td style={{ whiteSpace: "nowrap" }}>
-                        {role === "coo"
-                          ? <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => removeDoc(d)}>삭제</button>
-                          : <span className="small">-</span>}
+                      {isCase && (
+                        <td>
+                          <span className="tag" style={{ background: d.outcome === "fail" ? "#FBE2DF" : "#D3F8DF", color: d.outcome === "fail" ? "#B3261E" : "#1F6B3A", fontSize: 11.5 }}>
+                            {d.outcome === "fail" ? "실패" : "성공"}
+                          </span>
+                        </td>
+                      )}
+                      <td><AssigneeBadge name={d.authorName} /></td>
+                      <td className="num">{new Date(d.createdAt).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}</td>
+                      <td>
+                        <button type="button" className={"erp-badge " + (d.cooApproved ? "green" : "gray")}
+                          onClick={() => toggle(d)} disabled={role !== "coo" || busyId === d.id}
+                          style={{ border: "none", cursor: role === "coo" ? "pointer" : "default", fontFamily: "inherit" }}>
+                          {d.cooApproved ? "승인" : "대기"}
+                        </button>
                       </td>
+                      {role === "coo" && (
+                        <td><button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => remove(d)}>✕</button></td>
+                      )}
                     </tr>
                   ))}
-                  {!docs.length && <tr><td colSpan={7} className="erp-tbl-empty">이 기간에 등록된 자료가 없습니다. {canUpload ? "위에서 첫 자료를 등록해 보세요." : ""}</td></tr>}
+                  {!rows.length && <tr><td colSpan={role === "coo" ? 6 : 5} className="erp-tbl-empty">이 기간에 등록된 건이 없습니다.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -9758,6 +9825,9 @@ export function ConsultDocsView() {
     </div>
   );
 }
+
+export function ConsultDocsView() { return <ApprovalListView kind="doc" />; }
+export function SalesCasesView() { return <ApprovalListView kind="case" />; }
 
 // ───────── 브로제이 계기판 (2026년 계기판 시트 · 소유자 전용) ─────────
 function brojFmt(v, format) {

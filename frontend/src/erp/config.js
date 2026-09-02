@@ -16,9 +16,10 @@ export const ERP_MODULES = [
   { id: "broj-dashboard", label: "브로제이 계기판", icon: "gauge", group: "sales", ownerOnly: true },
   { id: "sales-revenue", label: "매출 분석", icon: "chart", group: "sales", ownerOnly: true },
   { id: "iot-leads", label: "IoT 견적 관리", icon: "board", group: "sales" },
-  { id: "incentive", label: "인센티브", icon: "chart", group: "sales", ownerOnly: true },
-  // 세일즈팀 + CEO/COO(승인권자)에게만 노출 — ErpApp에서 /erp/consult-docs/access로 판별
-  { id: "consult-docs", label: "상담자료 컨펌", icon: "meet", group: "sales-docs", groupLabel: "세일즈 자료", consultGate: true },
+  // 세일즈 평가 — 세일즈팀 + CEO/COO에게 노출 (ErpApp에서 /erp/consult-docs/access로 판별)
+  { id: "consult-docs", label: "상담자료", icon: "meet", group: "sales-eval", groupLabel: "세일즈 평가", consultGate: true },
+  { id: "sales-cases", label: "성공사례", icon: "book", group: "sales-eval", consultGate: true },
+  { id: "incentive", label: "인센티브", icon: "chart", group: "sales-eval", consultGate: true },
   { id: "sales-tax-invoice", label: "세금계산서 미발행", icon: "board", group: "mgmt", groupLabel: "경영지원팀" },
   { id: "construction", label: "아파트너 공사관리", icon: "board", group: "construction", groupLabel: "공사 관리 (나만)", ownerOnly: true },
   // 브로제이 공사는 플로우가 달라 별도 관리 예정 — 잠시 메뉴에서 숨김 (라우트·orderType는 그대로 유지)

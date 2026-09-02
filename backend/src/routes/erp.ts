@@ -1328,13 +1328,13 @@ async function requireOwner(req: AuthedRequest, res: Response): Promise<boolean>
 const INCENTIVE_SALES = ["Jo", "Jeff", "Sofia"] as const;   // 영업 (1위 경쟁 대상)
 const INCENTIVE_SUPPORT = "Owen";                            // 영업지원 (고정 비율)
 const INCENTIVE_DEFAULTS = {
-  monthlyTarget: 150_000_000,  // 월 매출 목표
-  poolRate: 0.5,               // 재원 = 매출 × %
-  supportShare: 15,            // 오웬 고정 %
+  monthlyTarget: 165_000_000,  // 매출 조건 — 분기 평균 1억 6,500만원 이상
+  countTarget: 90,             // 개수 조건 — 분기 평균 90개 이상
+  poolRate: 0.5,               // 재원 = 3개월 누적 매출 × %
+  supportShare: 15,            // 영업지원 고정 %
   baseShare: 25,               // 영업 기본 %
   topBonus: 10,                // 1위 추가 %
-  wCount: 40, wRevenue: 40, wLeader: 20,  // 종합 점수 가중치 %
-  leaderMax: 10,               // 팀장 평가 만점
+  wCount: 40, wRevenue: 40, wLeader: 20,  // 최종 점수 가중치 %
 };
 type IncentiveSettings = typeof INCENTIVE_DEFAULTS;
 
@@ -1388,6 +1388,8 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
 
   /* ---- 인센티브 산정 ---- */
   const cfg = incentiveSettingsOf(saved?.settings);
+  // 각 지표는 '3명 중 최댓값 = 100점' 비례 환산 (계획서 IV-3)
+  const to100 = (v: number, max: number) => (max > 0 ? (v / max) * 100 : 0);
   const money = (a: unknown): Array<number | null> =>
     [0, 1, 2].map((i) => {
       const v = Array.isArray(a) ? Number((a as unknown[])[i]) : NaN;
@@ -1398,37 +1400,66 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
   const nbmMonthly = [0, 1, 2].map((i) => (hwSales[i] ?? 0) + (rentalSales[i] ?? 0));
   const nbmTotal = nbmMonthly.reduce((a, b) => a + b, 0);
   const nbmAvg = nbmTotal / 3;
-  const eligible = nbmAvg >= cfg.monthlyTarget;
+  // 지급 조건 두 가지 — 둘 다 충족해야 지급 (계획서 II-1)
+  const countAvg = totalCount / 3;
+  const revenueOk = nbmAvg >= cfg.monthlyTarget;
+  const countOk = countAvg >= cfg.countTarget;
+  const eligible = revenueOk && countOk;
   const pool = Math.round(nbmTotal * (cfg.poolRate / 100));
 
-  const scoresRaw = (saved?.leaderScores ?? {}) as Record<string, unknown>;
+  /* 팀장 평가 3개 정량 지표 — 상담자료·사례는 COO 승인분만, 채널톡 활용도는 수기 입력 */
+  const qStart = new Date(`${year}-${String(monthNums[0]).padStart(2, "0")}-01T00:00:00+09:00`);
+  const qEnd = new Date(Date.UTC(year, monthNums[2], 1) - 9 * 3600 * 1000);
+  const [docRows, caseRows] = await Promise.all([
+    prisma.erpConsultDoc.findMany({
+      where: { cooApproved: true, cooAt: { gte: qStart, lt: qEnd } },
+      select: { authorName: true },
+    }),
+    prisma.erpSalesCase.findMany({
+      where: { cooApproved: true, cooAt: { gte: qStart, lt: qEnd } },
+      select: { authorName: true },
+    }),
+  ]);
+  const tally = (rows: Array<{ authorName: string }>) => {
+    const m = new Map<string, number>();
+    for (const r of rows) m.set(r.authorName, (m.get(r.authorName) ?? 0) + 1);
+    return m;
+  };
+  const docCount = tally(docRows);
+  const caseCount = tally(caseRows);
+  const usageRaw = (saved?.channelUsage ?? {}) as Record<string, unknown>;
+
   const salesRows = INCENTIVE_SALES.map((name) => {
-    const agg = byAssignee.get(name);
-    const leaderRaw = Number(scoresRaw[name]);
+    const u = Number(usageRaw[name]);
     return {
       name,
-      count: agg?.total ?? 0,
+      count: byAssignee.get(name)?.total ?? 0,
       revenue: revenueByAssignee.get(name) ?? 0,
-      leaderScore: Number.isFinite(leaderRaw) ? Math.max(0, Math.min(cfg.leaderMax, leaderRaw)) : null,
+      docs: docCount.get(name) ?? 0,
+      cases: caseCount.get(name) ?? 0,
+      usage: Number.isFinite(u) && u >= 0 ? u : 0,
     };
   });
-  const sumCount = salesRows.reduce((a, r) => a + r.count, 0);
-  const sumRevenue = salesRows.reduce((a, r) => a + r.revenue, 0);
-  const sumLeader = salesRows.reduce((a, r) => a + (r.leaderScore ?? 0), 0);
-  const ratio = (v: number, total: number) => (total > 0 ? v / total : 0);
+  const maxOf = (k: "count" | "revenue" | "docs" | "cases" | "usage") =>
+    Math.max(...salesRows.map((r) => r[k]), 0);
+  const mx = { count: maxOf("count"), revenue: maxOf("revenue"), docs: maxOf("docs"), cases: maxOf("cases"), usage: maxOf("usage") };
 
   const scored = salesRows.map((r) => {
-    const countRatio = ratio(r.count, sumCount);
-    const revenueRatio = ratio(r.revenue, sumRevenue);
-    const leaderRatio = ratio(r.leaderScore ?? 0, sumLeader);
+    const docScore = to100(r.docs, mx.docs);
+    const usageScore = to100(r.usage, mx.usage);
+    const caseScore = to100(r.cases, mx.cases);
+    const leaderScore = (docScore + usageScore + caseScore) / 3;   // 3개 지표 동일 가중
+    const countScore = to100(r.count, mx.count);
+    const revenueScore = to100(r.revenue, mx.revenue);
     return {
-      ...r, countRatio, revenueRatio, leaderRatio,
-      score: countRatio * (cfg.wCount / 100) + revenueRatio * (cfg.wRevenue / 100) + leaderRatio * (cfg.wLeader / 100),
+      ...r, docScore, usageScore, caseScore, leaderScore, countScore, revenueScore,
+      score: leaderScore * (cfg.wLeader / 100) + countScore * (cfg.wCount / 100) + revenueScore * (cfg.wRevenue / 100),
     };
   });
-  // 동점이면 결제 수가 많은 사람이 1위 (그래도 동점이면 팀장이 결정 — 이름순으로 고정 표기)
+  // 동점이면 결제 수가 많은 사람이 1위
   const ranked = [...scored].sort((a, b) => b.score - a.score || b.count - a.count || a.name.localeCompare(b.name));
-  const topName = sumLeader > 0 || sumCount > 0 || sumRevenue > 0 ? ranked[0]?.name ?? null : null;
+  const anyData = salesRows.some((r) => r.count || r.revenue || r.docs || r.cases || r.usage);
+  const topName = anyData ? ranked[0]?.name ?? null : null;
   const tied = ranked.length > 1 && ranked[0].score === ranked[1].score && ranked[0].count === ranked[1].count;
 
   const shareOf = (name: string) => cfg.baseShare + (name === topName ? cfg.topBonus : 0);
@@ -1452,10 +1483,10 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
     // NBM은 두 갈래 수기 입력 — 이카운트 HW매출 + 렌탈 매출 (이카운트 손익 조회 API 미제공)
     hwSales,
     rentalSales,
-    leaderScores: Object.fromEntries(salesRows.map((r) => [r.name, r.leaderScore])),
+    channelUsage: Object.fromEntries(salesRows.map((r) => [r.name, r.usage || null])),
     settings: cfg,
     nbm: { monthly: nbmMonthly, total: nbmTotal, avg: nbmAvg },
-    payout: { eligible, target: cfg.monthlyTarget, pool },
+    payout: { eligible, revenueOk, countOk, target: cfg.monthlyTarget, countTarget: cfg.countTarget, countAvg, pool },
     scored: ranked.map((r, i) => ({ ...r, rank: i + 1 })),
     topName,
     tied,
@@ -1476,14 +1507,14 @@ erpRouter.put("/incentive", async (req: AuthedRequest, res) => {
   const patch: Record<string, unknown> = {};
   if (b.hwSales !== undefined) patch.hwSales = money(b.hwSales);
   if (b.rentalSales !== undefined) patch.rentalSales = money(b.rentalSales);
-  if (b.leaderScores !== undefined) {
-    const src = (b.leaderScores ?? {}) as Record<string, unknown>;
+  if (b.channelUsage !== undefined) {
+    const src = (b.channelUsage ?? {}) as Record<string, unknown>;
     const out: Record<string, number | null> = {};
     for (const name of INCENTIVE_SALES) {
       const v = Number(src[name]);
-      out[name] = Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : null;
+      out[name] = Number.isFinite(v) && v >= 0 ? Math.round(v) : null;
     }
-    patch.leaderScores = out;
+    patch.channelUsage = out;
   }
   if (b.settings !== undefined) patch.settings = incentiveSettingsOf(b.settings);
   const saved = await prisma.erpIncentiveQuarter.upsert({
@@ -1491,14 +1522,14 @@ erpRouter.put("/incentive", async (req: AuthedRequest, res) => {
     create: {
       year, quarter,
       hwSales: patch.hwSales ?? [], rentalSales: patch.rentalSales ?? [],
-      leaderScores: (patch.leaderScores ?? {}) as object,
+      channelUsage: (patch.channelUsage ?? {}) as object,
       settings: (patch.settings ?? {}) as object,
     },
     update: patch,
   });
   res.json({
     hwSales: saved.hwSales, rentalSales: saved.rentalSales,
-    leaderScores: saved.leaderScores, settings: saved.settings,
+    channelUsage: saved.channelUsage, settings: saved.settings,
   });
 });
 
@@ -2306,8 +2337,9 @@ async function consultAccess(userId: string) {
     select: { id: true, email: true, name: true },
   });
   const email = (user?.email || "").trim().toLowerCase();
-  const role: "ceo" | "coo" | null =
-    email === CONSULT_CEO_EMAIL ? "ceo" : email === CONSULT_COO_EMAIL ? "coo" : null;
+  // 승인은 COO 단독. CEO는 보기만 한다 (CEO 최종 승인 단계 폐지)
+  const role: "coo" | null = email === CONSULT_COO_EMAIL ? "coo" : null;
+  const isCeo = email === CONSULT_CEO_EMAIL;
   const emp = await prisma.erpEmployee.findFirst({
     where: { OR: [{ userId }, { email }] },
     include: { department: true },
@@ -2318,7 +2350,7 @@ async function consultAccess(userId: string) {
     user,
     role,
     canUpload,
-    visible: canUpload || role != null,
+    visible: canUpload || role != null || isCeo,
     displayName: emp?.name || user?.name || email,
   };
 }
@@ -2364,15 +2396,65 @@ erpRouter.post("/consult-docs", async (req: AuthedRequest, res) => {
 
 erpRouter.post("/consult-docs/:id/approve", async (req: AuthedRequest, res) => {
   const a = await consultAccess(req.userId!);
-  if (!a.role) return res.status(403).json({ error: "승인은 CEO·COO만 할 수 있습니다" });
+  if (a.role !== "coo") return res.status(403).json({ error: "승인은 COO만 할 수 있습니다" });
   const value = !!req.body?.value;
   const doc = await prisma.erpConsultDoc.update({
     where: { id: req.params.id },
-    data: a.role === "ceo"
-      ? { ceoApproved: value, ceoAt: value ? new Date() : null }
-      : { cooApproved: value, cooAt: value ? new Date() : null },
+    data: { cooApproved: value, cooAt: value ? new Date() : null },
   });
   res.json(doc);
+});
+
+/* ---- 상담 성공·실패 사례 (상담자료와 같은 권한·승인 흐름) ---- */
+erpRouter.get("/sales-cases", async (req: AuthedRequest, res) => {
+  const a = await consultAccess(req.userId!);
+  if (!a.visible) return res.status(403).json({ error: "세일즈팀 및 승인권자 전용 메뉴입니다" });
+  const from = cstDate(req.query.from);
+  const to = cstDate(req.query.to);
+  const where: Record<string, unknown> = {};
+  if (from || to) {
+    where.createdAt = {
+      ...(from ? { gte: new Date(`${from}T00:00:00+09:00`) } : {}),
+      ...(to ? { lte: new Date(`${to}T23:59:59+09:00`) } : {}),
+    };
+  }
+  const cases = await prisma.erpSalesCase.findMany({ where, orderBy: { createdAt: "desc" } });
+  res.json({ cases, canUpload: a.canUpload, role: a.role });
+});
+
+erpRouter.post("/sales-cases", async (req: AuthedRequest, res) => {
+  const a = await consultAccess(req.userId!);
+  if (!a.canUpload) return res.status(403).json({ error: "사례 등록은 세일즈팀만 할 수 있습니다" });
+  const title = String(req.body?.title ?? "").trim();
+  const note = String(req.body?.note ?? "").trim();
+  const outcome = String(req.body?.outcome ?? "success") === "fail" ? "fail" : "success";
+  if (!title) return res.status(400).json({ error: "사례 제목을 입력하세요" });
+  const row = await prisma.erpSalesCase.create({
+    data: {
+      title, outcome, note: note || null,
+      authorId: a.user!.id, authorName: a.displayName,
+      authorEmail: (a.user!.email || "").toLowerCase(),
+    },
+  });
+  res.json(row);
+});
+
+erpRouter.post("/sales-cases/:id/approve", async (req: AuthedRequest, res) => {
+  const a = await consultAccess(req.userId!);
+  if (a.role !== "coo") return res.status(403).json({ error: "승인은 COO만 할 수 있습니다" });
+  const value = !!req.body?.value;
+  const row = await prisma.erpSalesCase.update({
+    where: { id: req.params.id },
+    data: { cooApproved: value, cooAt: value ? new Date() : null },
+  });
+  res.json(row);
+});
+
+erpRouter.delete("/sales-cases/:id", async (req: AuthedRequest, res) => {
+  const a = await consultAccess(req.userId!);
+  if (a.role !== "coo") return res.status(403).json({ error: "삭제 권한이 없습니다 (COO 전용)" });
+  await prisma.erpSalesCase.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
 });
 
 erpRouter.delete("/consult-docs/:id", async (req: AuthedRequest, res) => {

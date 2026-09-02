@@ -238,6 +238,15 @@ export const api = {
   erpSmartStoreRoundCreate: (body) => req("/erp/smartstore/rounds", { method: "POST", body }),
   erpSmartStoreRoundUpdate: (id, body) => req(`/erp/smartstore/rounds/${id}`, { method: "PATCH", body }),
   erpSmartStoreRoundDelete: (id) => req(`/erp/smartstore/rounds/${id}`, { method: "DELETE" }),
+  erpSalesCases: (q = {}) => {
+    const p = new URLSearchParams();
+    if (q.from) p.set("from", q.from);
+    if (q.to) p.set("to", q.to);
+    return req(`/erp/sales-cases?${p}`);
+  },
+  erpSalesCaseCreate: (body) => req("/erp/sales-cases", { method: "POST", body }),
+  erpSalesCaseApprove: (id, value) => req(`/erp/sales-cases/${id}/approve`, { method: "POST", body: { value } }),
+  erpSalesCaseDelete: (id) => req(`/erp/sales-cases/${id}`, { method: "DELETE" }),
   erpIncentive: ({ year, quarter } = {}) => {
     const p = new URLSearchParams();
     if (year) p.set("year", year);
