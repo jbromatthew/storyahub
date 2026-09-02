@@ -58,6 +58,8 @@ function ErpNav({ tab, kbView, onSelect, onLogout, user, hiddenIds, collapsedGro
     const rule = hiddenIds?.menuRules?.[m.id];
     const baseOk = (!m.ownerOnly || user?.erpAccess?.isOwner) && (!m.execOnly || isErpExec(user));
     if (!(rule === undefined ? baseOk : rule)) return false;
+    // 규칙으로 명시 허용된 메뉴는 게이트를 다시 묻지 않는다 (팀·개인별 지정이 가능하도록)
+    if (rule === true) return true;
     return !(m.consultGate && !hiddenIds?.consultVisible) && !(m.vendorGate && !hiddenIds?.vendorVisible);
   });
   // 그룹 헤더가 있는 그룹만 접기 대상 (지식경영 등 헤더 없는 항목은 항상 표시)
@@ -431,15 +433,9 @@ export default function ErpApp() {
       case "vendors": return <VendorsView />;
       case "install-schedule": return <InstallScheduleView />;
       case "consult-docs": return <ConsultDocsView />;
+      // 성공사례는 지식경영으로 넘어가지 않고 그 페이지 안에서 쓰고 읽는다
       case "sales-cases": return (
-        <SalesCasesView
-          articles={kbArticles}
-          openWrite={(a) => setKbView({
-            article: a || { section: "sales_case", visibility: "company",
-              blocks: [{ type: "h", val: "" }, { type: "text", val: "" }] },
-            mode: a?.id ? "read" : "edit",
-          })}
-        />
+        <SalesCasesView articles={kbArticles} prefs={prefs} reload={loadKb} />
       );
       case "sales-daily": return <SalesDailyView />;
       default: return <KnowledgeFeed articles={kbArticles} section="knowledge" openWrite={openKbWrite} erpMode />;

@@ -1350,7 +1350,9 @@ function incentiveSettingsOf(saved: unknown): IncentiveSettings {
 
 // 분기별 결제주문내역 담당자별 마감 카운트 (+ NBM HW매출은 이카운트 연동 예정)
 erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  // 보기는 세일즈팀·CEO·COO, 값 수정은 COO만 (canEdit로 알린다)
+  const access = await consultAccess(req.userId!, "incentive");
+  if (!access.visible) return res.status(403).json({ error: "세일즈팀 및 승인권자 전용 메뉴입니다" });
   const now = new Date(Date.now() + 9 * 3600 * 1000);
   const year = Number(req.query.year) || now.getUTCFullYear();
   const quarter = Math.min(4, Math.max(1, Number(req.query.quarter) || Math.floor(now.getUTCMonth() / 3) + 1));
@@ -1486,6 +1488,7 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
     // NBM은 두 갈래 수기 입력 — 이카운트 HW매출 + 렌탈 매출 (이카운트 손익 조회 API 미제공)
     hwSales,
     rentalSales,
+    canEdit: access.role === "coo",
     channelUsage: Object.fromEntries(salesRows.map((r) => [r.name, r.usage || null])),
     settings: cfg,
     nbm: { monthly: nbmMonthly, total: nbmTotal, avg: nbmAvg },
@@ -1499,7 +1502,9 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
 
 // NBM(HW매출) 분기 수기 저장
 erpRouter.put("/incentive", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  // NBM 매출·채널톡 활용 횟수는 COO만 수정한다
+  const access = await consultAccess(req.userId!, "incentive");
+  if (access.role !== "coo") return res.status(403).json({ error: "인센티브 값 수정은 COO만 할 수 있습니다" });
   const b = (req.body ?? {}) as Record<string, unknown>;
   const year = Number(b.year);
   const quarter = Number(b.quarter);
@@ -2334,7 +2339,15 @@ erpRouter.delete("/install-schedule/:id", async (req: AuthedRequest, res) => {
 const CONSULT_CEO_EMAIL = "david@broj.company";
 const CONSULT_COO_EMAIL = "matthew@broj.company";
 
-async function consultAccess(userId: string) {
+/** 메뉴 접근 규칙(ErpMenuAccess)이 이 사람을 허용하는지. 규칙이 없으면 null. */
+async function menuRuleAllows(menuId: string, email: string, deptId: string): Promise<boolean | null> {
+  const rule = await prisma.erpMenuAccess.findUnique({ where: { menuId } });
+  if (!rule) return null;
+  return rule.emails.map((e) => e.toLowerCase()).includes(email)
+    || (!!deptId && rule.deptIds.includes(deptId));
+}
+
+async function consultAccess(userId: string, menuId?: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { id: true, email: true, name: true },
@@ -2348,7 +2361,10 @@ async function consultAccess(userId: string) {
     include: { department: true },
   });
   const deptName = emp?.department?.name || "";
-  const canUpload = /세일즈|영업|sales/i.test(deptName);
+  const byDept = /세일즈|영업|sales/i.test(deptName);
+  // 메뉴 권한에 규칙이 있으면 부서 판정과 함께 본다 — 팀·개인 단위로 열어줄 수 있다
+  const ruled = menuId ? await menuRuleAllows(menuId, email, emp?.departmentId || "") : null;
+  const canUpload = ruled === null ? byDept : (byDept || ruled);
   return {
     user,
     role,
@@ -2359,12 +2375,12 @@ async function consultAccess(userId: string) {
 }
 
 erpRouter.get("/consult-docs/access", async (req: AuthedRequest, res) => {
-  const a = await consultAccess(req.userId!);
+  const a = await consultAccess(req.userId!, "consult-docs");
   res.json({ visible: a.visible, canUpload: a.canUpload, role: a.role });
 });
 
 erpRouter.get("/consult-docs", async (req: AuthedRequest, res) => {
-  const a = await consultAccess(req.userId!);
+  const a = await consultAccess(req.userId!, "consult-docs");
   if (!a.visible) return res.status(403).json({ error: "세일즈팀 및 승인권자 전용 메뉴입니다" });
   const from = cstDate(req.query.from);
   const to = cstDate(req.query.to);
@@ -2380,7 +2396,7 @@ erpRouter.get("/consult-docs", async (req: AuthedRequest, res) => {
 });
 
 erpRouter.post("/consult-docs", async (req: AuthedRequest, res) => {
-  const a = await consultAccess(req.userId!);
+  const a = await consultAccess(req.userId!, "consult-docs");
   if (!a.canUpload) return res.status(403).json({ error: "상담자료 등록은 세일즈팀만 할 수 있습니다" });
   const title = String(req.body?.title ?? "").trim();
   const note = String(req.body?.note ?? "").trim();
@@ -2398,7 +2414,7 @@ erpRouter.post("/consult-docs", async (req: AuthedRequest, res) => {
 });
 
 erpRouter.post("/consult-docs/:id/approve", async (req: AuthedRequest, res) => {
-  const a = await consultAccess(req.userId!);
+  const a = await consultAccess(req.userId!, "consult-docs");
   if (a.role !== "coo") return res.status(403).json({ error: "승인은 COO만 할 수 있습니다" });
   const value = !!req.body?.value;
   const doc = await prisma.erpConsultDoc.update({
@@ -2410,7 +2426,7 @@ erpRouter.post("/consult-docs/:id/approve", async (req: AuthedRequest, res) => {
 
 /* ---- 상담 성공사례 — 지식경영 글(section=sales_case)에 COO 승인만 얹는다 ---- */
 erpRouter.get("/sales-cases", async (req: AuthedRequest, res) => {
-  const a = await consultAccess(req.userId!);
+  const a = await consultAccess(req.userId!, "sales-cases");
   if (!a.visible) return res.status(403).json({ error: "세일즈팀 및 승인권자 전용 메뉴입니다" });
   const from = cstDate(req.query.from);
   const to = cstDate(req.query.to);
@@ -2438,7 +2454,7 @@ erpRouter.get("/sales-cases", async (req: AuthedRequest, res) => {
 });
 
 erpRouter.post("/sales-cases/:id/approve", async (req: AuthedRequest, res) => {
-  const a = await consultAccess(req.userId!);
+  const a = await consultAccess(req.userId!, "sales-cases");
   if (a.role !== "coo") return res.status(403).json({ error: "승인은 COO만 할 수 있습니다" });
   const value = !!req.body?.value;
   const row = await prisma.kbArticle.update({
@@ -2449,7 +2465,7 @@ erpRouter.post("/sales-cases/:id/approve", async (req: AuthedRequest, res) => {
 });
 
 erpRouter.delete("/consult-docs/:id", async (req: AuthedRequest, res) => {
-  const a = await consultAccess(req.userId!);
+  const a = await consultAccess(req.userId!, "consult-docs");
   // 삭제는 COO(matthew)만 가능
   if (a.role !== "coo") return res.status(403).json({ error: "삭제 권한이 없습니다 (COO 전용)" });
   const doc = await prisma.erpConsultDoc.findUnique({ where: { id: req.params.id } });

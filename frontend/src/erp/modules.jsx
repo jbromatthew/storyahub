@@ -6,6 +6,7 @@ import { notifyError, toastSuccess, toast } from "../toast.js";
 import { confirmAction } from "../confirm.js";
 import { StatViz, seriesColor } from "./charts.jsx";
 import KnowledgeFeed from "../components/KnowledgeFeed.jsx";
+import KbEditor, { KbReadView } from "../components/KbEditor.jsx";
 import { BROJ_SEAL, BROJ_LOGO } from "./brojSeal.js";
 import { pickImageFile, pickAnyFile, uploadFile, mediaUrl, isPickCancelled, compressImageToJpeg } from "../api/upload.js";
 
@@ -3818,9 +3819,11 @@ export function IncentiveView() {
                       <div className="inc-metric">
                         <span className="k">· 채널톡 활용</span>
                         <span className="v">
-                          <input className="inc-lead-in" value={usageDraft[row.name] ?? ""} inputMode="numeric"
-                            onChange={(e) => setUsageDraft((prev) => ({ ...prev, [row.name]: e.target.value.replace(/[^0-9]/g, "") }))}
-                            placeholder="0" />
+                          {data.canEdit ? (
+                            <input className="inc-lead-in" value={usageDraft[row.name] ?? ""} inputMode="numeric"
+                              onChange={(e) => setUsageDraft((prev) => ({ ...prev, [row.name]: e.target.value.replace(/[^0-9]/g, "") }))}
+                              placeholder="0" />
+                          ) : (sc.usage || 0)}
                           <span style={{ color: "var(--muted)", fontWeight: 500 }}> 회 {sc.usageScore.toFixed(0)}점</span>
                         </span>
                       </div>
@@ -3858,7 +3861,7 @@ export function IncentiveView() {
           <div className="card" style={{ marginTop: 20, padding: "16px 18px" }}>
             <div className="h-eyebrow" style={{ marginBottom: 4 }}>NBM 매출 입력 (공급가액)</div>
             <div className="small" style={{ color: "var(--muted)", marginBottom: 10 }}>
-              재원 산정 기준입니다. 팀장 평가와 함께 저장돼요.
+              재원 산정 기준입니다. {data.canEdit ? "채널톡 활용 횟수와 함께 저장돼요." : "COO만 수정할 수 있습니다."}
             </div>
             <div className="dash-table-wrap">
               <table className="inc-nbm">
@@ -3878,10 +3881,14 @@ export function IncentiveView() {
                       <td>{row.label}</td>
                       {data.months.map((m, i) => (
                         <td key={m}>
-                          <input
-                            value={row.draft[i] ? Number(String(row.draft[i]).replace(/[^0-9]/g, "")).toLocaleString() : ""}
-                            onChange={(e) => row.set((prev) => prev.map((v, j) => (j === i ? e.target.value.replace(/[^0-9]/g, "") : v)))}
-                            placeholder="0" inputMode="numeric" />
+                          {data.canEdit ? (
+                            <input
+                              value={row.draft[i] ? Number(String(row.draft[i]).replace(/[^0-9]/g, "")).toLocaleString() : ""}
+                              onChange={(e) => row.set((prev) => prev.map((v, j) => (j === i ? e.target.value.replace(/[^0-9]/g, "") : v)))}
+                              placeholder="0" inputMode="numeric" />
+                          ) : (
+                            <span>{row.draft[i] ? formatWon(Number(String(row.draft[i]).replace(/[^0-9]/g, ""))) : "-"}</span>
+                          )}
                         </td>
                       ))}
                       <td style={{ fontWeight: 700 }}>{row.total ? formatWon(row.total) : "-"}</td>
@@ -3905,11 +3912,17 @@ export function IncentiveView() {
               <span className="small" style={{ color: "var(--muted)" }}>
                 재원은 NBM 기준, 개인 기여도는 결제주문내역(신규센터) 기준이라 두 합계는 다를 수 있어요.
               </span>
-              {dirty && <span className="small" style={{ color: "#8A5512", fontWeight: 700 }}>저장 안 된 변경</span>}
-              <button type="button" className={"btn btn-sm " + (dirty ? "btn-accent" : "btn-ghost")} onClick={saveHw}
-                disabled={hwSaving || !dirty} style={{ marginLeft: dirty ? 0 : "auto" }}>
-                {hwSaving ? "저장 중…" : dirty ? "저장" : "저장됨"}
-              </button>
+              {data.canEdit ? (
+                <>
+                  {dirty && <span className="small" style={{ color: "#8A5512", fontWeight: 700 }}>저장 안 된 변경</span>}
+                  <button type="button" className={"btn btn-sm " + (dirty ? "btn-accent" : "btn-ghost")} onClick={saveHw}
+                    disabled={hwSaving || !dirty} style={{ marginLeft: dirty ? 0 : "auto" }}>
+                    {hwSaving ? "저장 중…" : dirty ? "저장" : "저장됨"}
+                  </button>
+                </>
+              ) : (
+                <span className="small" style={{ marginLeft: "auto", color: "var(--muted)" }}>보기 전용 — 값 수정은 COO만 가능합니다</span>
+              )}
             </div>
           </div>
 
@@ -9833,8 +9846,33 @@ function ApprovalListView({ kind }) {
 }
 
 export function ConsultDocsView() { return <ApprovalListView kind="doc" />; }
-export function SalesCasesView({ articles, openWrite }) {
-  return <SalesCaseFeed articles={articles} openWrite={openWrite} />;
+export function SalesCasesView({ articles, prefs, reload }) {
+  // 글쓰기·읽기를 이 페이지 안에서 처리한다 (지식경영 화면으로 넘어가지 않음)
+  const [view, setView] = useState(null); // {article, mode: "edit"|"read"}
+  const blank = () => ({ section: "sales_case", visibility: "company",
+    blocks: [{ type: "h", val: "" }, { type: "text", val: "" }] });
+
+  if (view?.mode === "edit") {
+    return (
+      <KbEditor article={view.article} erpMode prefs={prefs}
+        back={() => setView(null)}
+        onSaved={() => { setView(null); reload?.(); }}
+        onDeleted={() => { setView(null); reload?.(); }}
+        categories={[...new Set(articles.filter((a) => a.section === "sales_case").map((a) => a.c).filter(Boolean))]} />
+    );
+  }
+  if (view?.mode === "read") {
+    return (
+      <KbReadView article={view.article} erpMode back={() => setView(null)}
+        onEdit={() => setView({ article: view.article, mode: "edit" })}
+        onArticleUpdated={() => reload?.()} />
+    );
+  }
+  return (
+    <SalesCaseFeed
+      articles={articles}
+      openWrite={(a) => setView({ article: a || blank(), mode: a?.id ? "read" : "edit" })} />
+  );
 }
 
 /** 성공사례 — 글쓰기·읽기는 지식경영 그대로 쓰고, 그 위에 COO 승인만 얹는다.
