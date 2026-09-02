@@ -24,9 +24,11 @@ export const ERP_MODULES = [
   // 브로제이 공사는 플로우가 달라 별도 관리 예정 — 잠시 메뉴에서 숨김 (라우트·orderType는 그대로 유지)
   // { id: "construction-broj", label: "브로제이 공사관리", icon: "board", group: "construction", ownerOnly: true },
   { id: "vendors", label: "업체 관리", icon: "admin", group: "construction", ownerOnly: true },
-  { id: "vendor-orders", label: "크라이저 발주", icon: "sales", group: "bizsupport", groupLabel: "영업지원", vendorGate: true },
+  // 그룹 이름표는 게이트가 없는 메뉴가 들고 있어야 한다 — 게이트 메뉴에 달면
+  // 권한이 막힌 사람에게 그룹 헤더째 사라지고, 게이트 없는 메뉴까지 따라 숨는다
+  { id: "smart-store", label: "스마트상점", icon: "board", group: "bizsupport", groupLabel: "영업지원" },
+  { id: "vendor-orders", label: "크라이저 발주", icon: "sales", group: "bizsupport", vendorGate: true },
   { id: "install-schedule", label: "설치일정 (브로제이)", icon: "board", group: "bizsupport", vendorGate: true },
-  { id: "smart-store", label: "스마트상점", icon: "board", group: "bizsupport" },
   { id: "kb", label: "지식경영", icon: "book", group: "kb", groupLabel: "지식" },
 ];
 
