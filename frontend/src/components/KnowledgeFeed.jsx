@@ -194,7 +194,7 @@ function KbArticleRow({ article, onOpen }) {
   );
 }
 
-function KbArticleCard({ article, onOpen, pinned, erpMode = false }) {
+export function KbArticleCard({ article, onOpen, pinned, erpMode = false, extra = null }) {
   const isFormal = article.status === "formal" || article.status === "formal_pending";
   const isPublic = article.visibility === "company";
   const visClass = erpMode ? (isPublic ? " kbh-vis-public" : " kbh-vis-private") : "";
@@ -219,6 +219,7 @@ function KbArticleCard({ article, onOpen, pinned, erpMode = false }) {
             {authorHint ? `${authorHint} · ` : ""}{article.d} · {kbReadMinutes(article)}분
           </span>
           {kbFileCount(article) > 0 && <span className="kbh-attach">📎 {kbFileCount(article)}</span>}
+          {extra}
         </div>
       </div>
     </div>

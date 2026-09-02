@@ -6,6 +6,7 @@ import { notifyError, toastSuccess, toast } from "../toast.js";
 import { confirmAction } from "../confirm.js";
 import { StatViz, seriesColor } from "./charts.jsx";
 import KbEditor, { KbReadView } from "../components/KbEditor.jsx";
+import { KbArticleCard } from "../components/KnowledgeFeed.jsx";
 import { BROJ_SEAL, BROJ_LOGO } from "./brojSeal.js";
 import { pickImageFile, pickAnyFile, uploadFile, mediaUrl, isPickCancelled, compressImageToJpeg } from "../api/upload.js";
 
@@ -9970,49 +9971,30 @@ function SalesCaseFeed({ articles, openWrite }) {
             : "아직 등록된 사례가 없습니다. 위 '+ 새 사례 작성'으로 첫 사례를 남겨보세요."}
         </div>
       ) : (
-        <div className="dash-table-wrap">
-          <table className="dash-table">
-            <thead>
-              <tr>
-                <th className="label">사례</th>
-                <th>분류</th>
-                <th>작성자</th>
-                <th>작성일</th>
-                <th>승인</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((a) => {
-                const c = byId.get(a.id);
-                return (
-                  <tr key={a.id} className="clickable" onClick={() => openWrite(a)}>
-                    <td className="label">
-                      <div className="cell-ttl">{a.t || "(제목 없음)"}</div>
-                      {(a.tags || []).length > 0 && (
-                        <div className="cell-sub">{a.tags.map((t) => `#${t}`).join(" ")}</div>
-                      )}
-                    </td>
-                    <td>{a.c && a.c !== "미분류" ? a.c : "-"}</td>
-                    <td><AssigneeBadge name={c?.authorName || "-"} /></td>
-                    <td className="num">{a.d || "-"}</td>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      {meta.role === "coo" ? (
-                        <button type="button" className={"erp-badge " + (c?.cooApproved ? "green" : "gray")}
-                          onClick={() => toggle(a.id, !!c?.cooApproved)} disabled={busyId === a.id}
-                          style={{ border: "none", cursor: "pointer", fontFamily: "inherit" }}>
-                          {c?.cooApproved ? "승인" : "대기"}
-                        </button>
-                      ) : (
-                        <span className={"erp-badge " + (c?.cooApproved ? "green" : "gray")}>
-                          {c?.cooApproved ? "승인" : "대기"}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="kbh-list kbh-listview">
+          {list.map((a) => {
+            const c = byId.get(a.id);
+            return (
+              <KbArticleCard
+                key={a.id} article={a} erpMode onOpen={() => openWrite(a)}
+                extra={
+                  <span onClick={(e) => e.stopPropagation()}>
+                    {meta.role === "coo" ? (
+                      <button type="button" className={"erp-badge " + (c?.cooApproved ? "green" : "gray")}
+                        onClick={() => toggle(a.id, !!c?.cooApproved)} disabled={busyId === a.id}
+                        style={{ border: "none", cursor: "pointer", fontFamily: "inherit" }}>
+                        {c?.cooApproved ? "승인" : "대기"}
+                      </button>
+                    ) : (
+                      <span className={"erp-badge " + (c?.cooApproved ? "green" : "gray")}>
+                        {c?.cooApproved ? "승인" : "대기"}
+                      </span>
+                    )}
+                  </span>
+                }
+              />
+            );
+          })}
         </div>
       )}
     </div>

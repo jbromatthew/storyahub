@@ -47,6 +47,9 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .mobile-menu-btn:active{background:var(--accent-soft);}
 .menu-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:80;}
 .mobile-drawer{position:fixed;top:0;left:0;bottom:0;width:min(280px,86vw);background:#fff;z-index:90;display:flex;flex-direction:column;padding:16px 14px;box-shadow:4px 0 24px rgba(0,0,0,.12);animation:drawerIn .2s ease;}
+/* 모바일에서 메뉴가 한 번에 눌리게 — 브라우저의 더블탭 확대 판정 지연을 없앤다 */
+.mobile-drawer,.mobile-drawer *{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+.mobile-drawer .sidenavitem,.mobile-drawer .sidenav-group-toggle{min-height:44px;}
 @keyframes drawerIn{from{transform:translateX(-100%)}to{transform:translateX(0)}}
 .mobile-drawer-hd{display:flex;align-items:center;justify-content:space-between;padding:4px 6px 16px;}
 .mobile-drawer-brand{font-size:18px;font-weight:900;}

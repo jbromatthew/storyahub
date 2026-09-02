@@ -197,8 +197,20 @@ export default function ErpApp() {
     try { localStorage.setItem("erp_side_collapsed", next ? "1" : "0"); } catch { /* ignore */ }
     return next;
   });
+  /* 그룹이 늘어 처음 열면 목록이 너무 길다. 기본은 전부 접고 첫 그룹만 펼친다.
+     한 번이라도 직접 접거나 펼치면 그 선택을 기억한다. */
+  const defaultCollapsed = () => {
+    const groups = [];
+    for (const m of ERP_MODULES) {
+      if (m.groupLabel && !groups.includes(m.group)) groups.push(m.group);
+    }
+    return groups.slice(1);
+  };
   const [collapsedGroups, setCollapsedGroups] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("erp_groups_collapsed") || "[]"); } catch { return []; }
+    try {
+      const raw = localStorage.getItem("erp_groups_collapsed");
+      return raw ? JSON.parse(raw) : defaultCollapsed();
+    } catch { return defaultCollapsed(); }
   });
   const toggleGroup = (g) => setCollapsedGroups((prev) => {
     const next = prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g];
