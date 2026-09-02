@@ -5,7 +5,6 @@ import { APPROVAL_BOXES, LEAVE_TYPES, LEAVE_POLICY, APPROVAL_CHAINS, FORM_CHAIN_
 import { notifyError, toastSuccess, toast } from "../toast.js";
 import { confirmAction } from "../confirm.js";
 import { StatViz, seriesColor } from "./charts.jsx";
-import KnowledgeFeed from "../components/KnowledgeFeed.jsx";
 import KbEditor, { KbReadView } from "../components/KbEditor.jsx";
 import { BROJ_SEAL, BROJ_LOGO } from "./brojSeal.js";
 import { pickImageFile, pickAnyFile, uploadFile, mediaUrl, isPickCancelled, compressImageToJpeg } from "../api/upload.js";
@@ -9877,15 +9876,26 @@ export function SalesCasesView({ articles, prefs, reload }) {
 
 /** 성공사례 — 글쓰기·읽기는 지식경영 그대로 쓰고, 그 위에 COO 승인만 얹는다.
  *  승인된 건수가 인센티브 팀장 평가의 '상담 사례공유 건수'로 들어간다. */
+/** 성공사례 목록 — 지식경영 피드를 쓰지 않고 이 페이지 전용으로 그린다.
+ *  글은 지식경영과 같은 블록 에디터로 쓰되, 목록·승인은 여기서만 다룬다. */
 function SalesCaseFeed({ articles, openWrite }) {
   const [meta, setMeta] = useState({ cases: [], role: null, canUpload: false });
+  const [q, setQ] = useState("");
   const [busyId, setBusyId] = useState("");
+
   const reload = useCallback(() => {
     api.erpSalesCases().then(setMeta).catch(notifyError);
   }, []);
   useEffect(() => { reload(); }, [reload, articles]);
 
-  const approved = new Map(meta.cases.map((c) => [c.id, c]));
+  const byId = new Map(meta.cases.map((c) => [c.id, c]));
+  const kw = q.trim().toLowerCase();
+  const list = articles
+    .filter((a) => a.section === "sales_case")
+    .filter((a) => !kw || (a.t || "").toLowerCase().includes(kw)
+      || (a.tags || []).some((t) => t.toLowerCase().includes(kw))
+      || (a.c || "").toLowerCase().includes(kw));
+
   const stats = (() => {
     const m = new Map();
     for (const c of meta.cases) {
@@ -9896,75 +9906,112 @@ function SalesCaseFeed({ articles, openWrite }) {
     return [...m.values()].sort((a, b) => b.ok - a.ok || b.total - a.total);
   })();
 
-  const toggle = async (c) => {
-    setBusyId(c.id);
+  const toggle = async (id, cur) => {
+    setBusyId(id);
     try {
-      await api.erpSalesCaseApprove(c.id, !c.cooApproved);
-      setMeta((p) => ({ ...p, cases: p.cases.map((x) => (x.id === c.id ? { ...x, cooApproved: !x.cooApproved } : x)) }));
+      await api.erpSalesCaseApprove(id, !cur);
+      setMeta((p) => ({ ...p, cases: p.cases.map((x) => (x.id === id ? { ...x, cooApproved: !cur } : x)) }));
     } catch (e) { notifyError(e); } finally { setBusyId(""); }
   };
 
   return (
-    <div className="fade" style={{ marginTop: 8 }}>
-      <div className="pad wide">
-        <div className="h-eyebrow">Sales</div>
-        <div className="h-title">성공사례</div>
-        <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
-          성공·실패 상담 사례를 지식경영과 같은 방식으로 길게 작성합니다.
-          COO가 승인한 건수가 인센티브 <strong>팀장 평가</strong>의 '상담 사례공유 건수'로 반영됩니다.
-        </div>
-
-        {meta.cases.length > 0 && (
-          <div className="rate-plan-block" style={{ marginTop: 16 }}>
-            <div className="rate-plan-title">
-              승인 현황
-              <span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 6 }}>
-                · 인센티브에 반영되는 건 '승인' 열입니다
-              </span>
-            </div>
-            <div className="dash-table-wrap">
-              <table className="dash-table">
-                <thead><tr><th className="label">담당자</th><th>작성</th><th>승인</th></tr></thead>
-                <tbody>
-                  {stats.map((r) => (
-                    <tr key={r.name}>
-                      <td className="label"><AssigneeBadge name={r.name} /></td>
-                      <td className="num">{r.total}</td>
-                      <td className="num" style={{ fontWeight: 800 }}>{r.ok}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {meta.role === "coo" && (
-              <div className="dash-table-wrap" style={{ marginTop: 10 }}>
-                <table className="dash-table">
-                  <thead><tr><th className="label">글</th><th>작성자</th><th>작성일</th><th>승인</th></tr></thead>
-                  <tbody>
-                    {meta.cases.map((c) => (
-                      <tr key={c.id}>
-                        <td className="label"><div className="cell-ttl">{c.title || "(제목 없음)"}</div></td>
-                        <td><AssigneeBadge name={c.authorName} /></td>
-                        <td className="num">{new Date(c.createdAt).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}</td>
-                        <td>
-                          <button type="button" className={"erp-badge " + (c.cooApproved ? "green" : "gray")}
-                            onClick={() => toggle(c)} disabled={busyId === c.id}
-                            style={{ border: "none", cursor: "pointer", fontFamily: "inherit" }}>
-                            {c.cooApproved ? "승인" : "대기"}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+    <div className="fade pad wide" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="row between" style={{ alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ flex: "1 1 300px", minWidth: 0 }}>
+          <div className="h-eyebrow">Sales</div>
+          <div className="h-title">성공사례</div>
+          <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+            성공·실패 상담 사례를 길게 적어 팀에 남깁니다.
+            COO가 승인한 건수가 인센티브 <strong>팀장 평가</strong>의 '상담 사례공유 건수'로 반영됩니다.
           </div>
-        )}
+        </div>
+        <button type="button" className="btn btn-accent" onClick={() => openWrite(null)}>+ 새 사례 작성</button>
       </div>
 
-      <KnowledgeFeed articles={articles} section="sales_case" openWrite={openWrite} erpMode />
+      {stats.length > 0 && (
+        <div className="rate-plan-block" style={{ marginTop: 18 }}>
+          <div className="rate-plan-title">
+            승인 현황
+            <span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 6 }}>
+              · 인센티브에 반영되는 건 '승인' 열입니다
+            </span>
+          </div>
+          <div className="dash-table-wrap">
+            <table className="dash-table">
+              <thead><tr><th className="label">담당자</th><th>작성</th><th>승인</th></tr></thead>
+              <tbody>
+                {stats.map((r) => (
+                  <tr key={r.name}>
+                    <td className="label"><AssigneeBadge name={r.name} /></td>
+                    <td className="num">{r.total}</td>
+                    <td className="num" style={{ fontWeight: 800 }}>{r.ok}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div className="row" style={{ gap: 8, margin: "18px 0 10px", alignItems: "center", flexWrap: "wrap" }}>
+        <input value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder="🔍 제목 · 태그 · 분류 검색"
+          style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "8px 12px", fontFamily: "inherit", fontSize: 13.5, minWidth: 240 }} />
+        <span className="small" style={{ color: "var(--muted)" }}>{list.length}건</span>
+      </div>
+
+      {!list.length ? (
+        <div className="small" style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+          {articles.some((a) => a.section === "sales_case")
+            ? "조건에 맞는 사례가 없습니다."
+            : "아직 등록된 사례가 없습니다. 위 '+ 새 사례 작성'으로 첫 사례를 남겨보세요."}
+        </div>
+      ) : (
+        <div className="dash-table-wrap">
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th className="label">사례</th>
+                <th>분류</th>
+                <th>작성자</th>
+                <th>작성일</th>
+                <th>승인</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((a) => {
+                const c = byId.get(a.id);
+                return (
+                  <tr key={a.id} className="clickable" onClick={() => openWrite(a)}>
+                    <td className="label">
+                      <div className="cell-ttl">{a.t || "(제목 없음)"}</div>
+                      {(a.tags || []).length > 0 && (
+                        <div className="cell-sub">{a.tags.map((t) => `#${t}`).join(" ")}</div>
+                      )}
+                    </td>
+                    <td>{a.c && a.c !== "미분류" ? a.c : "-"}</td>
+                    <td><AssigneeBadge name={c?.authorName || "-"} /></td>
+                    <td className="num">{a.d || "-"}</td>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      {meta.role === "coo" ? (
+                        <button type="button" className={"erp-badge " + (c?.cooApproved ? "green" : "gray")}
+                          onClick={() => toggle(a.id, !!c?.cooApproved)} disabled={busyId === a.id}
+                          style={{ border: "none", cursor: "pointer", fontFamily: "inherit" }}>
+                          {c?.cooApproved ? "승인" : "대기"}
+                        </button>
+                      ) : (
+                        <span className={"erp-badge " + (c?.cooApproved ? "green" : "gray")}>
+                          {c?.cooApproved ? "승인" : "대기"}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
