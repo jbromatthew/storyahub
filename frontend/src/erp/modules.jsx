@@ -6476,7 +6476,11 @@ export function SmartStoreView() {
 
   /* 접수는 고객이 아무 때나 남기므로, 화면을 열어둔 채로도 최신이어야 한다.
      다른 탭에 갔다 돌아오면 자동으로 다시 불러오고, 버튼으로도 즉시 받는다. */
+  /* 저장 중에는 자동 새로고침이 끼어들지 않게 한다. 확인창을 닫을 때 창 포커스가 돌아오면서
+     목록을 다시 받아오는데, 그 시점엔 서버 반영 전이라 예전 값으로 덮여 수정이 사라진다. */
+  const savingRef = useRef(0);
   const refreshApplies = async (silent) => {
+    if (silent && savingRef.current > 0) return;   // 저장 중이면 조용한 갱신은 건너뛴다
     if (!silent) setRefreshing(true);
     try {
       // 회차 드롭다운의 건수도 같이 맞춘다
@@ -6585,9 +6589,18 @@ export function SmartStoreView() {
   };
 
   const patchApply = async (a, body) => {
+    savingRef.current += 1;
     setApplies((prev) => prev.map((x) => (x.id === a.id ? { ...x, ...body } : x)));
-    try { await api.erpSmartStoreApplyUpdate(a.id, body); }
-    catch (e) { notifyError(e); loadApplies(sel); }
+    try {
+      const res = await api.erpSmartStoreApplyUpdate(a.id, body);
+      // 서버가 돌려준 값으로 확정 — 화면과 저장 결과가 어긋나지 않는다
+      if (res?.apply) setApplies((prev) => prev.map((x) => (x.id === a.id ? { ...x, ...res.apply } : x)));
+    } catch (e) {
+      notifyError(e);
+      loadApplies(sel);
+    } finally {
+      savingRef.current -= 1;
+    }
   };
 
   const delApply = async (a) => {
