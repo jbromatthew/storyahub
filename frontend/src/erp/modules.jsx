@@ -13057,17 +13057,37 @@ const CC_SECOND = [
   ["REGULAR_PAYMENT_CANCELED", "정기해지"],
 ];
 
+// CRM 요금제 파일명 ↔ 화면 표기
+const CC_TICKETS = [
+  ["broj_starter", "Starter"], ["broj_lite", "Lite"],
+  ["broj_basic", "Basic"], ["broj_basic_30", "Basic30"],
+  ["broj_essential", "Essential"], ["broj_essential_30", "Essential30"],
+  ["broj_standard", "Standard"], ["broj_standard_30", "Standard30"],
+  ["broj_pass", "Pass"], ["broj_pass_30", "Pass30"],
+  ["broj_pos", "Pos"], ["broj_pos_30", "Pos30"],
+  ["broj_pass_pos", "Passpos"], ["broj_pass_pos_30", "Passpos30"],
+  ["broj_sale_p_30", "Sale_p_30"],
+  ["broj_paul", "Paul"], ["broj_paul_30", "Paul30"],
+  ["broj_support", "Support"], ["broj_support_30", "Support30"],
+];
+const CC_TICKET_LABEL = Object.fromEntries(CC_TICKETS);
+
 const CC_PAY = {
-  NORMAL: { label: "정상", bg: "#D3F8DF", fg: "#1F6B3A" },
-  STOPPED: { label: "중지", bg: "#F2E3E3", fg: "#A33" },
-  FAILED: { label: "실패", bg: "#FBE3D5", fg: "#A34A00" },
-  CANCELED: { label: "해지", bg: "#EDEDED", fg: "#666" },
+  NORMAL: { label: "정상", cls: "ok" },
+  STOPPED: { label: "중지", cls: "bad" },
+  FAILED: { label: "실패", cls: "warn" },
+  CANCELED: { label: "해지", cls: "off" },
 };
 
 const CC_TYPE = {
   HEALTH: "헬스장", PILATES: "필라테스", YOGA: "요가", CROSSFIT: "크로스핏",
   GOLF: "골프", PT: "PT샵", SWIM: "수영", TENNIS: "테니스", BOXING: "복싱",
   DANCE: "댄스", STUDY: "스터디카페", ETC: "기타",
+};
+
+const CC_BLANK = {
+  keyword: "", first: "ALL", second: [], ticket: [], admin: "ALL",
+  installer: "", sort: "CLOSED_DTTM_DESC", newsfeedDays: null, newsfeedUnder: null,
 };
 
 function ccDay(v) {
@@ -13089,29 +13109,205 @@ function ccBiz(v) {
   return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}` : String(v || "");
 }
 
+/** 필터가 기본값에서 얼마나 벗어났는지 — 고급필터 버튼에 뱃지로 띄운다 */
+function ccAdvancedCount(f) {
+  let n = 0;
+  if (f.admin && f.admin !== "ALL") n++;
+  if (f.ticket?.length) n++;
+  if (f.installer) n++;
+  if (f.newsfeedDays != null && f.newsfeedUnder != null) n++;
+  return n;
+}
+
+function ccSameFilters(a, b) {
+  const norm = (f) => JSON.stringify({
+    keyword: f.keyword || "", first: f.first || "ALL",
+    second: [...(f.second || [])].sort(), ticket: [...(f.ticket || [])].sort(),
+    admin: f.admin || "ALL", installer: f.installer || "",
+    sort: f.sort || "CLOSED_DTTM_DESC",
+    nd: f.newsfeedDays ?? null, nu: f.newsfeedUnder ?? null,
+  });
+  return norm(a) === norm(b);
+}
+
+function CcCount({ n }) {
+  if (n === undefined || n === null) return null;
+  if (n < 0) return null; // 세지 못한 칸은 숫자를 감춘다
+  return <span className="cc-cnt">{n.toLocaleString()}</span>;
+}
+
 function CcPayTag({ status }) {
   if (!status) return <span className="small" style={{ color: "var(--muted)" }}>-</span>;
-  const s = CC_PAY[status] || { label: status, bg: "#EEE", fg: "#555" };
-  return <span className="tag" style={{ background: s.bg, color: s.fg, fontSize: 11.5 }}>{s.label}</span>;
+  const s = CC_PAY[status] || { label: status, cls: "off" };
+  return <span className={`cc-pill ${s.cls}`}>{s.label}</span>;
+}
+
+function CcSortHead({ k, sortKey, dir, onSort, children, style }) {
+  const on = sortKey === k;
+  return (
+    <th style={style} className={"cc-sortable" + (on ? " on" : "")} onClick={() => onSort(k)}>
+      <span>{children}</span>
+      <span className="cc-arrow">{on ? (dir === "asc" ? "▲" : "▼") : "⇅"}</span>
+    </th>
+  );
+}
+
+/** 고급필터 — CRM의 고급필터 모달과 같은 구성 */
+function CcAdvanced({ value, onApply, onClose }) {
+  const [admin, setAdmin] = useState(value.admin || "ALL");
+  const [useNews, setUseNews] = useState(value.newsfeedDays != null && value.newsfeedUnder != null);
+  const [days, setDays] = useState(value.newsfeedDays ?? "");
+  const [under, setUnder] = useState(value.newsfeedUnder ?? "");
+  const [ticket, setTicket] = useState(value.ticket || []);
+  const [installer, setInstaller] = useState(value.installer || "");
+
+  const allOn = ticket.length === 0 || ticket.length === CC_TICKETS.length;
+  const toggleAll = () => setTicket(ticket.length === CC_TICKETS.length ? [] : CC_TICKETS.map(([v]) => v));
+  const toggle = (v) => setTicket((p) => (p.includes(v) ? p.filter((x) => x !== v) : [...p, v]));
+
+  const reset = () => {
+    setAdmin("ALL"); setUseNews(false); setDays(""); setUnder(""); setTicket([]); setInstaller("");
+  };
+
+  const apply = () => {
+    const nd = useNews && days !== "" ? Math.min(Math.max(Number(days) || 0, 0), 7) : null;
+    const nu = useNews && under !== "" ? Math.max(Number(under) || 0, 0) : null;
+    if (useNews && (nd === null || nu === null)) {
+      return notifyError(new Error("주요기록은 최근 일수와 기록 건수를 둘 다 넣어야 적용됩니다"));
+    }
+    onApply({
+      admin,
+      // 전부 고르면 필터를 안 건 것과 같다 — 쿼리를 짧게 유지한다
+      ticket: ticket.length === CC_TICKETS.length ? [] : ticket,
+      installer: installer.trim(),
+      newsfeedDays: nd,
+      newsfeedUnder: nu,
+    });
+  };
+
+  return (
+    <OaOverlay wide title="고급필터" onClose={onClose}>
+      <div className="cc-sec">관리자 권한 접속</div>
+      <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+        {[["ALL", "전체"], ["CONNECTED", "내가 소속된 센터만"]].map(([v, label]) => (
+          <button key={v} type="button" className={"chip" + (admin === v ? " on" : "")} onClick={() => setAdmin(v)}>{label}</button>
+        ))}
+      </div>
+
+      <div className="cc-sec">이탈 위기</div>
+      <label className="cc-check">
+        <input type="checkbox" checked={useNews} onChange={(e) => setUseNews(e.target.checked)} />
+        <span>주요기록</span>
+      </label>
+      <div className="row" style={{ gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+        <input className="input" style={{ flex: "1 1 200px" }} inputMode="numeric" disabled={!useNews}
+          value={days} onChange={(e) => setDays(e.target.value)} placeholder="최근 일수 (최대 7)" />
+        <input className="input" style={{ flex: "1 1 200px" }} inputMode="numeric" disabled={!useNews}
+          value={under} onChange={(e) => setUnder(e.target.value)} placeholder="기록 건수 (이하)" />
+      </div>
+      <div className="small" style={{ marginTop: 6, color: "var(--muted)" }}>
+        최근 N일간 주요기록이 M건 이하인 센터를 찾습니다. 둘 다 넣어야 적용됩니다.
+      </div>
+
+      <div className="cc-sec">요금제</div>
+      <label className="cc-check">
+        <input type="checkbox" checked={allOn} onChange={toggleAll} />
+        <span>전체</span>
+      </label>
+      <div className="cc-ticketgrid">
+        {CC_TICKETS.map(([v, label]) => (
+          <label key={v} className="cc-check">
+            <input type="checkbox" checked={ticket.includes(v)} onChange={() => toggle(v)} />
+            <span>{label}</span>
+          </label>
+        ))}
+      </div>
+
+      <div className="cc-sec">설치</div>
+      <input className="input" value={installer} onChange={(e) => setInstaller(e.target.value)}
+        placeholder="설치팀 이름 키워드" />
+
+      <div className="row" style={{ gap: 8, marginTop: 20, alignItems: "center" }}>
+        <button type="button" className="btn btn-ghost" onClick={onClose}>닫기</button>
+        <button type="button" className="btn btn-ghost" style={{ marginLeft: "auto" }} onClick={reset}>초기화</button>
+        <button type="button" className="btn btn-accent" onClick={apply}>적용</button>
+      </div>
+    </OaOverlay>
+  );
+}
+
+/** 세그먼트 저장 — 지금 조건에 이름을 붙인다 */
+function CcSegmentSave({ filters, onDone, onClose }) {
+  const [name, setName] = useState("");
+  const [shared, setShared] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const chips = [];
+  if (filters.keyword) chips.push(`"${filters.keyword}"`);
+  chips.push(CC_FIRST.find(([v]) => v === filters.first)?.[1] || filters.first);
+  for (const s of filters.second || []) chips.push(CC_SECOND.find(([v]) => v === s)?.[1] || s);
+  for (const t of filters.ticket || []) chips.push(CC_TICKET_LABEL[t] || t);
+  if (filters.admin === "CONNECTED") chips.push("내 소속만");
+  if (filters.installer) chips.push(`설치팀 ${filters.installer}`);
+  if (filters.newsfeedDays != null) chips.push(`주요기록 ${filters.newsfeedDays}일 ${filters.newsfeedUnder}건 이하`);
+
+  const save = async () => {
+    if (!name.trim()) return notifyError(new Error("세그먼트 이름을 입력하세요"));
+    setBusy(true);
+    try {
+      const r = await api.erpCrmSegmentCreate({ name: name.trim(), filters, shared });
+      toastSuccess(`"${r.segment.name}" 세그먼트를 저장했어요`);
+      onDone();
+    } catch (e) { notifyError(e); } finally { setBusy(false); }
+  };
+
+  return (
+    <OaOverlay title="세그먼트로 저장" onClose={onClose}>
+      <div className="small" style={{ color: "var(--muted)", marginBottom: 12, lineHeight: 1.6 }}>
+        지금 걸어둔 검색 조건에 이름을 붙여 저장합니다. 나중에 이름만 누르면 그대로 다시 조회됩니다.
+      </div>
+      <OaField label="이름">
+        <input className="input" value={name} autoFocus maxLength={40}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") save(); }}
+          placeholder="예: 만료임박 Passpos" />
+      </OaField>
+      <div style={{ marginTop: 12 }}>
+        <div className="small" style={{ marginBottom: 6 }}>저장될 조건</div>
+        <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+          {chips.map((c, i) => <span key={i} className="tag">{c}</span>)}
+        </div>
+      </div>
+      <label className="cc-check" style={{ marginTop: 14 }}>
+        <input type="checkbox" checked={shared} onChange={(e) => setShared(e.target.checked)} />
+        <span>팀 전체에게 공개</span>
+      </label>
+      <div className="row" style={{ gap: 8, marginTop: 18 }}>
+        <button type="button" className="btn btn-accent" onClick={save} disabled={busy || !name.trim()}>저장</button>
+        <button type="button" className="btn btn-ghost" onClick={onClose}>취소</button>
+      </div>
+    </OaOverlay>
+  );
 }
 
 export function CrmCentersView() {
-  const [kw, setKw] = useState("");
-  const [q, setQ] = useState("");                 // 실제 조회에 쓰인 검색어 (엔터로 확정)
-  const [first, setFirst] = useState("ALL");
-  const [second, setSecond] = useState([]);
-  const [sort, setSort] = useState("CLOSED_DTTM_DESC");
-  const [size, setSize] = useState(50);
+  const [f, setF] = useState(CC_BLANK);          // 확정된 검색 조건
+  const [kw, setKw] = useState("");              // 입력 중인 검색어
   const [page, setPage] = useState(0);
+  const [size, setSize] = useState(50);
   const [data, setData] = useState(null);
+  const [counts, setCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
+  const [showAdv, setShowAdv] = useState(false);
+  const [showSave, setShowSave] = useState(false);
+  const [segments, setSegments] = useState([]);
+  const [activeSeg, setActiveSeg] = useState("");
+  const [sortKey, setSortKey] = useState("");     // 현재 쪽 안에서만 정렬
+  const [sortDir, setSortDir] = useState("asc");
 
-  const params = useMemo(
-    () => ({ keyword: q, first, second, sort, page, size }),
-    [q, first, second, sort, page, size],
-  );
+  const params = useMemo(() => ({ ...f, page, size }), [f, page, size]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -13123,29 +13319,104 @@ export function CrmCentersView() {
   }, [params]);
   useEffect(load, [load]);
 
-  const search = () => { setQ(kw.trim()); setPage(0); };
-  const toggleSecond = (v) => {
+  // 칩 건수는 목록과 따로 — 검색어·고급필터가 바뀔 때만 다시 센다
+  const countKey = useMemo(
+    () => JSON.stringify([f.keyword, f.admin, f.installer, f.ticket, f.newsfeedDays, f.newsfeedUnder]),
+    [f.keyword, f.admin, f.installer, f.ticket, f.newsfeedDays, f.newsfeedUnder],
+  );
+  useEffect(() => {
+    let alive = true;
+    api.erpCrmCounts(f)
+      .then((d) => { if (alive) setCounts(d.counts || {}); })
+      .catch(() => { if (alive) setCounts({}); });
+    return () => { alive = false; };
+  }, [countKey]);
+
+  const loadSegments = useCallback(() => {
+    api.erpCrmSegments().then((d) => setSegments(d.segments || [])).catch(() => {});
+  }, []);
+  useEffect(loadSegments, [loadSegments]);
+
+  const apply = (patch) => { setF((p) => ({ ...p, ...patch })); setPage(0); setActiveSeg(""); };
+  const search = () => apply({ keyword: kw.trim() });
+
+  const applySegment = (seg) => {
+    const next = { ...CC_BLANK, ...(seg.filters || {}) };
+    setF(next);
+    setKw(next.keyword || "");
     setPage(0);
-    setSecond((p) => (p.includes(v) ? p.filter((x) => x !== v) : p.length >= 6 ? p : [...p, v]));
+    setActiveSeg(seg.id);
   };
 
-  const rows = data?.centers ?? [];
+  const updateSegment = async (seg) => {
+    if (!(await confirmAction(`"${seg.name}" 세그먼트를 지금 조건으로 덮어쓸까요?`))) return;
+    try {
+      await api.erpCrmSegmentUpdate(seg.id, { filters: f });
+      toastSuccess("세그먼트를 갱신했어요");
+      loadSegments();
+    } catch (e) { notifyError(e); }
+  };
+
+  const removeSegment = async (seg) => {
+    if (!(await confirmAction(`"${seg.name}" 세그먼트를 삭제할까요?`))) return;
+    try {
+      await api.erpCrmSegmentDelete(seg.id);
+      if (activeSeg === seg.id) setActiveSeg("");
+      toastSuccess("삭제했어요");
+      loadSegments();
+    } catch (e) { notifyError(e); }
+  };
+
+  const resetAll = () => { setF(CC_BLANK); setKw(""); setPage(0); setActiveSeg(""); setSortKey(""); };
+
+  const onSort = (k) => {
+    if (k === "ticketExpiredAt") {
+      // 만료일만 서버가 정렬해준다 — 전체 기준이라 쪽을 넘겨도 순서가 유지된다
+      const next = f.sort === "CLOSED_DTTM_DESC" ? "CLOSED_DTTM_ASC" : "CLOSED_DTTM_DESC";
+      setF((p) => ({ ...p, sort: next }));
+      setSortKey("");
+      setPage(0);
+      return;
+    }
+    if (sortKey === k) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(k); setSortDir("asc"); }
+  };
+
+  const raw = data?.centers ?? [];
+  const rows = useMemo(() => {
+    if (!sortKey) return raw;
+    const val = (r) => {
+      const v = r[sortKey];
+      if (sortKey === "types") return (v || []).join(",");
+      if (sortKey === "createdAt" || sortKey === "lastAccessedAt") return v ? new Date(v).getTime() : 0;
+      return typeof v === "number" ? v : String(v ?? "");
+    };
+    return [...raw].sort((a, b) => {
+      const x = val(a), y = val(b);
+      const c = typeof x === "string" ? x.localeCompare(y, "ko") : x - y;
+      return sortDir === "asc" ? c : -c;
+    });
+  }, [raw, sortKey, sortDir]);
+
   const total = data?.total ?? 0;
   const pages = Math.max(Math.ceil(total / size), 1);
+  const advN = ccAdvancedCount(f);
+  const dirty = !ccSameFilters(f, CC_BLANK);
 
   const copyList = async () => {
     if (!rows.length) return;
-    const head = ["센터명", "지점명", "대표자", "대표자 연락처", "센터 연락처", "사업자번호",
+    const head = ["번호", "센터명", "지점명", "대표자", "대표자 연락처", "센터 연락처", "사업자번호",
       "업종", "결제상태", "이용권", "이용권 만료", "키오스크", "설치팀", "등록일", "group_key"];
     const lines = [head.join("\t")];
-    for (const r of rows) {
+    rows.forEach((r, i) => {
       lines.push([
+        page * size + i + 1,
         r.name, r.primaryName, r.ownerName, ccPhone(r.ownerPhone), ccPhone(r.phone), ccBiz(r.bizNo),
         r.types.map((t) => CC_TYPE[t] || t).join(" "), CC_PAY[r.paymentStatus]?.label || r.paymentStatus,
         r.ticketName, ccDay(r.ticketExpiredAt), r.kiosks.join(" "), r.installerTeam,
         ccDay(r.createdAt), r.groupKey ?? "",
       ].join("\t"));
-    }
+    });
     try { await navigator.clipboard.writeText(lines.join("\n")); toastSuccess(`${rows.length}건을 복사했어요`); }
     catch { notifyError(new Error("복사에 실패했습니다")); }
   };
@@ -13159,7 +13430,7 @@ export function CrmCentersView() {
     if (!(await confirmAction(`현재 조건 ${total.toLocaleString()}건을 CSV로 내려받을까요?\n\n건수가 많으면 시간이 걸립니다 (최대 5,000건).`))) return;
     setBusy("csv");
     try {
-      const res = await fetch(api.erpCrmCentersExportUrl(params), { credentials: "include" });
+      const res = await fetch(api.erpCrmCentersExportUrl(f), { credentials: "include" });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "내려받지 못했습니다");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -13178,71 +13449,109 @@ export function CrmCentersView() {
     <div className="fade pad wide" style={{ marginTop: 8, paddingBottom: 40 }}>
       <div className="h-eyebrow">고객관리</div>
       <div className="h-title">센터조회</div>
-      <div className="small" style={{ marginTop: 8, lineHeight: 1.5, color: "var(--muted)" }}>
-        CRM에 등록된 센터를 검색합니다. 결제 상태·이용권·키오스크·설치팀까지 한 줄로 봅니다.
+
+      {/* 세그먼트 — 저장해둔 검색 조건 */}
+      <div className="cc-segbar">
+        <span className="cc-seglabel">세그먼트</span>
+        {segments.length === 0 && (
+          <span className="small" style={{ color: "var(--muted)" }}>
+            자주 쓰는 검색 조건을 저장해두면 여기서 한 번에 부릅니다
+          </span>
+        )}
+        {segments.map((seg) => (
+          <span key={seg.id} className={"cc-seg" + (activeSeg === seg.id ? " on" : "")}>
+            <button type="button" className="cc-seg-main" onClick={() => applySegment(seg)} title={seg.shared ? `${seg.ownerName} · 공개` : "나만 보기"}>
+              {seg.name}
+              {seg.shared && <span className="cc-seg-share">공개</span>}
+            </button>
+            {seg.mine && (
+              <>
+                <button type="button" className="cc-seg-x" title="지금 조건으로 덮어쓰기" onClick={() => updateSegment(seg)}>⤴</button>
+                <button type="button" className="cc-seg-x" title="삭제" onClick={() => removeSegment(seg)}>✕</button>
+              </>
+            )}
+          </span>
+        ))}
+        <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }}
+          onClick={() => setShowSave(true)} disabled={!dirty}>
+          + 지금 조건 저장
+        </button>
       </div>
 
-      <div className="row" style={{ gap: 8, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
-        <input className="input" style={{ maxWidth: 280 }} value={kw}
-          onChange={(e) => setKw(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") search(); }}
-          placeholder="센터명·대표자·연락처 검색 (엔터)" />
-        <button type="button" className="btn btn-accent btn-sm" onClick={search} disabled={loading}>검색</button>
-        {q && (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setKw(""); setQ(""); setPage(0); }}>
-            검색어 지우기
+      {/* 상태 칩 — 건수 포함 */}
+      <div className="cc-chips">
+        {CC_FIRST.map(([v, label]) => (
+          <button key={v} type="button" className={"cc-chip" + (f.first === v && !f.second.length ? " on" : "")}
+            onClick={() => apply({ first: v, second: [] })}>
+            {label}<CcCount n={counts[`first:${v}`]} />
           </button>
+        ))}
+        <span className="cc-div" />
+        {CC_SECOND.map(([v, label]) => (
+          <button key={v} type="button" className={"cc-chip" + (f.second.includes(v) ? " on" : "")}
+            onClick={() => {
+              const next = f.second.includes(v) ? f.second.filter((x) => x !== v)
+                : f.second.length >= 6 ? f.second : [...f.second, v];
+              apply({ second: next, first: next.length ? "ACTIVE" : f.first });
+            }}>
+            {label}<CcCount n={counts[`second:${v}`]} />
+          </button>
+        ))}
+        {dirty && (
+          <button type="button" className="cc-icon" title="필터 초기화" onClick={resetAll}>↺</button>
         )}
-        <span className="small" style={{ color: "var(--muted)" }}>
-          {loading ? "불러오는 중…" : `${total.toLocaleString()}곳`}
-          {q && ` · "${q}"`}
+      </div>
+
+      {/* 검색 + 도구 */}
+      <div className="cc-toolbar">
+        <div className="cc-search">
+          <span className="cc-search-i">⌕</span>
+          <input value={kw} onChange={(e) => setKw(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") search(); }}
+            placeholder="센터명, 대표자, 연락처 검색" />
+          {kw && <button type="button" className="cc-search-x" onClick={() => { setKw(""); apply({ keyword: "" }); }}>✕</button>}
+        </div>
+        <button type="button" className={"cc-btn" + (advN ? " on" : "")} onClick={() => setShowAdv(true)}>
+          ⚙ 고급필터{advN ? <span className="cc-cnt">{advN}</span> : null}
+        </button>
+        <span className="cc-total">
+          검색 수: <b>{loading ? "…" : total.toLocaleString()}</b>
         </span>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={load} disabled={loading}>새로고침</button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={copyList} disabled={!rows.length}>목록 복사</button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={download} disabled={busy === "csv" || !total}>
-            {busy === "csv" ? "만드는 중…" : "CSV 내려받기"}
+        <div className="cc-tools">
+          <button type="button" className="cc-icon" title="새로고침" onClick={load} disabled={loading}>↺</button>
+          <button type="button" className="cc-icon" title="목록 복사" onClick={copyList} disabled={!rows.length}>⧉</button>
+          <button type="button" className="cc-icon" title="CSV 내려받기" onClick={download} disabled={busy === "csv" || !total}>
+            {busy === "csv" ? "…" : "⭳"}
           </button>
+          <span className="cc-div" />
+          {[50, 100, 200].map((n) => (
+            <button key={n} type="button" className={"cc-chip sm" + (size === n ? " on" : "")}
+              onClick={() => { setSize(n); setPage(0); }}>{n}</button>
+          ))}
         </div>
       </div>
 
-      <div className="row" style={{ gap: 6, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-        {CC_FIRST.map(([v, label]) => (
-          <button key={v} type="button" className={"chip" + (first === v ? " on" : "")}
-            onClick={() => { setFirst(v); setPage(0); }}>{label}</button>
-        ))}
-        <span style={{ width: 10 }} />
-        <span className="small" style={{ color: "var(--muted)" }}>세부</span>
-        {CC_SECOND.map(([v, label]) => (
-          <button key={v} type="button" className={"chip" + (second.includes(v) ? " on" : "")}
-            onClick={() => toggleSecond(v)}>{label}</button>
-        ))}
-        {second.length > 0 && (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setSecond([]); setPage(0); }}>세부 해제</button>
-        )}
-      </div>
-
-      <div className="row" style={{ gap: 6, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <span className="small" style={{ color: "var(--muted)" }}>이용권 만료일</span>
-        <button type="button" className={"chip" + (sort === "CLOSED_DTTM_DESC" ? " on" : "")}
-          onClick={() => { setSort("CLOSED_DTTM_DESC"); setPage(0); }}>최신순</button>
-        <button type="button" className={"chip" + (sort === "CLOSED_DTTM_ASC" ? " on" : "")}
-          onClick={() => { setSort("CLOSED_DTTM_ASC"); setPage(0); }}>오래된순</button>
-        <span style={{ width: 10 }} />
-        <span className="small" style={{ color: "var(--muted)" }}>쪽당</span>
-        {[50, 100, 200].map((n) => (
-          <button key={n} type="button" className={"chip" + (size === n ? " on" : "")}
-            onClick={() => { setSize(n); setPage(0); }}>{n}</button>
-        ))}
-      </div>
+      {/* 걸린 고급필터 요약 */}
+      {advN > 0 && (
+        <div className="row" style={{ gap: 6, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+          {f.admin === "CONNECTED" && <span className="tag">내가 소속된 센터만</span>}
+          {(f.ticket || []).map((t) => (
+            <span key={t} className="tag">{CC_TICKET_LABEL[t] || t}</span>
+          ))}
+          {f.installer && <span className="tag">설치팀 {f.installer}</span>}
+          {f.newsfeedDays != null && <span className="tag">주요기록 {f.newsfeedDays}일 · {f.newsfeedUnder}건 이하</span>}
+          <button type="button" className="btn btn-ghost btn-sm"
+            onClick={() => apply({ admin: "ALL", ticket: [], installer: "", newsfeedDays: null, newsfeedUnder: null })}>
+            고급필터 해제
+          </button>
+        </div>
+      )}
 
       {err && (
         <div className="oa-err">
           {err}
           {/401|토큰|로그인/.test(err) && (
-            <div style={{ marginTop: 6 }}>
-              OPEN API 센터관리 → 설정 탭에서 마스터 로그인을 먼저 해주세요.
-            </div>
+            <div style={{ marginTop: 6 }}>OPEN API 센터관리 → 설정 탭에서 마스터 로그인을 먼저 해주세요.</div>
           )}
         </div>
       )}
@@ -13254,26 +13563,29 @@ export function CrmCentersView() {
       )}
 
       {rows.length > 0 && (
-        <div className="dash-table-wrap" style={{ marginTop: 14 }}>
+        <div className="dash-table-wrap cc-table" style={{ marginTop: 14 }}>
           <table className="dash-table">
             <thead>
               <tr>
-                <th className="label">센터</th>
-                <th>대표자</th>
+                <th style={{ width: 52 }}>번호</th>
+                <th style={{ width: 62 }}>결제</th>
+                <CcSortHead k="name" sortKey={sortKey} dir={sortDir} onSort={onSort} style={{ minWidth: 190 }}>센터명</CcSortHead>
+                <CcSortHead k="ownerName" sortKey={sortKey} dir={sortDir} onSort={onSort}>대표자</CcSortHead>
                 <th>연락처</th>
-                <th>업종</th>
-                <th>결제</th>
-                <th>이용권</th>
-                <th>만료</th>
+                <CcSortHead k="types" sortKey={sortKey} dir={sortDir} onSort={onSort}>업종</CcSortHead>
+                <th style={{ minWidth: 150 }}>보유 요금제</th>
+                <CcSortHead k="ticketExpiredAt" sortKey={sortKey} dir={sortDir} onSort={onSort}>만료일</CcSortHead>
                 <th>키오스크</th>
-                <th>설치팀</th>
-                <th>등록</th>
+                <CcSortHead k="installerTeam" sortKey={sortKey} dir={sortDir} onSort={onSort}>설치팀</CcSortHead>
+                <CcSortHead k="createdAt" sortKey={sortKey} dir={sortDir} onSort={onSort}>등록일</CcSortHead>
                 <th>group_key</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.groupKey}>
+              {rows.map((r, i) => (
+                <tr key={r.groupKey ?? i}>
+                  <td className="cc-no">{page * size + i + 1}</td>
+                  <td><CcPayTag status={r.paymentStatus} /></td>
                   <td className="label">
                     {r.name || <span style={{ color: "var(--muted)" }}>(이름 없음)</span>}
                     {r.primaryName && <div className="small" style={{ color: "var(--muted)" }}>{r.primaryName}</div>}
@@ -13290,18 +13602,20 @@ export function CrmCentersView() {
                     )}
                   </td>
                   <td className="small">{r.types.map((t) => CC_TYPE[t] || t).join(", ")}</td>
-                  <td><CcPayTag status={r.paymentStatus} /></td>
-                  <td className="small">
-                    {r.ticketName || <span style={{ color: "var(--muted)" }}>-</span>}
-                    {r.ticketRegular && <div style={{ color: "var(--muted)" }}>정기</div>}
+                  <td>
+                    {r.ticketName
+                      ? <span className="cc-tick">
+                          {r.ticketRegular && <span className="cc-tick-b">정기</span>}
+                          {CC_TICKET_LABEL[r.ticketName] || r.ticketName}
+                        </span>
+                      : <span className="small" style={{ color: "var(--muted)" }}>-</span>}
                   </td>
                   <td className="small" style={{ whiteSpace: "nowrap" }}>{ccDay(r.ticketExpiredAt) || "-"}</td>
                   <td className="small">{r.kiosks.join(", ") || <span style={{ color: "var(--muted)" }}>-</span>}</td>
                   <td className="small">{r.installerTeam || <span style={{ color: "var(--muted)" }}>-</span>}</td>
                   <td className="small" style={{ whiteSpace: "nowrap" }}>{ccDay(r.createdAt)}</td>
                   <td className="small">
-                    <button type="button" className="btn btn-ghost btn-sm" title="복사"
-                      onClick={() => copyKey(r)}>{r.groupKey}</button>
+                    <button type="button" className="cc-key" title="복사" onClick={() => copyKey(r)}>{r.groupKey}</button>
                   </td>
                 </tr>
               ))}
@@ -13312,18 +13626,29 @@ export function CrmCentersView() {
 
       {total > size && (
         <div className="row" style={{ gap: 8, marginTop: 14, justifyContent: "center", alignItems: "center", flexWrap: "wrap" }}>
-          <button type="button" className="btn btn-ghost btn-sm" disabled={page <= 0 || loading}
-            onClick={() => setPage(0)}>처음</button>
-          <button type="button" className="btn btn-ghost btn-sm" disabled={page <= 0 || loading}
-            onClick={() => setPage((p) => p - 1)}>이전</button>
-          <span className="small" style={{ minWidth: 110, textAlign: "center" }}>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={page <= 0 || loading} onClick={() => setPage(0)}>처음</button>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={page <= 0 || loading} onClick={() => setPage((p) => p - 1)}>이전</button>
+          <span className="small" style={{ minWidth: 120, textAlign: "center" }}>
             {(page + 1).toLocaleString()} / {pages.toLocaleString()}쪽
           </span>
-          <button type="button" className="btn btn-ghost btn-sm" disabled={page + 1 >= pages || loading}
-            onClick={() => setPage((p) => p + 1)}>다음</button>
-          <button type="button" className="btn btn-ghost btn-sm" disabled={page + 1 >= pages || loading}
-            onClick={() => setPage(pages - 1)}>마지막</button>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={page + 1 >= pages || loading} onClick={() => setPage((p) => p + 1)}>다음</button>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={page + 1 >= pages || loading} onClick={() => setPage(pages - 1)}>마지막</button>
         </div>
+      )}
+
+      {sortKey && (
+        <div className="small" style={{ marginTop: 10, textAlign: "center", color: "var(--muted)" }}>
+          이 정렬은 지금 보이는 {rows.length}건 안에서만 적용됩니다. 만료일 정렬만 전체 기준입니다.
+        </div>
+      )}
+
+      {showAdv && (
+        <CcAdvanced value={f} onClose={() => setShowAdv(false)}
+          onApply={(patch) => { setShowAdv(false); apply(patch); }} />
+      )}
+      {showSave && (
+        <CcSegmentSave filters={f} onClose={() => setShowSave(false)}
+          onDone={() => { setShowSave(false); loadSegments(); }} />
       )}
     </div>
   );

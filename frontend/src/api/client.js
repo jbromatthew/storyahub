@@ -11,6 +11,27 @@ export const EMAIL_KEY = "storyahub_email";
 /** 메모리 토큰 — api.* 서브도메인 크로스 오리진 시 Bearer 폴백 */
 let token = null;
 
+/** 센터조회 필터를 쿼리스트링으로 — 배열은 같은 키를 반복해서 붙인다 */
+function crmParams(q = {}, withPaging = true) {
+  const p = new URLSearchParams();
+  if (q.keyword) p.set("keyword", q.keyword);
+  if (q.first) p.set("first", q.first);
+  if (q.admin && q.admin !== "ALL") p.set("admin", q.admin);
+  if (q.installer) p.set("installer", q.installer);
+  for (const s of q.second || []) p.append("second", s);
+  for (const t of q.ticket || []) p.append("ticket", t);
+  if (q.newsfeedDays != null && q.newsfeedUnder != null) {
+    p.set("newsfeedDays", String(q.newsfeedDays));
+    p.set("newsfeedUnder", String(q.newsfeedUnder));
+  }
+  if (withPaging) {
+    if (q.sort) p.set("sort", q.sort);
+    p.set("page", String(q.page ?? 0));
+    p.set("size", String(q.size ?? 50));
+  }
+  return p;
+}
+
 export class ApiError extends Error {
   constructor(message, status = 0, data = null) {
     super(message);
@@ -240,27 +261,13 @@ export const api = {
   erpOpenApiConfigTest: () => req("/erp/openapi/config/test", { method: "POST" }),
   erpOpenApiLogin: (body) => req("/erp/openapi/login", { method: "POST", body: body || {} }),
   // 고객관리 — CRM 센터조회
-  erpCrmCenters: (q = {}) => {
-    const p = new URLSearchParams();
-    if (q.keyword) p.set("keyword", q.keyword);
-    if (q.first) p.set("first", q.first);
-    if (q.admin) p.set("admin", q.admin);
-    if (q.installer) p.set("installer", q.installer);
-    if (q.sort) p.set("sort", q.sort);
-    for (const s of q.second || []) p.append("second", s);
-    p.set("page", String(q.page ?? 0));
-    p.set("size", String(q.size ?? 50));
-    return req(`/erp/crm/centers?${p}`);
-  },
-  erpCrmCentersExportUrl: (q = {}) => {
-    const p = new URLSearchParams();
-    if (q.keyword) p.set("keyword", q.keyword);
-    if (q.first) p.set("first", q.first);
-    if (q.admin) p.set("admin", q.admin);
-    if (q.installer) p.set("installer", q.installer);
-    for (const s of q.second || []) p.append("second", s);
-    return `/erp/crm/centers/export?${p}`;
-  },
+  erpCrmCenters: (q = {}) => req(`/erp/crm/centers?${crmParams(q, true)}`),
+  erpCrmCounts: (q = {}) => req(`/erp/crm/centers/counts?${crmParams(q, false)}`),
+  erpCrmCentersExportUrl: (q = {}) => `/erp/crm/centers/export?${crmParams(q, false)}`,
+  erpCrmSegments: () => req("/erp/crm/segments"),
+  erpCrmSegmentCreate: (body) => req("/erp/crm/segments", { method: "POST", body }),
+  erpCrmSegmentUpdate: (id, body) => req(`/erp/crm/segments/${id}`, { method: "PATCH", body }),
+  erpCrmSegmentDelete: (id) => req(`/erp/crm/segments/${id}`, { method: "DELETE" }),
   erpOpenApiCenters: ({ search } = {}) => req(`/erp/openapi/centers${search ? `?search=${encodeURIComponent(search)}` : ""}`),
   erpOpenApiCenterSave: (body) => req("/erp/openapi/centers", { method: "POST", body }),
   erpOpenApiCenterDelete: (id) => req(`/erp/openapi/centers/${id}`, { method: "DELETE" }),

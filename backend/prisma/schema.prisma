@@ -1144,6 +1144,22 @@ model ErpOpenApiKeyLog {
   @@index([keyId])
 }
 
+/// 고객관리 센터조회 — 저장한 검색 조건(세그먼트). 클릭하면 그 조건으로 조회된다.
+model ErpCrmSegment {
+  id         String   @id @default(cuid())
+  name       String
+  filters    Json     @default("{}") // keyword·first·second·요금제·주요기록 등
+  ownerEmail String
+  ownerName  String   @default("")
+  shared     Boolean  @default(false) // 켜면 팀 전체가 본다
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([ownerEmail])
+  @@index([shared])
+}
+
 /// 센터 대장 — 발급에 필요한 group_key(CRM 내부 정수키)와 공개 group_id를 함께 보관
 model ErpOpenApiCenter {
   id         String   @id @default(cuid())

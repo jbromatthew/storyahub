@@ -302,6 +302,9 @@ export type CrmGroupQuery = {
   secondFilters?: string[];
   adminFilterType?: string;
   installerTeamName?: string;
+  ticketFileNames?: string[];
+  newsfeedDays?: number;
+  newsfeedUnderCount?: number;
   sort?: string;
   page?: number;
   size?: number;
@@ -314,6 +317,11 @@ function groupQuery(q: CrmGroupQuery, withPaging: boolean): Record<string, strin
     installer_team_name: q.installerTeamName || undefined,
     admin_filter_type: q.adminFilterType || "ALL",
   };
+  // 주요기록 필터는 두 값이 다 있을 때만 적용된다
+  if (Number.isFinite(q.newsfeedDays) && Number.isFinite(q.newsfeedUnderCount)) {
+    out.newsfeed_days = Math.min(Math.max(Number(q.newsfeedDays), 0), 7);
+    out.newsfeed_under_count = Math.max(Number(q.newsfeedUnderCount), 0);
+  }
   if (withPaging) {
     out.page_index = Math.max(q.page ?? 0, 0);
     out.page_size = Math.min(Math.max(q.size ?? 50, 1), 200);
@@ -323,23 +331,34 @@ function groupQuery(q: CrmGroupQuery, withPaging: boolean): Record<string, strin
 }
 
 /** 같은 쿼리 키를 여러 번 붙여야 하는 배열 필터는 buildUrl로 안 되어 직접 잇는다 */
-function withSecondFilters(path: string, filters: string[] | undefined): string {
-  const list = (filters ?? []).filter(Boolean).slice(0, 6);
-  if (!list.length) return path;
-  const qs = list.map((f) => `group_second_active_filter_list=${encodeURIComponent(f)}`).join("&");
-  return path + (path.includes("?") ? "&" : "?") + qs;
+function repeatParams(path: string, pairs: [string, string[] | undefined, number][]): string {
+  const parts: string[] = [];
+  for (const [key, values, max] of pairs) {
+    for (const v of (values ?? []).filter(Boolean).slice(0, max)) {
+      parts.push(`${key}=${encodeURIComponent(v)}`);
+    }
+  }
+  if (!parts.length) return path;
+  return path + (path.includes("?") ? "&" : "?") + parts.join("&");
+}
+
+function groupPath(base: string, q: CrmGroupQuery): string {
+  return repeatParams(base, [
+    ["group_second_active_filter_list", q.secondFilters, 6],
+    ["ticket_file_names", q.ticketFileNames, 40],
+  ]);
 }
 
 export function crmGroupCount(q: CrmGroupQuery) {
   return crmCall<{ message?: string; result?: number }>(
-    withSecondFilters("/master/groups/count", q.secondFilters),
+    groupPath("/master/groups/count", q),
     groupQuery(q, false),
   );
 }
 
 export function crmGroups(q: CrmGroupQuery) {
   return crmCall<{ message?: string; result?: unknown[] }>(
-    withSecondFilters("/master/groups", q.secondFilters),
+    groupPath("/master/groups", q),
     groupQuery(q, true),
   );
 }
