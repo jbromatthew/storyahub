@@ -27,6 +27,7 @@ export const ERP_MODULES = [
   { id: "vendors", label: "업체 관리", icon: "admin", group: "construction", ownerOnly: true },
   // 그룹 이름표는 게이트가 없는 메뉴가 들고 있어야 한다 — 게이트 메뉴에 달면
   // 권한이 막힌 사람에게 그룹 헤더째 사라지고, 게이트 없는 메뉴까지 따라 숨는다
+  { id: "crm-centers", label: "센터조회", icon: "board", group: "customer", groupLabel: "고객관리" },
   { id: "smart-store", label: "스마트상점", icon: "board", group: "bizsupport", groupLabel: "영업지원" },
   { id: "vendor-orders", label: "크라이저 발주", icon: "sales", group: "bizsupport", vendorGate: true },
   { id: "install-schedule", label: "설치일정 (브로제이)", icon: "board", group: "bizsupport", vendorGate: true },

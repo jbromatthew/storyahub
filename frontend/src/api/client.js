@@ -239,6 +239,28 @@ export const api = {
   erpOpenApiConfigSave: (body) => req("/erp/openapi/config", { method: "PUT", body }),
   erpOpenApiConfigTest: () => req("/erp/openapi/config/test", { method: "POST" }),
   erpOpenApiLogin: (body) => req("/erp/openapi/login", { method: "POST", body: body || {} }),
+  // 고객관리 — CRM 센터조회
+  erpCrmCenters: (q = {}) => {
+    const p = new URLSearchParams();
+    if (q.keyword) p.set("keyword", q.keyword);
+    if (q.first) p.set("first", q.first);
+    if (q.admin) p.set("admin", q.admin);
+    if (q.installer) p.set("installer", q.installer);
+    if (q.sort) p.set("sort", q.sort);
+    for (const s of q.second || []) p.append("second", s);
+    p.set("page", String(q.page ?? 0));
+    p.set("size", String(q.size ?? 50));
+    return req(`/erp/crm/centers?${p}`);
+  },
+  erpCrmCentersExportUrl: (q = {}) => {
+    const p = new URLSearchParams();
+    if (q.keyword) p.set("keyword", q.keyword);
+    if (q.first) p.set("first", q.first);
+    if (q.admin) p.set("admin", q.admin);
+    if (q.installer) p.set("installer", q.installer);
+    for (const s of q.second || []) p.append("second", s);
+    return `/erp/crm/centers/export?${p}`;
+  },
   erpOpenApiCenters: ({ search } = {}) => req(`/erp/openapi/centers${search ? `?search=${encodeURIComponent(search)}` : ""}`),
   erpOpenApiCenterSave: (body) => req("/erp/openapi/centers", { method: "POST", body }),
   erpOpenApiCenterDelete: (id) => req(`/erp/openapi/centers/${id}`, { method: "DELETE" }),

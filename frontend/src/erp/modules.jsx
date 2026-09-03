@@ -13038,3 +13038,293 @@ export function OpenApiCenterView() {
     </div>
   );
 }
+
+// ─── 고객관리 · 센터조회 ────────────────────────────────────────────────────
+
+const CC_FIRST = [
+  ["ALL", "전체"],
+  ["ACTIVE", "활성"],
+  ["EXPIRATION", "만료"],
+  ["ISSUE", "이슈"],
+];
+
+const CC_SECOND = [
+  ["REGULAR", "정기결제"],
+  ["NON_REGULAR", "비정기"],
+  ["SOON_EXPIRED", "만료임박"],
+  ["PAYMENT_FAILED", "결제실패"],
+  ["PAYMENT_STOPPED", "결제중지"],
+  ["REGULAR_PAYMENT_CANCELED", "정기해지"],
+];
+
+const CC_PAY = {
+  NORMAL: { label: "정상", bg: "#D3F8DF", fg: "#1F6B3A" },
+  STOPPED: { label: "중지", bg: "#F2E3E3", fg: "#A33" },
+  FAILED: { label: "실패", bg: "#FBE3D5", fg: "#A34A00" },
+  CANCELED: { label: "해지", bg: "#EDEDED", fg: "#666" },
+};
+
+const CC_TYPE = {
+  HEALTH: "헬스장", PILATES: "필라테스", YOGA: "요가", CROSSFIT: "크로스핏",
+  GOLF: "골프", PT: "PT샵", SWIM: "수영", TENNIS: "테니스", BOXING: "복싱",
+  DANCE: "댄스", STUDY: "스터디카페", ETC: "기타",
+};
+
+function ccDay(v) {
+  if (!v) return "";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime()) || d.getFullYear() < 1990) return "";
+  return d.toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" });
+}
+
+function ccPhone(v) {
+  const d = String(v || "").replace(/[^\d]/g, "");
+  if (d.length === 11) return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+  return String(v || "");
+}
+
+function ccBiz(v) {
+  const d = String(v || "").replace(/[^\d]/g, "");
+  return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}` : String(v || "");
+}
+
+function CcPayTag({ status }) {
+  if (!status) return <span className="small" style={{ color: "var(--muted)" }}>-</span>;
+  const s = CC_PAY[status] || { label: status, bg: "#EEE", fg: "#555" };
+  return <span className="tag" style={{ background: s.bg, color: s.fg, fontSize: 11.5 }}>{s.label}</span>;
+}
+
+export function CrmCentersView() {
+  const [kw, setKw] = useState("");
+  const [q, setQ] = useState("");                 // 실제 조회에 쓰인 검색어 (엔터로 확정)
+  const [first, setFirst] = useState("ALL");
+  const [second, setSecond] = useState([]);
+  const [sort, setSort] = useState("CLOSED_DTTM_DESC");
+  const [size, setSize] = useState(50);
+  const [page, setPage] = useState(0);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState("");
+
+  const params = useMemo(
+    () => ({ keyword: q, first, second, sort, page, size }),
+    [q, first, second, sort, page, size],
+  );
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setErr("");
+    api.erpCrmCenters(params)
+      .then(setData)
+      .catch((e) => { setErr(e.message || "조회하지 못했습니다"); setData(null); })
+      .finally(() => setLoading(false));
+  }, [params]);
+  useEffect(load, [load]);
+
+  const search = () => { setQ(kw.trim()); setPage(0); };
+  const toggleSecond = (v) => {
+    setPage(0);
+    setSecond((p) => (p.includes(v) ? p.filter((x) => x !== v) : p.length >= 6 ? p : [...p, v]));
+  };
+
+  const rows = data?.centers ?? [];
+  const total = data?.total ?? 0;
+  const pages = Math.max(Math.ceil(total / size), 1);
+
+  const copyList = async () => {
+    if (!rows.length) return;
+    const head = ["센터명", "지점명", "대표자", "대표자 연락처", "센터 연락처", "사업자번호",
+      "업종", "결제상태", "이용권", "이용권 만료", "키오스크", "설치팀", "등록일", "group_key"];
+    const lines = [head.join("\t")];
+    for (const r of rows) {
+      lines.push([
+        r.name, r.primaryName, r.ownerName, ccPhone(r.ownerPhone), ccPhone(r.phone), ccBiz(r.bizNo),
+        r.types.map((t) => CC_TYPE[t] || t).join(" "), CC_PAY[r.paymentStatus]?.label || r.paymentStatus,
+        r.ticketName, ccDay(r.ticketExpiredAt), r.kiosks.join(" "), r.installerTeam,
+        ccDay(r.createdAt), r.groupKey ?? "",
+      ].join("\t"));
+    }
+    try { await navigator.clipboard.writeText(lines.join("\n")); toastSuccess(`${rows.length}건을 복사했어요`); }
+    catch { notifyError(new Error("복사에 실패했습니다")); }
+  };
+
+  const copyKey = async (r) => {
+    try { await navigator.clipboard.writeText(String(r.groupKey)); toastSuccess(`${r.name} · group_key ${r.groupKey} 복사`); }
+    catch { notifyError(new Error("복사에 실패했습니다")); }
+  };
+
+  const download = async () => {
+    if (!(await confirmAction(`현재 조건 ${total.toLocaleString()}건을 CSV로 내려받을까요?\n\n건수가 많으면 시간이 걸립니다 (최대 5,000건).`))) return;
+    setBusy("csv");
+    try {
+      const res = await fetch(api.erpCrmCentersExportUrl(params), { credentials: "include" });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "내려받지 못했습니다");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `센터목록_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toastSuccess("CSV를 내려받았어요");
+    } catch (e) { notifyError(e); } finally { setBusy(""); }
+  };
+
+  return (
+    <div className="fade pad wide" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">고객관리</div>
+      <div className="h-title">센터조회</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5, color: "var(--muted)" }}>
+        CRM에 등록된 센터를 검색합니다. 결제 상태·이용권·키오스크·설치팀까지 한 줄로 봅니다.
+      </div>
+
+      <div className="row" style={{ gap: 8, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <input className="input" style={{ maxWidth: 280 }} value={kw}
+          onChange={(e) => setKw(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") search(); }}
+          placeholder="센터명·대표자·연락처 검색 (엔터)" />
+        <button type="button" className="btn btn-accent btn-sm" onClick={search} disabled={loading}>검색</button>
+        {q && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setKw(""); setQ(""); setPage(0); }}>
+            검색어 지우기
+          </button>
+        )}
+        <span className="small" style={{ color: "var(--muted)" }}>
+          {loading ? "불러오는 중…" : `${total.toLocaleString()}곳`}
+          {q && ` · "${q}"`}
+        </span>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={load} disabled={loading}>새로고침</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={copyList} disabled={!rows.length}>목록 복사</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={download} disabled={busy === "csv" || !total}>
+            {busy === "csv" ? "만드는 중…" : "CSV 내려받기"}
+          </button>
+        </div>
+      </div>
+
+      <div className="row" style={{ gap: 6, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+        {CC_FIRST.map(([v, label]) => (
+          <button key={v} type="button" className={"chip" + (first === v ? " on" : "")}
+            onClick={() => { setFirst(v); setPage(0); }}>{label}</button>
+        ))}
+        <span style={{ width: 10 }} />
+        <span className="small" style={{ color: "var(--muted)" }}>세부</span>
+        {CC_SECOND.map(([v, label]) => (
+          <button key={v} type="button" className={"chip" + (second.includes(v) ? " on" : "")}
+            onClick={() => toggleSecond(v)}>{label}</button>
+        ))}
+        {second.length > 0 && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setSecond([]); setPage(0); }}>세부 해제</button>
+        )}
+      </div>
+
+      <div className="row" style={{ gap: 6, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <span className="small" style={{ color: "var(--muted)" }}>이용권 만료일</span>
+        <button type="button" className={"chip" + (sort === "CLOSED_DTTM_DESC" ? " on" : "")}
+          onClick={() => { setSort("CLOSED_DTTM_DESC"); setPage(0); }}>최신순</button>
+        <button type="button" className={"chip" + (sort === "CLOSED_DTTM_ASC" ? " on" : "")}
+          onClick={() => { setSort("CLOSED_DTTM_ASC"); setPage(0); }}>오래된순</button>
+        <span style={{ width: 10 }} />
+        <span className="small" style={{ color: "var(--muted)" }}>쪽당</span>
+        {[50, 100, 200].map((n) => (
+          <button key={n} type="button" className={"chip" + (size === n ? " on" : "")}
+            onClick={() => { setSize(n); setPage(0); }}>{n}</button>
+        ))}
+      </div>
+
+      {err && (
+        <div className="oa-err">
+          {err}
+          {/401|토큰|로그인/.test(err) && (
+            <div style={{ marginTop: 6 }}>
+              OPEN API 센터관리 → 설정 탭에서 마스터 로그인을 먼저 해주세요.
+            </div>
+          )}
+        </div>
+      )}
+
+      {!err && !loading && rows.length === 0 && (
+        <div className="small" style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+          조건에 맞는 센터가 없습니다
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <div className="dash-table-wrap" style={{ marginTop: 14 }}>
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th className="label">센터</th>
+                <th>대표자</th>
+                <th>연락처</th>
+                <th>업종</th>
+                <th>결제</th>
+                <th>이용권</th>
+                <th>만료</th>
+                <th>키오스크</th>
+                <th>설치팀</th>
+                <th>등록</th>
+                <th>group_key</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.groupKey}>
+                  <td className="label">
+                    {r.name || <span style={{ color: "var(--muted)" }}>(이름 없음)</span>}
+                    {r.primaryName && <div className="small" style={{ color: "var(--muted)" }}>{r.primaryName}</div>}
+                    {r.bizNo && <div className="small" style={{ color: "var(--muted)" }}>{ccBiz(r.bizNo)}</div>}
+                  </td>
+                  <td className="small">
+                    {r.ownerName}
+                    {r.ownerId && <div style={{ color: "var(--muted)" }}>{r.ownerId}</div>}
+                  </td>
+                  <td className="small" style={{ whiteSpace: "nowrap" }}>
+                    {ccPhone(r.ownerPhone)}
+                    {r.phone && r.phone !== r.ownerPhone && (
+                      <div style={{ color: "var(--muted)" }}>{ccPhone(r.phone)}</div>
+                    )}
+                  </td>
+                  <td className="small">{r.types.map((t) => CC_TYPE[t] || t).join(", ")}</td>
+                  <td><CcPayTag status={r.paymentStatus} /></td>
+                  <td className="small">
+                    {r.ticketName || <span style={{ color: "var(--muted)" }}>-</span>}
+                    {r.ticketRegular && <div style={{ color: "var(--muted)" }}>정기</div>}
+                  </td>
+                  <td className="small" style={{ whiteSpace: "nowrap" }}>{ccDay(r.ticketExpiredAt) || "-"}</td>
+                  <td className="small">{r.kiosks.join(", ") || <span style={{ color: "var(--muted)" }}>-</span>}</td>
+                  <td className="small">{r.installerTeam || <span style={{ color: "var(--muted)" }}>-</span>}</td>
+                  <td className="small" style={{ whiteSpace: "nowrap" }}>{ccDay(r.createdAt)}</td>
+                  <td className="small">
+                    <button type="button" className="btn btn-ghost btn-sm" title="복사"
+                      onClick={() => copyKey(r)}>{r.groupKey}</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {total > size && (
+        <div className="row" style={{ gap: 8, marginTop: 14, justifyContent: "center", alignItems: "center", flexWrap: "wrap" }}>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={page <= 0 || loading}
+            onClick={() => setPage(0)}>처음</button>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={page <= 0 || loading}
+            onClick={() => setPage((p) => p - 1)}>이전</button>
+          <span className="small" style={{ minWidth: 110, textAlign: "center" }}>
+            {(page + 1).toLocaleString()} / {pages.toLocaleString()}쪽
+          </span>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={page + 1 >= pages || loading}
+            onClick={() => setPage((p) => p + 1)}>다음</button>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={page + 1 >= pages || loading}
+            onClick={() => setPage(pages - 1)}>마지막</button>
+        </div>
+      )}
+    </div>
+  );
+}

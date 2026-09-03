@@ -234,6 +234,116 @@ export async function pingGateway(): Promise<string> {
   fail(String(msg), 502);
 }
 
+// ─── CRM 마스터 API (센터 조회 등) ──────────────────────────────────────────
+//
+// 게이트웨이가 아니라 로그인과 같은 CRM 서버(authBaseUrl + authPrefix)에 있다.
+// 인증은 마스터 API와 같은 Bearer JWT + SessionToken 조합이다.
+
+async function crmAttempt(cfg: OpenApiConfig, path: string, query?: CallOpts["query"]) {
+  const base = normalizeBaseUrl(cfg.authBaseUrl);
+  await assertPublicHost(new URL(base).hostname);
+  const url = buildUrl(base + (cfg.authPrefix || "").replace(/\/+$/, ""), path, query);
+  const res = await once(url, {
+    Accept: "application/json",
+    Authorization: `Bearer ${cfg.masterToken}`,
+    SessionToken: cfg.sessionToken,
+  }, {});
+  const text = await res.text().catch(() => "");
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+  return { res, data };
+}
+
+/**
+ * CRM 마스터 호출. 401이면 저장된 계정으로 재로그인 후 한 번만 재시도한다.
+ * 응답에 실려 오는 access_token은 갱신된 JWT라 그대로 저장해 세션을 이어간다.
+ */
+export async function crmCall<T = unknown>(path: string, query?: CallOpts["query"]): Promise<T> {
+  let cfg = await getOpenApiConfig();
+  if (!cfg.masterToken || !cfg.sessionToken) {
+    fail("마스터 토큰이 없습니다. OPEN API 센터관리 → 설정에서 로그인해 주세요.", 401);
+  }
+  let { res, data } = await crmAttempt(cfg, path, query);
+
+  if (res.status === 401 && cfg.memberId && cfg.memberPassword) {
+    try {
+      await masterLogin();
+      cfg = await getOpenApiConfig();
+      ({ res, data } = await crmAttempt(cfg, path, query));
+    } catch {
+      // 재로그인 실패는 아래 401 메시지로 알린다
+    }
+  }
+
+  if (!res.ok) {
+    const msg = pick(data, "message", "error", "reason") || `CRM 오류 (${res.status})`;
+    const hint = res.status === 401 ? " — 마스터 로그인을 다시 해주세요." : "";
+    fail(msg + hint, res.status === 401 || res.status === 403 ? res.status : 502);
+  }
+
+  const refreshed = pick(data, "access_token");
+  if (refreshed && refreshed !== cfg.masterToken) {
+    await prisma.erpOpenApiConfig
+      .update({ where: { id: "default" }, data: { masterToken: refreshed, tokenAt: new Date() } })
+      .catch(() => {});
+  }
+  return data as T;
+}
+
+export type CrmGroupQuery = {
+  keyword?: string;
+  groupFirstFilter?: string;
+  secondFilters?: string[];
+  adminFilterType?: string;
+  installerTeamName?: string;
+  sort?: string;
+  page?: number;
+  size?: number;
+};
+
+function groupQuery(q: CrmGroupQuery, withPaging: boolean): Record<string, string | number | undefined> {
+  const out: Record<string, string | number | undefined> = {
+    group_first_filter: q.groupFirstFilter || "ALL",
+    keyword: q.keyword || undefined,
+    installer_team_name: q.installerTeamName || undefined,
+    admin_filter_type: q.adminFilterType || "ALL",
+  };
+  if (withPaging) {
+    out.page_index = Math.max(q.page ?? 0, 0);
+    out.page_size = Math.min(Math.max(q.size ?? 50, 1), 200);
+    out.ticket_sort_criteria = q.sort === "CLOSED_DTTM_ASC" ? "CLOSED_DTTM_ASC" : "CLOSED_DTTM_DESC";
+  }
+  return out;
+}
+
+/** 같은 쿼리 키를 여러 번 붙여야 하는 배열 필터는 buildUrl로 안 되어 직접 잇는다 */
+function withSecondFilters(path: string, filters: string[] | undefined): string {
+  const list = (filters ?? []).filter(Boolean).slice(0, 6);
+  if (!list.length) return path;
+  const qs = list.map((f) => `group_second_active_filter_list=${encodeURIComponent(f)}`).join("&");
+  return path + (path.includes("?") ? "&" : "?") + qs;
+}
+
+export function crmGroupCount(q: CrmGroupQuery) {
+  return crmCall<{ message?: string; result?: number }>(
+    withSecondFilters("/master/groups/count", q.secondFilters),
+    groupQuery(q, false),
+  );
+}
+
+export function crmGroups(q: CrmGroupQuery) {
+  return crmCall<{ message?: string; result?: unknown[] }>(
+    withSecondFilters("/master/groups", q.secondFilters),
+    groupQuery(q, true),
+  );
+}
+
 // ─── 마스터 로그인 ─────────────────────────────────────────────────────────
 //
 // 2단계다. POST /master/auth 로 인증코드를 받고, POST /master/auth-code 로
