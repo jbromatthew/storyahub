@@ -47,7 +47,24 @@ printf 'VITE_API_BASE=%s\nVITE_ERP_MODE=true\n' "$API_BASE" > .env.production
 npm run build
 
 echo "→ S3 sync s3://$S3_BUCKET/"
-aws s3 sync dist/ "s3://$S3_BUCKET/" --delete --region "$AWS_REGION"
+# assets/는 지우지 않는다. 파일명에 해시가 붙어 절대 겹치지 않는데, 지워버리면
+# 배포 순간 열려 있던 탭이 지연 로딩(PDF 등)을 하려다 404를 맞는다.
+aws s3 sync dist/ "s3://$S3_BUCKET/" --delete --exclude "assets/*" --region "$AWS_REGION"
+aws s3 sync dist/assets/ "s3://$S3_BUCKET/assets/" --region "$AWS_REGION"
+
+# 30일 넘은 옛 청크만 정리 — 그 사이 열려 있던 탭은 이미 다 닫혔다
+CUTOFF="$(date -u -v-30d +%Y-%m-%d 2>/dev/null || date -u -d '30 days ago' +%Y-%m-%d)"
+STALE="$(aws s3api list-objects-v2 --bucket "$S3_BUCKET" --prefix assets/ \
+  --query "Contents[?LastModified<'$CUTOFF'].Key" --output text --region "$AWS_REGION" 2>/dev/null || true)"
+if [ -n "$STALE" ] && [ "$STALE" != "None" ]; then
+  COUNT=0
+  for KEY in $STALE; do
+    # 이번 빌드에 있는 파일은 건드리지 않는다
+    [ -f "dist/$KEY" ] && continue
+    aws s3 rm "s3://$S3_BUCKET/$KEY" --region "$AWS_REGION" >/dev/null && COUNT=$((COUNT + 1))
+  done
+  [ "$COUNT" -gt 0 ] && echo "   옛 청크 $COUNT개 정리 (30일 경과)"
+fi
 
 echo "→ CloudFront 무효화 ($DIST_ID)"
 INV_ID="$(aws cloudfront create-invalidation \
