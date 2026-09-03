@@ -10888,6 +10888,74 @@ function DailyThreadBox({ report, section, item, threads, myEmail, onChanged, on
  * 분류를 끌면 소속된 것들까지 한 덩어리로 움직인다. */
 const isChecklistGroup = (kind) => kind === "header" || kind === "sub";
 
+/** 항목이 속한 대분류·소분류를 거슬러 찾는다 */
+function checklistParents(list, i) {
+  let header = null, sub = null;
+  for (let j = i - 1; j >= 0; j -= 1) {
+    const k = list[j]?.kind;
+    if (k === "sub" && !sub) sub = list[j];
+    if (k === "header") { header = list[j]; break; }
+  }
+  return { header, sub };
+}
+
+/** 그 분류에 속한 마지막 항목 다음 자리 */
+function checklistGroupEnd(list, start) {
+  const kind = list[start]?.kind;
+  for (let i = start + 1; i < list.length; i += 1) {
+    const k = list[i]?.kind;
+    if (k === "header") return i;
+    if (kind === "sub" && k === "sub") return i;
+  }
+  return list.length;
+}
+
+/**
+ * 기간이 남은 항목을 내일 할 일로 넘길 때, 원래 있던 대분류·소분류 아래에 끼워 넣는다.
+ * 그냥 뒤에 붙이면 구조가 무너져 다음 날 보고가 평평해진다.
+ */
+function carryIntoGroups(plans, carried) {
+  const out = [...plans];
+  const findGroup = (kind, text, from = 0, to = out.length) => {
+    for (let i = from; i < to; i += 1) {
+      if (out[i].kind === kind && (out[i].text || "").trim() === text) return i;
+    }
+    return -1;
+  };
+
+  for (const { item, header, sub } of carried) {
+    let at = out.length;
+    if (header) {
+      const label = (header.text || "").trim();
+      let hi = findGroup("header", label);
+      if (hi < 0) {
+        out.push({ id: checklistItemId(), text: label, kind: "header" });
+        hi = out.length - 1;
+      }
+      at = checklistGroupEnd(out, hi);
+      if (sub) {
+        const sLabel = (sub.text || "").trim();
+        let si = findGroup("sub", sLabel, hi + 1, at);
+        if (si < 0) {
+          out.splice(at, 0, { id: checklistItemId(), text: sLabel, kind: "sub" });
+          si = at;
+        }
+        at = checklistGroupEnd(out, si);
+      }
+    } else if (sub) {
+      const sLabel = (sub.text || "").trim();
+      let si = findGroup("sub", sLabel);
+      if (si < 0) {
+        out.push({ id: checklistItemId(), text: sLabel, kind: "sub" });
+        si = out.length - 1;
+      }
+      at = checklistGroupEnd(out, si);
+    }
+    out.splice(at, 0, item);
+  }
+  return out;
+}
+
 /** 일일보고 기본 대분류 — 내 지난 보고에 대분류가 하나도 없을 때만 쓴다 */
 const DAILY_DEFAULT_GROUPS = ["세일즈팀", "고객관리팀", "AX팀", "고객성공팀", "파트너스", "공사"];
 
@@ -11134,13 +11202,22 @@ export function DailyReportView() {
     const basePlans = (planItems || [])
       .map((p) => ({ id: p.id || checklistItemId(), text: (p.text || "").trim(), kind: p.kind, start: p.start || (p.end ? selDay : undefined), end: p.end }))
       .filter((p) => p.text);
-    const autoCarry = cleanTodos.filter((t) => !isChecklistGroup(t.kind) && t.end && t.end > selDay
-      && !basePlans.some((p) => (t.id && p.id === t.id) || p.text === t.text))
-      .map(({ id, text, kind, start, end }) => ({ id, text, kind, start, end }));
+    const carried = [];
+    cleanTodos.forEach((t, i) => {
+      if (isChecklistGroup(t.kind)) return;
+      if (!(t.end && t.end > selDay)) return;
+      if (basePlans.some((p) => (t.id && p.id === t.id) || p.text === t.text)) return;
+      const { header, sub } = checklistParents(cleanTodos, i);
+      carried.push({
+        item: { id: t.id, text: t.text, kind: t.kind, start: t.start, end: t.end },
+        header, sub,
+      });
+    });
+    const finalPlans = carryIntoGroups(basePlans, carried);
     return api.erpDailyReportSave(selDay, {
       did: JSON.stringify(cleanTodos.map(({ id, text, done, kind, start, end }) => ({ id, text, done, kind, start, end }))),
       missed: JSON.stringify(cleanTodos.filter((t) => !t.done && !isChecklistGroup(t.kind)).map((t) => ({ id: t.id, text: t.text, reason: (t.reason || "").trim() }))),
-      plan: JSON.stringify([...basePlans, ...autoCarry]),
+      plan: JSON.stringify(finalPlans),
     })
       .then(() => load())
       .catch(notifyError);
