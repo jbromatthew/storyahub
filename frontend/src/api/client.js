@@ -277,6 +277,11 @@ export const api = {
   erpCrmCounts: (q = {}) => req(`/erp/crm/centers/counts?${crmParams(q, false)}`),
   erpCrmCentersExportUrl: (q = {}) => `/erp/crm/centers/export?${crmParams(q, false)}`,
   erpCrmCenterCard: (groupKey) => req(`/erp/crm/centers/${groupKey}/card`),
+  // 내 브로제이 CRM 계정
+  erpCrmAccount: () => req("/erp/crm/account"),
+  erpCrmAccountSave: (body) => req("/erp/crm/account", { method: "PUT", body }),
+  erpCrmAccountLogin: (body) => req("/erp/crm/account/login", { method: "POST", body: body || {} }),
+  erpCrmAccountUnlink: () => req("/erp/crm/account", { method: "DELETE" }),
   // 센터 여정 — 자산 · AS · 접점
   erpOpsTeams: () => req("/erp/ops/teams"),
   erpOpsAssets: (groupKey) => req(`/erp/ops/centers/${groupKey}/assets`),

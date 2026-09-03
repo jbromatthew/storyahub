@@ -10,7 +10,7 @@ import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 import { requireErpMember } from "../middleware/requireErpMember.js";
 import { env } from "../env.js";
-import { crmGroups, crmGroupCount, type CrmGroupQuery } from "../services/openApiGateway.js";
+import { crmGroups, crmGroupCount, masterLogin, toPasswordHash, type CrmGroupQuery } from "../services/openApiGateway.js";
 import { syncCenters } from "../services/centerJourney.js";
 
 export const erpCrmRouter = Router();
@@ -232,7 +232,7 @@ const SCAN_CAP = 6000;
 const SCAN_TTL = 90_000;
 const scanCache = new Map<string, { at: number; rows: Row[]; apiTotal: number; truncated: boolean }>();
 
-async function scanAll(q: CrmGroupQuery): Promise<{ rows: Row[]; apiTotal: number; truncated: boolean }> {
+async function scanAll(q: CrmGroupQuery, userEmail = ""): Promise<{ rows: Row[]; apiTotal: number; truncated: boolean }> {
   const key = JSON.stringify([
     q.keyword, q.groupFirstFilter, q.secondFilters, q.ticketFileNames,
     q.adminFilterType, q.installerTeamName, q.newsfeedDays, q.newsfeedUnderCount,
@@ -240,7 +240,7 @@ async function scanAll(q: CrmGroupQuery): Promise<{ rows: Row[]; apiTotal: numbe
   const hit = scanCache.get(key);
   if (hit && Date.now() - hit.at < SCAN_TTL) return hit;
 
-  const count = await crmGroupCount(q);
+  const count = await crmGroupCount(q, userEmail);
   const apiTotal = Number(count?.result) || 0;
   const want = Math.min(apiTotal, SCAN_CAP);
   const pages = Math.ceil(want / 200);
@@ -250,7 +250,7 @@ async function scanAll(q: CrmGroupQuery): Promise<{ rows: Row[]; apiTotal: numbe
   for (let i = 0; i < pages; i += 5) {
     const batch = await Promise.all(
       Array.from({ length: Math.min(5, pages - i) }, (_, j) =>
-        crmGroups({ ...q, page: i + j, size: 200 }).catch(() => ({ result: [] })),
+        crmGroups({ ...q, page: i + j, size: 200 }, userEmail).catch(() => ({ result: [] })),
       ),
     );
     for (const b of batch) rows.push(...(b?.result ?? []).map((x) => flatten(x as Record<string, unknown>)));
@@ -274,11 +274,11 @@ async function scanAll(q: CrmGroupQuery): Promise<{ rows: Row[]; apiTotal: numbe
  * EXPIRATION=과거이거나 없음(5,196 vs 5,190). ISSUE만 정의를 몰라
  * CRM에서 키 목록을 받아 교집합을 낸다.
  */
-async function issueKeys(): Promise<number[]> {
+async function issueKeys(userEmail: string): Promise<number[]> {
   const keys = new Set<number>();
   for (const sort of ["CLOSED_DTTM_DESC", "CLOSED_DTTM_ASC", "CLOSED_DTTM_DESC"]) {
     for (let page = 0; page < 6; page++) {
-      const r = await crmGroups({ groupFirstFilter: "ISSUE", page, size: 200, sort }).catch(() => null);
+      const r = await crmGroups({ groupFirstFilter: "ISSUE", page, size: 200, sort }, userEmail).catch(() => null);
       const list = (r?.result ?? []) as { group?: { key?: number } }[];
       if (!list.length) break;
       for (const it of list) {
@@ -290,7 +290,7 @@ async function issueKeys(): Promise<number[]> {
   return [...keys];
 }
 
-async function preciseFromLocal(q: CrmGroupQuery, post: Post, page: number, size: number) {
+async function preciseFromLocal(q: CrmGroupQuery, post: Post, page: number, size: number, userEmail: string) {
   const synced = await prisma.erpCenter.count();
   if (!synced) return null; // 아직 동기화 전 — 호출한 쪽이 예전 방식으로 물러선다
 
@@ -314,7 +314,7 @@ async function preciseFromLocal(q: CrmGroupQuery, post: Post, page: number, size
   if (q.groupFirstFilter === "EXPIRATION") {
     AND.push({ OR: [{ ticketExpiredAt: { lt: now } }, { ticketExpiredAt: null }] });
   }
-  if (q.groupFirstFilter === "ISSUE") AND.push({ groupKey: { in: await issueKeys() } });
+  if (q.groupFirstFilter === "ISSUE") AND.push({ groupKey: { in: await issueKeys(userEmail) } });
   if (q.ticketFileNames?.length) AND.push({ ticketName: { in: q.ticketFileNames } });
   if (q.installerTeamName) AND.push({ installTeam: { contains: q.installerTeamName, mode: "insensitive" } });
 
@@ -416,10 +416,10 @@ erpCrmRouter.get("/centers", async (req: AuthedRequest, res) => {
   const size = q.size ?? 50;
   try {
     if (hasPost(post)) {
-      const out = await preciseFromLocal(q, post, page, size);
+      const out = await preciseFromLocal(q, post, page, size, (await actor(req)).email);
       if (out) return res.json(out);
       // 마스터가 아직 비었을 때만 예전 방식(CRM 훑기)으로 물러선다
-      const { rows, apiTotal, truncated } = await scanAll(q);
+      const { rows, apiTotal, truncated } = await scanAll(q, (await actor(req)).email);
       const kept = rows.filter((r) => matches(r, post));
       return res.json({
         centers: kept.slice(page * size, page * size + size),
@@ -429,7 +429,8 @@ erpCrmRouter.get("/centers", async (req: AuthedRequest, res) => {
         scanned: rows.length, apiTotal, truncated,
       });
     }
-    const [list, count] = await Promise.all([crmGroups(q), crmGroupCount(q)]);
+    const me = await actor(req);
+    const [list, count] = await Promise.all([crmGroups(q, me.email), crmGroupCount(q, me.email)]);
     res.json({
       centers: (list?.result ?? []).map((r) => flatten(r as Record<string, unknown>)),
       total: Number(count?.result) || 0,
@@ -455,6 +456,7 @@ erpCrmRouter.get("/centers/counts", async (req: AuthedRequest, res) => {
     base.keyword ?? "", base.adminFilterType, base.installerTeamName ?? "",
     (base.ticketFileNames ?? []).join("+"), base.newsfeedDays ?? "", base.newsfeedUnderCount ?? "",
   ].join("|");
+  const me = await actor(req);
   const hit = countCache.get(key);
   if (hit && Date.now() - hit.at < COUNT_TTL) return res.json({ counts: hit.value, cached: true });
 
@@ -468,7 +470,7 @@ erpCrmRouter.get("/centers/counts", async (req: AuthedRequest, res) => {
     const done = await Promise.all(
       jobs.map(async ([k, q]) => {
         try {
-          const r = await crmGroupCount(q);
+          const r = await crmGroupCount(q, me.email);
           return [k, Number(r?.result) || 0] as const;
         } catch {
           return [k, -1] as const; // 못 센 칸은 -1 — 화면에서 숫자를 감춘다
@@ -490,7 +492,7 @@ erpCrmRouter.get("/centers/export", async (req: AuthedRequest, res) => {
   const post = parsePost(req);
   const cap = Math.min(Math.max(Number(req.query.max) || 5000, 1), 20000);
   try {
-    const scan = await scanAll(q);
+    const scan = await scanAll(q, (await actor(req)).email);
     const rows = hasPost(post) ? scan.rows.filter((r) => matches(r, post)) : scan.rows;
     const total = Math.min(rows.length, cap);
 
@@ -631,7 +633,7 @@ erpCrmRouter.get("/centers/:groupKey/card", async (req: AuthedRequest, res) => {
     // 마스터에 아직 없으면 CRM에서 바로 한 건 끌어와 보여준다 (동기화 전이라도 열리게)
     let live = null;
     if (!center) {
-      const r = await crmGroups({ groupFirstFilter: "ALL", keyword: String(groupKey), page: 0, size: 1 }).catch(() => null);
+      const r = await crmGroups({ groupFirstFilter: "ALL", keyword: String(groupKey), page: 0, size: 1 }, (await actor(req)).email).catch(() => null);
       const hit = (r?.result ?? []).map((x) => flatten(x as Record<string, unknown>)).find((x) => x.groupKey === groupKey);
       live = hit ?? null;
     }
@@ -682,4 +684,62 @@ erpCrmRouter.get("/sync/status", async (_req: AuthedRequest, res) => {
     lastSnapDate: snapDays[0]?.date ?? null,
     lastSnapCount: snapDays[0]?._count._all ?? 0,
   });
+});
+
+// ─── 내 CRM 계정 (마이페이지) ───────────────────────────────────────────────
+//
+// 각자 자기 브로제이 계정으로 붙는다. 인증번호는 본인 메일로 가고,
+// 조회 기록도 CRM 쪽에 자기 계정으로 남는다.
+
+erpCrmRouter.get("/account", async (req: AuthedRequest, res) => {
+  const me = await actor(req);
+  const acc = await prisma.erpCrmAccount.findUnique({ where: { userEmail: me.email } });
+  const jwtExp = (() => {
+    try {
+      const p = JSON.parse(Buffer.from((acc?.masterToken || "").split(".")[1], "base64url").toString("utf8"));
+      return p.exp ? new Date(p.exp * 1000) : null;
+    } catch { return null; }
+  })();
+  res.json({
+    memberId: acc?.memberId ?? "",
+    hasPassword: !!acc?.memberPassword,
+    connected: !!(acc?.masterToken && acc?.sessionToken),
+    tokenAt: acc?.tokenAt ?? null,
+    expiresAt: jwtExp,
+    lastError: acc?.lastError ?? "",
+  });
+});
+
+erpCrmRouter.put("/account", async (req: AuthedRequest, res) => {
+  const me = await actor(req);
+  const memberId = String(req.body?.memberId ?? "").trim().slice(0, 60);
+  if (!memberId) return res.status(400).json({ error: "CRM 아이디를 입력하세요" });
+  const raw = String(req.body?.memberPassword ?? "").trim();
+  const cur = await prisma.erpCrmAccount.findUnique({ where: { userEmail: me.email } });
+  // 평문이 오면 서버에서 SHA-256으로 바꿔 저장한다 — 평문은 남기지 않는다
+  const memberPassword = raw ? toPasswordHash(raw) : (cur?.memberPassword ?? "");
+  const data = { memberId, memberPassword, lastError: "" };
+  await prisma.erpCrmAccount.upsert({
+    where: { userEmail: me.email },
+    create: { userEmail: me.email, ...data },
+    update: data,
+  });
+  res.json({ ok: true });
+});
+
+erpCrmRouter.post("/account/login", async (req: AuthedRequest, res) => {
+  const me = await actor(req);
+  try {
+    const out = await masterLogin(String(req.body?.authCode ?? "").trim() || undefined, me.email);
+    if (out.ok) return res.json({ ok: true, message: "브로제이 CRM에 연결했습니다" });
+    res.json(out);
+  } catch (e) {
+    res.status(errStatus(e)).json({ error: errMsg(e) });
+  }
+});
+
+erpCrmRouter.delete("/account", async (req: AuthedRequest, res) => {
+  const me = await actor(req);
+  await prisma.erpCrmAccount.deleteMany({ where: { userEmail: me.email } });
+  res.json({ ok: true });
 });

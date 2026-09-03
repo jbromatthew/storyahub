@@ -239,14 +239,62 @@ export async function pingGateway(): Promise<string> {
 // 게이트웨이가 아니라 로그인과 같은 CRM 서버(authBaseUrl + authPrefix)에 있다.
 // 인증은 마스터 API와 같은 Bearer JWT + SessionToken 조합이다.
 
-async function crmAttempt(cfg: OpenApiConfig, path: string, query?: CallOpts["query"]) {
+/**
+ * CRM 호출에 쓸 자격. ERP 사용자가 자기 CRM 계정을 연결해뒀으면 그걸 쓰고,
+ * 없으면 공용(시스템) 계정으로 물러선다. 배치 작업은 늘 시스템 계정을 쓴다.
+ */
+export type CrmCreds = {
+  source: "user" | "system";
+  userEmail: string;
+  masterToken: string;
+  sessionToken: string;
+  memberId: string;
+  memberPassword: string;
+};
+
+export async function resolveCrmCreds(userEmail?: string): Promise<CrmCreds> {
+  const email = (userEmail ?? "").toLowerCase();
+  if (email) {
+    const acc = await prisma.erpCrmAccount.findUnique({ where: { userEmail: email } });
+    if (acc?.memberId) {
+      return {
+        source: "user", userEmail: email,
+        masterToken: acc.masterToken, sessionToken: acc.sessionToken,
+        memberId: acc.memberId, memberPassword: acc.memberPassword,
+      };
+    }
+  }
+  const cfg = await getOpenApiConfig();
+  return {
+    source: "system", userEmail: "",
+    masterToken: cfg.masterToken, sessionToken: cfg.sessionToken,
+    memberId: cfg.memberId, memberPassword: cfg.memberPassword,
+  };
+}
+
+async function storeTokens(creds: CrmCreds, jwt: string, session: string) {
+  if (creds.source === "user") {
+    await prisma.erpCrmAccount.update({
+      where: { userEmail: creds.userEmail },
+      data: { masterToken: jwt, sessionToken: session, tokenAt: new Date(), lastError: "" },
+    });
+  } else {
+    await prisma.erpOpenApiConfig.upsert({
+      where: { id: "default" },
+      create: { id: "default", masterToken: jwt, sessionToken: session, tokenAt: new Date() },
+      update: { masterToken: jwt, sessionToken: session, tokenAt: new Date() },
+    });
+  }
+}
+
+async function crmAttempt(cfg: OpenApiConfig, creds: CrmCreds, path: string, query?: CallOpts["query"]) {
   const base = normalizeBaseUrl(cfg.authBaseUrl);
   await assertPublicHost(new URL(base).hostname);
   const url = buildUrl(base + (cfg.authPrefix || "").replace(/\/+$/, ""), path, query);
   const res = await once(url, {
     Accept: "application/json",
-    Authorization: `Bearer ${cfg.masterToken}`,
-    SessionToken: cfg.sessionToken,
+    Authorization: `Bearer ${creds.masterToken}`,
+    SessionToken: creds.sessionToken,
   }, {});
   const text = await res.text().catch(() => "");
   let data: unknown = null;
@@ -264,18 +312,29 @@ async function crmAttempt(cfg: OpenApiConfig, path: string, query?: CallOpts["qu
  * CRM 마스터 호출. 401이면 저장된 계정으로 재로그인 후 한 번만 재시도한다.
  * 응답에 실려 오는 access_token은 갱신된 JWT라 그대로 저장해 세션을 이어간다.
  */
-export async function crmCall<T = unknown>(path: string, query?: CallOpts["query"]): Promise<T> {
-  let cfg = await getOpenApiConfig();
-  if (!cfg.masterToken || !cfg.sessionToken) {
-    fail("마스터 토큰이 없습니다. OPEN API 센터관리 → 설정에서 로그인해 주세요.", 401);
+export async function crmCall<T = unknown>(
+  path: string,
+  query?: CallOpts["query"],
+  userEmail?: string,
+): Promise<T> {
+  const cfg = await getOpenApiConfig();
+  let creds = await resolveCrmCreds(userEmail);
+  if (!creds.masterToken || !creds.sessionToken) {
+    fail(
+      creds.source === "user"
+        ? "CRM 로그인이 필요합니다. 마이페이지에서 브로제이 계정을 연결해 주세요."
+        : "CRM 계정이 연결되지 않았습니다. 마이페이지에서 브로제이 계정을 연결해 주세요.",
+      401,
+    );
   }
-  let { res, data } = await crmAttempt(cfg, path, query);
+  let { res, data } = await crmAttempt(cfg, creds, path, query);
 
-  if (res.status === 401 && cfg.memberId && cfg.memberPassword) {
+  // 만료면 그 사람 계정으로 다시 로그인해 한 번만 재시도한다
+  if (res.status === 401 && creds.memberId && creds.memberPassword) {
     try {
-      await masterLogin();
-      cfg = await getOpenApiConfig();
-      ({ res, data } = await crmAttempt(cfg, path, query));
+      await masterLogin(undefined, creds.source === "user" ? creds.userEmail : undefined);
+      creds = await resolveCrmCreds(userEmail);
+      ({ res, data } = await crmAttempt(cfg, creds, path, query));
     } catch {
       // 재로그인 실패는 아래 401 메시지로 알린다
     }
@@ -283,15 +342,19 @@ export async function crmCall<T = unknown>(path: string, query?: CallOpts["query
 
   if (!res.ok) {
     const msg = pick(data, "message", "error", "reason") || `CRM 오류 (${res.status})`;
-    const hint = res.status === 401 ? " — 마스터 로그인을 다시 해주세요." : "";
+    const hint = res.status === 401 ? " — 마이페이지에서 CRM 로그인을 다시 해주세요." : "";
+    if (creds.source === "user" && res.status === 401) {
+      await prisma.erpCrmAccount
+        .update({ where: { userEmail: creds.userEmail }, data: { lastError: String(msg) } })
+        .catch(() => {});
+    }
     fail(msg + hint, res.status === 401 || res.status === 403 ? res.status : 502);
   }
 
+  // 응답에 실려 오는 access_token은 갱신된 JWT — 그 계정 자리에 되넣는다
   const refreshed = pick(data, "access_token");
-  if (refreshed && refreshed !== cfg.masterToken) {
-    await prisma.erpOpenApiConfig
-      .update({ where: { id: "default" }, data: { masterToken: refreshed, tokenAt: new Date() } })
-      .catch(() => {});
+  if (refreshed && refreshed !== creds.masterToken) {
+    await storeTokens(creds, refreshed, creds.sessionToken).catch(() => {});
   }
   return data as T;
 }
@@ -349,17 +412,19 @@ function groupPath(base: string, q: CrmGroupQuery): string {
   ]);
 }
 
-export function crmGroupCount(q: CrmGroupQuery) {
+export function crmGroupCount(q: CrmGroupQuery, userEmail?: string) {
   return crmCall<{ message?: string; result?: number }>(
     groupPath("/master/groups/count", q),
     groupQuery(q, false),
+    userEmail,
   );
 }
 
-export function crmGroups(q: CrmGroupQuery) {
+export function crmGroups(q: CrmGroupQuery, userEmail?: string) {
   return crmCall<{ message?: string; result?: unknown[] }>(
     groupPath("/master/groups", q),
     groupQuery(q, true),
+    userEmail,
   );
 }
 
@@ -429,17 +494,20 @@ export type LoginResult =
  * 1단계 응답에 인증코드가 없으면 (메일/문자로 보내는 방식이면)
  * needsCode를 돌려주고 화면에서 코드를 받아 다시 부른다.
  */
-export async function masterLogin(authCode?: string): Promise<LoginResult> {
+export async function masterLogin(authCode?: string, userEmail?: string): Promise<LoginResult> {
   const cfg = await getOpenApiConfig();
-  if (!cfg.memberId) fail("마스터 아이디가 설정되지 않았습니다");
-  if (!authCode && !cfg.memberPassword) fail("마스터 비밀번호가 설정되지 않았습니다");
+  const creds = await resolveCrmCreds(userEmail);
+  // userEmail을 줬는데 그 사람 계정이 없으면 시스템 계정으로 새지 않게 막는다
+  if (userEmail && creds.source !== "user") fail("연결된 CRM 계정이 없습니다. 아이디와 비밀번호를 먼저 저장하세요.");
+  if (!creds.memberId) fail("CRM 아이디가 설정되지 않았습니다");
+  if (!authCode && !creds.memberPassword) fail("CRM 비밀번호가 설정되지 않았습니다");
 
   let code = String(authCode || "").trim();
   if (!code) {
     const step1 = await authCall(cfg, "/master/auth", {
       auth_type: cfg.authType || "EMAIL",
-      member_id: cfg.memberId,
-      member_password: cfg.memberPassword,
+      member_id: creds.memberId,
+      member_password: creds.memberPassword,
     });
     code = pick(step1, "auth_code", "authCode", "code", "certification_code");
     if (!code) {
@@ -451,18 +519,14 @@ export async function masterLogin(authCode?: string): Promise<LoginResult> {
     }
   }
 
-  const step2 = await authCall(cfg, "/master/auth-code", { member_id: cfg.memberId, auth_code: code });
+  const step2 = await authCall(cfg, "/master/auth-code", { member_id: creds.memberId, auth_code: code });
   const jwt = pick(step2, "jwt", "token", "access_token", "accessToken", "master_token");
   const session = pick(step2, "session_token", "sessionToken", "session");
   if (!jwt || !session) {
     fail("로그인 응답에서 jwt 또는 session_token을 찾지 못했습니다", 502);
   }
 
-  await prisma.erpOpenApiConfig.upsert({
-    where: { id: "default" },
-    create: { id: "default", masterToken: jwt, sessionToken: session, tokenAt: new Date() },
-    update: { masterToken: jwt, sessionToken: session, tokenAt: new Date() },
-  });
+  await storeTokens(creds, jwt, session);
   return { ok: true };
 }
 

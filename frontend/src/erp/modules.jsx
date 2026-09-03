@@ -757,6 +757,110 @@ export function NotificationsView() {
   );
 }
 
+/** 마이페이지 — 내 브로제이 CRM 계정 연결 */
+function CrmAccountCard() {
+  const [acc, setAcc] = useState(null);
+  const [memberId, setMemberId] = useState("");
+  const [password, setPassword] = useState("");
+  const [authCode, setAuthCode] = useState("");
+  const [needsCode, setNeedsCode] = useState("");
+  const [busy, setBusy] = useState("");
+  const [result, setResult] = useState(null);
+
+  const load = useCallback(() => {
+    api.erpCrmAccount().then((d) => { setAcc(d); setMemberId(d.memberId || ""); }).catch(() => setAcc({}));
+  }, []);
+  useEffect(load, [load]);
+
+  if (!acc) return null;
+
+  const connect = async () => {
+    if (!memberId.trim()) return notifyError(new Error("CRM 아이디를 입력하세요"));
+    setBusy("login");
+    setResult(null);
+    try {
+      if (memberId !== acc.memberId || password) {
+        await api.erpCrmAccountSave({ memberId: memberId.trim(), memberPassword: password });
+      }
+      const r = await api.erpCrmAccountLogin(needsCode ? { authCode: authCode.trim() } : {});
+      if (r.needsCode) {
+        setNeedsCode(r.message || "메일로 받은 인증번호를 입력해 주세요");
+        setResult({ ok: false, message: r.message });
+      } else {
+        setNeedsCode("");
+        setPassword("");
+        setAuthCode("");
+        setResult({ ok: true, message: r.message || "연결했습니다" });
+        load();
+      }
+    } catch (e) {
+      setResult({ ok: false, message: e.message || "연결하지 못했습니다" });
+    } finally { setBusy(""); }
+  };
+
+  const unlink = async () => {
+    if (!(await confirmAction("브로제이 CRM 연결을 끊을까요?\n\n아이디·비밀번호도 함께 지워집니다."))) return;
+    try {
+      await api.erpCrmAccountUnlink();
+      setMemberId(""); setPassword(""); setAuthCode(""); setNeedsCode(""); setResult(null);
+      toastSuccess("연결을 끊었어요");
+      load();
+    } catch (e) { notifyError(e); }
+  };
+
+  return (
+    <div className="card" style={{ marginTop: 16, padding: "16px 18px" }}>
+      <div className="row" style={{ alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <div className="h-eyebrow" style={{ margin: 0 }}>브로제이 CRM 연결</div>
+        {acc.connected
+          ? <span className="cc-pill ok">연결됨</span>
+          : <span className="cc-pill off">연결 안 됨</span>}
+      </div>
+      <div className="small" style={{ color: "var(--muted)", lineHeight: 1.6, marginBottom: 14 }}>
+        센터조회·AS·여정관리는 <b>본인 CRM 계정</b>으로 붙습니다.
+        인증번호는 본인 메일로 가고, 조회 기록도 CRM에 본인 계정으로 남습니다.
+        비밀번호는 서버에서 SHA-256으로 바꿔 저장하고 원문은 남기지 않습니다.
+      </div>
+
+      <div className="oa-form">
+        <OaField label="CRM 아이디">
+          <input className="input" autoComplete="off" value={memberId}
+            onChange={(e) => setMemberId(e.target.value)} placeholder="solution.broj.co.kr 로그인 아이디" />
+        </OaField>
+        <OaField label="비밀번호" hint={acc.hasPassword ? "저장돼 있음 — 바꿀 때만 입력" : "solution.broj.co.kr 비밀번호"}>
+          <input className="input" type="password" autoComplete="off" value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder={acc.hasPassword ? "바꿀 때만 입력" : "비밀번호"} />
+        </OaField>
+      </div>
+
+      {needsCode && (
+        <div style={{ marginTop: 12 }}>
+          <OaField label="인증번호" hint={needsCode}>
+            <input className="input" value={authCode} autoComplete="off" inputMode="numeric"
+              onChange={(e) => setAuthCode(e.target.value)} placeholder="메일로 받은 6자리" />
+          </OaField>
+        </div>
+      )}
+
+      <div className="row" style={{ gap: 8, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
+        <button type="button" className="btn btn-accent" onClick={connect} disabled={busy === "login" || !memberId.trim()}>
+          {busy === "login" ? "연결 중…" : needsCode ? "인증번호로 연결" : acc.connected ? "다시 연결" : "연결"}
+        </button>
+        {acc.connected && <button type="button" className="btn btn-ghost" onClick={unlink}>연결 끊기</button>}
+        {acc.connected && acc.expiresAt && (
+          <span className="small" style={{ color: "var(--muted)" }}>
+            토큰 만료 {new Date(acc.expiresAt).toLocaleString("ko-KR")}
+          </span>
+        )}
+      </div>
+
+      {result && <div className={result.ok ? "oa-ok" : "oa-err"}>{result.message}</div>}
+      {!result && acc.lastError && <div className="oa-err">{acc.lastError}</div>}
+    </div>
+  );
+}
+
 export function ProfileView({ user, onLogout }) {
   const [profile, setProfile] = useState(null);
   const [phone, setPhone] = useState("");
@@ -785,7 +889,10 @@ export function ProfileView({ user, onLogout }) {
         <input value={phone} onChange={(e) => setPhone(e.target.value)} />
       </div>
       <button className="btn btn-accent" style={{ width: "100%", marginBottom: 8 }} onClick={save}>저장</button>
-      <button className="btn btn-ghost" style={{ width: "100%" }} onClick={onLogout}>로그아웃</button>
+
+      <CrmAccountCard />
+
+      <button className="btn btn-ghost" style={{ width: "100%", marginTop: 16 }} onClick={onLogout}>로그아웃</button>
     </div>
   );
 }
