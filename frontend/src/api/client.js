@@ -16,7 +16,6 @@ function crmParams(q = {}, withPaging = true) {
   const p = new URLSearchParams();
   if (q.keyword) p.set("keyword", q.keyword);
   if (q.first) p.set("first", q.first);
-  if (q.admin && q.admin !== "ALL") p.set("admin", q.admin);
   if (q.installer) p.set("installer", q.installer);
   for (const s of q.second || []) p.append("second", s);
   for (const t of q.ticket || []) p.append("ticket", t);

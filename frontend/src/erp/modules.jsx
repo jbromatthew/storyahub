@@ -13105,7 +13105,7 @@ const CC_TYPE_OPTS = [
 ];
 
 const CC_BLANK = {
-  keyword: "", first: "ALL", second: [], ticket: [], admin: "ALL",
+  keyword: "", first: "ALL", second: [], ticket: [],
   installer: "", sort: "CLOSED_DTTM_DESC", newsfeedDays: null, newsfeedUnder: null,
   // 정밀 필터 — 서버가 응답 값을 보고 직접 거른다
   regular: "", pay: [], types: [], kiosk: [], hasKiosk: "", hasBiz: "", hasTicket: "",
@@ -13177,7 +13177,6 @@ function ccBiz(v) {
 /** 필터가 기본값에서 얼마나 벗어났는지 — 고급필터 버튼에 뱃지로 띄운다 */
 function ccAdvancedCount(f) {
   let n = 0;
-  if (f.admin && f.admin !== "ALL") n++;
   if (f.ticket?.length) n++;
   if (f.installer) n++;
   if (f.newsfeedDays != null && f.newsfeedUnder != null) n++;
@@ -13201,7 +13200,6 @@ function ccFilterChips(f) {
   out.push(CC_FIRST.find(([v]) => v === f.first)?.[1] || f.first);
   for (const s of f.second || []) out.push(CC_SECOND.find(([v]) => v === s)?.[1] || s);
   for (const t of f.ticket || []) out.push(CC_TICKET_LABEL[t] || t);
-  if (f.admin === "CONNECTED") out.push("내 소속만");
   if (f.installer) out.push(`설치팀 ${f.installer}`);
   if (f.newsfeedDays != null) out.push(`주요기록 ${f.newsfeedDays}일 ${f.newsfeedUnder}건 이하`);
   if (f.regular === "Y") out.push("정기결제만");
@@ -13232,7 +13230,7 @@ function ccSameFilters(a, b) {
   const norm = (f) => JSON.stringify({
     keyword: f.keyword || "", first: f.first || "ALL",
     second: [...(f.second || [])].sort(), ticket: [...(f.ticket || [])].sort(),
-    admin: f.admin || "ALL", installer: f.installer || "",
+    installer: f.installer || "",
     sort: f.sort || "CLOSED_DTTM_DESC",
     nd: f.newsfeedDays ?? null, nu: f.newsfeedUnder ?? null,
     regular: f.regular || "", pay: [...(f.pay || [])].sort(),
@@ -13268,7 +13266,6 @@ function CcSortHead({ k, sortKey, dir, onSort, children, style }) {
 
 /** 고급필터 — CRM의 고급필터 모달과 같은 구성 */
 function CcAdvanced({ value, onApply, onClose }) {
-  const [admin, setAdmin] = useState(value.admin || "ALL");
   const [useNews, setUseNews] = useState(value.newsfeedDays != null && value.newsfeedUnder != null);
   const [days, setDays] = useState(value.newsfeedDays ?? "");
   const [under, setUnder] = useState(value.newsfeedUnder ?? "");
@@ -13298,7 +13295,7 @@ function CcAdvanced({ value, onApply, onClose }) {
   const numOrNull = (v) => (String(v).trim() === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 
   const reset = () => {
-    setAdmin("ALL"); setUseNews(false); setDays(""); setUnder(""); setTicket([]); setInstaller("");
+    setUseNews(false); setDays(""); setUnder(""); setTicket([]); setInstaller("");
     setRegular(""); setPay([]); setTypes([]); setKiosk([]); setHasKiosk(""); setHasBiz(""); setHasTicket("");
     setExpMin(""); setExpMax(""); setPointMax(""); setCreatedFrom(""); setCreatedTo(""); setIdleDays("");
   };
@@ -13314,7 +13311,6 @@ function CcAdvanced({ value, onApply, onClose }) {
       return notifyError(new Error("만료 기간은 시작이 끝보다 클 수 없습니다"));
     }
     onApply({
-      admin,
       // 전부 고르면 필터를 안 건 것과 같다 — 쿼리를 짧게 유지한다
       ticket: ticket.length === CC_TICKETS.length ? [] : ticket,
       installer: installer.trim(),
@@ -13330,13 +13326,6 @@ function CcAdvanced({ value, onApply, onClose }) {
 
   return (
     <OaOverlay wide title="고급필터" onClose={onClose}>
-      <div className="cc-sec">관리자 권한 접속</div>
-      <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-        {[["ALL", "전체"], ["CONNECTED", "내가 소속된 센터만"]].map(([v, label]) => (
-          <button key={v} type="button" className={"chip" + (admin === v ? " on" : "")} onClick={() => setAdmin(v)}>{label}</button>
-        ))}
-      </div>
-
       <div className="cc-sec">이탈 위기</div>
       <label className="cc-check">
         <input type="checkbox" checked={useNews} onChange={(e) => setUseNews(e.target.checked)} />
@@ -13547,8 +13536,8 @@ export function CrmCentersView() {
 
   // 칩 건수는 목록과 따로 — 검색어·고급필터가 바뀔 때만 다시 센다
   const countKey = useMemo(
-    () => JSON.stringify([f.keyword, f.admin, f.installer, f.ticket, f.newsfeedDays, f.newsfeedUnder]),
-    [f.keyword, f.admin, f.installer, f.ticket, f.newsfeedDays, f.newsfeedUnder],
+    () => JSON.stringify([f.keyword, f.installer, f.ticket, f.newsfeedDays, f.newsfeedUnder]),
+    [f.keyword, f.installer, f.ticket, f.newsfeedDays, f.newsfeedUnder],
   );
   useEffect(() => {
     let alive = true;
@@ -13687,6 +13676,11 @@ export function CrmCentersView() {
           </button>
         ))}
         {segments.length > 0 && <span className="cc-div" />}
+        {segments.length === 0 && (
+          <span className="small" style={{ color: "var(--muted)" }}>
+            조건을 걸고 <b>☆ 세그먼트 저장</b>을 누르면 여기에 추가됩니다
+          </span>
+        )}
         {segments.map((seg) => (
           <span key={seg.id} className={"cc-seg" + (activeSeg === seg.id ? " on" : "")}>
             <button type="button" className="cc-seg-main" onClick={() => applySegment(seg)} title={seg.shared ? `${seg.ownerName} · 공개` : "나만 보기"}>
@@ -13703,7 +13697,7 @@ export function CrmCentersView() {
         ))}
         <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }}
           onClick={() => setShowSave(true)} disabled={!dirty}>
-          + 지금 조건 저장
+          ☆ 지금 조건 저장
         </button>
       </div>
 
@@ -13743,6 +13737,10 @@ export function CrmCentersView() {
         <button type="button" className={"cc-btn" + (advN ? " on" : "")} onClick={() => setShowAdv(true)}>
           ⚙ 고급필터{advN ? <span className="cc-cnt">{advN}</span> : null}
         </button>
+        <button type="button" className="cc-btn" onClick={() => setShowSave(true)} disabled={!dirty}
+          title={dirty ? "지금 조건을 세그먼트로 저장" : "조건을 하나라도 걸면 저장할 수 있어요"}>
+          ☆ 세그먼트 저장
+        </button>
         <span className="cc-total">
           검색 수: <b>{loading ? "…" : total.toLocaleString()}</b>
         </span>
@@ -13766,7 +13764,7 @@ export function CrmCentersView() {
           {ccFilterChips(f).slice(1).map((c, i) => <span key={i} className="tag">{c}</span>)}
           <button type="button" className="btn btn-ghost btn-sm"
             onClick={() => apply({
-              admin: "ALL", ticket: [], installer: "", newsfeedDays: null, newsfeedUnder: null,
+              ticket: [], installer: "", newsfeedDays: null, newsfeedUnder: null,
               regular: "", pay: [], types: [], kiosk: [], hasKiosk: "", hasBiz: "", hasTicket: "",
               expMin: null, expMax: null, pointMax: null, createdFrom: "", createdTo: "", idleDays: null,
             })}>
