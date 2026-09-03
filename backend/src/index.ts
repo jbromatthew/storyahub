@@ -34,7 +34,7 @@ import { erpRouter } from "./routes/erp.js";
 import { erpOpenApiRouter } from "./routes/erpOpenApi.js";
 import { erpCrmRouter } from "./routes/erpCrm.js";
 import { erpCenterOpsRouter } from "./routes/erpCenterOps.js";
-import { startCenterSync } from "./services/centerJourney.js";
+import { startCenterSync, startCrmKeepAlive } from "./services/centerJourney.js";
 import { salesSyncRouter } from "./routes/salesSync.js";
 import { constructionPublicRouter } from "./routes/constructionPublic.js";
 import { iotPublicRouter } from "./routes/iotPublic.js";
@@ -134,6 +134,7 @@ app.listen(env.port, () => {
       startSalesAutoSync();
       startSalesReportBot();
       startCenterSync();
+      startCrmKeepAlive();
       // 노션 댓글 역동기화 — 5분 간격 (설정 없으면 즉시 return이라 무해)
       setInterval(() => {
         void import("./services/notionDaily.js")

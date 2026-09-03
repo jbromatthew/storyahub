@@ -209,6 +209,22 @@ export async function syncCenters(): Promise<SyncResult> {
   };
 }
 
+/**
+ * 토큰 유지 — 마스터 JWT는 12시간짜리인데 호출할 때마다 만료가 뒤로 밀린다.
+ * 동기화는 하루 한 번이라 그 사이 끊기므로, 6시간마다 가장 가벼운 호출을
+ * 한 번 던져 세션을 살려둔다. 이게 없으면 아침 동기화 때 재로그인이 필요하고,
+ * 재로그인에는 메일로 오는 인증번호가 있어야 해서 사람 손이 든다.
+ */
+export function startCrmKeepAlive(): void {
+  const ping = () =>
+    void crmGroupCount({ groupFirstFilter: "ALL" })
+      .then(() => console.log("[crm-keepalive] 토큰 갱신"))
+      .catch((e) => console.warn("[crm-keepalive] 실패:", (e as Error).message));
+
+  setTimeout(ping, 60_000); // 부팅 1분 뒤 한 번
+  setInterval(ping, 6 * 3600_000);
+}
+
 /** 매일 KST 05:10에 한 번. 토큰이 없으면 조용히 넘어간다. */
 let lastRunDate = "";
 export function startCenterSync(): void {
