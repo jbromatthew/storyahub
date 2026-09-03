@@ -35,6 +35,7 @@ export const ERP_MODULES = [
   // 메뉴 권한(ErpMenuAccess) 규칙을 걸면 그 규칙이 우선한다.
   { id: "openapi-center", label: "OPEN API 센터관리", icon: "admin", group: "openapi", groupLabel: "OPEN API", ownerOnly: true },
   { id: "kb", label: "지식경영", icon: "book", group: "kb", groupLabel: "지식" },
+  { id: "my-account", label: "내 계정", icon: "admin", group: "account", groupLabel: "내 정보" },
 ];
 
 export const ERP_ADMIN_MODULES = [

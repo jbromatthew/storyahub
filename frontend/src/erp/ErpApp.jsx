@@ -13,7 +13,7 @@ import { ERP_CSS } from "./erpStyles.js";
 import { ERP_MODULES, ERP_ADMIN_MODULES } from "./config.js";
 import { BROJ_LOGO } from "./brojSeal.js";
 import { erpIcons as I } from "./icons.jsx";
-import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesClosingView, IncentiveView, SmartStoreView, SalesDashboardView, MarketingDashboardView, BrojDashboardView, RevenueView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, ConsultDocsView, SalesCasesView, MembersView, DailyReportView, IotLeadsView, VendorOrdersView, OpenApiCenterView, CrmCentersView } from "./modules.jsx";
+import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesClosingView, IncentiveView, SmartStoreView, SalesDashboardView, MarketingDashboardView, BrojDashboardView, RevenueView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, ConsultDocsView, SalesCasesView, MembersView, DailyReportView, IotLeadsView, VendorOrdersView, OpenApiCenterView, CrmCentersView, ProfileView } from "./modules.jsx";
 
 function NavBtn({ on, icon, label, onClick, hidden, fav, onFav, layout = "side" }) {
   const cls = layout === "side" ? "sidenavitem" : "sidenavitem";
@@ -450,6 +450,7 @@ export default function ErpApp() {
       case "sales-cases": return (
         <SalesCasesView articles={kbArticles} prefs={prefs} reload={loadKb} />
       );
+      case "my-account": return <ProfileView user={user} onLogout={handleLogout} />;
       case "crm-centers": return <CrmCentersView />;
       case "openapi-center": return <OpenApiCenterView />;
       case "sales-daily": return <SalesDailyView />;
