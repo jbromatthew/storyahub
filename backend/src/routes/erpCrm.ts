@@ -116,19 +116,178 @@ function flatten(item: Record<string, unknown>) {
     installerTeam: String(info.installer_team_name ?? ""),
     previousNames: String(info.previous_names ?? ""),
     kiosks,
+    kioskKeys: Object.entries(info).filter(([k, v]) => k.startsWith("use_kiosk_") && v === true).map(([k]) => k),
   };
+}
+
+type Row = ReturnType<typeof flatten>;
+
+// ─── 정밀 필터 ──────────────────────────────────────────────────────────────
+//
+// CRM의 세부 필터는 조합이 기대대로 동작하지 않는다 (비정기+만료임박이
+// 비정기 단독과 같은 건수로 나온다). 그래서 응답에 실려 오는 실제 값으로
+// 우리가 직접 거른다. 걸린 게 있으면 목록을 훑어 모은 뒤 걸러서 페이지를 낸다.
+
+const KIOSKS = [
+  "use_kiosk_7_krizer", "use_kiosk_10_stand_krizer", "use_kiosk_10_passlight_krizer",
+  "use_kiosk_15_krizer", "use_kiosk_21_krizer", "use_kiosk_apos_centerm",
+];
+const PAY_STATUS = ["NORMAL", "STOPPED", "FAILED", "CANCELED"];
+
+type Post = {
+  regular?: string;        // Y=정기만 N=비정기만
+  pay?: string[];          // 결제 상태
+  types?: string[];        // 업종
+  kiosk?: string[];        // 키오스크 기종
+  hasKiosk?: string;       // Y/N
+  hasBiz?: string;         // Y/N
+  hasTicket?: string;      // Y/N — 이용권 보유 여부
+  expMin?: number | null;  // 만료 D-day 하한 (음수 = 이미 지남)
+  expMax?: number | null;  // 만료 D-day 상한
+  pointMax?: number | null;
+  createdFrom?: string;
+  createdTo?: string;
+  idleDays?: number | null; // 최근 접속이 N일 이상 없음
+};
+
+const num = (v: unknown) => (String(v ?? "") === "" || !Number.isFinite(Number(v)) ? null : Number(v));
+const yn = (v: unknown) => (v === "Y" || v === "N" ? String(v) : "");
+
+function parsePost(req: AuthedRequest): Post {
+  const r = req.query;
+  return {
+    regular: yn(r.regular),
+    pay: listParam(r.pay).map((v) => v.toUpperCase()).filter((v) => PAY_STATUS.includes(v)),
+    types: listParam(r.types).map((v) => v.toUpperCase()),
+    kiosk: listParam(r.kiosk).filter((v) => KIOSKS.includes(v)),
+    hasKiosk: yn(r.hasKiosk),
+    hasBiz: yn(r.hasBiz),
+    hasTicket: yn(r.hasTicket),
+    expMin: num(r.expMin),
+    expMax: num(r.expMax),
+    pointMax: num(r.pointMax),
+    createdFrom: String(r.createdFrom ?? "").slice(0, 10),
+    createdTo: String(r.createdTo ?? "").slice(0, 10),
+    idleDays: num(r.idleDays),
+  };
+}
+
+function hasPost(p: Post): boolean {
+  return Boolean(
+    p.regular || p.pay?.length || p.types?.length || p.kiosk?.length ||
+    p.hasKiosk || p.hasBiz || p.hasTicket ||
+    p.expMin !== null || p.expMax !== null || p.pointMax !== null ||
+    p.createdFrom || p.createdTo || p.idleDays !== null,
+  );
+}
+
+const DAY = 86_400_000;
+/** 만료까지 남은 일수. 음수면 이미 지난 것. 이용권이 없으면 null */
+function ddays(v: unknown): number | null {
+  if (!v) return null;
+  const t = new Date(String(v)).getTime();
+  if (!Number.isFinite(t)) return null;
+  return Math.floor((t - Date.now()) / DAY);
+}
+
+function matches(r: Row, p: Post): boolean {
+  if (p.regular === "Y" && !r.ticketRegular) return false;
+  if (p.regular === "N" && r.ticketRegular) return false;
+  if (p.pay?.length && !p.pay.includes(r.paymentStatus)) return false;
+  if (p.types?.length && !r.types.some((t) => p.types!.includes(t))) return false;
+  if (p.kiosk?.length && !r.kioskKeys.some((k) => p.kiosk!.includes(k))) return false;
+  if (p.hasKiosk === "Y" && !r.kioskKeys.length) return false;
+  if (p.hasKiosk === "N" && r.kioskKeys.length) return false;
+  if (p.hasBiz === "Y" && !r.bizNo) return false;
+  if (p.hasBiz === "N" && r.bizNo) return false;
+  if (p.hasTicket === "Y" && !r.ticketName) return false;
+  if (p.hasTicket === "N" && r.ticketName) return false;
+
+  if (p.expMin !== null || p.expMax !== null) {
+    const d = ddays(r.ticketExpiredAt);
+    if (d === null) return false; // 만료일이 없으면 기간 조건에 걸릴 수 없다
+    if (p.expMin !== null && d < p.expMin!) return false;
+    if (p.expMax !== null && d > p.expMax!) return false;
+  }
+  if (p.pointMax !== null && r.messagePoint > p.pointMax!) return false;
+
+  if (p.createdFrom || p.createdTo) {
+    const c = r.createdAt ? String(r.createdAt).slice(0, 10) : "";
+    if (!c) return false;
+    if (p.createdFrom && c < p.createdFrom) return false;
+    if (p.createdTo && c > p.createdTo) return false;
+  }
+  if (p.idleDays !== null) {
+    const t = r.lastAccessedAt ? new Date(String(r.lastAccessedAt)).getTime() : 0;
+    // 접속 기록이 없으면(1970 등) 가장 오래 안 온 것으로 본다
+    const idle = !t || new Date(t).getFullYear() < 1990 ? 99999 : Math.floor((Date.now() - t) / DAY);
+    if (idle < p.idleDays!) return false;
+  }
+  return true;
+}
+
+/** 훑어 모은 결과를 잠깐 들고 있는다 — 페이지를 넘길 때마다 다시 긁지 않게 */
+const SCAN_CAP = 6000;
+const SCAN_TTL = 90_000;
+const scanCache = new Map<string, { at: number; rows: Row[]; apiTotal: number; truncated: boolean }>();
+
+async function scanAll(q: CrmGroupQuery): Promise<{ rows: Row[]; apiTotal: number; truncated: boolean }> {
+  const key = JSON.stringify([
+    q.keyword, q.groupFirstFilter, q.secondFilters, q.ticketFileNames,
+    q.adminFilterType, q.installerTeamName, q.newsfeedDays, q.newsfeedUnderCount,
+  ]);
+  const hit = scanCache.get(key);
+  if (hit && Date.now() - hit.at < SCAN_TTL) return hit;
+
+  const count = await crmGroupCount(q);
+  const apiTotal = Number(count?.result) || 0;
+  const want = Math.min(apiTotal, SCAN_CAP);
+  const pages = Math.ceil(want / 200);
+  const rows: Row[] = [];
+
+  // 5개씩 묶어 병렬로 — CRM에 과하게 몰지 않으면서 충분히 빠르다
+  for (let i = 0; i < pages; i += 5) {
+    const batch = await Promise.all(
+      Array.from({ length: Math.min(5, pages - i) }, (_, j) =>
+        crmGroups({ ...q, page: i + j, size: 200 }).catch(() => ({ result: [] })),
+      ),
+    );
+    for (const b of batch) rows.push(...(b?.result ?? []).map((x) => flatten(x as Record<string, unknown>)));
+    if (rows.length >= want) break;
+  }
+
+  const out = { rows, apiTotal, truncated: apiTotal > SCAN_CAP };
+  scanCache.set(key, { at: Date.now(), ...out });
+  if (scanCache.size > 12) scanCache.clear();
+  return out;
 }
 
 erpCrmRouter.get("/centers", async (req: AuthedRequest, res) => {
   const q = parseQuery(req);
+  const post = parsePost(req);
+  const page = q.page ?? 0;
+  const size = q.size ?? 50;
   try {
+    if (hasPost(post)) {
+      const { rows, apiTotal, truncated } = await scanAll(q);
+      const kept = rows.filter((r) => matches(r, post));
+      return res.json({
+        centers: kept.slice(page * size, page * size + size),
+        total: kept.length,
+        page,
+        size,
+        precise: true,
+        scanned: rows.length,
+        apiTotal,
+        truncated,
+      });
+    }
     const [list, count] = await Promise.all([crmGroups(q), crmGroupCount(q)]);
-    const rows = (list?.result ?? []).map((r) => flatten(r as Record<string, unknown>));
     res.json({
-      centers: rows,
+      centers: (list?.result ?? []).map((r) => flatten(r as Record<string, unknown>)),
       total: Number(count?.result) || 0,
-      page: q.page ?? 0,
-      size: q.size ?? 50,
+      page,
+      size,
     });
   } catch (e) {
     res.status(errStatus(e)).json({ error: errMsg(e) });
@@ -181,18 +340,12 @@ erpCrmRouter.get("/centers/counts", async (req: AuthedRequest, res) => {
 /** 현재 조건 전체를 CSV로 — 200건씩 끊어 모은다 */
 erpCrmRouter.get("/centers/export", async (req: AuthedRequest, res) => {
   const q = { ...parseQuery(req), size: 200 };
+  const post = parsePost(req);
   const cap = Math.min(Math.max(Number(req.query.max) || 5000, 1), 20000);
   try {
-    const count = await crmGroupCount(q);
-    const total = Math.min(Number(count?.result) || 0, cap);
-    const rows: ReturnType<typeof flatten>[] = [];
-    for (let page = 0; rows.length < total; page++) {
-      const list = await crmGroups({ ...q, page });
-      const batch = (list?.result ?? []).map((r) => flatten(r as Record<string, unknown>));
-      if (!batch.length) break;
-      rows.push(...batch);
-      if (page > 120) break; // 안전장치
-    }
+    const scan = await scanAll(q);
+    const rows = hasPost(post) ? scan.rows.filter((r) => matches(r, post)) : scan.rows;
+    const total = Math.min(rows.length, cap);
 
     const head = [
       "센터명", "지점명", "대표자", "대표자 연락처", "센터 연락처", "사업자번호",
@@ -243,6 +396,20 @@ function cleanFilters(v: unknown) {
     sort: String(f.sort ?? "") === "CLOSED_DTTM_ASC" ? "CLOSED_DTTM_ASC" : "CLOSED_DTTM_DESC",
     newsfeedDays: Number.isFinite(days) ? Math.min(Math.max(days, 0), 7) : null,
     newsfeedUnder: Number.isFinite(under) ? Math.max(under, 0) : null,
+    // 정밀 필터 — 우리가 직접 거르는 조건들
+    regular: f.regular === "Y" || f.regular === "N" ? f.regular : "",
+    pay: listParam(f.pay).map((v) => v.toUpperCase()).filter((v) => PAY_STATUS.includes(v)),
+    types: listParam(f.types).map((v) => v.toUpperCase()).slice(0, 20),
+    kiosk: listParam(f.kiosk).filter((v) => KIOSKS.includes(v)),
+    hasKiosk: f.hasKiosk === "Y" || f.hasKiosk === "N" ? f.hasKiosk : "",
+    hasBiz: f.hasBiz === "Y" || f.hasBiz === "N" ? f.hasBiz : "",
+    hasTicket: f.hasTicket === "Y" || f.hasTicket === "N" ? f.hasTicket : "",
+    expMin: Number.isFinite(Number(f.expMin)) && String(f.expMin ?? "") !== "" ? Number(f.expMin) : null,
+    expMax: Number.isFinite(Number(f.expMax)) && String(f.expMax ?? "") !== "" ? Number(f.expMax) : null,
+    pointMax: Number.isFinite(Number(f.pointMax)) && String(f.pointMax ?? "") !== "" ? Number(f.pointMax) : null,
+    createdFrom: String(f.createdFrom ?? "").slice(0, 10),
+    createdTo: String(f.createdTo ?? "").slice(0, 10),
+    idleDays: Number.isFinite(Number(f.idleDays)) && String(f.idleDays ?? "") !== "" ? Number(f.idleDays) : null,
   };
 }
 

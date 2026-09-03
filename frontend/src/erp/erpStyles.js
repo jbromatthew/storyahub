@@ -14,6 +14,11 @@ body{font-family:Pretendard,-apple-system,sans-serif;background:var(--paper);col
 .app-shell{display:flex;flex:1;min-height:0;}
 .app-sidebar{width:240px;background:#fff;border-right:1px solid var(--line);padding:20px 14px;display:none;flex-direction:column;transition:width .18s ease;}
 .app-brand{font-size:20px;font-weight:900;letter-spacing:-.03em;padding:4px 10px 18px;}
+.app-brand img{display:block;height:26px;width:auto}
+/* 어두운 테마에서 검은 워드마크가 묻히지 않게 밝기를 뒤집는다 */
+@media (prefers-color-scheme:dark){.app-brand img{filter:invert(1) hue-rotate(180deg)}}
+[data-theme="dark"] .app-brand img{filter:invert(1) hue-rotate(180deg)}
+[data-theme="light"] .app-brand img{filter:none}
 /* 사이드바 접기/펼치기 */
 .app-sidebar-hd{display:flex;align-items:center;justify-content:space-between;}
 .app-sidebar-hd .app-brand{padding:4px 10px 18px 10px;}
@@ -807,4 +812,10 @@ ${KB_CSS}
   .cc-tools{margin-left:0;width:100%}
   .cc-search{flex:1 1 100%}
 }
+.cc-seg.preset{border-style:dashed;padding:5px 12px;font-size:12.5px;cursor:pointer;color:inherit;background:#fff}
+.cc-seg.preset:hover{background:var(--surface-2,#F5F6F8)}
+.cc-seg.preset.on{border-style:solid;border-color:#FA6400;color:#C24C00;font-weight:600;background:#FFF6EF}
+.cc-sec-note{margin-left:8px;font-size:11.5px;font-weight:400;color:var(--muted);letter-spacing:0}
+.cc-note{margin-top:10px;padding:9px 12px;border-radius:10px;background:#FFF6EF;border:1px solid #F3D7C2;
+  font-size:12.5px;line-height:1.6;color:#8A4A10}
 `;

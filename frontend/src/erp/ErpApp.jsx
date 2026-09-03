@@ -11,6 +11,7 @@ import { kbToUi, kbCategories } from "../mappers.js";
 import { userPreferences } from "../preferences.js";
 import { ERP_CSS } from "./erpStyles.js";
 import { ERP_MODULES, ERP_ADMIN_MODULES } from "./config.js";
+import { BROJ_LOGO } from "./brojSeal.js";
 import { erpIcons as I } from "./icons.jsx";
 import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesClosingView, IncentiveView, SmartStoreView, SalesDashboardView, MarketingDashboardView, BrojDashboardView, RevenueView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, ConsultDocsView, SalesCasesView, MembersView, DailyReportView, IotLeadsView, VendorOrdersView, OpenApiCenterView, CrmCentersView } from "./modules.jsx";
 
@@ -466,7 +467,7 @@ export default function ErpApp() {
         {boot === "app" && (
           <aside className={"app-sidebar" + (sideCollapsed ? " collapsed" : "")}>
             <div className="app-sidebar-hd">
-              <div className="app-brand">ERP</div>
+              <div className="app-brand"><img src={BROJ_LOGO} alt="브로제이" /></div>
               <button type="button" className="side-toggle" title={sideCollapsed ? "메뉴 펼치기" : "메뉴 접기"} aria-label={sideCollapsed ? "메뉴 펼치기" : "메뉴 접기"} onClick={toggleSidebar}>
                 {sideCollapsed ? "»" : "«"}
               </button>

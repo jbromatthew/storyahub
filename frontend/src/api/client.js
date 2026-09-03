@@ -24,6 +24,19 @@ function crmParams(q = {}, withPaging = true) {
     p.set("newsfeedDays", String(q.newsfeedDays));
     p.set("newsfeedUnder", String(q.newsfeedUnder));
   }
+  // 정밀 필터 — 서버가 응답 값을 보고 직접 거른다
+  if (q.regular) p.set("regular", q.regular);
+  if (q.hasKiosk) p.set("hasKiosk", q.hasKiosk);
+  if (q.hasBiz) p.set("hasBiz", q.hasBiz);
+  if (q.hasTicket) p.set("hasTicket", q.hasTicket);
+  for (const v of q.pay || []) p.append("pay", v);
+  for (const v of q.types || []) p.append("types", v);
+  for (const v of q.kiosk || []) p.append("kiosk", v);
+  for (const k of ["expMin", "expMax", "pointMax", "idleDays"]) {
+    if (q[k] !== null && q[k] !== undefined && q[k] !== "") p.set(k, String(q[k]));
+  }
+  if (q.createdFrom) p.set("createdFrom", q.createdFrom);
+  if (q.createdTo) p.set("createdTo", q.createdTo);
   if (withPaging) {
     if (q.sort) p.set("sort", q.sort);
     p.set("page", String(q.page ?? 0));

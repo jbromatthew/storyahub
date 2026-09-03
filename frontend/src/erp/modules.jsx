@@ -13085,10 +13085,75 @@ const CC_TYPE = {
   DANCE: "댄스", STUDY: "스터디카페", ETC: "기타",
 };
 
+const CC_PAY_OPTS = [
+  ["NORMAL", "정상"], ["STOPPED", "중지"], ["FAILED", "실패"], ["CANCELED", "해지"],
+];
+
+const CC_KIOSKS = [
+  ["use_kiosk_7_krizer", "7인치"],
+  ["use_kiosk_10_stand_krizer", "10인치 스탠드"],
+  ["use_kiosk_10_passlight_krizer", "10인치 패스라이트"],
+  ["use_kiosk_15_krizer", "15인치"],
+  ["use_kiosk_21_krizer", "21인치"],
+  ["use_kiosk_apos_centerm", "aPOS"],
+];
+
+const CC_TYPE_OPTS = [
+  ["HEALTH", "헬스장"], ["PILATES", "필라테스"], ["YOGA", "요가"], ["CROSSFIT", "크로스핏"],
+  ["PT", "PT샵"], ["GOLF", "골프"], ["SWIM", "수영"], ["TENNIS", "테니스"],
+  ["BOXING", "복싱"], ["DANCE", "댄스"], ["STUDY", "스터디카페"], ["ETC", "기타"],
+];
+
 const CC_BLANK = {
   keyword: "", first: "ALL", second: [], ticket: [], admin: "ALL",
   installer: "", sort: "CLOSED_DTTM_DESC", newsfeedDays: null, newsfeedUnder: null,
+  // 정밀 필터 — 서버가 응답 값을 보고 직접 거른다
+  regular: "", pay: [], types: [], kiosk: [], hasKiosk: "", hasBiz: "", hasTicket: "",
+  expMin: null, expMax: null, pointMax: null, createdFrom: "", createdTo: "", idleDays: null,
 };
+
+/**
+ * 기본 제공 세그먼트. CRM 세부 필터는 조합이 기대대로 안 먹어서
+ * (비정기+만료임박이 비정기 단독과 같은 건수로 나온다) 정밀 필터로 짰다.
+ */
+const CC_PRESETS = [
+  {
+    id: "preset:churn",
+    name: "이탈 위험",
+    hint: "정기결제 끊김 · 비정기 · 30일 이내 만료",
+    filters: { first: "ACTIVE", regular: "N", pay: ["STOPPED", "FAILED", "CANCELED"], expMin: 0, expMax: 30, sort: "CLOSED_DTTM_ASC" },
+  },
+  {
+    id: "preset:soon7",
+    name: "7일 내 만료",
+    hint: "활성 · D-7 이내",
+    filters: { first: "ACTIVE", expMin: 0, expMax: 7, sort: "CLOSED_DTTM_ASC" },
+  },
+  {
+    id: "preset:nonreg",
+    name: "비정기 · 30일 내",
+    hint: "정기결제 아님 · D-30 이내 만료",
+    filters: { first: "ACTIVE", regular: "N", expMin: 0, expMax: 30, sort: "CLOSED_DTTM_ASC" },
+  },
+  {
+    id: "preset:paystop",
+    name: "결제 끊김",
+    hint: "결제 중지·실패·해지",
+    filters: { first: "ALL", pay: ["STOPPED", "FAILED", "CANCELED"], sort: "CLOSED_DTTM_ASC" },
+  },
+  {
+    id: "preset:justexpired",
+    name: "막 만료됨",
+    hint: "30일 안에 만료가 지난 곳",
+    filters: { first: "ALL", expMin: -30, expMax: -1, sort: "CLOSED_DTTM_DESC" },
+  },
+  {
+    id: "preset:idle",
+    name: "60일 미접속",
+    hint: "활성인데 두 달 넘게 안 들어옴",
+    filters: { first: "ACTIVE", idleDays: 60, sort: "CLOSED_DTTM_ASC" },
+  },
+];
 
 function ccDay(v) {
   if (!v) return "";
@@ -13116,7 +13181,51 @@ function ccAdvancedCount(f) {
   if (f.ticket?.length) n++;
   if (f.installer) n++;
   if (f.newsfeedDays != null && f.newsfeedUnder != null) n++;
+  if (f.regular) n++;
+  if (f.pay?.length) n++;
+  if (f.types?.length) n++;
+  if (f.kiosk?.length || f.hasKiosk) n++;
+  if (f.hasBiz) n++;
+  if (f.hasTicket) n++;
+  if (f.expMin != null || f.expMax != null) n++;
+  if (f.pointMax != null) n++;
+  if (f.createdFrom || f.createdTo) n++;
+  if (f.idleDays != null) n++;
   return n;
+}
+
+/** 걸린 정밀 필터를 사람이 읽는 문구로 */
+function ccFilterChips(f) {
+  const out = [];
+  if (f.keyword) out.push(`"${f.keyword}"`);
+  out.push(CC_FIRST.find(([v]) => v === f.first)?.[1] || f.first);
+  for (const s of f.second || []) out.push(CC_SECOND.find(([v]) => v === s)?.[1] || s);
+  for (const t of f.ticket || []) out.push(CC_TICKET_LABEL[t] || t);
+  if (f.admin === "CONNECTED") out.push("내 소속만");
+  if (f.installer) out.push(`설치팀 ${f.installer}`);
+  if (f.newsfeedDays != null) out.push(`주요기록 ${f.newsfeedDays}일 ${f.newsfeedUnder}건 이하`);
+  if (f.regular === "Y") out.push("정기결제만");
+  if (f.regular === "N") out.push("비정기만");
+  for (const p of f.pay || []) out.push(`결제 ${CC_PAY_OPTS.find(([v]) => v === p)?.[1] || p}`);
+  for (const t of f.types || []) out.push(CC_TYPE[t] || t);
+  for (const k of f.kiosk || []) out.push(CC_KIOSKS.find(([v]) => v === k)?.[1] || k);
+  if (f.hasKiosk === "Y") out.push("키오스크 보유");
+  if (f.hasKiosk === "N") out.push("키오스크 없음");
+  if (f.hasBiz === "Y") out.push("사업자번호 있음");
+  if (f.hasBiz === "N") out.push("사업자번호 없음");
+  if (f.hasTicket === "Y") out.push("이용권 있음");
+  if (f.hasTicket === "N") out.push("이용권 없음");
+  if (f.expMin != null || f.expMax != null) {
+    const a = f.expMin, b = f.expMax;
+    out.push(
+      a != null && b != null ? (a < 0 && b < 0 ? `만료 지난 지 ${-b}~${-a}일` : `만료 D-${a}~D-${b}`)
+      : a != null ? `만료 D-${a} 이후` : `만료 D-${b} 이내`,
+    );
+  }
+  if (f.pointMax != null) out.push(`문자포인트 ${f.pointMax} 이하`);
+  if (f.createdFrom || f.createdTo) out.push(`등록 ${f.createdFrom || "…"}~${f.createdTo || "…"}`);
+  if (f.idleDays != null) out.push(`${f.idleDays}일 이상 미접속`);
+  return out;
 }
 
 function ccSameFilters(a, b) {
@@ -13126,6 +13235,11 @@ function ccSameFilters(a, b) {
     admin: f.admin || "ALL", installer: f.installer || "",
     sort: f.sort || "CLOSED_DTTM_DESC",
     nd: f.newsfeedDays ?? null, nu: f.newsfeedUnder ?? null,
+    regular: f.regular || "", pay: [...(f.pay || [])].sort(),
+    types: [...(f.types || [])].sort(), kiosk: [...(f.kiosk || [])].sort(),
+    hasKiosk: f.hasKiosk || "", hasBiz: f.hasBiz || "", hasTicket: f.hasTicket || "",
+    expMin: f.expMin ?? null, expMax: f.expMax ?? null, pointMax: f.pointMax ?? null,
+    cf: f.createdFrom || "", ct: f.createdTo || "", idle: f.idleDays ?? null,
   });
   return norm(a) === norm(b);
 }
@@ -13165,8 +13279,28 @@ function CcAdvanced({ value, onApply, onClose }) {
   const toggleAll = () => setTicket(ticket.length === CC_TICKETS.length ? [] : CC_TICKETS.map(([v]) => v));
   const toggle = (v) => setTicket((p) => (p.includes(v) ? p.filter((x) => x !== v) : [...p, v]));
 
+  const [regular, setRegular] = useState(value.regular || "");
+  const [pay, setPay] = useState(value.pay || []);
+  const [types, setTypes] = useState(value.types || []);
+  const [kiosk, setKiosk] = useState(value.kiosk || []);
+  const [hasKiosk, setHasKiosk] = useState(value.hasKiosk || "");
+  const [hasBiz, setHasBiz] = useState(value.hasBiz || "");
+  const [hasTicket, setHasTicket] = useState(value.hasTicket || "");
+  const [expMin, setExpMin] = useState(value.expMin ?? "");
+  const [expMax, setExpMax] = useState(value.expMax ?? "");
+  const [pointMax, setPointMax] = useState(value.pointMax ?? "");
+  const [createdFrom, setCreatedFrom] = useState(value.createdFrom || "");
+  const [createdTo, setCreatedTo] = useState(value.createdTo || "");
+  const [idleDays, setIdleDays] = useState(value.idleDays ?? "");
+
+  const flip = (setter) => (v) => setter((p) => (p.includes(v) ? p.filter((x) => x !== v) : [...p, v]));
+  const one = (cur, setter) => (v) => setter(cur === v ? "" : v);
+  const numOrNull = (v) => (String(v).trim() === "" || !Number.isFinite(Number(v)) ? null : Number(v));
+
   const reset = () => {
     setAdmin("ALL"); setUseNews(false); setDays(""); setUnder(""); setTicket([]); setInstaller("");
+    setRegular(""); setPay([]); setTypes([]); setKiosk([]); setHasKiosk(""); setHasBiz(""); setHasTicket("");
+    setExpMin(""); setExpMax(""); setPointMax(""); setCreatedFrom(""); setCreatedTo(""); setIdleDays("");
   };
 
   const apply = () => {
@@ -13175,6 +13309,10 @@ function CcAdvanced({ value, onApply, onClose }) {
     if (useNews && (nd === null || nu === null)) {
       return notifyError(new Error("주요기록은 최근 일수와 기록 건수를 둘 다 넣어야 적용됩니다"));
     }
+    const a = numOrNull(expMin), b = numOrNull(expMax);
+    if (a !== null && b !== null && a > b) {
+      return notifyError(new Error("만료 기간은 시작이 끝보다 클 수 없습니다"));
+    }
     onApply({
       admin,
       // 전부 고르면 필터를 안 건 것과 같다 — 쿼리를 짧게 유지한다
@@ -13182,6 +13320,11 @@ function CcAdvanced({ value, onApply, onClose }) {
       installer: installer.trim(),
       newsfeedDays: nd,
       newsfeedUnder: nu,
+      regular, pay, types, kiosk, hasKiosk, hasBiz, hasTicket,
+      expMin: a, expMax: b,
+      pointMax: numOrNull(pointMax),
+      createdFrom, createdTo,
+      idleDays: numOrNull(idleDays),
     });
   };
 
@@ -13227,6 +13370,96 @@ function CcAdvanced({ value, onApply, onClose }) {
       <input className="input" value={installer} onChange={(e) => setInstaller(e.target.value)}
         placeholder="설치팀 이름 키워드" />
 
+      <div className="cc-sec">
+        만료 기간
+        <span className="cc-sec-note">D-day 기준 · 음수는 이미 지난 것</span>
+      </div>
+      <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+        {[["7일 이내", 0, 7], ["14일 이내", 0, 14], ["30일 이내", 0, 30], ["60일 이내", 0, 60],
+          ["이미 만료 (30일)", -30, -1], ["이미 만료 (90일)", -90, -1]].map(([label, a, b]) => (
+          <button key={label} type="button"
+            className={"chip" + (Number(expMin) === a && Number(expMax) === b ? " on" : "")}
+            onClick={() => { setExpMin(a); setExpMax(b); }}>{label}</button>
+        ))}
+        {(expMin !== "" || expMax !== "") && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setExpMin(""); setExpMax(""); }}>해제</button>
+        )}
+      </div>
+      <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+        <input className="input" style={{ flex: "1 1 180px" }} inputMode="numeric" value={expMin}
+          onChange={(e) => setExpMin(e.target.value)} placeholder="D-day 시작 (예: 0)" />
+        <input className="input" style={{ flex: "1 1 180px" }} inputMode="numeric" value={expMax}
+          onChange={(e) => setExpMax(e.target.value)} placeholder="D-day 끝 (예: 30)" />
+      </div>
+
+      <div className="cc-sec">정기결제</div>
+      <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+        {[["Y", "정기결제만"], ["N", "비정기만"]].map(([v, label]) => (
+          <button key={v} type="button" className={"chip" + (regular === v ? " on" : "")}
+            onClick={() => one(regular, setRegular)(v)}>{label}</button>
+        ))}
+      </div>
+
+      <div className="cc-sec">결제 상태</div>
+      <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+        {CC_PAY_OPTS.map(([v, label]) => (
+          <button key={v} type="button" className={"chip" + (pay.includes(v) ? " on" : "")}
+            onClick={() => flip(setPay)(v)}>{label}</button>
+        ))}
+      </div>
+
+      <div className="cc-sec">업종</div>
+      <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+        {CC_TYPE_OPTS.map(([v, label]) => (
+          <button key={v} type="button" className={"chip" + (types.includes(v) ? " on" : "")}
+            onClick={() => flip(setTypes)(v)}>{label}</button>
+        ))}
+      </div>
+
+      <div className="cc-sec">키오스크</div>
+      <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+        {[["Y", "보유"], ["N", "없음"]].map(([v, label]) => (
+          <button key={v} type="button" className={"chip" + (hasKiosk === v ? " on" : "")}
+            onClick={() => one(hasKiosk, setHasKiosk)(v)}>{label}</button>
+        ))}
+        <span className="cc-div" />
+        {CC_KIOSKS.map(([v, label]) => (
+          <button key={v} type="button" className={"chip" + (kiosk.includes(v) ? " on" : "")}
+            onClick={() => flip(setKiosk)(v)}>{label}</button>
+        ))}
+      </div>
+
+      <div className="cc-sec">기타</div>
+      <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <span className="small" style={{ color: "var(--muted)" }}>사업자번호</span>
+        {[["Y", "있음"], ["N", "없음"]].map(([v, label]) => (
+          <button key={v} type="button" className={"chip" + (hasBiz === v ? " on" : "")}
+            onClick={() => one(hasBiz, setHasBiz)(v)}>{label}</button>
+        ))}
+        <span className="cc-div" />
+        <span className="small" style={{ color: "var(--muted)" }}>이용권</span>
+        {[["Y", "있음"], ["N", "없음"]].map(([v, label]) => (
+          <button key={v} type="button" className={"chip" + (hasTicket === v ? " on" : "")}
+            onClick={() => one(hasTicket, setHasTicket)(v)}>{label}</button>
+        ))}
+      </div>
+      <div className="oa-form" style={{ marginTop: 12 }}>
+        <OaField label="문자포인트 이하" hint="비우면 안 걸립니다">
+          <input className="input" inputMode="numeric" value={pointMax}
+            onChange={(e) => setPointMax(e.target.value)} placeholder="예: 0" />
+        </OaField>
+        <OaField label="미접속 일수 이상" hint="이 일수보다 오래 안 들어온 센터">
+          <input className="input" inputMode="numeric" value={idleDays}
+            onChange={(e) => setIdleDays(e.target.value)} placeholder="예: 60" />
+        </OaField>
+        <OaField label="등록일 시작">
+          <input className="input" type="date" value={createdFrom} onChange={(e) => setCreatedFrom(e.target.value)} />
+        </OaField>
+        <OaField label="등록일 끝">
+          <input className="input" type="date" value={createdTo} onChange={(e) => setCreatedTo(e.target.value)} />
+        </OaField>
+      </div>
+
       <div className="row" style={{ gap: 8, marginTop: 20, alignItems: "center" }}>
         <button type="button" className="btn btn-ghost" onClick={onClose}>닫기</button>
         <button type="button" className="btn btn-ghost" style={{ marginLeft: "auto" }} onClick={reset}>초기화</button>
@@ -13242,14 +13475,7 @@ function CcSegmentSave({ filters, onDone, onClose }) {
   const [shared, setShared] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const chips = [];
-  if (filters.keyword) chips.push(`"${filters.keyword}"`);
-  chips.push(CC_FIRST.find(([v]) => v === filters.first)?.[1] || filters.first);
-  for (const s of filters.second || []) chips.push(CC_SECOND.find(([v]) => v === s)?.[1] || s);
-  for (const t of filters.ticket || []) chips.push(CC_TICKET_LABEL[t] || t);
-  if (filters.admin === "CONNECTED") chips.push("내 소속만");
-  if (filters.installer) chips.push(`설치팀 ${filters.installer}`);
-  if (filters.newsfeedDays != null) chips.push(`주요기록 ${filters.newsfeedDays}일 ${filters.newsfeedUnder}건 이하`);
+  const chips = ccFilterChips(filters);
 
   const save = async () => {
     if (!name.trim()) return notifyError(new Error("세그먼트 이름을 입력하세요"));
@@ -13453,11 +13679,14 @@ export function CrmCentersView() {
       {/* 세그먼트 — 저장해둔 검색 조건 */}
       <div className="cc-segbar">
         <span className="cc-seglabel">세그먼트</span>
-        {segments.length === 0 && (
-          <span className="small" style={{ color: "var(--muted)" }}>
-            자주 쓰는 검색 조건을 저장해두면 여기서 한 번에 부릅니다
-          </span>
-        )}
+        {CC_PRESETS.map((ps) => (
+          <button key={ps.id} type="button" title={ps.hint}
+            className={"cc-seg preset" + (activeSeg === ps.id ? " on" : "")}
+            onClick={() => applySegment(ps)}>
+            {ps.name}
+          </button>
+        ))}
+        {segments.length > 0 && <span className="cc-div" />}
         {segments.map((seg) => (
           <span key={seg.id} className={"cc-seg" + (activeSeg === seg.id ? " on" : "")}>
             <button type="button" className="cc-seg-main" onClick={() => applySegment(seg)} title={seg.shared ? `${seg.ownerName} · 공개` : "나만 보기"}>
@@ -13534,16 +13763,22 @@ export function CrmCentersView() {
       {/* 걸린 고급필터 요약 */}
       {advN > 0 && (
         <div className="row" style={{ gap: 6, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
-          {f.admin === "CONNECTED" && <span className="tag">내가 소속된 센터만</span>}
-          {(f.ticket || []).map((t) => (
-            <span key={t} className="tag">{CC_TICKET_LABEL[t] || t}</span>
-          ))}
-          {f.installer && <span className="tag">설치팀 {f.installer}</span>}
-          {f.newsfeedDays != null && <span className="tag">주요기록 {f.newsfeedDays}일 · {f.newsfeedUnder}건 이하</span>}
+          {ccFilterChips(f).slice(1).map((c, i) => <span key={i} className="tag">{c}</span>)}
           <button type="button" className="btn btn-ghost btn-sm"
-            onClick={() => apply({ admin: "ALL", ticket: [], installer: "", newsfeedDays: null, newsfeedUnder: null })}>
+            onClick={() => apply({
+              admin: "ALL", ticket: [], installer: "", newsfeedDays: null, newsfeedUnder: null,
+              regular: "", pay: [], types: [], kiosk: [], hasKiosk: "", hasBiz: "", hasTicket: "",
+              expMin: null, expMax: null, pointMax: null, createdFrom: "", createdTo: "", idleDays: null,
+            })}>
             고급필터 해제
           </button>
+        </div>
+      )}
+      {data?.precise && (
+        <div className="cc-note">
+          정밀 필터가 걸려 있어 {(data.scanned ?? 0).toLocaleString()}건을 훑어 {total.toLocaleString()}건을 골랐습니다.
+          {data.truncated && " CRM 조회 상한(6,000건)을 넘어 앞쪽만 본 결과이니, 상태·검색어로 범위를 좁혀 주세요."}
+          {" "}위 상태 칩의 건수는 정밀 필터를 적용하기 전 기준입니다.
         </div>
       )}
 
