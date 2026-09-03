@@ -277,6 +277,28 @@ export const api = {
   erpCrmCounts: (q = {}) => req(`/erp/crm/centers/counts?${crmParams(q, false)}`),
   erpCrmCentersExportUrl: (q = {}) => `/erp/crm/centers/export?${crmParams(q, false)}`,
   erpCrmCenterCard: (groupKey) => req(`/erp/crm/centers/${groupKey}/card`),
+  // 센터 여정 — 자산 · AS · 접점
+  erpOpsTeams: () => req("/erp/ops/teams"),
+  erpOpsAssets: (groupKey) => req(`/erp/ops/centers/${groupKey}/assets`),
+  erpOpsAssetCreate: (groupKey, body) => req(`/erp/ops/centers/${groupKey}/assets`, { method: "POST", body }),
+  erpOpsAssetUpdate: (id, body) => req(`/erp/ops/assets/${id}`, { method: "PATCH", body }),
+  erpOpsAssetDelete: (id) => req(`/erp/ops/assets/${id}`, { method: "DELETE" }),
+  erpOpsAs: (q = {}) => {
+    const p = new URLSearchParams();
+    for (const k of ["groupKey", "status", "resolution", "teamId", "limit"]) if (q[k]) p.set(k, String(q[k]));
+    return req(`/erp/ops/as?${p}`);
+  },
+  erpOpsAsCreate: (body) => req("/erp/ops/as", { method: "POST", body }),
+  erpOpsAsUpdate: (id, body) => req(`/erp/ops/as/${id}`, { method: "PATCH", body }),
+  erpOpsAsDelete: (id) => req(`/erp/ops/as/${id}`, { method: "DELETE" }),
+  erpOpsContacts: (q = {}) => {
+    const p = new URLSearchParams();
+    for (const k of ["groupKey", "team", "due", "limit"]) if (q[k]) p.set(k, String(q[k]));
+    return req(`/erp/ops/contacts?${p}`);
+  },
+  erpOpsContactCreate: (body) => req("/erp/ops/contacts", { method: "POST", body }),
+  erpOpsContactUpdate: (id, body) => req(`/erp/ops/contacts/${id}`, { method: "PATCH", body }),
+  erpOpsContactDelete: (id) => req(`/erp/ops/contacts/${id}`, { method: "DELETE" }),
   erpCrmSync: () => req("/erp/crm/sync", { method: "POST" }),
   erpCrmSyncStatus: () => req("/erp/crm/sync/status"),
   erpCrmSegments: () => req("/erp/crm/segments"),

@@ -852,4 +852,24 @@ ${KB_CSS}
   .cc-tl-i{grid-template-columns:1fr;gap:4px}
   .cc-tl-d{flex-direction:row;align-items:center;gap:8px}
 }
+/* 센터 카드 탭 · 자산 · AS · 접점 */
+.cc-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line,#E5E7EB);margin-bottom:18px;
+  overflow-x:auto;padding-bottom:0}
+.cc-tab{border:0;border-bottom:2px solid transparent;background:transparent;padding:8px 14px;
+  font-size:13.5px;cursor:pointer;color:var(--muted);white-space:nowrap;margin-bottom:-1px}
+.cc-tab:hover{color:inherit}
+.cc-tab.on{color:#C24C00;font-weight:700;border-bottom-color:#FA6400}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+.cc-aslist{display:flex;flex-direction:column;gap:8px}
+.cc-as{border:1px solid var(--line,#E5E7EB);border-radius:12px;overflow:hidden;background:var(--surface,#fff)}
+.cc-as.on{border-color:#FA6400}
+.cc-as-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%;padding:10px 14px;
+  border:0;background:transparent;cursor:pointer;text-align:left;color:inherit;font:inherit}
+.cc-as-hd:hover{background:var(--surface-2,#F7F7F5)}
+.cc-as-sym{font-size:13.5px;font-weight:600}
+.cc-as-body{padding:4px 14px 16px;border-top:1px solid var(--line-2,#F0F0F0)}
+.cc-ct{padding:11px 0;border-bottom:1px solid var(--line-2,#F0F0F0)}
+.cc-ct:last-child{border-bottom:0}
+textarea.input{width:100%;font-family:inherit;line-height:1.6;resize:vertical}
+select.input{width:100%}
 `;

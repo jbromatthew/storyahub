@@ -13557,18 +13557,635 @@ function CcKV({ label, children }) {
   );
 }
 
+// ─── 센터 여정 — 자산 · AS · 접점 ───────────────────────────────────────────
+
+const CC_KINDS = ["7인치", "10인치(탁상)", "10인치(PL)", "15인치", "21.5인치", "32인치", "aPOS", "게이트"];
+const CC_ASSET_ST = {
+  ACTIVE: { label: "가동", cls: "ok" },
+  REPAIR: { label: "수리중", cls: "warn" },
+  SWAPPED: { label: "교체회수", cls: "off" },
+  REMOVED: { label: "철거", cls: "off" },
+};
+const CC_AS_ST = {
+  received: { label: "접수", cls: "warn" },
+  assigned: { label: "배정", cls: "brand" },
+  visiting: { label: "방문중", cls: "brand" },
+  closed: { label: "종결", cls: "off" },
+};
+const CC_RES = {
+  free: { label: "무상 AS", cls: "ok" },
+  paid: { label: "유상 AS", cls: "brand" },
+  swap: { label: "리퍼 교체", cls: "warn" },
+  rejected: { label: "수리 거절", cls: "bad" },
+};
+const CC_CHANNEL = { kakao: "채널톡", phone: "전화" };
+const CC_CONTACT_KIND = ["전화", "방문", "채널톡", "메일", "교육", "기타"];
+const CC_SENTIMENT = { good: "좋음", normal: "보통", bad: "나쁨" };
+
+/** 붙여넣기 한 덩어리를 기종·시리얼로 쪼갠다 — 탭·쉼표·공백 다 받는다 */
+function ccParsePaste(text, defaultKind) {
+  const out = [];
+  for (const raw of String(text || "").split(/[\n\r]+/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const cells = line.split(/[\t,;|]+|\s{2,}/).map((c) => c.trim()).filter(Boolean);
+    let kind = "", serial = "";
+    for (const c of cells) {
+      // 영문·숫자 조합 3자 이상이면 시리얼로 본다
+      if (!serial && /^[A-Za-z0-9][A-Za-z0-9-]{2,}$/.test(c) && /[A-Za-z]/.test(c) === /[A-Za-z]/.test(c)) {
+        if (/^\d{4}[-.]\d{1,2}[-.]\d{1,2}$/.test(c)) continue; // 날짜는 건너뛴다
+        serial = c.toUpperCase();
+        continue;
+      }
+      if (!kind) kind = c;
+    }
+    // 한 칸짜리면 시리얼만 준 것
+    if (!serial && cells.length === 1) serial = cells[0].toUpperCase();
+    if (!serial) continue;
+    out.push({ kind: kind || defaultKind || "", serial });
+  }
+  return out;
+}
+
+function CcTeamPicker({ teams, teamId, technician, onChange, label = "방문 팀" }) {
+  const team = teams.find((t) => t.id === teamId);
+  return (
+    <>
+      <OaField label={label}>
+        <select className="input" value={teamId || ""}
+          onChange={(e) => {
+            const t = teams.find((x) => x.id === e.target.value);
+            onChange({ teamId: e.target.value, teamName: t?.name || "", technician: "" });
+          }}>
+          <option value="">선택 안 함</option>
+          {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+      </OaField>
+      <OaField label="담당 기사">
+        {team?.people?.length ? (
+          <select className="input" value={technician || ""}
+            onChange={(e) => onChange({ teamId, teamName: team.name, technician: e.target.value })}>
+            <option value="">선택 안 함</option>
+            {team.people.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        ) : (
+          <input className="input" value={technician || ""}
+            onChange={(e) => onChange({ teamId, teamName: team?.name || "", technician: e.target.value })}
+            placeholder={team ? "기사 이름" : "팀을 먼저 고르세요"} />
+        )}
+      </OaField>
+    </>
+  );
+}
+
+/** 자산 탭 — 등록(붙여넣기 일괄 포함) · 상태 변경 */
+function CcAssets({ groupKey, teams, onChanged }) {
+  const [rows, setRows] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [paste, setPaste] = useState("");
+  const [form, setForm] = useState({ kind: "21.5인치", serial: "", installedAt: "", teamId: "", teamName: "", installer: "", location: "" });
+  const [busy, setBusy] = useState(false);
+  const [skipped, setSkipped] = useState([]);
+
+  const load = useCallback(() => {
+    api.erpOpsAssets(groupKey).then((d) => setRows(d.assets || [])).catch(notifyError);
+  }, [groupKey]);
+  useEffect(load, [load]);
+
+  const parsed = useMemo(() => ccParsePaste(paste, form.kind), [paste, form.kind]);
+
+  const save = async () => {
+    const rowsIn = parsed.length ? parsed : [{ kind: form.kind, serial: form.serial }];
+    if (!rowsIn.length || !rowsIn[0].serial) return notifyError(new Error("시리얼을 입력하세요"));
+    setBusy(true);
+    setSkipped([]);
+    try {
+      const r = await api.erpOpsAssetCreate(groupKey, {
+        rows: rowsIn,
+        kind: form.kind,
+        installedAt: form.installedAt,
+        teamId: form.teamId, teamName: form.teamName, installer: form.installer,
+        location: form.location,
+      });
+      setSkipped(r.skipped || []);
+      if (r.added) toastSuccess(`${r.added}대를 등록했어요`);
+      if (!r.added && r.skipped?.length) notifyError(new Error("등록된 게 없습니다 — 아래 사유를 확인하세요"));
+      if (r.added) {
+        setPaste("");
+        setForm((p) => ({ ...p, serial: "" }));
+        if (!r.skipped?.length) setAdding(false);
+      }
+      load();
+      onChanged?.();
+    } catch (e) { notifyError(e); } finally { setBusy(false); }
+  };
+
+  const setStatus = async (a, status) => {
+    const label = CC_ASSET_ST[status]?.label || status;
+    if (!(await confirmAction(`${a.serial}을(를) '${label}'로 바꿀까요?`))) return;
+    try { await api.erpOpsAssetUpdate(a.id, { status }); load(); onChanged?.(); toastSuccess("바꿨어요"); }
+    catch (e) { notifyError(e); }
+  };
+
+  const remove = async (a) => {
+    if (!(await confirmAction(`${a.serial}을(를) 목록에서 지울까요?\n\n실제 철거라면 삭제 대신 상태를 '철거'로 바꾸세요.`))) return;
+    try { await api.erpOpsAssetDelete(a.id); load(); onChanged?.(); toastSuccess("삭제했어요"); }
+    catch (e) { notifyError(e); }
+  };
+
+  if (!rows) return <div className="spinner" />;
+
+  return (
+    <>
+      <div className="row" style={{ gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+        <span className="small muted">
+          가동 {rows.filter((r) => r.status === "ACTIVE").length}대 · 전체 {rows.length}대
+        </span>
+        <button type="button" className="btn btn-accent btn-sm" style={{ marginLeft: "auto" }}
+          onClick={() => setAdding((v) => !v)}>{adding ? "닫기" : "+ 키오스크 등록"}</button>
+      </div>
+
+      {adding && (
+        <div className="card" style={{ padding: "14px 16px", marginBottom: 14 }}>
+          <div className="oa-form">
+            <OaField label="기종">
+              <select className="input" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+                {CC_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+              </select>
+            </OaField>
+            <OaField label="설치일" hint="보증은 설치일로부터 1년">
+              <input className="input" type="date" value={form.installedAt}
+                onChange={(e) => setForm({ ...form, installedAt: e.target.value })} />
+            </OaField>
+            <CcTeamPicker teams={teams} teamId={form.teamId} technician={form.installer} label="설치팀"
+              onChange={(v) => setForm({ ...form, teamId: v.teamId, teamName: v.teamName, installer: v.technician })} />
+            <OaField label="위치 (선택)">
+              <input className="input" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })}
+                placeholder="예: 1층 입구" />
+            </OaField>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <div className="small" style={{ marginBottom: 4 }}>시리얼</div>
+            <textarea className="input" rows={paste ? 5 : 2} value={paste}
+              onChange={(e) => setPaste(e.target.value)}
+              placeholder={"설치팀이 보낸 걸 그대로 붙여넣으세요. 한 줄에 한 대씩.\n예)  21.5인치  BRJ21A0042\n     BRJ21A0043"} />
+            <div className="small muted" style={{ marginTop: 6 }}>
+              {parsed.length
+                ? <>인식된 {parsed.length}대 — {parsed.slice(0, 6).map((p) => `${p.serial}${p.kind ? `(${p.kind})` : ""}`).join(", ")}{parsed.length > 6 ? " …" : ""}</>
+                : "여러 대를 한 번에 붙여넣을 수 있습니다. 기종이 줄마다 있으면 그걸 쓰고, 없으면 위에서 고른 기종으로 들어갑니다."}
+            </div>
+          </div>
+
+          {skipped.length > 0 && (
+            <div className="oa-err" style={{ marginTop: 10 }}>
+              {skipped.length}건은 건너뛰었습니다
+              <div className="small" style={{ marginTop: 4, lineHeight: 1.7 }}>
+                {skipped.map((s, i) => <div key={i}>{s.serial || "(빈 줄)"} — {s.reason}</div>)}
+              </div>
+            </div>
+          )}
+
+          <div className="row" style={{ gap: 8, marginTop: 12 }}>
+            <button type="button" className="btn btn-accent" onClick={save} disabled={busy}>
+              {busy ? "등록 중…" : parsed.length > 1 ? `${parsed.length}대 등록` : "등록"}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => setAdding(false)}>취소</button>
+          </div>
+        </div>
+      )}
+
+      {rows.length === 0 ? (
+        <div className="cc-empty">등록된 키오스크가 없습니다.<br /><span className="small">설치팀이 보낸 시리얼을 붙여넣어 등록하세요.</span></div>
+      ) : (
+        <div className="dash-table-wrap">
+          <table className="dash-table">
+            <thead><tr><th>상태</th><th className="label">시리얼</th><th>기종</th><th>설치일</th><th>보증</th><th>설치팀</th><th>위치</th><th></th></tr></thead>
+            <tbody>
+              {rows.map((a) => {
+                const st = CC_ASSET_ST[a.status] || { label: a.status, cls: "off" };
+                const inWarranty = a.warrantyUntil && new Date(a.warrantyUntil) >= new Date();
+                return (
+                  <tr key={a.id}>
+                    <td><span className={`cc-pill ${st.cls}`}>{st.label}</span></td>
+                    <td className="label mono">{a.serial}</td>
+                    <td className="small">{a.kind}</td>
+                    <td className="small">{ccDay(a.installedAt) || "-"}</td>
+                    <td className="small">
+                      {a.warrantyUntil
+                        ? <span className={inWarranty ? "cc-pill ok" : "cc-pill off"}>{inWarranty ? "보증 내" : "만료"}</span>
+                        : <span className="muted">-</span>}
+                      {a.warrantyUntil && <div className="muted">{ccDay(a.warrantyUntil)}</div>}
+                    </td>
+                    <td className="small">{a.teamName || "-"}{a.installer && <div className="muted">{a.installer}</div>}</td>
+                    <td className="small">{a.location || "-"}</td>
+                    <td>
+                      <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+                        {a.status === "ACTIVE" && (
+                          <>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setStatus(a, "REPAIR")}>수리중</button>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setStatus(a, "REMOVED")}>철거</button>
+                          </>
+                        )}
+                        {a.status === "REPAIR" && (
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setStatus(a, "ACTIVE")}>복구</button>
+                        )}
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: "#C0392B" }} onClick={() => remove(a)}>✕</button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** AS 탭 — 접수 · 배정 · 종결 4유형 (리퍼 교체는 자산까지 갱신) */
+function CcAs({ groupKey, teams, assets, onChanged }) {
+  const [rows, setRows] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [openId, setOpenId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const blank = { channel: "kakao", symptom: "", assetId: "", receivedAt: "", teamId: "", teamName: "", technician: "", note: "" };
+  const [form, setForm] = useState(blank);
+
+  const load = useCallback(() => {
+    api.erpOpsAs({ groupKey }).then((d) => setRows(d.tickets || [])).catch(notifyError);
+  }, [groupKey]);
+  useEffect(load, [load]);
+
+  const create = async () => {
+    if (!form.symptom.trim()) return notifyError(new Error("증상을 입력하세요"));
+    setBusy(true);
+    try {
+      await api.erpOpsAsCreate({ ...form, groupKey });
+      toastSuccess("AS를 접수했어요");
+      setForm(blank);
+      setAdding(false);
+      load();
+      onChanged?.();
+    } catch (e) { notifyError(e); } finally { setBusy(false); }
+  };
+
+  const active = (assets || []).filter((a) => a.status === "ACTIVE");
+  if (!rows) return <div className="spinner" />;
+
+  return (
+    <>
+      <div className="row" style={{ gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+        <span className="small muted">
+          진행 {rows.filter((r) => r.status !== "closed").length}건 · 전체 {rows.length}건
+        </span>
+        <button type="button" className="btn btn-accent btn-sm" style={{ marginLeft: "auto" }}
+          onClick={() => setAdding((v) => !v)}>{adding ? "닫기" : "+ AS 접수"}</button>
+      </div>
+
+      {adding && (
+        <div className="card" style={{ padding: "14px 16px", marginBottom: 14 }}>
+          <div className="oa-form">
+            <OaField label="접수 경로">
+              <div className="row" style={{ gap: 6 }}>
+                {Object.entries(CC_CHANNEL).map(([v, label]) => (
+                  <button key={v} type="button" className={"chip" + (form.channel === v ? " on" : "")}
+                    onClick={() => setForm({ ...form, channel: v })}>{label}</button>
+                ))}
+              </div>
+            </OaField>
+            <OaField label="접수일시 (선택)" hint="비우면 지금">
+              <input className="input" type="datetime-local" value={form.receivedAt}
+                onChange={(e) => setForm({ ...form, receivedAt: e.target.value })} />
+            </OaField>
+            <OaField label="대상 기계" hint={active.length ? "고르면 보증 여부가 자동 판정됩니다" : "등록된 키오스크가 없습니다"}>
+              <select className="input" value={form.assetId} onChange={(e) => setForm({ ...form, assetId: e.target.value })}>
+                <option value="">선택 안 함</option>
+                {active.map((a) => <option key={a.id} value={a.id}>{a.kind} · {a.serial}</option>)}
+              </select>
+            </OaField>
+            <CcTeamPicker teams={teams} teamId={form.teamId} technician={form.technician}
+              onChange={(v) => setForm({ ...form, ...v })} />
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <OaField label="증상">
+              <input className="input" value={form.symptom} onChange={(e) => setForm({ ...form, symptom: e.target.value })}
+                placeholder="예: 얼굴인식이 안 됨" autoFocus />
+            </OaField>
+          </div>
+          <div className="row" style={{ gap: 8, marginTop: 12 }}>
+            <button type="button" className="btn btn-accent" onClick={create} disabled={busy}>접수</button>
+            <button type="button" className="btn btn-ghost" onClick={() => setAdding(false)}>취소</button>
+          </div>
+        </div>
+      )}
+
+      {rows.length === 0 ? (
+        <div className="cc-empty">AS 기록이 없습니다.</div>
+      ) : (
+        <div className="cc-aslist">
+          {rows.map((t) => {
+            const st = CC_AS_ST[t.status] || { label: t.status, cls: "off" };
+            const rs = CC_RES[t.resolution];
+            return (
+              <div key={t.id} className={"cc-as" + (openId === t.id ? " on" : "")}>
+                <button type="button" className="cc-as-hd" onClick={() => setOpenId(openId === t.id ? "" : t.id)}>
+                  <span className={`cc-pill ${rs ? rs.cls : st.cls}`}>{rs ? rs.label : st.label}</span>
+                  <span className="cc-as-sym">{t.symptom}</span>
+                  <span className="small muted">{CC_CHANNEL[t.channel] || t.channel}</span>
+                  {t.serial && <span className="small mono muted">{t.serial}</span>}
+                  {t.warrantyAtReceipt === true && <span className="cc-pill ok">보증 내</span>}
+                  {t.warrantyAtReceipt === false && <span className="cc-pill off">보증 만료</span>}
+                  <span className="small muted" style={{ marginLeft: "auto" }}>{ccDay(t.receivedAt)}</span>
+                </button>
+                {openId === t.id && (
+                  <CcAsDetail ticket={t} teams={teams} assets={assets}
+                    onDone={() => { load(); onChanged?.(); }} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** AS 상세 — 배정·조치·종결 */
+function CcAsDetail({ ticket: t, teams, assets, onDone }) {
+  const [f, setF] = useState({
+    teamId: t.teamId, teamName: t.teamName, technician: t.technician,
+    cause: t.cause, action: t.action, visitedAt: t.visitedAt ? String(t.visitedAt).slice(0, 10) : "",
+    resolution: t.resolution, amount: t.amount ?? "", rejectReason: t.rejectReason,
+    swapOutSerial: t.swapOutSerial || t.serial, swapInSerial: t.swapInSerial,
+  });
+  const [busy, setBusy] = useState(false);
+  const closed = !!t.resolution;
+
+  const save = async (extra = {}) => {
+    setBusy(true);
+    try {
+      await api.erpOpsAsUpdate(t.id, { ...f, ...extra });
+      toastSuccess("저장했어요");
+      onDone();
+    } catch (e) { notifyError(e); } finally { setBusy(false); }
+  };
+
+  const close = async () => {
+    if (!f.resolution) return notifyError(new Error("종결 유형을 고르세요"));
+    const label = CC_RES[f.resolution]?.label;
+    let warn = "";
+    if (f.resolution === "swap") warn = `\n\n회수 ${f.swapOutSerial} → 투입 ${f.swapInSerial}\n자산 기록도 함께 바뀝니다.`;
+    if (!(await confirmAction(`이 AS를 '${label}'로 종결할까요?${warn}`))) return;
+    save();
+  };
+
+  return (
+    <div className="cc-as-body">
+      <div className="small muted" style={{ marginBottom: 10 }}>
+        {t.ticketNo} · 접수 {new Date(t.receivedAt).toLocaleString("ko-KR")} · {t.createdName}
+      </div>
+
+      <div className="oa-form">
+        <CcTeamPicker teams={teams} teamId={f.teamId} technician={f.technician}
+          onChange={(v) => setF({ ...f, ...v })} />
+        <OaField label="방문일">
+          <input className="input" type="date" value={f.visitedAt} onChange={(e) => setF({ ...f, visitedAt: e.target.value })} />
+        </OaField>
+        <OaField label="원인">
+          <input className="input" value={f.cause} onChange={(e) => setF({ ...f, cause: e.target.value })} placeholder="진단 결과" />
+        </OaField>
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <OaField label="조치 내용">
+          <input className="input" value={f.action} onChange={(e) => setF({ ...f, action: e.target.value })} placeholder="무엇을 했는지" />
+        </OaField>
+      </div>
+
+      <div className="cc-sec" style={{ marginTop: 16 }}>종결</div>
+      <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+        {Object.entries(CC_RES).map(([v, r]) => (
+          <button key={v} type="button" className={"chip" + (f.resolution === v ? " on" : "")}
+            disabled={closed} onClick={() => setF({ ...f, resolution: v })}>{r.label}</button>
+        ))}
+      </div>
+
+      {f.resolution === "paid" && (
+        <div style={{ marginTop: 10 }}>
+          <OaField label="청구 금액">
+            <input className="input" inputMode="numeric" value={f.amount} disabled={closed}
+              onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder="예: 150000" />
+          </OaField>
+        </div>
+      )}
+      {f.resolution === "rejected" && (
+        <div style={{ marginTop: 10 }} className="oa-form">
+          <OaField label="제시 금액">
+            <input className="input" inputMode="numeric" value={f.amount} disabled={closed}
+              onChange={(e) => setF({ ...f, amount: e.target.value })} />
+          </OaField>
+          <OaField label="거절 사유">
+            <input className="input" value={f.rejectReason} disabled={closed}
+              onChange={(e) => setF({ ...f, rejectReason: e.target.value })} placeholder="고객이 왜 안 했는지" />
+          </OaField>
+        </div>
+      )}
+      {f.resolution === "swap" && (
+        <div style={{ marginTop: 10 }} className="oa-form">
+          <OaField label="회수 시리얼" hint="이 기계는 '교체회수'로 바뀝니다">
+            <select className="input" value={f.swapOutSerial} disabled={closed}
+              onChange={(e) => setF({ ...f, swapOutSerial: e.target.value })}>
+              <option value="">선택</option>
+              {(assets || []).filter((a) => a.status !== "REMOVED").map((a) => (
+                <option key={a.id} value={a.serial}>{a.kind} · {a.serial}</option>
+              ))}
+            </select>
+          </OaField>
+          <OaField label="투입 시리얼" hint="이 센터에 새로 등록됩니다 (보증 1년 재시작)">
+            <input className="input mono" value={f.swapInSerial} disabled={closed}
+              onChange={(e) => setF({ ...f, swapInSerial: e.target.value.toUpperCase() })} placeholder="BRJ21A0099" />
+          </OaField>
+        </div>
+      )}
+
+      <div className="row" style={{ gap: 8, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
+        {!closed && <button type="button" className="btn btn-ghost" onClick={() => save()} disabled={busy}>저장</button>}
+        {!closed && <button type="button" className="btn btn-accent" onClick={close} disabled={busy || !f.resolution}>종결</button>}
+        {closed && (
+          <span className="small muted">
+            {new Date(t.closedAt).toLocaleString("ko-KR")} 종결
+            {t.amount ? ` · ${t.amount.toLocaleString()}원` : ""}
+            {t.swapInSerial ? ` · ${t.swapOutSerial} → ${t.swapInSerial}` : ""}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 접점 탭 — 세일즈·CXM 공용. 필수는 넷뿐 (언제·경로·요약·다음에 뭘) */
+function CcContacts({ groupKey, onChanged }) {
+  const [rows, setRows] = useState(null);
+  const [team, setTeam] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const blank = { team: "sales", kind: "전화", occurredAt: "", summary: "", outcome: "", nextActionAt: "", nextAction: "", sentiment: "" };
+  const [form, setForm] = useState(blank);
+
+  const load = useCallback(() => {
+    api.erpOpsContacts({ groupKey }).then((d) => setRows(d.contacts || [])).catch(notifyError);
+  }, [groupKey]);
+  useEffect(load, [load]);
+
+  const create = async () => {
+    if (!form.summary.trim()) return notifyError(new Error("한 줄 요약을 입력하세요"));
+    setBusy(true);
+    try {
+      await api.erpOpsContactCreate({ ...form, groupKey });
+      toastSuccess("기록했어요");
+      setForm({ ...blank, team: form.team });
+      setAdding(false);
+      load();
+      onChanged?.();
+    } catch (e) { notifyError(e); } finally { setBusy(false); }
+  };
+
+  const done = async (c) => {
+    if (!(await confirmAction(`"${c.nextAction || "다음 액션"}"을(를) 완료로 표시할까요?`))) return;
+    try { await api.erpOpsContactUpdate(c.id, { nextActionAt: "" }); load(); toastSuccess("완료했어요"); }
+    catch (e) { notifyError(e); }
+  };
+
+  const remove = async (c) => {
+    if (!(await confirmAction("이 기록을 삭제할까요?"))) return;
+    try { await api.erpOpsContactDelete(c.id); load(); onChanged?.(); }
+    catch (e) { notifyError(e); }
+  };
+
+  if (!rows) return <div className="spinner" />;
+  const list = team ? rows.filter((r) => r.team === team) : rows;
+
+  return (
+    <>
+      <div className="row" style={{ gap: 6, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+        {[["", "전체"], ["sales", "세일즈"], ["cx", "CXM"]].map(([v, label]) => (
+          <button key={v || "all"} type="button" className={"chip" + (team === v ? " on" : "")}
+            onClick={() => setTeam(v)}>{label}</button>
+        ))}
+        <span className="small muted">{list.length}건</span>
+        <button type="button" className="btn btn-accent btn-sm" style={{ marginLeft: "auto" }}
+          onClick={() => setAdding((v) => !v)}>{adding ? "닫기" : "+ 접점 기록"}</button>
+      </div>
+
+      {adding && (
+        <div className="card" style={{ padding: "14px 16px", marginBottom: 14 }}>
+          <div className="row" style={{ gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+            {[["sales", "세일즈"], ["cx", "CXM"]].map(([v, label]) => (
+              <button key={v} type="button" className={"chip" + (form.team === v ? " on" : "")}
+                onClick={() => setForm({ ...form, team: v })}>{label}</button>
+            ))}
+            <span className="cc-div" />
+            {CC_CONTACT_KIND.map((k) => (
+              <button key={k} type="button" className={"chip" + (form.kind === k ? " on" : "")}
+                onClick={() => setForm({ ...form, kind: k })}>{k}</button>
+            ))}
+          </div>
+          <OaField label="한 줄 요약">
+            <input className="input" value={form.summary} autoFocus
+              onChange={(e) => setForm({ ...form, summary: e.target.value })}
+              placeholder="무슨 얘길 했는지" />
+          </OaField>
+          <div className="oa-form" style={{ marginTop: 12 }}>
+            <OaField label="언제 (선택)" hint="비우면 지금">
+              <input className="input" type="date" value={form.occurredAt}
+                onChange={(e) => setForm({ ...form, occurredAt: e.target.value })} />
+            </OaField>
+            <OaField label="다음 액션일" hint="넣으면 '오늘 할 일'에 잡힙니다">
+              <input className="input" type="date" value={form.nextActionAt}
+                onChange={(e) => setForm({ ...form, nextActionAt: e.target.value })} />
+            </OaField>
+            <OaField label="다음에 뭘">
+              <input className="input" value={form.nextAction}
+                onChange={(e) => setForm({ ...form, nextAction: e.target.value })} placeholder="예: 견적 재발송" />
+            </OaField>
+            <OaField label="분위기 (선택)">
+              <div className="row" style={{ gap: 6 }}>
+                {Object.entries(CC_SENTIMENT).map(([v, label]) => (
+                  <button key={v} type="button" className={"chip" + (form.sentiment === v ? " on" : "")}
+                    onClick={() => setForm({ ...form, sentiment: form.sentiment === v ? "" : v })}>{label}</button>
+                ))}
+              </div>
+            </OaField>
+          </div>
+          <div className="row" style={{ gap: 8, marginTop: 12 }}>
+            <button type="button" className="btn btn-accent" onClick={create} disabled={busy}>기록</button>
+            <button type="button" className="btn btn-ghost" onClick={() => setAdding(false)}>취소</button>
+          </div>
+        </div>
+      )}
+
+      {list.length === 0 ? (
+        <div className="cc-empty">
+          접점 기록이 없습니다.<br />
+          <span className="small">통화·방문·교육을 남겨두면 다음 사람이 맥락을 압니다.</span>
+        </div>
+      ) : (
+        <div className="cc-tl" style={{ marginLeft: 0, paddingLeft: 0, borderLeft: 0 }}>
+          {list.map((c) => (
+            <div key={c.id} className="cc-ct">
+              <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span className={`cc-pill ${c.team === "cx" ? "ok" : "brand"}`}>{c.team === "cx" ? "CXM" : "세일즈"}</span>
+                <span className="small muted">{c.kind}</span>
+                <span className="cc-tl-t">{c.summary}</span>
+                {c.sentiment && <span className="small muted">({CC_SENTIMENT[c.sentiment]})</span>}
+                <span className="small muted" style={{ marginLeft: "auto" }}>{ccDay(c.occurredAt)}</span>
+              </div>
+              {c.outcome && <div className="small muted" style={{ marginTop: 3 }}>{c.outcome}</div>}
+              {c.nextActionAt && (
+                <div className="row" style={{ gap: 8, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <span className={"cc-pill " + (new Date(c.nextActionAt) <= new Date() ? "warn" : "off")}>
+                    {ccDay(c.nextActionAt)} · {c.nextAction || "다음 액션"}
+                  </span>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => done(c)}>완료</button>
+                </div>
+              )}
+              <div className="row" style={{ gap: 8, marginTop: 4, alignItems: "center" }}>
+                <span className="small muted">{c.actorName}</span>
+                <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: "auto", color: "#C0392B" }}
+                  onClick={() => remove(c)}>✕</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 /** 센터 카드 — 현황 + 문자포인트 + 통합 타임라인 */
 function CcCard({ groupKey, onClose }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState("");
+  const [tab, setTab] = useState("overview");
+  const [teams, setTeams] = useState([]);
+  const [assets, setAssets] = useState([]);
+
+  const reload = useCallback(() => {
+    api.erpCrmCenterCard(groupKey)
+      .then(setD)
+      .catch((e) => setErr(e.message || "불러오지 못했습니다"));
+    api.erpOpsAssets(groupKey).then((r) => setAssets(r.assets || [])).catch(() => {});
+  }, [groupKey]);
 
   useEffect(() => {
     setD(null);
     setErr("");
-    api.erpCrmCenterCard(groupKey)
-      .then(setD)
-      .catch((e) => setErr(e.message || "불러오지 못했습니다"));
-  }, [groupKey]);
+    setTab("overview");
+    reload();
+  }, [groupKey, reload]);
+
+  useEffect(() => { api.erpOpsTeams().then((r) => setTeams(r.teams || [])).catch(() => {}); }, []);
 
   const c = d?.center || d?.live || null;
   const kiosks = (c?.kioskKeys || []).map((k) => CC_KIOSKS.find(([v]) => v === k)?.[1] || k);
@@ -13600,6 +14217,19 @@ function CcCard({ groupKey, onClose }) {
             {!d.synced && <span className="badge-live">동기화 전 · CRM 직접 조회</span>}
           </div>
 
+          <div className="cc-tabs">
+            {[["overview", "개요"], ["assets", `키오스크${assets.length ? ` ${assets.length}` : ""}`],
+              ["as", "AS"], ["contacts", "접점"]].map(([k, label]) => (
+              <button key={k} type="button" className={"cc-tab" + (tab === k ? " on" : "")}
+                onClick={() => setTab(k)}>{label}</button>
+            ))}
+          </div>
+
+          {tab === "assets" && <CcAssets groupKey={groupKey} teams={teams} onChanged={reload} />}
+          {tab === "as" && <CcAs groupKey={groupKey} teams={teams} assets={assets} onChanged={reload} />}
+          {tab === "contacts" && <CcContacts groupKey={groupKey} onChanged={reload} />}
+
+          {tab === "overview" && <>
           <div className="cc-sec">현황</div>
           <div className="cc-kvgrid">
             <CcKV label="지점명">{c.primaryName || null}</CcKV>
@@ -13673,9 +14303,10 @@ function CcCard({ groupKey, onClose }) {
           ) : (
             <div className="cc-empty">
               아직 이 센터에 쌓인 기록이 없습니다.<br />
-              <span className="small">AS·자산·접점 기록은 2·3단계에서 붙습니다. 문자포인트 충전은 내일 스냅샷부터 자동으로 잡힙니다.</span>
+              <span className="small">키오스크·AS·접점 탭에서 남기면 여기 시간순으로 모입니다.</span>
             </div>
           )}
+          </>}
         </>
       )}
     </OaOverlay>

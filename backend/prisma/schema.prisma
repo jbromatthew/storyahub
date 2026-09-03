@@ -1210,6 +1210,98 @@ model ErpCenterPointSnap {
   @@index([groupKey, date])
 }
 
+/// 센터에 설치된 키오스크 한 대. 시리얼로 기계의 일생을 잇는다 —
+/// 센터를 옮기면 행을 새로 만들지 않고 groupKey를 바꾸고 movedFromGroupKey를 남긴다.
+model ErpCenterAsset {
+  id                String    @id @default(cuid())
+  groupKey          Int
+  kind              String // 기종 (21.5인치 · 32인치 · aPOS …)
+  serial            String    @unique // 영문·숫자, 대문자로 통일해 저장
+  installedAt       DateTime?
+  warrantyUntil     DateTime? // 설치일 + 1년
+  teamId            String    @default("")
+  teamName          String    @default("") // 그때 값 스냅샷
+  installer         String    @default("")
+  status            String    @default("ACTIVE") // ACTIVE | REPAIR | SWAPPED | REMOVED
+  location          String    @default("")
+  removedAt         DateTime?
+  movedFromGroupKey Int?
+  note              String    @default("")
+  createdEmail      String    @default("")
+  createdName       String    @default("")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([groupKey])
+  @@index([status])
+  @@index([teamId])
+}
+
+/// AS 티켓. 종결 유형(무상·유상·리퍼교체·수리거절)이 통계의 축이다.
+model ErpAsTicket {
+  id       String @id @default(cuid())
+  ticketNo String @unique // AS-260903-001
+  groupKey Int
+
+  assetId String @default("")
+  serial  String @default("")
+
+  receivedAt DateTime
+  channel    String // kakao | phone
+  symptom    String
+  cause      String @default("")
+  action     String @default("")
+
+  status     String    @default("received") // received | assigned | visiting | closed
+  teamId     String    @default("")
+  teamName   String    @default("")
+  technician String    @default("")
+  visitedAt  DateTime?
+  closedAt   DateTime?
+
+  resolution   String  @default("") // free | paid | swap | rejected
+  amount       Int?
+  rejectReason String  @default("")
+  swapOutSerial String @default("")
+  swapInSerial  String @default("")
+  /// 접수 시점에 보증 기간 안이었는지 — 나중에 설치일이 바뀌어도 판정이 흔들리지 않게 스냅샷
+  warrantyAtReceipt Boolean?
+
+  reopenOf     String   @default("") // 같은 증상 재접수면 원래 티켓 id
+  note         String   @default("")
+  createdEmail String   @default("")
+  createdName  String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([groupKey, receivedAt])
+  @@index([status])
+  @@index([resolution])
+  @@index([teamId])
+}
+
+/// 세일즈·CXM 접점. 기록 모양이 같아 한 테이블에 두고 team으로 나눈다.
+model ErpCenterContact {
+  id           String    @id @default(cuid())
+  groupKey     Int
+  team         String // sales | cx
+  kind         String // 전화 · 방문 · 채널톡 · 메일 · 교육 …
+  occurredAt   DateTime
+  actorEmail   String    @default("")
+  actorName    String    @default("")
+  summary      String
+  outcome      String    @default("")
+  nextActionAt DateTime?
+  nextAction   String    @default("")
+  sentiment    String    @default("") // good | normal | bad
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([groupKey, occurredAt])
+  @@index([team])
+  @@index([nextActionAt])
+}
+
 /// 고객관리 센터조회 — 저장한 검색 조건(세그먼트). 클릭하면 그 조건으로 조회된다.
 model ErpCrmSegment {
   id         String   @id @default(cuid())
