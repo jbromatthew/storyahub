@@ -7720,6 +7720,21 @@ export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGo
   }, [detail, planList]);
   const planItems = editing ? fullPlanItems : detail?.plans;
 
+  /** 내가 최근에 쓴 보고의 대분류를 그대로 쓴다 — 팀이 바뀌면 자동으로 따라간다 */
+  const myGroups = useMemo(() => {
+    const mineAll = reports
+      .filter((r) => (r.authorEmail || "").toLowerCase() === myEmail)
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    for (const r of mineAll) {
+      const heads = [...parseChecklistItems(r.did || ""), ...parseChecklistItems(r.plan || "", { legacyDone: false })]
+        .filter((t) => t.kind === "header")
+        .map((t) => (t.text || "").trim())
+        .filter(Boolean);
+      if (heads.length) return [...new Set(heads)];
+    }
+    return DAILY_DEFAULT_GROUPS;
+  }, [reports, myEmail]);
+
   const startEdit = () => {
     const pd = {};
     fullPlanItems.forEach((p) => { pd[p.label] = currentPlanGoals?.[p.label] ?? p.goal ?? 0; });
@@ -10873,6 +10888,25 @@ function DailyThreadBox({ report, section, item, threads, myEmail, onChanged, on
  * 분류를 끌면 소속된 것들까지 한 덩어리로 움직인다. */
 const isChecklistGroup = (kind) => kind === "header" || kind === "sub";
 
+/** 일일보고 기본 대분류 — 내 지난 보고에 대분류가 하나도 없을 때만 쓴다 */
+const DAILY_DEFAULT_GROUPS = ["세일즈팀", "고객관리팀", "AX팀", "고객성공팀", "파트너스", "공사"];
+
+/**
+ * 대분류를 항상 깔아둔다. 이미 있는 건 자리를 그대로 두고, 빠진 것만 뒤에 붙인다.
+ * 매번 손으로 다시 만들지 않게 하려는 것이라 순서는 기준 목록을 따른다.
+ */
+function withDailyGroups(items, groups) {
+  const list = Array.isArray(items) ? [...items] : [];
+  const has = new Set(
+    list.filter((t) => t.kind === "header").map((t) => (t.text || "").trim()).filter(Boolean),
+  );
+  for (const g of groups) {
+    if (has.has(g)) continue;
+    list.push({ id: checklistItemId(), text: g, done: false, reason: "", kind: "header" });
+  }
+  return list;
+}
+
 /** 들여쓰기 단계: 대분류 0, 소분류 1, 항목은 직전 분류에 따라 1~2 (분류 없으면 0) */
 function checklistIndent(list, i) {
   const kind = list[i]?.kind;
@@ -11146,11 +11180,17 @@ export function DailyReportView() {
     if (mine) {
       // 못한 일에 적힌 사유를 오늘 할 일 항목에 다시 붙인다
       const reasons = new Map(parseChecklistItems(mine.missed).map((m) => [m.text, m.reason]));
-      setTodos(parseChecklistItems(mine.did).map((t) => ({ ...t, reason: reasons.get(t.text) || t.reason || "" })));
-      setPlans(parseChecklistItems(mine.plan, { legacyDone: false }).map((p) => ({ id: p.id, text: p.text, kind: p.kind })));
+      setTodos(withDailyGroups(
+        parseChecklistItems(mine.did).map((t) => ({ ...t, reason: reasons.get(t.text) || t.reason || "" })),
+        myGroups,
+      ));
+      setPlans(withDailyGroups(
+        parseChecklistItems(mine.plan, { legacyDone: false }).map((p) => ({ id: p.id, text: p.text, kind: p.kind })),
+        myGroups,
+      ));
     } else {
-      setTodos([]);
-      setPlans([]);
+      setTodos(withDailyGroups([], myGroups));
+      setPlans(withDailyGroups([], myGroups));
     }
     setPrevPlan(null);
     setEditing(true);
@@ -11160,7 +11200,17 @@ export function DailyReportView() {
         // 직전 보고의 '내일 할 일' 체크리스트를 오늘 할 일로 프리필 (새 보고일 때만)
         if (r.prev?.plan && !mine) {
           const items = parseChecklistItems(r.prev.plan, { legacyDone: false });
-          if (items.length) setTodos((cur) => (cur.length ? cur : items.map((it) => ({ id: it.id, text: it.text, done: false, reason: "", kind: it.kind, start: it.start, end: it.end }))));
+          // 이어받은 항목에도 대분류가 빠져 있으면 채워 넣는다
+          if (items.length) {
+            setTodos((cur) => {
+              const onlyGroups = cur.every((t) => isChecklistGroup(t.kind));
+              if (cur.length && !onlyGroups) return cur;
+              return withDailyGroups(
+                items.map((it) => ({ id: it.id, text: it.text, done: false, reason: "", kind: it.kind, start: it.start, end: it.end })),
+                myGroups,
+              );
+            });
+          }
         }
       })
       .catch(() => {});
