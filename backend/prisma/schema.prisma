@@ -1144,6 +1144,72 @@ model ErpOpenApiKeyLog {
   @@index([keyId])
 }
 
+/// 센터 마스터 — 여정관리의 축. CRM 스냅샷을 하루 1회 받아 둔다.
+/// 새로 쌓는 기록은 전부 groupKey로 매달리므로 이름 추측 매칭이 필요 없다.
+model ErpCenter {
+  groupKey       Int       @id
+  name           String
+  primaryName    String    @default("")
+  bizNo          String    @default("")
+  ownerName      String    @default("")
+  ownerId        String    @default("")
+  ownerPhone     String    @default("")
+  phone          String    @default("")
+  types          Json      @default("[]")
+  paymentStatus  String    @default("")
+  ticketName     String    @default("")
+  ticketExpiredAt DateTime?
+  ticketRegular  Boolean   @default(false)
+  messagePoint   Int       @default(0)
+  installTeam    String    @default("")
+  kioskKeys      Json      @default("[]") // CRM이 주는 기종 boolean → 켜진 것만
+  crmCreatedAt   DateTime?
+  lastAccessedAt DateTime?
+  memo           String    @default("")
+  crmSyncedAt    DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([name])
+  @@index([bizNo])
+  @@index([paymentStatus])
+}
+
+/// 센터 통합 타임라인 — 영역별 상세는 각 테이블에 두고, 요약 한 줄만 여기 쌓는다.
+/// 센터 카드는 이 테이블만 시간순으로 읽는다.
+model ErpCenterEvent {
+  id         String   @id @default(cuid())
+  groupKey   Int
+  occurredAt DateTime
+  type       String // as | asset | point | sales | cx | crm
+  title      String
+  body       String   @default("")
+  actorEmail String   @default("")
+  actorName  String   @default("")
+  team       String   @default("") // sales | cx | install | system
+  refTable   String   @default("")
+  refId      String   @default("")
+  amount     Int?
+  meta       Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([groupKey, occurredAt])
+  @@index([type])
+}
+
+/// 문자포인트 일일 스냅샷 — 오른 날은 충전, 내린 만큼이 소진.
+/// 결제주문내역을 붙이지 않기로 해서 충전 이력을 여기서 만든다.
+model ErpCenterPointSnap {
+  id       String   @id @default(cuid())
+  groupKey Int
+  date     String // YYYY-MM-DD (KST)
+  point    Int
+  delta    Int      @default(0) // 직전 스냅샷 대비
+  createdAt DateTime @default(now())
+
+  @@unique([groupKey, date])
+  @@index([groupKey, date])
+}
+
 /// 고객관리 센터조회 — 저장한 검색 조건(세그먼트). 클릭하면 그 조건으로 조회된다.
 model ErpCrmSegment {
   id         String   @id @default(cuid())

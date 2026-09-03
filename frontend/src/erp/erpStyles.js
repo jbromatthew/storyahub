@@ -818,4 +818,38 @@ ${KB_CSS}
 .cc-sec-note{margin-left:8px;font-size:11.5px;font-weight:400;color:var(--muted);letter-spacing:0}
 .cc-note{margin-top:10px;padding:9px 12px;border-radius:10px;background:#FFF6EF;border:1px solid #F3D7C2;
   font-size:12.5px;line-height:1.6;color:#8A4A10}
+/* 센터 카드 */
+:root{--cc-spark-line:#FA6400;--cc-spark-fill:rgba(250,100,0,.12)}
+.cc-name{border:0;background:transparent;padding:0;font:inherit;font-weight:600;color:inherit;
+  cursor:pointer;text-align:left;border-bottom:1px dashed transparent}
+.cc-name:hover:not(:disabled){color:#C24C00;border-bottom-color:#FA6400}
+.cc-name:disabled{cursor:default;color:var(--muted)}
+.cc-kvgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px 20px}
+.cc-kv{display:flex;gap:10px;font-size:13.5px;line-height:1.6;padding:3px 0}
+.cc-kv>span{color:var(--muted);flex:0 0 92px}
+.cc-kv>b{font-weight:600;word-break:break-all}
+.cc-kv .muted{font-weight:400;color:var(--muted)}
+.cc-point{display:grid;grid-template-columns:repeat(3,minmax(80px,1fr)) minmax(180px,1.6fr);
+  gap:16px;align-items:center;padding:14px 16px;border:1px solid var(--line,#E5E7EB);border-radius:12px}
+.cc-point-n .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.cc-point-n .v em{font-style:normal;font-size:12px;font-weight:600;color:var(--muted);margin-left:2px}
+.cc-point-n .v.hot{color:#C0392B}
+.cc-point-n .l{font-size:12px;color:var(--muted);margin-top:2px}
+.cc-point-chart{min-width:0}
+.cc-tl{border-left:2px solid var(--line,#E5E7EB);margin-left:6px;padding-left:16px}
+.cc-tl-i{display:grid;grid-template-columns:120px 1fr;gap:14px;padding:10px 0;
+  border-bottom:1px solid var(--line-2,#F0F0F0)}
+.cc-tl-i:last-child{border-bottom:0}
+.cc-tl-d{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.cc-tl-t{font-size:13.5px;font-weight:600}
+.cc-pill.brand{background:#FFF1E6;color:#C24C00}
+.cc-empty{padding:28px 20px;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.8;
+  border:1px dashed var(--line,#E5E7EB);border-radius:12px}
+.badge-live{font-size:11px;padding:2px 8px;border-radius:6px;background:#EEF3FF;color:#33529E}
+@media (max-width:640px){
+  .cc-point{grid-template-columns:repeat(3,1fr)}
+  .cc-point-chart{grid-column:1/-1}
+  .cc-tl-i{grid-template-columns:1fr;gap:4px}
+  .cc-tl-d{flex-direction:row;align-items:center;gap:8px}
+}
 `;

@@ -13505,6 +13505,183 @@ function CcSegmentSave({ filters, onDone, onClose }) {
   );
 }
 
+const CC_EVENT = {
+  as: { label: "AS", cls: "warn" },
+  asset: { label: "자산", cls: "brand" },
+  point: { label: "문자", cls: "ok" },
+  sales: { label: "세일즈", cls: "brand" },
+  cx: { label: "CXM", cls: "ok" },
+  crm: { label: "CRM", cls: "off" },
+};
+
+/** 만료까지 남은 일수 — 음수면 이미 지남 */
+function ccDday(v) {
+  if (!v) return null;
+  const t = new Date(v).getTime();
+  if (!Number.isFinite(t)) return null;
+  return Math.floor((t - Date.now()) / 86400000);
+}
+
+function CcDdayTag({ value }) {
+  const d = ccDday(value);
+  if (d === null) return <span className="muted">-</span>;
+  const cls = d < 0 ? "bad" : d <= 30 ? "warn" : "ok";
+  return <span className={`cc-pill ${cls}`}>{d < 0 ? `${-d}일 지남` : `D-${d}`}</span>;
+}
+
+/** 문자포인트 추이 스파크라인 — 스냅샷이 3개는 쌓여야 그린다 */
+function CcSpark({ points }) {
+  if (!points || points.length < 3) return null;
+  const vals = points.map((p) => p.point);
+  const max = Math.max(...vals), min = Math.min(...vals);
+  const span = max - min || 1;
+  const W = 260, H = 44;
+  const step = W / (vals.length - 1);
+  const d = vals.map((v, i) => `${i ? "L" : "M"}${(i * step).toFixed(1)},${(H - ((v - min) / span) * (H - 6) - 3).toFixed(1)}`).join(" ");
+  const area = `${d} L${W},${H} L0,${H} Z`;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" aria-hidden="true" style={{ display: "block" }}>
+      <path d={area} fill="var(--cc-spark-fill)" />
+      <path d={d} fill="none" stroke="var(--cc-spark-line)" strokeWidth="1.6" strokeLinejoin="round" />
+      <circle cx={W} cy={(H - ((vals[vals.length - 1] - min) / span) * (H - 6) - 3).toFixed(1)} r="2.6" fill="var(--cc-spark-line)" />
+    </svg>
+  );
+}
+
+function CcKV({ label, children }) {
+  return (
+    <div className="cc-kv">
+      <span>{label}</span>
+      <b>{children ?? <span className="muted">-</span>}</b>
+    </div>
+  );
+}
+
+/** 센터 카드 — 현황 + 문자포인트 + 통합 타임라인 */
+function CcCard({ groupKey, onClose }) {
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    setD(null);
+    setErr("");
+    api.erpCrmCenterCard(groupKey)
+      .then(setD)
+      .catch((e) => setErr(e.message || "불러오지 못했습니다"));
+  }, [groupKey]);
+
+  const c = d?.center || d?.live || null;
+  const kiosks = (c?.kioskKeys || []).map((k) => CC_KIOSKS.find(([v]) => v === k)?.[1] || k);
+
+  const copyKey = async () => {
+    try { await navigator.clipboard.writeText(String(groupKey)); toastSuccess(`group_key ${groupKey} 복사`); }
+    catch { notifyError(new Error("복사에 실패했습니다")); }
+  };
+
+  return (
+    <OaOverlay wide title={c ? c.name || "(이름 없음)" : "센터"} onClose={onClose}>
+      {err && <div className="oa-err">{err}</div>}
+      {!d && !err && <div className="spinner" />}
+
+      {d && c && (
+        <>
+          <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
+            <CcPayTag status={c.paymentStatus} />
+            {c.ticketName && (
+              <span className="cc-tick">
+                {c.ticketRegular && <span className="cc-tick-b">정기</span>}
+                {CC_TICKET_LABEL[c.ticketName] || c.ticketName}
+              </span>
+            )}
+            <CcDdayTag value={c.ticketExpiredAt} />
+            <button type="button" className="cc-key" onClick={copyKey} title="group_key 복사">
+              group_key {groupKey}
+            </button>
+            {!d.synced && <span className="badge-live">동기화 전 · CRM 직접 조회</span>}
+          </div>
+
+          <div className="cc-sec">현황</div>
+          <div className="cc-kvgrid">
+            <CcKV label="지점명">{c.primaryName || null}</CcKV>
+            <CcKV label="대표자">{c.ownerName ? `${c.ownerName}${c.ownerId ? ` (${c.ownerId})` : ""}` : null}</CcKV>
+            <CcKV label="대표자 연락처">{c.ownerPhone ? ccPhone(c.ownerPhone) : null}</CcKV>
+            <CcKV label="센터 연락처">{c.phone ? ccPhone(c.phone) : null}</CcKV>
+            <CcKV label="사업자번호">{c.bizNo ? ccBiz(c.bizNo) : null}</CcKV>
+            <CcKV label="업종">{(c.types || []).map((t) => CC_TYPE[t] || t).join(", ") || null}</CcKV>
+            <CcKV label="이용권 만료">{ccDay(c.ticketExpiredAt) || null}</CcKV>
+            <CcKV label="키오스크">{kiosks.join(", ") || null}</CcKV>
+            <CcKV label="설치팀">{c.installTeam || null}</CcKV>
+            <CcKV label="등록일">{ccDay(c.crmCreatedAt ?? c.createdAt) || null}</CcKV>
+            <CcKV label="최근 접속">{ccDay(c.lastAccessedAt) || null}</CcKV>
+            <CcKV label="CRM 동기화">{c.crmSyncedAt ? new Date(c.crmSyncedAt).toLocaleString("ko-KR") : null}</CcKV>
+          </div>
+
+          <div className="cc-sec">
+            문자포인트
+            <span className="cc-sec-note">잔액을 매일 찍어 충전·소진을 가려낸다</span>
+          </div>
+          <div className="cc-point">
+            <div className="cc-point-n">
+              <div className="v">{(d.point?.current ?? 0).toLocaleString()}<em>P</em></div>
+              <div className="l">현재 잔액</div>
+            </div>
+            <div className="cc-point-n">
+              <div className="v">{d.point?.dailyUse ? d.point.dailyUse.toLocaleString() : "—"}<em>{d.point?.dailyUse ? "P/일" : ""}</em></div>
+              <div className="l">하루 평균 사용</div>
+            </div>
+            <div className="cc-point-n">
+              <div className={"v" + (d.point?.runoutDays != null && d.point.runoutDays <= 14 ? " hot" : "")}>
+                {d.point?.runoutDays != null ? d.point.runoutDays.toLocaleString() : "—"}
+                <em>{d.point?.runoutDays != null ? "일 뒤" : ""}</em>
+              </div>
+              <div className="l">소진 예상</div>
+            </div>
+            <div className="cc-point-chart">
+              {d.points?.length >= 3
+                ? <CcSpark points={d.points} />
+                : <span className="small muted">스냅샷 {d.points?.length ?? 0}일치 — 사흘은 쌓여야 추이가 그려집니다</span>}
+            </div>
+          </div>
+
+          <div className="cc-sec">
+            타임라인
+            <span className="cc-sec-note">{d.events?.length ? `${d.events.length}건` : "아직 기록 없음"}</span>
+          </div>
+          {d.events?.length ? (
+            <div className="cc-tl">
+              {d.events.map((e) => {
+                const t = CC_EVENT[e.type] || { label: e.type, cls: "off" };
+                return (
+                  <div key={e.id} className="cc-tl-i">
+                    <div className="cc-tl-d">
+                      <span className={`cc-pill ${t.cls}`}>{t.label}</span>
+                      <span className="small muted">{new Date(e.occurredAt).toLocaleDateString("ko-KR")}</span>
+                    </div>
+                    <div>
+                      <div className="cc-tl-t">{e.title}</div>
+                      {e.body && <div className="small muted">{e.body}</div>}
+                      {(e.actorName || e.team) && (
+                        <div className="small muted" style={{ marginTop: 2 }}>
+                          {e.actorName}{e.team && e.actorName ? " · " : ""}{e.team}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="cc-empty">
+              아직 이 센터에 쌓인 기록이 없습니다.<br />
+              <span className="small">AS·자산·접점 기록은 2·3단계에서 붙습니다. 문자포인트 충전은 내일 스냅샷부터 자동으로 잡힙니다.</span>
+            </div>
+          )}
+        </>
+      )}
+    </OaOverlay>
+  );
+}
+
 export function CrmCentersView() {
   const [f, setF] = useState(CC_BLANK);          // 확정된 검색 조건
   const [kw, setKw] = useState("");              // 입력 중인 검색어
@@ -13517,6 +13694,7 @@ export function CrmCentersView() {
   const [busy, setBusy] = useState("");
   const [showAdv, setShowAdv] = useState(false);
   const [showSave, setShowSave] = useState(false);
+  const [cardKey, setCardKey] = useState(null);   // 센터 카드로 연 group_key
   const [segments, setSegments] = useState([]);
   const [activeSeg, setActiveSeg] = useState("");
   const [sortKey, setSortKey] = useState("");     // 현재 쪽 안에서만 정렬
@@ -13820,7 +13998,10 @@ export function CrmCentersView() {
                   <td className="cc-no">{page * size + i + 1}</td>
                   <td><CcPayTag status={r.paymentStatus} /></td>
                   <td className="label">
-                    {r.name || <span style={{ color: "var(--muted)" }}>(이름 없음)</span>}
+                    <button type="button" className="cc-name" onClick={() => setCardKey(r.groupKey)}
+                      title="센터 카드 열기" disabled={!r.groupKey}>
+                      {r.name || "(이름 없음)"}
+                    </button>
                     {r.primaryName && <div className="small" style={{ color: "var(--muted)" }}>{r.primaryName}</div>}
                     {r.bizNo && <div className="small" style={{ color: "var(--muted)" }}>{ccBiz(r.bizNo)}</div>}
                   </td>
@@ -13883,6 +14064,7 @@ export function CrmCentersView() {
         <CcSegmentSave filters={f} onClose={() => setShowSave(false)}
           onDone={() => { setShowSave(false); loadSegments(); }} />
       )}
+      {cardKey && <CcCard groupKey={cardKey} onClose={() => setCardKey(null)} />}
     </div>
   );
 }

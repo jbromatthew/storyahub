@@ -11,6 +11,7 @@ import { requireAccess } from "../middleware/requireAccess.js";
 import { requireErpMember } from "../middleware/requireErpMember.js";
 import { env } from "../env.js";
 import { crmGroups, crmGroupCount, type CrmGroupQuery } from "../services/openApiGateway.js";
+import { syncCenters } from "../services/centerJourney.js";
 
 export const erpCrmRouter = Router();
 erpCrmRouter.use(auth, requireAccess);
@@ -262,6 +263,152 @@ async function scanAll(q: CrmGroupQuery): Promise<{ rows: Row[]; apiTotal: numbe
   return out;
 }
 
+/**
+ * 정밀 필터는 동기화해둔 ErpCenter로 돌린다.
+ *
+ * CRM 페이징이 불안정해서(만료일 동점이 많아 페이지마다 순서가 흔들린다)
+ * 훑어 모으면 20%가 빠진다. 마스터는 여러 번 훑어 100%를 채워두므로
+ * 여기서 거르면 누락이 없고 즉시 나온다.
+ *
+ * 상태 필터는 실측으로 맞췄다 — ACTIVE=만료일 미래(4,173 vs CRM 4,179),
+ * EXPIRATION=과거이거나 없음(5,196 vs 5,190). ISSUE만 정의를 몰라
+ * CRM에서 키 목록을 받아 교집합을 낸다.
+ */
+async function issueKeys(): Promise<number[]> {
+  const keys = new Set<number>();
+  for (const sort of ["CLOSED_DTTM_DESC", "CLOSED_DTTM_ASC", "CLOSED_DTTM_DESC"]) {
+    for (let page = 0; page < 6; page++) {
+      const r = await crmGroups({ groupFirstFilter: "ISSUE", page, size: 200, sort }).catch(() => null);
+      const list = (r?.result ?? []) as { group?: { key?: number } }[];
+      if (!list.length) break;
+      for (const it of list) {
+        const k = Number(it.group?.key);
+        if (Number.isFinite(k) && k > 0) keys.add(k);
+      }
+    }
+  }
+  return [...keys];
+}
+
+async function preciseFromLocal(q: CrmGroupQuery, post: Post, page: number, size: number) {
+  const synced = await prisma.erpCenter.count();
+  if (!synced) return null; // 아직 동기화 전 — 호출한 쪽이 예전 방식으로 물러선다
+
+  const now = new Date();
+  const AND: Record<string, unknown>[] = [];
+
+  if (q.keyword) {
+    const kw = q.keyword;
+    AND.push({
+      OR: [
+        { name: { contains: kw, mode: "insensitive" } },
+        { primaryName: { contains: kw, mode: "insensitive" } },
+        { ownerName: { contains: kw, mode: "insensitive" } },
+        { ownerPhone: { contains: kw.replace(/[^\d]/g, "") || kw } },
+        { phone: { contains: kw.replace(/[^\d]/g, "") || kw } },
+        { bizNo: { contains: kw.replace(/[^\d]/g, "") || kw } },
+      ],
+    });
+  }
+  if (q.groupFirstFilter === "ACTIVE") AND.push({ ticketExpiredAt: { gte: now } });
+  if (q.groupFirstFilter === "EXPIRATION") {
+    AND.push({ OR: [{ ticketExpiredAt: { lt: now } }, { ticketExpiredAt: null }] });
+  }
+  if (q.groupFirstFilter === "ISSUE") AND.push({ groupKey: { in: await issueKeys() } });
+  if (q.ticketFileNames?.length) AND.push({ ticketName: { in: q.ticketFileNames } });
+  if (q.installerTeamName) AND.push({ installTeam: { contains: q.installerTeamName, mode: "insensitive" } });
+
+  // CRM 세부 필터는 조합이 안 먹어서, 같은 뜻을 로컬 컬럼으로 다시 건다
+  const second = q.secondFilters ?? [];
+  const secondOr: Record<string, unknown>[] = [];
+  if (second.includes("REGULAR")) secondOr.push({ ticketRegular: true });
+  if (second.includes("NON_REGULAR")) secondOr.push({ ticketRegular: false });
+  if (second.includes("SOON_EXPIRED")) {
+    secondOr.push({ ticketExpiredAt: { gte: now, lte: new Date(Date.now() + 28 * 86_400_000) } });
+  }
+  if (second.includes("PAYMENT_FAILED")) secondOr.push({ paymentStatus: "FAILED" });
+  if (second.includes("PAYMENT_STOPPED")) secondOr.push({ paymentStatus: "STOPPED" });
+  if (second.includes("REGULAR_PAYMENT_CANCELED")) secondOr.push({ paymentStatus: "CANCELED" });
+  if (secondOr.length) AND.push({ OR: secondOr });
+
+  // 정밀 필터 — DB에서 걸 수 있는 건 여기서 건다
+  if (post.regular === "Y") AND.push({ ticketRegular: true });
+  if (post.regular === "N") AND.push({ ticketRegular: false });
+  if (post.pay?.length) AND.push({ paymentStatus: { in: post.pay } });
+  if (post.hasBiz === "Y") AND.push({ bizNo: { not: "" } });
+  if (post.hasBiz === "N") AND.push({ bizNo: "" });
+  if (post.hasTicket === "Y") AND.push({ ticketName: { not: "" } });
+  if (post.hasTicket === "N") AND.push({ ticketName: "" });
+  if (post.pointMax !== null && post.pointMax !== undefined) AND.push({ messagePoint: { lte: post.pointMax } });
+  if (post.expMin !== null && post.expMin !== undefined) {
+    AND.push({ ticketExpiredAt: { gte: new Date(Date.now() + post.expMin * 86_400_000) } });
+  }
+  if (post.expMax !== null && post.expMax !== undefined) {
+    AND.push({ ticketExpiredAt: { lte: new Date(Date.now() + (post.expMax + 1) * 86_400_000) } });
+  }
+  if (post.createdFrom) AND.push({ crmCreatedAt: { gte: new Date(post.createdFrom) } });
+  if (post.createdTo) AND.push({ crmCreatedAt: { lte: new Date(post.createdTo + "T23:59:59") } });
+  if (post.idleDays !== null && post.idleDays !== undefined) {
+    const cut = new Date(Date.now() - post.idleDays * 86_400_000);
+    AND.push({ OR: [{ lastAccessedAt: { lt: cut } }, { lastAccessedAt: null }] });
+  }
+
+  const where = AND.length ? { AND } : {};
+  const order = q.sort === "CLOSED_DTTM_ASC" ? "asc" : "desc";
+  let rows = await prisma.erpCenter.findMany({
+    where: where as never,
+    orderBy: [{ ticketExpiredAt: order }, { groupKey: "asc" }],
+    take: 20000,
+  });
+
+  // JSON 컬럼(업종·키오스크)은 DB에서 거르기 번거로워 여기서 거른다
+  const arr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
+  if (post.types?.length) rows = rows.filter((r) => arr(r.types).some((t) => post.types!.includes(t)));
+  if (post.kiosk?.length) rows = rows.filter((r) => arr(r.kioskKeys).some((k) => post.kiosk!.includes(k)));
+  if (post.hasKiosk === "Y") rows = rows.filter((r) => arr(r.kioskKeys).length > 0);
+  if (post.hasKiosk === "N") rows = rows.filter((r) => arr(r.kioskKeys).length === 0);
+
+  const KIOSK_LABEL: Record<string, string> = {
+    use_kiosk_7_krizer: "7인치",
+    use_kiosk_10_stand_krizer: "10인치 스탠드",
+    use_kiosk_10_passlight_krizer: "10인치 패스라이트",
+    use_kiosk_15_krizer: "15인치",
+    use_kiosk_21_krizer: "21인치",
+    use_kiosk_apos_centerm: "aPOS",
+  };
+  const centers = rows.slice(page * size, page * size + size).map((r) => ({
+    groupKey: r.groupKey,
+    name: r.name,
+    primaryName: r.primaryName,
+    phone: r.phone,
+    bizNo: r.bizNo,
+    types: arr(r.types),
+    paymentStatus: r.paymentStatus,
+    messagePoint: r.messagePoint,
+    createdAt: r.crmCreatedAt,
+    lastAccessedAt: r.lastAccessedAt,
+    ticketName: r.ticketName,
+    ticketExpiredAt: r.ticketExpiredAt,
+    ticketRegular: r.ticketRegular,
+    ownerName: r.ownerName,
+    ownerId: r.ownerId,
+    ownerPhone: r.ownerPhone,
+    installerTeam: r.installTeam,
+    previousNames: "",
+    kiosks: arr(r.kioskKeys).map((k) => KIOSK_LABEL[k] || k),
+    kioskKeys: arr(r.kioskKeys),
+  }));
+
+  const syncedAt = (await prisma.erpCenter.findFirst({
+    orderBy: { crmSyncedAt: "desc" }, select: { crmSyncedAt: true },
+  }))?.crmSyncedAt ?? null;
+
+  return {
+    centers, total: rows.length, page, size,
+    precise: true, source: "local", scanned: synced, syncedAt,
+  };
+}
+
 erpCrmRouter.get("/centers", async (req: AuthedRequest, res) => {
   const q = parseQuery(req);
   const post = parsePost(req);
@@ -269,17 +416,17 @@ erpCrmRouter.get("/centers", async (req: AuthedRequest, res) => {
   const size = q.size ?? 50;
   try {
     if (hasPost(post)) {
+      const out = await preciseFromLocal(q, post, page, size);
+      if (out) return res.json(out);
+      // 마스터가 아직 비었을 때만 예전 방식(CRM 훑기)으로 물러선다
       const { rows, apiTotal, truncated } = await scanAll(q);
       const kept = rows.filter((r) => matches(r, post));
       return res.json({
         centers: kept.slice(page * size, page * size + size),
         total: kept.length,
-        page,
-        size,
-        precise: true,
-        scanned: rows.length,
-        apiTotal,
-        truncated,
+        page, size,
+        precise: true, source: "crm",
+        scanned: rows.length, apiTotal, truncated,
       });
     }
     const [list, count] = await Promise.all([crmGroups(q), crmGroupCount(q)]);
@@ -464,4 +611,75 @@ erpCrmRouter.delete("/segments/:id", async (req: AuthedRequest, res) => {
   if (row.ownerEmail !== me.email) return res.status(403).json({ error: "만든 사람만 삭제할 수 있습니다" });
   await prisma.erpCrmSegment.delete({ where: { id: row.id } });
   res.json({ ok: true });
+});
+
+// ─── 센터 카드 (여정관리 1단계) ─────────────────────────────────────────────
+
+/** 센터 하나의 현황 + 타임라인 + 문자포인트 추이 */
+erpCrmRouter.get("/centers/:groupKey/card", async (req: AuthedRequest, res) => {
+  const groupKey = Number(req.params.groupKey);
+  if (!Number.isInteger(groupKey) || groupKey <= 0) {
+    return res.status(400).json({ error: "센터 키가 올바르지 않습니다" });
+  }
+  try {
+    const [center, events, snaps] = await Promise.all([
+      prisma.erpCenter.findUnique({ where: { groupKey } }),
+      prisma.erpCenterEvent.findMany({ where: { groupKey }, orderBy: { occurredAt: "desc" }, take: 200 }),
+      prisma.erpCenterPointSnap.findMany({ where: { groupKey }, orderBy: { date: "desc" }, take: 90 }),
+    ]);
+
+    // 마스터에 아직 없으면 CRM에서 바로 한 건 끌어와 보여준다 (동기화 전이라도 열리게)
+    let live = null;
+    if (!center) {
+      const r = await crmGroups({ groupFirstFilter: "ALL", keyword: String(groupKey), page: 0, size: 1 }).catch(() => null);
+      const hit = (r?.result ?? []).map((x) => flatten(x as Record<string, unknown>)).find((x) => x.groupKey === groupKey);
+      live = hit ?? null;
+    }
+
+    // 소진 예측 — 최근 30일 사용분으로 하루 평균을 낸다
+    const uses = snaps.filter((s) => s.delta < 0).slice(0, 30);
+    const dailyUse = uses.length ? Math.round(uses.reduce((a, s) => a + Math.abs(s.delta), 0) / uses.length) : 0;
+    const point = center?.messagePoint ?? live?.messagePoint ?? 0;
+    const runoutDays = dailyUse > 0 ? Math.floor(point / dailyUse) : null;
+
+    res.json({
+      center: center ?? null,
+      live,
+      events,
+      points: snaps.slice().reverse(),
+      point: { current: point, dailyUse, runoutDays },
+      synced: !!center,
+    });
+  } catch (e) {
+    res.status(errStatus(e)).json({ error: errMsg(e) });
+  }
+});
+
+/** 수동 동기화 — 정기 실행(KST 05:10)을 기다리지 않고 지금 받는다 */
+erpCrmRouter.post("/sync", async (req: AuthedRequest, res) => {
+  try {
+    const r = await syncCenters();
+    res.json({
+      ok: true,
+      ...r,
+      message: `센터 ${r.fetched.toLocaleString()}/${r.total.toLocaleString()}곳 (${(r.coverage * 100).toFixed(1)}%, ${r.passes}회 훑음) · 신규 ${r.added} · 스냅샷 ${r.snapped.toLocaleString()} · 충전 ${r.charges}`,
+    });
+  } catch (e) {
+    res.status(errStatus(e)).json({ error: errMsg(e) });
+  }
+});
+
+/** 동기화 상태 — 마지막으로 언제 받았는지 */
+erpCrmRouter.get("/sync/status", async (_req: AuthedRequest, res) => {
+  const [count, latest, snapDays] = await Promise.all([
+    prisma.erpCenter.count(),
+    prisma.erpCenter.findFirst({ orderBy: { crmSyncedAt: "desc" }, select: { crmSyncedAt: true } }),
+    prisma.erpCenterPointSnap.groupBy({ by: ["date"], _count: { _all: true }, orderBy: { date: "desc" }, take: 1 }),
+  ]);
+  res.json({
+    centers: count,
+    syncedAt: latest?.crmSyncedAt ?? null,
+    lastSnapDate: snapDays[0]?.date ?? null,
+    lastSnapCount: snapDays[0]?._count._all ?? 0,
+  });
 });
