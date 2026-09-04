@@ -29,6 +29,7 @@ export const ERP_MODULES = [
   // 권한이 막힌 사람에게 그룹 헤더째 사라지고, 게이트 없는 메뉴까지 따라 숨는다
   { id: "crm-centers", label: "센터조회", icon: "board", group: "customer", groupLabel: "고객관리" },
   { id: "smart-store", label: "스마트상점", icon: "board", group: "bizsupport", groupLabel: "영업지원" },
+  { id: "founders", label: "BROJ FOUNDERS", icon: "board", group: "bizsupport" },
   { id: "vendor-orders", label: "크라이저 발주", icon: "sales", group: "bizsupport", vendorGate: true },
   { id: "install-schedule", label: "설치일정 (브로제이)", icon: "board", group: "bizsupport", vendorGate: true },
   // OPEN API 센터관리 — 키를 발급·폐기하는 화면이라 기본은 소유자·시스템관리자만.

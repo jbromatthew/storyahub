@@ -14963,3 +14963,320 @@ export function CrmCentersView() {
     </div>
   );
 }
+
+// ─── BROJ FOUNDERS — IR 피칭대회 접수 관리 ──────────────────────────────────
+
+const BF_TRACKS = {
+  business: "피트니스 사업", tech: "기술", content: "콘텐츠·교육",
+  product: "제품", next: "신사업", market: "브로제이 연동 입점",
+};
+const BF_STATUS = [
+  ["received", "접수", "warn"], ["reviewing", "검토중", "brand"],
+  ["passed", "합격", "ok"], ["rejected", "미선정", "off"],
+];
+const BF_ENTRY = { pre: "예비창업자", early: "초기창업기업" };
+const BF_URL = "https://b2b.broj.io/founders/2026.html";
+
+export function FoundersView() {
+  const [rounds, setRounds] = useState(null);
+  const [sel, setSel] = useState("");
+  const [applies, setApplies] = useState([]);
+  const [status, setStatus] = useState("");
+  const [q, setQ] = useState("");
+  const [openId, setOpenId] = useState("");
+  const [tab, setTab] = useState("applies");
+  const [form, setForm] = useState({ year: 2026, title: "", opensAt: "", closesAt: "", notice: "" });
+
+  const loadRounds = useCallback(() =>
+    api.erpFoundersRounds().then((d) => {
+      setRounds(d.rounds || []);
+      setSel((cur) => cur || d.rounds?.[0]?.id || "");
+      return d.rounds || [];
+    }).catch(notifyError), []);
+  useEffect(() => { loadRounds(); }, [loadRounds]);
+
+  const loadApplies = useCallback(() => {
+    if (!sel) return;
+    api.erpFoundersApplies({ roundId: sel, status })
+      .then((d) => setApplies(d.applies || [])).catch(notifyError);
+  }, [sel, status]);
+  useEffect(loadApplies, [loadApplies]);
+
+  const cur = (rounds || []).find((r) => r.id === sel);
+  const kw = q.trim().toLowerCase();
+  const rows = applies.filter((a) =>
+    !kw || [a.applyNo, a.teamName, a.repName, a.subject, a.repEmail, a.repPhone]
+      .some((v) => String(v || "").toLowerCase().includes(kw)));
+
+  const setStat = async (a, s) => {
+    const label = BF_STATUS.find(([v]) => v === s)?.[1] || s;
+    if (!(await confirmAction(`${a.teamName || a.repName} 접수를 '${label}'로 바꿀까요?`))) return;
+    try {
+      await api.erpFoundersApplyUpdate(a.id, { status: s });
+      setApplies((p) => p.map((x) => (x.id === a.id ? { ...x, status: s } : x)));
+      toastSuccess("바꿨어요");
+    } catch (e) { notifyError(e); }
+  };
+
+  const openFile = async (a, kind) => {
+    try {
+      const r = await api.erpFoundersFile(a.id, kind);
+      window.open(r.url, "_blank", "noopener");
+    } catch (e) { notifyError(e); }
+  };
+
+  const remove = async (a) => {
+    if (!(await confirmAction(`${a.applyNo} 접수를 삭제할까요?\n\n되돌릴 수 없습니다.`))) return;
+    try { await api.erpFoundersApplyDelete(a.id); loadApplies(); toastSuccess("삭제했어요"); }
+    catch (e) { notifyError(e); }
+  };
+
+  const saveRound = async () => {
+    try {
+      await api.erpFoundersRoundSave({
+        year: Number(form.year), title: form.title.trim(),
+        opensAt: form.opensAt, closesAt: form.closesAt, notice: form.notice.trim(),
+      });
+      toastSuccess("회차를 저장했어요");
+      setForm({ year: new Date().getFullYear(), title: "", opensAt: "", closesAt: "", notice: "" });
+      loadRounds();
+    } catch (e) { notifyError(e); }
+  };
+
+  const toggleActive = async (r) => {
+    if (!(await confirmAction(r.active ? "접수를 닫을까요?" : "접수를 다시 열까요?"))) return;
+    try { await api.erpFoundersRoundUpdate(r.id, { active: !r.active }); loadRounds(); }
+    catch (e) { notifyError(e); }
+  };
+
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(BF_URL); toastSuccess("신청 링크를 복사했어요"); }
+    catch { notifyError(new Error("복사에 실패했습니다")); }
+  };
+
+  const copyList = async () => {
+    if (!rows.length) return;
+    const head = ["접수번호", "상태", "접수일", "참가구분", "팀명", "대표자", "연락처", "이메일",
+      "주제", "분야", "팀원수", "증빙", "IR자료"];
+    const lines = [head.join("\t")];
+    for (const a of rows) {
+      lines.push([
+        a.applyNo, BF_STATUS.find(([v]) => v === a.status)?.[1] || a.status,
+        new Date(a.createdAt).toLocaleDateString("ko-KR"),
+        BF_ENTRY[a.entryType] || "", a.teamName, a.repName, a.repPhone, a.repEmail,
+        (a.subject || "").replace(/\s+/g, " "),
+        (a.tracks || []).map((t) => BF_TRACKS[t] || t).join(" "),
+        a.teamSize, a.proofName || "", a.irName || "",
+      ].join("\t"));
+    }
+    try { await navigator.clipboard.writeText(lines.join("\n")); toastSuccess(`${rows.length}건을 복사했어요`); }
+    catch { notifyError(new Error("복사에 실패했습니다")); }
+  };
+
+  if (!rounds) return <div className="spinner" />;
+
+  return (
+    <div className="fade pad wide" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">행사</div>
+      <div className="h-title">BROJ FOUNDERS</div>
+      <div className="small" style={{ marginTop: 8, color: "var(--muted)", lineHeight: 1.5 }}>
+        IR 피칭대회 참가 신청을 받고 관리합니다. 신청서·개인정보동의서·서약서는 신청 화면에서 바로 받습니다.
+      </div>
+
+      <div className="row" style={{ gap: 6, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+        {[["applies", "접수 현황"], ["rounds", "회차 관리"]].map(([k, label]) => (
+          <button key={k} type="button" className={"chip" + (tab === k ? " on" : "")} onClick={() => setTab(k)}>{label}</button>
+        ))}
+        <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }} onClick={copyLink}>
+          신청 링크 복사
+        </button>
+        <a className="btn btn-ghost btn-sm" href={BF_URL} target="_blank" rel="noopener">신청 화면 열기</a>
+      </div>
+
+      {tab === "applies" && (
+        <>
+          <div className="row" style={{ gap: 8, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+            <select className="input" style={{ maxWidth: 220 }} value={sel} onChange={(e) => setSel(e.target.value)}>
+              {rounds.map((r) => <option key={r.id} value={r.id}>{r.title} · {r.applyCount}건</option>)}
+            </select>
+            <input className="input" style={{ maxWidth: 240 }} value={q} onChange={(e) => setQ(e.target.value)}
+              placeholder="접수번호·팀명·대표자 검색" />
+            <button type="button" className="btn btn-ghost btn-sm" onClick={loadApplies}>새로고침</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={copyList} disabled={!rows.length}>목록 복사</button>
+          </div>
+
+          <div className="row" style={{ gap: 6, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <button type="button" className={"chip" + (status === "" ? " on" : "")} onClick={() => setStatus("")}>전체</button>
+            {BF_STATUS.map(([v, label]) => (
+              <button key={v} type="button" className={"chip" + (status === v ? " on" : "")}
+                onClick={() => setStatus(v)}>{label}</button>
+            ))}
+            <span className="small" style={{ color: "var(--muted)" }}>{rows.length}건</span>
+          </div>
+
+          {rows.length === 0 ? (
+            <div className="cc-empty" style={{ marginTop: 16 }}>
+              아직 접수가 없습니다.
+              {cur && !cur.active && <><br /><span className="small">이 회차는 접수가 닫혀 있습니다.</span></>}
+            </div>
+          ) : (
+            <div className="cc-aslist" style={{ marginTop: 14 }}>
+              {rows.map((a) => {
+                const st = BF_STATUS.find(([v]) => v === a.status);
+                return (
+                  <div key={a.id} className={"cc-as" + (openId === a.id ? " on" : "")}>
+                    <button type="button" className="cc-as-hd" onClick={() => setOpenId(openId === a.id ? "" : a.id)}>
+                      <span className={`cc-pill ${st?.[2] || "off"}`}>{st?.[1] || a.status}</span>
+                      <span className="mono small">{a.applyNo}</span>
+                      <span className="cc-as-sym">{a.teamName || a.repName}</span>
+                      <span className="small muted">{BF_ENTRY[a.entryType] || ""}</span>
+                      {a.irKey && <span className="cc-pill ok">IR</span>}
+                      {a.proofKey && <span className="cc-pill ok">증빙</span>}
+                      <span className="small muted" style={{ marginLeft: "auto" }}>
+                        {new Date(a.createdAt).toLocaleDateString("ko-KR")}
+                      </span>
+                    </button>
+                    {openId === a.id && (
+                      <div className="cc-as-body">
+                        <div className="cc-kvgrid" style={{ marginBottom: 14 }}>
+                          <div className="cc-kv"><span>주제</span><b>{a.subject || <i>-</i>}</b></div>
+                          <div className="cc-kv"><span>분야</span>
+                            <b>{(a.tracks || []).map((t) => BF_TRACKS[t] || t).join(", ") || <i>-</i>}</b></div>
+                          <div className="cc-kv"><span>대표자</span><b>{a.repName} {a.repGender === "M" ? "(남)" : a.repGender === "F" ? "(여)" : ""}</b></div>
+                          <div className="cc-kv"><span>연락처</span><b>{ccPhone(a.repPhone)}</b></div>
+                          <div className="cc-kv"><span>이메일</span><b>{a.repEmail}</b></div>
+                          <div className="cc-kv"><span>생년월일</span><b>{a.repBirth || <i>-</i>}</b></div>
+                          <div className="cc-kv"><span>소속</span><b>{a.repOrg || <i>-</i>}</b></div>
+                          <div className="cc-kv"><span>주소</span><b>{a.repAddress || <i>-</i>}</b></div>
+                          <div className="cc-kv"><span>팀원 수</span><b>{a.teamSize}명</b></div>
+                          <div className="cc-kv"><span>창업 구분</span>
+                            <b>{(a.bizForms || []).length
+                              ? (a.bizForms || []).map((f) => `${f.kind === "corp" ? "법인" : "개인"} ${f.no}${f.openedAt ? ` (${f.openedAt})` : ""}`).join(", ")
+                              : <i>미창업</i>}</b></div>
+                        </div>
+
+                        {(a.members || []).length > 0 && (
+                          <>
+                            <div className="cc-sec">팀원 {(a.members || []).length}명</div>
+                            <div className="dash-table-wrap">
+                              <table className="dash-table">
+                                <thead><tr><th className="label">성명</th><th>생년월일</th><th>연락처</th><th>이메일</th><th>소속</th></tr></thead>
+                                <tbody>
+                                  {(a.members || []).map((m, i) => (
+                                    <tr key={i}>
+                                      <td className="label">{m.name}</td>
+                                      <td className="small">{m.birth || "-"}</td>
+                                      <td className="small">{m.phone ? ccPhone(m.phone) : "-"}</td>
+                                      <td className="small">{m.email || "-"}</td>
+                                      <td className="small">{m.org || "-"}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </>
+                        )}
+
+                        <div className="cc-sec">동의 · 첨부</div>
+                        <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <span className={`cc-pill ${a.privacyAgreed ? "ok" : "bad"}`}>
+                            개인정보 {a.privacyAgreed ? "동의" : "미동의"}
+                          </span>
+                          <span className={`cc-pill ${a.pledgeAgreed ? "ok" : "bad"}`}>
+                            서약 {a.pledgeAgreed ? "동의" : "미동의"}
+                          </span>
+                          <span className="small muted">
+                            {a.signerName}{a.signerTeamName ? ` · ${a.signerTeamName}` : ""}
+                            {a.privacyAt ? ` · ${new Date(a.privacyAt).toLocaleString("ko-KR")}` : ""}
+                          </span>
+                        </div>
+                        <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                          {[["proof", a.proofKey, a.proofName || "증빙 서류"],
+                            ["ir", a.irKey, a.irName || "IR 자료"],
+                            ["extra", a.extraKey, a.extraName || "추가 자료"]].map(([kind, key, name]) => (
+                            key ? (
+                              <button key={kind} type="button" className="btn btn-ghost btn-sm" onClick={() => openFile(a, kind)}>
+                                ⭳ {name}
+                              </button>
+                            ) : (
+                              <span key={kind} className="small muted" style={{ alignSelf: "center" }}>
+                                {kind === "proof" ? "증빙" : kind === "ir" ? "IR 자료" : "추가"} 없음
+                              </span>
+                            )
+                          ))}
+                        </div>
+
+                        <div className="cc-sec">상태</div>
+                        <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                          {BF_STATUS.map(([v, label]) => (
+                            <button key={v} type="button" className={"chip" + (a.status === v ? " on" : "")}
+                              onClick={() => setStat(a, v)}>{label}</button>
+                          ))}
+                          <button type="button" className="btn btn-ghost btn-sm"
+                            style={{ marginLeft: "auto", color: "#C0392B" }} onClick={() => remove(a)}>삭제</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === "rounds" && (
+        <>
+          <div className="card" style={{ marginTop: 14, padding: "14px 16px" }}>
+            <div className="h-eyebrow" style={{ marginBottom: 10 }}>회차 추가 · 수정</div>
+            <div className="oa-form">
+              <OaField label="연도"><input className="input" inputMode="numeric" value={form.year}
+                onChange={(e) => setForm({ ...form, year: e.target.value })} /></OaField>
+              <OaField label="이름" hint="비우면 BROJ FOUNDERS {연도}">
+                <input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></OaField>
+              <OaField label="접수 시작"><input className="input" type="datetime-local" value={form.opensAt}
+                onChange={(e) => setForm({ ...form, opensAt: e.target.value })} /></OaField>
+              <OaField label="접수 마감"><input className="input" type="datetime-local" value={form.closesAt}
+                onChange={(e) => setForm({ ...form, closesAt: e.target.value })} /></OaField>
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <OaField label="안내 문구 (선택)">
+                <input className="input" value={form.notice} onChange={(e) => setForm({ ...form, notice: e.target.value })} /></OaField>
+            </div>
+            <div className="small" style={{ marginTop: 8, color: "var(--muted)" }}>
+              같은 연도가 이미 있으면 덮어씁니다.
+            </div>
+            <div className="row" style={{ gap: 8, marginTop: 12 }}>
+              <button type="button" className="btn btn-accent" onClick={saveRound}>저장</button>
+            </div>
+          </div>
+
+          <div className="dash-table-wrap" style={{ marginTop: 14 }}>
+            <table className="dash-table">
+              <thead><tr><th className="label">회차</th><th>접수 기간</th><th className="num">접수</th><th>상태</th><th></th></tr></thead>
+              <tbody>
+                {rounds.map((r) => (
+                  <tr key={r.id}>
+                    <td className="label">{r.title}
+                      {r.notice && <div className="small muted">{r.notice}</div>}</td>
+                    <td className="small">
+                      {r.opensAt ? new Date(r.opensAt).toLocaleString("ko-KR") : "제한 없음"}
+                      <div className="muted">~ {r.closesAt ? new Date(r.closesAt).toLocaleString("ko-KR") : "제한 없음"}</div>
+                    </td>
+                    <td className="num">{r.applyCount}</td>
+                    <td><span className={`cc-pill ${r.active ? "ok" : "off"}`}>{r.active ? "접수중" : "마감"}</span></td>
+                    <td>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleActive(r)}>
+                        {r.active ? "접수 닫기" : "접수 열기"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

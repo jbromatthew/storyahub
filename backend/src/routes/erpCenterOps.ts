@@ -534,3 +534,85 @@ erpCenterOpsRouter.delete("/contacts/:id", async (req: AuthedRequest, res) => {
   await prisma.erpCenterEvent.deleteMany({ where: { refTable: "ErpCenterContact", refId: row.id } });
   res.json({ ok: true });
 });
+
+// ─── BROJ FOUNDERS — 회차·접수 관리 ─────────────────────────────────────────
+
+erpCenterOpsRouter.get("/founders/rounds", async (_req: AuthedRequest, res) => {
+  const rounds = await prisma.erpFoundersRound.findMany({ orderBy: { year: "desc" } });
+  const counts = await prisma.erpFoundersApply.groupBy({ by: ["roundId"], _count: { _all: true } });
+  const map = new Map(counts.map((c) => [c.roundId, c._count._all]));
+  res.json({ rounds: rounds.map((r) => ({ ...r, applyCount: map.get(r.id) ?? 0 })) });
+});
+
+erpCenterOpsRouter.post("/founders/rounds", async (req: AuthedRequest, res) => {
+  const b = req.body ?? {};
+  const year = Number(b.year);
+  if (!Number.isInteger(year) || year < 2020 || year > 2100) return fail(res, "연도를 확인해 주세요");
+  const data = {
+    year,
+    title: str(b.title, 80) || `BROJ FOUNDERS ${year}`,
+    opensAt: dateOf(b.opensAt),
+    closesAt: dateOf(b.closesAt),
+    notice: str(b.notice, 500),
+    active: b.active !== false,
+  };
+  const row = await prisma.erpFoundersRound.upsert({ where: { year }, create: data, update: data });
+  res.json({ round: row });
+});
+
+erpCenterOpsRouter.patch("/founders/rounds/:id", async (req: AuthedRequest, res) => {
+  const b = req.body ?? {};
+  const data: Record<string, unknown> = {};
+  if (b.title !== undefined) data.title = str(b.title, 80);
+  if (b.notice !== undefined) data.notice = str(b.notice, 500);
+  if (b.active !== undefined) data.active = b.active === true;
+  if (b.opensAt !== undefined) data.opensAt = dateOf(b.opensAt);
+  if (b.closesAt !== undefined) data.closesAt = dateOf(b.closesAt);
+  const row = await prisma.erpFoundersRound.update({ where: { id: req.params.id }, data });
+  res.json({ round: row });
+});
+
+erpCenterOpsRouter.get("/founders/applies", async (req: AuthedRequest, res) => {
+  const roundId = str(req.query.roundId, 40);
+  const status = str(req.query.status, 20);
+  const where: Record<string, unknown> = {};
+  if (roundId) where.roundId = roundId;
+  if (status) where.status = status;
+  const applies = await prisma.erpFoundersApply.findMany({
+    where, orderBy: { createdAt: "desc" }, take: 500,
+  });
+  res.json({ applies });
+});
+
+erpCenterOpsRouter.patch("/founders/applies/:id", async (req: AuthedRequest, res) => {
+  const b = req.body ?? {};
+  const data: Record<string, unknown> = {};
+  if (b.status !== undefined) {
+    const s = str(b.status, 20);
+    if (!["received", "reviewing", "passed", "rejected"].includes(s)) return fail(res, "상태가 올바르지 않습니다");
+    data.status = s;
+  }
+  if (b.memo !== undefined) data.memo = str(b.memo, 1000);
+  const row = await prisma.erpFoundersApply.update({ where: { id: req.params.id }, data });
+  res.json({ apply: row });
+});
+
+erpCenterOpsRouter.delete("/founders/applies/:id", async (req: AuthedRequest, res) => {
+  await prisma.erpFoundersApply.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
+/** 첨부 내려받기 — 서명 URL로 넘긴다 */
+erpCenterOpsRouter.get("/founders/applies/:id/file/:kind", async (req: AuthedRequest, res) => {
+  const row = await prisma.erpFoundersApply.findUnique({ where: { id: req.params.id } });
+  if (!row) return fail(res, "접수 내역을 찾을 수 없습니다", 404);
+  const kind = String(req.params.kind);
+  const key = kind === "proof" ? row.proofKey : kind === "ir" ? row.irKey : row.extraKey;
+  if (!key) return fail(res, "첨부가 없습니다", 404);
+  try {
+    const { presignGet } = await import("../services/r2.js");
+    res.json({ url: await presignGet(key) });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});

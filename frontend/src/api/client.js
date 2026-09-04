@@ -284,6 +284,19 @@ export const api = {
   erpCrmAccountUnlink: () => req("/erp/crm/account", { method: "DELETE" }),
   // 센터 여정 — 자산 · AS · 접점
   erpOpsTeams: () => req("/erp/ops/teams"),
+  // BROJ FOUNDERS
+  erpFoundersRounds: () => req("/erp/ops/founders/rounds"),
+  erpFoundersRoundSave: (body) => req("/erp/ops/founders/rounds", { method: "POST", body }),
+  erpFoundersRoundUpdate: (id, body) => req(`/erp/ops/founders/rounds/${id}`, { method: "PATCH", body }),
+  erpFoundersApplies: (q = {}) => {
+    const p = new URLSearchParams();
+    if (q.roundId) p.set("roundId", q.roundId);
+    if (q.status) p.set("status", q.status);
+    return req(`/erp/ops/founders/applies?${p}`);
+  },
+  erpFoundersApplyUpdate: (id, body) => req(`/erp/ops/founders/applies/${id}`, { method: "PATCH", body }),
+  erpFoundersApplyDelete: (id) => req(`/erp/ops/founders/applies/${id}`, { method: "DELETE" }),
+  erpFoundersFile: (id, kind) => req(`/erp/ops/founders/applies/${id}/file/${kind}`),
   erpOpsAssets: (groupKey) => req(`/erp/ops/centers/${groupKey}/assets`),
   erpOpsAssetCreate: (groupKey, body) => req(`/erp/ops/centers/${groupKey}/assets`, { method: "POST", body }),
   erpOpsAssetUpdate: (id, body) => req(`/erp/ops/assets/${id}`, { method: "PATCH", body }),

@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>참가 신청 · BROJ FOUNDERS 2026</title>
+<meta name="description" content="BROJ FOUNDERS 2026 IR 피칭대회 참가 신청. 신청서·개인정보동의서·서약서를 온라인으로 작성하고 IR 자료를 첨부하세요.">
+<meta property="og:title" content="참가 신청 · BROJ FOUNDERS 2026">
+<meta property="og:description" content="1억 원 투자 기회. 온라인으로 접수하세요.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@400;500;700;900&display=swap">
+<style>
+  :root{
+    --bg:#0E0F12; --panel:#16181C; --raise:#1D2025; --line:#2A2E35; --line-2:#22262C;
+    --ink:#F3F2F0; --ink-2:#B9BCC2; --muted:#7E838C;
+    --brand:#FA6400; --brand-2:#FF8534; --brand-deep:#C24C00; --brand-wash:#241608;
+    --ok:#4ADE80; --ok-wash:#10241A; --bad:#F87171; --bad-wash:#2A1717;
+    --r:14px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Gothic A1","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    font-size:15px;line-height:1.7;letter-spacing:-.01em;-webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--brand-2)}
+
+  /* 머리 */
+  .top{position:sticky;top:0;z-index:30;background:rgba(14,15,18,.92);
+    backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  .top-in{max-width:820px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:12px}
+  .brand{font-weight:900;letter-spacing:-.02em;font-size:15px}
+  .brand em{font-style:normal;color:var(--brand)}
+  .deadline{margin-left:auto;font-size:12px;color:var(--muted);text-align:right;line-height:1.4}
+  .deadline b{color:var(--brand-2);display:block;font-size:13px}
+
+  .bar{height:3px;background:var(--line-2)}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--brand),var(--brand-2));
+    width:0;transition:width .35s cubic-bezier(.4,0,.2,1)}
+
+  .wrap{max-width:820px;margin:0 auto;padding:28px 20px 120px}
+
+  /* 표제 */
+  .hero{padding:14px 0 26px}
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:.2em;color:var(--brand)}
+  h1{font-size:clamp(26px,6vw,36px);font-weight:900;letter-spacing:-.035em;margin:10px 0 0;line-height:1.2}
+  .sub{margin-top:10px;color:var(--ink-2);font-size:15px;max-width:52ch}
+
+  /* 단계 */
+  .steps{display:flex;gap:6px;margin:0 0 24px;overflow-x:auto;padding-bottom:2px}
+  .steps b{flex:0 0 auto;font-size:12px;font-weight:600;color:var(--muted);
+    padding:6px 12px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
+  .steps b.on{color:var(--brand-2);border-color:var(--brand);background:var(--brand-wash)}
+  .steps b.done{color:var(--ok);border-color:#265239}
+
+  section{display:none}
+  section.on{display:block;animation:in .3s ease}
+  @keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  h2{font-size:20px;font-weight:800;letter-spacing:-.03em;margin:0 0 4px}
+  .lead{color:var(--muted);font-size:13.5px;margin:0 0 20px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+    padding:18px 20px;margin-bottom:14px}
+  .card h3{font-size:14px;font-weight:700;margin:0 0 12px;letter-spacing:-.02em}
+  .card h3 .req{color:var(--brand);margin-left:3px}
+
+  label.f{display:block;margin-bottom:14px}
+  label.f:last-child{margin-bottom:0}
+  .f>span{display:block;font-size:12.5px;color:var(--ink-2);margin-bottom:6px;font-weight:600}
+  .f>span em{font-style:normal;color:var(--brand);margin-left:2px}
+  .hint{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.5}
+
+  input[type=text],input[type=email],input[type=tel],input[type=date],input[type=number],textarea,select{
+    width:100%;background:var(--raise);border:1px solid var(--line);border-radius:10px;
+    padding:11px 13px;color:var(--ink);font:inherit;font-size:14.5px;outline:none;
+    transition:border-color .15s,box-shadow .15s}
+  input:focus,textarea:focus,select:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(250,100,0,.16)}
+  input::placeholder,textarea::placeholder{color:#5C616A}
+  textarea{resize:vertical;min-height:86px;line-height:1.6}
+  select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
+    linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+    background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;
+    background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:38px}
+
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  @media(max-width:560px){.row,.row3{grid-template-columns:1fr}}
+
+  /* 선택 카드 */
+  .picks{display:grid;gap:10px}
+  .picks.two{grid-template-columns:1fr 1fr}
+  @media(max-width:560px){.picks.two{grid-template-columns:1fr}}
+  .pick{display:flex;gap:12px;align-items:flex-start;background:var(--raise);
+    border:1px solid var(--line);border-radius:12px;padding:14px 15px;cursor:pointer;
+    transition:border-color .15s,background .15s}
+  .pick:hover{border-color:#3A404A}
+  .pick.on{border-color:var(--brand);background:var(--brand-wash)}
+  .pick input{position:absolute;opacity:0;pointer-events:none}
+  .tick{flex:0 0 auto;width:19px;height:19px;border-radius:6px;border:1.5px solid #3E444E;
+    display:grid;place-items:center;margin-top:1px;font-size:11px;color:transparent;transition:.15s}
+  .pick.round .tick{border-radius:50%}
+  .pick.on .tick{background:var(--brand);border-color:var(--brand);color:#fff}
+  .pick .t{font-weight:700;font-size:14px}
+  .pick .d{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.5}
+  .pick .k{font-size:10.5px;font-weight:700;letter-spacing:.12em;color:var(--brand);margin-bottom:2px}
+
+  /* 약관 */
+  .doc{background:var(--raise);border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px;max-height:300px;overflow-y:auto;font-size:13px;line-height:1.75;color:var(--ink-2)}
+  .doc h4{font-size:13px;color:var(--ink);margin:0 0 10px;font-weight:700}
+  .doc h5{font-size:12.5px;color:var(--ink);margin:16px 0 6px;font-weight:700}
+  .doc p{margin:0 0 10px}
+  .doc ul{margin:0 0 10px;padding-left:17px}
+  .doc li{margin-bottom:6px}
+  .doc table{width:100%;border-collapse:collapse;font-size:12.5px;margin:0 0 10px}
+  .doc th,.doc td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+  .doc th{background:#20242A;color:var(--ink);font-weight:700;width:34%;white-space:nowrap}
+  .doc::-webkit-scrollbar{width:8px}
+  .doc::-webkit-scrollbar-thumb{background:#31363E;border-radius:4px}
+
+  /* 팀원 */
+  .member{background:var(--raise);border:1px solid var(--line);border-radius:12px;
+    padding:14px 15px;margin-bottom:10px;position:relative}
+  .member .no{position:absolute;top:14px;right:15px;font-size:11.5px;color:var(--muted)}
+  .member .del{position:absolute;top:10px;right:12px;background:none;border:0;color:var(--muted);
+    cursor:pointer;font-size:14px;padding:4px 6px}
+  .member .del:hover{color:var(--bad)}
+
+  /* 파일 */
+  .drop{border:1.5px dashed #363C45;border-radius:12px;padding:22px 18px;text-align:center;
+    cursor:pointer;transition:.15s;background:var(--raise)}
+  .drop:hover{border-color:var(--brand);background:var(--brand-wash)}
+  .drop.has{border-style:solid;border-color:var(--ok);background:var(--ok-wash);text-align:left;
+    display:flex;align-items:center;gap:12px}
+  .drop .ic{font-size:22px}
+  .drop .t{font-weight:700;font-size:14px}
+  .drop .d{font-size:12.5px;color:var(--muted);margin-top:3px}
+  .drop input{display:none}
+  .drop .x{margin-left:auto;background:none;border:0;color:var(--muted);cursor:pointer;font-size:15px;padding:6px}
+
+  /* 버튼 */
+  .nav{display:flex;gap:10px;margin-top:22px}
+  .btn{flex:1;border:0;border-radius:12px;padding:14px 18px;font:inherit;font-size:15px;
+    font-weight:700;cursor:pointer;transition:.15s;letter-spacing:-.01em}
+  .btn-go{background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff}
+  .btn-go:hover{filter:brightness(1.08)}
+  .btn-go:disabled{opacity:.45;cursor:default;filter:none}
+  .btn-back{flex:0 0 auto;background:var(--raise);color:var(--ink-2);border:1px solid var(--line);padding:14px 22px}
+  .btn-back:hover{color:var(--ink)}
+  .btn-ghost{background:none;border:1px solid var(--line);color:var(--ink-2)}
+
+  .msg{margin-top:12px;padding:11px 14px;border-radius:10px;font-size:13.5px;line-height:1.55;display:none}
+  .msg.on{display:block}
+  .msg.err{background:var(--bad-wash);color:#FCA5A5;border:1px solid #4A2626}
+  .msg.ok{background:var(--ok-wash);color:#86EFAC;border:1px solid #265239}
+
+  /* 완료 */
+  .done{text-align:center;padding:36px 20px}
+  .done .ic{font-size:46px}
+  .done h2{font-size:24px;margin:14px 0 6px}
+  .done .no{display:inline-block;margin-top:16px;background:var(--raise);border:1px solid var(--brand);
+    border-radius:12px;padding:14px 26px;font-size:22px;font-weight:900;letter-spacing:.06em;color:var(--brand-2)}
+  .done .note{color:var(--muted);font-size:13.5px;margin-top:18px;line-height:1.8}
+
+  .foot{margin-top:34px;padding-top:20px;border-top:1px solid var(--line);
+    font-size:12.5px;color:var(--muted);line-height:1.9}
+  .foot a{color:var(--ink-2);text-decoration:none}
+  .foot a:hover{color:var(--brand-2)}
+
+  .closed{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+    padding:34px 24px;text-align:center}
+  .closed .ic{font-size:38px}
+  .closed h2{margin:14px 0 6px}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="top-in">
+    <div class="brand">BROJ <em>FOUNDERS</em> 2026</div>
+    <div class="deadline" id="dl"></div>
+  </div>
+  <div class="bar"><i id="bar"></i></div>
+</div>
+
+<div class="wrap">
+
+  <div class="hero">
+    <div class="eyebrow">참가 신청</div>
+    <h1>1억 원 투자 기회의<br>주인공을 찾습니다</h1>
+    <p class="sub">
+      신청서·개인정보동의서·서약서를 여기서 바로 작성합니다.
+      따로 서류를 내려받아 작성하실 필요 없습니다. 마지막에 IR 자료만 첨부하시면 접수가 끝납니다.
+    </p>
+  </div>
+
+  <div id="closedBox" style="display:none"></div>
+
+  <div id="formArea">
+    <div class="steps" id="steps"></div>
+
+    <!-- 1. 참가 구분 -->
+    <section id="s1" class="on">
+      <h2>어떤 자격으로 참가하시나요</h2>
+      <p class="lead">공고일(2026.09.07) 기준으로 판단합니다.</p>
+
+      <div class="card">
+        <h3>참가 구분<span class="req">*</span></h3>
+        <div class="picks two" id="entryType">
+          <label class="pick round" data-v="pre">
+            <input type="radio" name="entry"><span class="tick">✓</span>
+            <span><span class="t">예비창업자</span>
+            <span class="d">사업자등록·법인등기를 아직 보유하지 않은 개인 또는 팀</span></span>
+          </label>
+          <label class="pick round" data-v="early">
+            <input type="radio" name="entry"><span class="tick">✓</span>
+            <span><span class="t">초기창업기업</span>
+            <span class="d">이미 사업이 개시된 법인 또는 개인사업자</span></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="card" id="soloBox" style="display:none">
+        <h3>세부 구분<span class="req">*</span> <span style="font-weight:400;color:var(--muted);font-size:12px">예비창업자만</span></h3>
+        <div class="picks two" id="soloTeam">
+          <label class="pick round" data-v="solo">
+            <input type="radio" name="st"><span class="tick">✓</span><span class="t">개인</span>
+          </label>
+          <label class="pick round" data-v="team">
+            <input type="radio" name="st"><span class="tick">✓</span><span class="t">팀</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>세부 분야<span class="req">*</span> <span style="font-weight:400;color:var(--muted);font-size:12px">복수 선택 가능</span></h3>
+        <div class="picks" id="tracks">
+          <label class="pick" data-v="business"><input type="checkbox"><span class="tick">✓</span>
+            <span><span class="k">BUSINESS</span><span class="t">피트니스 사업</span>
+            <span class="d">헬스장, PT, 필라테스, 요가, 바레, 태권도, 주짓수 등</span></span></label>
+          <label class="pick" data-v="tech"><input type="checkbox"><span class="tick">✓</span>
+            <span><span class="k">TECH</span><span class="t">기술</span>
+            <span class="d">SaaS, AI, IoT, Wearable, 데이터 등 IT 기술</span></span></label>
+          <label class="pick" data-v="content"><input type="checkbox"><span class="tick">✓</span>
+            <span><span class="k">CONTENT</span><span class="t">콘텐츠 · 교육</span>
+            <span class="d">운동 커리큘럼, 트레이너 교육, 컨설팅, 커뮤니티, 미디어</span></span></label>
+          <label class="pick" data-v="product"><input type="checkbox"><span class="tick">✓</span>
+            <span><span class="k">PRODUCT</span><span class="t">피트니스 제품</span>
+            <span class="d">운동 기구·용품, 헬스케어 F&amp;B, Wellness Product, Wearable</span></span></label>
+          <label class="pick" data-v="next"><input type="checkbox"><span class="tick">✓</span>
+            <span><span class="k">NEXT</span><span class="t">피트니스 신사업</span>
+            <span class="d">기존 카테고리로 정의되지 않는 새로운 융복합 사업</span></span></label>
+          <label class="pick" data-v="market"><input type="checkbox"><span class="tick">✓</span>
+            <span><span class="k">MARKET PLACE</span><span class="t">브로제이 연동 입점</span>
+            <span class="d">CRM과 데이터를 주고받는 하드웨어 · 소프트웨어</span></span></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>참가작 주제<span class="req">*</span></h3>
+        <label class="f">
+          <span>한 줄 소개</span>
+          <input type="text" id="subject" maxlength="200" placeholder="예: 무인 락커 운영을 자동화하는 IoT 솔루션">
+          <span class="hint">심사위원이 가장 먼저 보는 문장입니다.</span>
+        </label>
+      </div>
+
+      <div class="msg err" id="e1"></div>
+      <div class="nav"><button class="btn btn-go" data-go="2">다음</button></div>
+    </section>
+
+    <!-- 2. 대표자 -->
+    <section id="s2">
+      <h2>대표자 정보</h2>
+      <p class="lead">연락이 닿는 정보를 정확히 적어주세요. 합격 안내가 이 연락처로 갑니다.</p>
+
+      <div class="card">
+        <h3>참가자<span class="req">*</span></h3>
+        <div class="row">
+          <label class="f"><span>참가자명 또는 팀명<em>*</em></span>
+            <input type="text" id="teamName" maxlength="80" placeholder="개인이면 이름, 팀이면 팀명"></label>
+          <label class="f"><span>팀원 수<em>*</em></span>
+            <input type="number" id="teamSize" min="1" max="50" value="1">
+            <span class="hint">대표자 포함. 초기창업기업은 총 직원 수.</span></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>대표자<span class="req">*</span></h3>
+        <div class="row">
+          <label class="f"><span>대표자명<em>*</em></span>
+            <input type="text" id="repName" maxlength="40" placeholder="홍길동"></label>
+          <label class="f"><span>성별</span>
+            <select id="repGender"><option value="">선택 안 함</option><option value="M">남</option><option value="F">여</option></select></label>
+        </div>
+        <div class="row">
+          <label class="f"><span>생년월일</span><input type="date" id="repBirth"></label>
+          <label class="f"><span>소속</span>
+            <input type="text" id="repOrg" maxlength="80" placeholder="회사·학교 등"></label>
+        </div>
+        <div class="row">
+          <label class="f"><span>휴대전화<em>*</em></span>
+            <input type="tel" id="repPhone" inputmode="numeric" maxlength="13" placeholder="010-1234-5678"></label>
+          <label class="f"><span>이메일<em>*</em></span>
+            <input type="email" id="repEmail" maxlength="120" placeholder="name@example.com"></label>
+        </div>
+        <label class="f"><span>주소</span>
+          <input type="text" id="repAddress" maxlength="200" placeholder="시·군·구까지만 적으셔도 됩니다"></label>
+      </div>
+
+      <div class="card" id="bizBox">
+        <h3>창업 구분</h3>
+        <div class="picks" id="bizKind">
+          <label class="pick round" data-v="none"><input type="radio" name="bk"><span class="tick">✓</span>
+            <span class="t">미창업 (예비창업자)</span></label>
+          <label class="pick round" data-v="personal"><input type="radio" name="bk"><span class="tick">✓</span>
+            <span class="t">개인 창업</span></label>
+          <label class="pick round" data-v="corp"><input type="radio" name="bk"><span class="tick">✓</span>
+            <span class="t">법인 창업</span></label>
+        </div>
+        <div class="row" id="bizNoBox" style="display:none;margin-top:14px">
+          <label class="f"><span id="bizNoLabel">사업자등록번호</span>
+            <input type="text" id="bizNo" maxlength="14" placeholder="숫자만 입력"></label>
+          <label class="f"><span>등록일</span><input type="date" id="bizOpenedAt"></label>
+        </div>
+        <div class="hint" style="margin-top:4px">사업자를 여러 개 보유하신 경우 대표 사업자 하나만 적고, 나머지는 마지막 단계 추가 자료로 올려주세요.</div>
+      </div>
+
+      <div class="msg err" id="e2"></div>
+      <div class="nav">
+        <button class="btn btn-back" data-go="1">이전</button>
+        <button class="btn btn-go" data-go="3">다음</button>
+      </div>
+    </section>
+
+    <!-- 3. 팀원 -->
+    <section id="s3">
+      <h2>팀원 정보</h2>
+      <p class="lead">대표자를 뺀 나머지 팀원을 적어주세요. 혼자 참가하시면 그냥 넘어가시면 됩니다.</p>
+      <div id="members"></div>
+      <button class="btn btn-ghost" id="addMember" style="width:100%;padding:12px">+ 팀원 추가</button>
+      <div class="msg err" id="e3"></div>
+      <div class="nav">
+        <button class="btn btn-back" data-go="2">이전</button>
+        <button class="btn btn-go" data-go="4">다음</button>
+      </div>
+    </section>
+
+    <!-- 4. 동의 -->
+    <section id="s4">
+      <h2>동의</h2>
+      <p class="lead">두 가지 모두 동의하셔야 접수됩니다. 서류로 내실 필요 없습니다.</p>
+
+      <div class="card">
+        <h3>개인정보 수집·이용·처리 동의서<span class="req">*</span></h3>
+        <div class="doc">
+          <p>㈜브로제이는 「BROJ FOUNDERS 2026」(이하 ‘IR 피칭대회’) 진행을 위하여 다음과 같은 개인정보를 수집 및 이용하고자 합니다.</p>
+          <h5>개인정보의 수집 및 이용</h5>
+          <table>
+            <tr><th>수집 및 이용자</th><td>㈜브로제이, Draper Korea, Move CON</td></tr>
+            <tr><th>수집·이용 목적</th><td>IR 피칭대회 접수에 따른 본인 확인, 공지사항 전달, 평가 진행, 통과작 지원, 만족도조사 및 사후관리, 향후 유사 사업 안내 등</td></tr>
+            <tr><th>수집하는 항목</th><td>성명, 생년월일, 성별, 소속, 이메일, 주소, 핸드폰 번호 등</td></tr>
+            <tr><th>보유 및 이용기간</th><td>지원(기업)자 — 모집 종료일로부터 1년간 보유 후 지체 없이 파기<br>최종 선정(기업)자 — 모집 종료일로부터 3년간 보유 후 지체 없이 파기</td></tr>
+            <tr><th>거부 권리</th><td>귀하는 개인정보 수집·이용 동의를 거부할 권리가 있습니다. 다만 동의를 거부하시면 대회 참가 신청이 제한됩니다.</td></tr>
+          </table>
+          <h5>업무위탁에 따른 개인정보 처리</h5>
+          <table>
+            <tr><th>수탁업체</th><td>㈜브로제이, Draper Korea</td></tr>
+            <tr><th>업무위탁 내용</th><td>대회 참여기업 선정평가, 통과작 지원 등</td></tr>
+          </table>
+        </div>
+        <div class="picks" style="margin-top:12px">
+          <label class="pick" id="agree1"><input type="checkbox"><span class="tick">✓</span>
+            <span class="t">위 내용을 충분히 읽고 숙지하였으며, 개인정보 수집·이용에 동의합니다.</span></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>서약서<span class="req">*</span></h3>
+        <div class="doc">
+          <p>㈜브로제이, Draper Korea 주최, Move CON 주관으로 진행되는 「BROJ FOUNDERS 2026」 참가와 관련하여 아래 내용을 숙지했음을 서약합니다.</p>
+          <ul>
+            <li>참가자는 제출한 아이디어·사업계획 및 관련 자료가 본인의 독창적인 창작물이며, 타인의 지식재산권 및 기타 권리를 침해하거나 침해할 우려가 있는 경우에는 선정 또는 수상이 취소될 수 있으며, 지급된 상장 및 상금 등을 반환하여야 합니다.</li>
+            <li>주최 측에 제출된 모든 작품은 반환되지 않으며, 응모된 아이디어에 대한 권리는 원칙적으로 응모자에게 귀속됩니다. 단, 응모자는 주최 측이 응모작을 대회의 취지와 목적을 달성하는 데 필요한 한도 내에서 이용하는 것을 허락합니다.</li>
+            <li>참가자는 본 서약서 및 대회 공고문, 운영기준 등 대회와 관련하여 주최 측이 안내하는 사항을 충분히 숙지하고 이에 동의하며, 위 사항을 위반하여 발생하는 불이익에 대하여 이의를 제기하지 않을 것을 서약합니다.</li>
+          </ul>
+        </div>
+        <div class="picks" style="margin-top:12px">
+          <label class="pick" id="agree2"><input type="checkbox"><span class="tick">✓</span>
+            <span class="t">위 서약 내용을 충분히 읽고 숙지하였으며, 이에 동의합니다.</span></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>동의자 확인<span class="req">*</span></h3>
+        <div class="row">
+          <label class="f"><span>팀명</span><input type="text" id="signTeam" maxlength="80"></label>
+          <label class="f"><span>성명<em>*</em></span>
+            <input type="text" id="signName" maxlength="40" placeholder="본인 성명">
+            <span class="hint">이름을 적으시면 전자서명으로 갈음합니다.</span></label>
+        </div>
+      </div>
+
+      <div class="msg err" id="e4"></div>
+      <div class="nav">
+        <button class="btn btn-back" data-go="3">이전</button>
+        <button class="btn btn-go" id="submitBtn">접수하고 자료 첨부로</button>
+      </div>
+    </section>
+
+    <!-- 5. 첨부 -->
+    <section id="s5">
+      <h2>자료 첨부</h2>
+      <p class="lead" id="s5lead">접수는 완료되었습니다. 이제 자료를 올려주세요.</p>
+
+      <div class="card">
+        <h3>필수 증빙 서류<span class="req">*</span></h3>
+        <div class="hint" id="proofHint" style="margin:-4px 0 12px"></div>
+        <label class="drop" id="proofDrop">
+          <input type="file" id="proofFile" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.hwp,.zip">
+          <div><div class="t">파일 선택 또는 끌어다 놓기</div>
+          <div class="d">PDF · 이미지 · HWP · ZIP · 30MB 이하</div></div>
+        </label>
+      </div>
+
+      <div class="card">
+        <h3>IR 자료<span class="req">*</span></h3>
+        <div class="hint" style="margin:-4px 0 12px">사업 기획서와 발표자료를 PDF로 올려주세요. 두 개면 ZIP으로 묶어주셔도 됩니다.</div>
+        <label class="drop" id="irDrop">
+          <input type="file" id="irFile" accept=".pdf,.ppt,.pptx,.zip,.hwp,.docx">
+          <div><div class="t">파일 선택 또는 끌어다 놓기</div>
+          <div class="d">PDF · PPT · ZIP · 30MB 이하</div></div>
+        </label>
+      </div>
+
+      <div class="card">
+        <h3>추가 자료 <span style="font-weight:400;color:var(--muted);font-size:12px">선택</span></h3>
+        <div class="hint" style="margin:-4px 0 12px">시제품 사진, 추가 사업자등록증 등 보태고 싶은 자료가 있으면 올려주세요.</div>
+        <label class="drop" id="extraDrop">
+          <input type="file" id="extraFile">
+          <div><div class="t">파일 선택</div><div class="d">30MB 이하</div></div>
+        </label>
+      </div>
+
+      <div class="msg err" id="e5"></div>
+      <div class="nav"><button class="btn btn-go" id="finishBtn">제출 완료</button></div>
+    </section>
+
+    <!-- 6. 완료 -->
+    <section id="s6">
+      <div class="done">
+        <div class="ic">🎉</div>
+        <h2>접수가 완료되었습니다</h2>
+        <p style="color:var(--ink-2);margin:0">아래 접수번호를 꼭 저장해 두세요.</p>
+        <div class="no" id="doneNo">—</div>
+        <div class="note" id="doneNote"></div>
+        <div style="margin-top:22px">
+          <button class="btn btn-ghost" id="copyNo" style="padding:11px 22px;flex:0 0 auto">접수번호 복사</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="foot">
+    BROJ FOUNDERS 2026 운영사무국<br>
+    <a href="mailto:broj.company@gmail.com">broj.company@gmail.com</a> · 카카오톡 @broj
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var API = "https://api.storyahub.com";
+  var STEPS = ["참가 구분", "대표자", "팀원", "동의", "자료 첨부", "완료"];
+  var step = 1, round = null, applyNo = "", phoneForUpload = "";
+
+  var $ = function (id) { return document.getElementById(id); };
+  var msg = function (id, text, ok) {
+    var el = $(id);
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = "msg " + (ok ? "ok" : "err") + (text ? " on" : "");
+    if (text) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  };
+
+  /* ── 단계 이동 ── */
+  function drawSteps() {
+    $("steps").innerHTML = STEPS.map(function (s, i) {
+      var n = i + 1;
+      return '<b class="' + (n === step ? "on" : n < step ? "done" : "") + '">' +
+        (n < step ? "✓ " : "") + s + "</b>";
+    }).join("");
+    $("bar").style.width = ((step - 1) / (STEPS.length - 1) * 100) + "%";
+  }
+  function go(n) {
+    // 팀원 단계는 팀일 때만 — 혼자면 건너뛴다
+    if (n === 3 && !isTeam()) n = step < 3 ? 4 : 2;
+    step = n;
+    for (var i = 1; i <= 6; i++) {
+      var el = $("s" + i);
+      if (el) el.classList.toggle("on", i === n);
+    }
+    drawSteps();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function isTeam() {
+    return pick("entryType") === "early" || pick("soloTeam") === "team" || +($("teamSize").value || 1) > 1;
+  }
+
+  /* ── 선택 UI ── */
+  function pick(boxId) {
+    var on = $(boxId) && $(boxId).querySelector(".pick.on");
+    return on ? on.getAttribute("data-v") : "";
+  }
+  function picks(boxId) {
+    return Array.prototype.map.call($(boxId).querySelectorAll(".pick.on"), function (el) {
+      return el.getAttribute("data-v");
+    });
+  }
+  function bindPicks(boxId, single) {
+    var box = $(boxId);
+    if (!box) return;
+    box.addEventListener("click", function (e) {
+      var el = e.target.closest(".pick");
+      if (!el || !box.contains(el)) return;
+      e.preventDefault();
+      if (single) {
+        Array.prototype.forEach.call(box.querySelectorAll(".pick"), function (p) { p.classList.remove("on"); });
+        el.classList.add("on");
+      } else {
+        el.classList.toggle("on");
+      }
+      box.dispatchEvent(new CustomEvent("picked", { detail: el.getAttribute("data-v") }));
+    });
+  }
+  ["entryType", "soloTeam", "bizKind"].forEach(function (id) { bindPicks(id, true); });
+  ["tracks"].forEach(function (id) { bindPicks(id, false); });
+  ["agree1", "agree2"].forEach(function (id) {
+    var el = $(id);
+    el.addEventListener("click", function (e) { e.preventDefault(); el.classList.toggle("on"); });
+  });
+
+  $("entryType").addEventListener("picked", function (e) {
+    var pre = e.detail === "pre";
+    $("soloBox").style.display = pre ? "" : "none";
+    // 예비창업자는 미창업이 기본, 창업기업은 개인 창업이 기본
+    var want = pre ? "none" : "personal";
+    Array.prototype.forEach.call($("bizKind").querySelectorAll(".pick"), function (p) {
+      p.classList.toggle("on", p.getAttribute("data-v") === want);
+    });
+    syncBizNo();
+    $("proofHint").textContent = pre
+      ? "예비창업자는 사실증명(사업자등록 사실여부)을 올려주세요. 홈택스에서 발급받으실 수 있습니다."
+      : "창업기업은 사업자등록증 사본을 올려주세요.";
+  });
+  $("bizKind").addEventListener("picked", syncBizNo);
+  function syncBizNo() {
+    var k = pick("bizKind");
+    $("bizNoBox").style.display = k && k !== "none" ? "" : "none";
+    $("bizNoLabel").textContent = k === "corp" ? "법인등록번호" : "사업자등록번호";
+  }
+
+  /* ── 전화번호 자동 하이픈 ── */
+  $("repPhone").addEventListener("input", function (e) {
+    var d = e.target.value.replace(/[^\d]/g, "").slice(0, 11);
+    e.target.value = d.length > 7 ? d.slice(0, 3) + "-" + d.slice(3, 7) + "-" + d.slice(7)
+      : d.length > 3 ? d.slice(0, 3) + "-" + d.slice(3) : d;
+  });
+
+  /* ── 팀원 ── */
+  function memberRow(i) {
+    var d = document.createElement("div");
+    d.className = "member";
+    d.innerHTML =
+      '<button class="del" type="button" title="삭제">✕</button>' +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:700">팀원 ' + i + '</div>' +
+      '<div class="row"><label class="f"><span>성명</span><input type="text" class="m-name" maxlength="40"></label>' +
+      '<label class="f"><span>생년월일</span><input type="date" class="m-birth"></label></div>' +
+      '<div class="row"><label class="f"><span>휴대전화</span><input type="tel" class="m-phone" maxlength="13"></label>' +
+      '<label class="f"><span>이메일</span><input type="email" class="m-email" maxlength="120"></label></div>' +
+      '<label class="f" style="margin-bottom:0"><span>소속</span><input type="text" class="m-org" maxlength="80"></label>';
+    d.querySelector(".del").addEventListener("click", function () { d.remove(); renumber(); });
+    return d;
+  }
+  function renumber() {
+    Array.prototype.forEach.call($("members").children, function (el, i) {
+      el.querySelector("div").textContent = "팀원 " + (i + 1);
+    });
+  }
+  $("addMember").addEventListener("click", function () {
+    $("members").appendChild(memberRow($("members").children.length + 1));
+  });
+
+  /* ── 파일 ── */
+  var files = { proof: null, ir: null, extra: null };
+  function bindDrop(kind, dropId, inputId) {
+    var drop = $(dropId), input = $(inputId);
+    input.addEventListener("change", function () {
+      if (input.files && input.files[0]) setFile(kind, input.files[0], drop);
+    });
+    ["dragover", "dragenter"].forEach(function (ev) {
+      drop.addEventListener(ev, function (e) { e.preventDefault(); drop.style.borderColor = "var(--brand)"; });
+    });
+    drop.addEventListener("dragleave", function () { drop.style.borderColor = ""; });
+    drop.addEventListener("drop", function (e) {
+      e.preventDefault();
+      drop.style.borderColor = "";
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) setFile(kind, e.dataTransfer.files[0], drop);
+    });
+  }
+  function setFile(kind, f, drop) {
+    if (f.size > 30 * 1024 * 1024) { msg("e5", f.name + " — 30MB를 넘습니다"); return; }
+    files[kind] = f;
+    msg("e5", "");
+    drop.classList.add("has");
+    drop.innerHTML = '<span class="ic">📄</span><div><div class="t">' + esc(f.name) + '</div>' +
+      '<div class="d">' + (f.size / 1048576).toFixed(1) + 'MB · 준비됨</div></div>' +
+      '<button class="x" type="button">✕</button>';
+    drop.querySelector(".x").addEventListener("click", function (e) {
+      e.preventDefault(); e.stopPropagation();
+      files[kind] = null;
+      location.reload();
+    });
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  bindDrop("proof", "proofDrop", "proofFile");
+  bindDrop("ir", "irDrop", "irFile");
+  bindDrop("extra", "extraDrop", "extraFile");
+
+  /* ── 검증 ── */
+  function check(n) {
+    if (n === 1) {
+      if (!pick("entryType")) return "참가 구분을 선택해 주세요";
+      if (pick("entryType") === "pre" && !pick("soloTeam")) return "개인인지 팀인지 선택해 주세요";
+      if (!picks("tracks").length) return "세부 분야를 하나 이상 선택해 주세요";
+      if (!$("subject").value.trim()) return "참가작 주제를 한 줄로 적어주세요";
+    }
+    if (n === 2) {
+      if (!$("teamName").value.trim()) return "참가자명 또는 팀명을 입력해 주세요";
+      if (!$("repName").value.trim()) return "대표자명을 입력해 주세요";
+      if ($("repPhone").value.replace(/[^\d]/g, "").length < 10) return "휴대전화 번호를 확인해 주세요";
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test($("repEmail").value.trim())) return "이메일 형식을 확인해 주세요";
+      var k = pick("bizKind");
+      if (k && k !== "none" && $("bizNo").value.replace(/[^\d]/g, "").length < 10) {
+        return (k === "corp" ? "법인등록번호" : "사업자등록번호") + "를 입력해 주세요";
+      }
+    }
+    if (n === 4) {
+      if (!$("agree1").classList.contains("on")) return "개인정보 수집·이용에 동의해 주세요";
+      if (!$("agree2").classList.contains("on")) return "서약서에 동의해 주세요";
+      if (!$("signName").value.trim()) return "동의자 성명을 입력해 주세요";
+    }
+    return "";
+  }
+
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-go]");
+    if (!b) return;
+    var to = +b.getAttribute("data-go");
+    if (to > step) {
+      var err = check(step);
+      if (err) { msg("e" + step, err); return; }
+      msg("e" + step, "");
+    }
+    go(to);
+  });
+
+  /* ── 접수 ── */
+  $("submitBtn").addEventListener("click", function () {
+    var err = check(4);
+    if (err) { msg("e4", err); return; }
+    var btn = $("submitBtn");
+    btn.disabled = true;
+    btn.textContent = "접수 중…";
+
+    var members = Array.prototype.map.call($("members").children, function (el) {
+      return {
+        name: el.querySelector(".m-name").value.trim(),
+        birth: el.querySelector(".m-birth").value,
+        phone: el.querySelector(".m-phone").value,
+        email: el.querySelector(".m-email").value.trim(),
+        org: el.querySelector(".m-org").value.trim()
+      };
+    }).filter(function (m) { return m.name; });
+
+    var bk = pick("bizKind");
+    var body = {
+      tracks: picks("tracks"),
+      subject: $("subject").value.trim(),
+      entryType: pick("entryType"),
+      soloTeam: pick("soloTeam"),
+      teamName: $("teamName").value.trim(),
+      teamSize: +($("teamSize").value || 1),
+      bizForms: bk && bk !== "none"
+        ? [{ kind: bk, no: $("bizNo").value, openedAt: $("bizOpenedAt").value }] : [],
+      repName: $("repName").value.trim(),
+      repGender: $("repGender").value,
+      repBirth: $("repBirth").value,
+      repOrg: $("repOrg").value.trim(),
+      repEmail: $("repEmail").value.trim(),
+      repPhone: $("repPhone").value,
+      repAddress: $("repAddress").value.trim(),
+      members: members,
+      privacyAgreed: true,
+      pledgeAgreed: true,
+      signerName: $("signName").value.trim(),
+      signerTeamName: $("signTeam").value.trim()
+    };
+
+    fetch(API + "/public/founders/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        btn.disabled = false;
+        btn.textContent = "접수하고 자료 첨부로";
+        if (!res.ok) { msg("e4", res.j.error || "접수하지 못했습니다"); return; }
+        applyNo = res.j.applyNo;
+        phoneForUpload = body.repPhone.replace(/[^\d]/g, "");
+        $("s5lead").textContent = "접수번호 " + applyNo + " — 이제 자료를 올려주세요.";
+        go(5);
+      })
+      .catch(function () {
+        btn.disabled = false;
+        btn.textContent = "접수하고 자료 첨부로";
+        msg("e4", "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+      });
+  });
+
+  /* ── 첨부 업로드 ── */
+  function upload(kind, f) {
+    return fetch(API + "/public/founders/apply/" + applyNo + "/file/" + kind, {
+      method: "POST",
+      headers: {
+        "Content-Type": f.type || "application/octet-stream",
+        "X-File-Name": encodeURIComponent(f.name),
+        "X-Apply-Phone": phoneForUpload
+      },
+      body: f
+    }).then(function (r) {
+      return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "업로드 실패"); return j; });
+    });
+  }
+
+  $("finishBtn").addEventListener("click", function () {
+    if (!files.proof) { msg("e5", "필수 증빙 서류를 올려주세요"); return; }
+    if (!files.ir) { msg("e5", "IR 자료를 올려주세요"); return; }
+    var btn = $("finishBtn");
+    btn.disabled = true;
+    var jobs = [["proof", files.proof], ["ir", files.ir]];
+    if (files.extra) jobs.push(["extra", files.extra]);
+
+    var i = 0;
+    function next() {
+      if (i >= jobs.length) {
+        $("doneNo").textContent = applyNo;
+        $("doneNote").innerHTML =
+          "1차 서면 평가 결과는 <b style='color:var(--ink-2)'>9월 18일(금) 18:00</b>에 발표됩니다.<br>" +
+          "결과는 접수하신 이메일과 문자로 안내드립니다.<br>" +
+          "문의 broj.company@gmail.com · 카카오톡 @broj";
+        go(6);
+        return;
+      }
+      btn.textContent = "올리는 중… (" + (i + 1) + "/" + jobs.length + ")";
+      upload(jobs[i][0], jobs[i][1]).then(function () { i++; next(); })
+        .catch(function (e) {
+          btn.disabled = false;
+          btn.textContent = "제출 완료";
+          msg("e5", e.message || "업로드에 실패했습니다");
+        });
+    }
+    next();
+  });
+
+  $("copyNo").addEventListener("click", function () {
+    navigator.clipboard.writeText(applyNo).then(function () {
+      $("copyNo").textContent = "복사했습니다";
+      setTimeout(function () { $("copyNo").textContent = "접수번호 복사"; }, 1600);
+    });
+  });
+
+  /* ── 회차 확인 ── */
+  function fmt(d) {
+    var x = new Date(d);
+    return x.getMonth() + 1 + "." + x.getDate() + "(" + "일월화수목금토"[x.getDay()] + ") " +
+      String(x.getHours()).padStart(2, "0") + ":" + String(x.getMinutes()).padStart(2, "0");
+  }
+  fetch(API + "/public/founders/round")
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      round = d.round;
+      if (!round) return;
+      if (round.closesAt) {
+        $("dl").innerHTML = "접수 마감<b>" + fmt(round.closesAt) + "</b>";
+      }
+      if (!round.open) {
+        var now = new Date();
+        var before = round.opensAt && now < new Date(round.opensAt);
+        $("formArea").style.display = "none";
+        $("closedBox").style.display = "";
+        $("closedBox").innerHTML =
+          '<div class="closed"><div class="ic">' + (before ? "🗓️" : "🔒") + "</div><h2>" +
+          (before ? "아직 접수 시작 전입니다" : "접수가 마감되었습니다") + "</h2>" +
+          '<p style="color:var(--muted);margin:0">' +
+          (before && round.opensAt ? fmt(round.opensAt) + "부터 접수받습니다."
+            : "다음 회차를 기다려 주세요.") + "</p></div>";
+      }
+    })
+    .catch(function () {});
+
+  drawSteps();
+})();
+</script>
+</body>
+</html>

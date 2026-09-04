@@ -1210,6 +1210,80 @@ model ErpCenterPointSnap {
   @@index([groupKey, date])
 }
 
+/// BROJ FOUNDERS — IR 피칭대회 회차 (2026년 등). 스마트상점 회차와 같은 얼개다.
+model ErpFoundersRound {
+  id        String   @id @default(cuid())
+  year      Int
+  title     String // BROJ FOUNDERS 2026
+  opensAt   DateTime? // 접수 시작
+  closesAt  DateTime? // 접수 마감
+  active    Boolean  @default(true)
+  notice    String   @default("") // 화면 상단 안내
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([year])
+}
+
+/// 참가 신청 한 건. 신청서·개인정보동의서·서약서를 온라인에서 받아 그대로 담는다.
+model ErpFoundersApply {
+  id        String @id @default(cuid())
+  roundId   String
+  applyNo   String @unique // BF2026-0001
+
+  // 모집 분야
+  tracks  Json   @default("[]") // business·tech·content·product·next·market
+  subject String @default("") // 참가작 주제 (한줄 소개)
+
+  // 참가자 현황
+  entryType String @default("") // pre(예비창업자) | early(초기창업기업)
+  soloTeam  String @default("") // solo | team  (예비창업자만)
+  teamName  String @default("")
+  teamSize  Int    @default(1)
+
+  // 창업 구분 — 여러 사업자를 가진 경우도 있어 배열로 받는다
+  bizForms Json @default("[]") // [{kind:personal|corp, no, openedAt}]
+
+  // 대표자
+  repName     String  @default("")
+  repGender   String  @default("")
+  repBirth    String  @default("")
+  repOrg      String  @default("")
+  repEmail    String  @default("")
+  repPhone    String  @default("")
+  repAddress  String  @default("")
+
+  members Json @default("[]") // 팀원 [{name,birth,phone,email,org}]
+
+  // 동의 (동의서·서약서를 온라인에서 받는다 — 첨부가 아니다)
+  privacyAgreed  Boolean   @default(false)
+  privacyAt      DateTime?
+  pledgeAgreed   Boolean   @default(false)
+  pledgeAt       DateTime?
+  signerName     String    @default("") // 서명란 성명
+  signerTeamName String    @default("")
+
+  // 첨부 — 증빙 서류와 IR 자료
+  proofKey  String @default("") // 사실증명 또는 사업자등록증 사본
+  proofName String @default("")
+  irKey     String @default("") // IR 자료 (사업기획서·발표자료)
+  irName    String @default("")
+  extraKey  String @default("")
+  extraName String @default("")
+
+  status String @default("received") // received | reviewing | passed | rejected
+  memo   String @default("")
+
+  submittedIp String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([roundId, createdAt])
+  @@index([status])
+  @@index([repEmail])
+  @@index([repPhone])
+}
+
 /// ERP 사용자별 브로제이 CRM 계정. 각자 자기 아이디로 붙는다 —
 /// 누가 무엇을 조회했는지가 CRM 쪽에도 자기 계정으로 남는다.
 /// 비밀번호는 SHA-256만 저장하고, 토큰은 호출할 때마다 갱신된다.
