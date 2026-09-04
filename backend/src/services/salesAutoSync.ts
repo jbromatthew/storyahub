@@ -31,7 +31,18 @@ function kstNow(): { date: string; hhmm: string; day: number } {
   return { date, hhmm: `${get("hour")}:${get("minute")}`, day: Number(get("day")) };
 }
 
+/** 방금 끝낸 동기화의 분(minute). 보고 직전 동기화와 정시 슬롯이 겹칠 때 두 번 돌지 않게 한다. */
+let lastSyncMinute = "";
+
 export async function runAutoSync(day: number): Promise<void> {
+  // 12:00·15:00·18:30은 보고 슬롯이면서 동기화 슬롯이라 1분 안에 두 번 불린다
+  const minute = `${kstNow().date} ${kstNow().hhmm}`;
+  if (lastSyncMinute === minute) {
+    console.log(`[sales-auto-sync] ${minute} 방금 돌았으므로 건너뜁니다`);
+    return;
+  }
+  lastSyncMinute = minute;
+
   for (const kind of ["inquiry", "order"] as const) {
     try {
       const sheets = await listAvailableMonthSheets(kind);
