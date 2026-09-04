@@ -641,6 +641,11 @@
       쓰다 만 신청서가 있으신가요?
       <button type="button" id="openResume">이어서 작성하기</button>
     </div>
+    <div class="resume-line" style="margin-top:10px">
+      궁금한 점이 있으신가요?
+      <a href="faq.html" style="font-weight:800;color:var(--brand-deep);text-decoration:underline;
+        text-underline-offset:3px;text-decoration-thickness:1.5px">자주 묻는 질문 보기</a>
+    </div>
     <div class="foot" style="margin-top:22px;border-top:0;padding-top:0">
       행사 2026년 10월 9일(금) 14:00 – 18:00 · 어브 스튜디오
     </div>
@@ -1040,6 +1045,17 @@
             <button type="button" id="signClear">지우기</button>
           </div>
         </div>
+      </div>
+
+      <div class="card">
+        <h3>접수 확인용 비밀번호<span class="req">*</span></h3>
+        <div class="hint" style="margin:-4px 0 13px">
+          접수 뒤에 내용을 고치거나 자료를 마저 올리실 때 씁니다.
+          <b>연락처와 이 비밀번호 두 가지</b>로 다시 들어오시면 됩니다.
+        </div>
+        <label class="f" style="margin-bottom:0"><span>비밀번호<em>*</em></span>
+          <input type="password" id="applyPw" maxlength="40" autocomplete="new-password" placeholder="4자 이상">
+          <span class="hint">기억하기 쉬운 것으로 정하세요. 다시 알려드릴 수 없습니다.</span></label>
       </div>
 
       <div class="msg err" id="e5"></div>
@@ -1558,6 +1574,7 @@
       if (!$("signTeam").value.trim()) return "회사명을 입력해 주세요";
       if (!$("signName").value.trim()) return "대표자명을 입력해 주세요";
       if (signPad.isEmpty()) return "서명란에 서명해 주세요";
+      if ($("applyPw").value.length < 4) return "접수 확인용 비밀번호를 4자 이상으로 정해주세요";
     }
     return "";
   }
@@ -1655,7 +1672,7 @@
       pledgeAgreed: true,
       signerName: $("signName").value.trim(),
       signerTeamName: $("signTeam").value.trim(),
-      password: savedPw,
+      password: $("applyPw").value || savedPw,
       signature: signPad.data()
     };
   }
@@ -1782,6 +1799,7 @@
         btn.disabled = false; btn.textContent = "저장하기";
         if (!res.ok) { msg("esv", res.j.error || "저장하지 못했습니다"); return; }
         savedPw = pw;
+        if (!$("applyPw").value) $("applyPw").value = pw;
         if (!$("repPhone").value) $("repPhone").value = phone;
         $("saveBox").style.display = "none";
         toast("저장했습니다 — 같은 연락처와 비밀번호로 이어서 쓰실 수 있습니다");
@@ -1818,6 +1836,7 @@
         btn.disabled = false; btn.textContent = "불러오기";
         if (!res.ok) { msg("ers", res.j.error || "불러오지 못했습니다"); return; }
         savedPw = pw;
+        if (!$("applyPw").value) $("applyPw").value = pw;
         $("resumeBox").style.display = "none";
         chooseKind("applicant");
         if (res.j.mode === "apply") {
@@ -1932,7 +1951,9 @@
         $("doneNo").textContent = applyNo;
         $("doneNote").innerHTML =
           "1차 서면 평가 결과는 <b style='color:var(--ink-2)'>9월 18일(금) 18:00</b>에 발표됩니다.<br>" +
-          "결과는 접수하신 이메일과 문자로 안내드립니다.<br>" +
+          "결과는 접수하신 이메일과 문자로 안내드립니다.<br><br>" +
+          "마감(9월 17일 14:00) 전까지는 <b style='color:var(--ink-2)'>연락처와 접수 확인용 비밀번호</b>로 " +
+          "「이어서 작성하기」에 들어와 내용을 고치실 수 있습니다.<br><br>" +
           "문의 broj.network@gmail.com · 카카오톡 @broj";
         go(7);
         return;
