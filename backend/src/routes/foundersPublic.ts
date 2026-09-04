@@ -188,7 +188,12 @@ foundersPublicRouter.post("/resume", async (req: Request, res: Response) => {
       mode: "apply",
       applyNo: done.applyNo,
       teamName: done.teamName,
-      files: { proof: !!done.proofKey, ir: !!done.irKey, extra: !!done.extraKey },
+      // 이미 올린 것은 화면에 그대로 보여준다 — 다시 올리라고 하면 안 된다
+      files: {
+        proof: done.proofKey ? { done: true, name: done.proofName || "사업자등록증" } : { done: false },
+        ir: done.irKey ? { done: true, name: done.irName || "IR 자료" } : { done: false },
+        extra: done.extraKey ? { done: true, name: done.extraName || "추가 자료" } : { done: false },
+      },
     });
   }
 
@@ -502,8 +507,10 @@ foundersPublicRouter.get("/apply/lookup", async (req: Request, res: Response) =>
 // 이름·연락처·소속·직함만 받는다 — 보러 오는 분께 서류를 물을 이유가 없다.
 
 const VISITOR_FEE = 20000;
-const SEAT_LIMIT = 50;   // 여기까지는 의자
-const TOTAL_LIMIT = 100; // 그 뒤는 스탠딩, 넘으면 마감
+/// 자유석이다. 자리를 미리 배정하지 않고 오신 순서대로 앉는다.
+/// 의자가 차면 스탠딩으로 보게 되고, 정원을 넘으면 마감한다.
+const SEAT_LIMIT = 50;   // 현장 의자 수 — 안내용
+const TOTAL_LIMIT = 100; // 참관 정원
 
 /** 취소를 뺀 실제 등록 인원 */
 function visitorWhere(roundId: string) {
@@ -520,11 +527,8 @@ foundersPublicRouter.get("/visitor/capacity", async (_req: Request, res: Respons
       taken,
       seatLimit: SEAT_LIMIT,
       totalLimit: TOTAL_LIMIT,
-      seatLeft: Math.max(SEAT_LIMIT - taken, 0),
-      standingLeft: Math.max(TOTAL_LIMIT - Math.max(taken, SEAT_LIMIT), 0),
       left: Math.max(TOTAL_LIMIT - taken, 0),
       full: taken >= TOTAL_LIMIT,
-      nextSeatType: taken < SEAT_LIMIT ? "seat" : taken < TOTAL_LIMIT ? "standing" : "",
     },
   });
 });
@@ -550,15 +554,14 @@ foundersPublicRouter.post("/visitor", async (req: Request, res: Response) => {
   });
 
   // 자리 배정 — 이미 등록한 분은 원래 자리를 그대로 지킨다
+  // 등록 순번은 정원 관리용으로만 남긴다 — 자리 번호가 아니다
   let seatNo = dup?.seatNo ?? null;
-  let seatType = dup?.seatType ?? "";
   if (!dup) {
     const taken = await prisma.erpFoundersApply.count({ where: visitorWhere(round.id) });
     if (taken >= TOTAL_LIMIT) {
       return fail(res, `참관 정원 ${TOTAL_LIMIT}명이 모두 찼습니다. 대기를 원하시면 운영사무국으로 연락해 주세요.`);
     }
     seatNo = taken + 1;
-    seatType = seatNo <= SEAT_LIMIT ? "seat" : "standing";
   }
 
   const data = {
@@ -576,7 +579,7 @@ foundersPublicRouter.post("/visitor", async (req: Request, res: Response) => {
     signerName: repName,
     status: "pending",
     seatNo,
-    seatType,
+    seatType: "free",
     submittedIp: str(req.ip, 60),
   };
 
@@ -595,7 +598,6 @@ foundersPublicRouter.post("/visitor", async (req: Request, res: Response) => {
     fee: VISITOR_FEE,
     payerName: row.payerName,
     seatNo: row.seatNo,
-    seatType: row.seatType,
     left,
     updated: !!dup,
   });

@@ -1,0 +1,3 @@
+# 사내 업무 시스템 — 색인하지 않는다
+User-agent: *
+Disallow: /

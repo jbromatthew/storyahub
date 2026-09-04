@@ -53,23 +53,30 @@ export default function AuthScreen({ onSuccess, erpMode = false }) {
             justifyContent: "center",
           }}
         >
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9">
-            <rect x="9" y="3" width="6" height="11" rx="3" />
-            <path d="M5.5 11a6.5 6.5 0 0 0 13 0" />
-            <path d="M12 17.5V21" />
-          </svg>
+          {erpMode ? (
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9">
+              <rect x="4" y="10" width="16" height="10" rx="2.5" />
+              <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+            </svg>
+          ) : (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9">
+              <rect x="9" y="3" width="6" height="11" rx="3" />
+              <path d="M5.5 11a6.5 6.5 0 0 0 13 0" />
+              <path d="M12 17.5V21" />
+            </svg>
+          )}
         </div>
-        <div style={{ fontWeight: 800, fontSize: 22, marginTop: 20 }}>{erpMode ? "ERP" : "Storyahub"}</div>
-        <div style={{ fontWeight: 700, fontSize: 24, marginTop: 14, lineHeight: 1.3 }}>
-          {erpMode ? "지식경영 · 회의록 · OKR" : "녹음하면, 알아서 정리되는 비서"}
-        </div>
-        <div className="small" style={{ marginTop: 10, lineHeight: 1.55 }}>
-          {erpMode ? "초대받은 이메일로 로그인하세요" : "미팅 · 통화 · 강의를 자동으로 요약하고 정리해요"}
-        </div>
-        {erpMode && mode === "register" && (
-          <div className="small" style={{ marginTop: 8, color: "#B06000" }}>
-            관리자가 초대한 이메일만 가입할 수 있습니다. 가입 후 승인되면 이용 가능합니다.
-          </div>
+        {/* 밖에 열린 주소라 로그인 화면에서 무엇을 하는 곳인지 드러내지 않는다 */}
+        {!erpMode && (
+          <>
+            <div style={{ fontWeight: 800, fontSize: 22, marginTop: 20 }}>Storyahub</div>
+            <div style={{ fontWeight: 700, fontSize: 24, marginTop: 14, lineHeight: 1.3 }}>
+              녹음하면, 알아서 정리되는 비서
+            </div>
+            <div className="small" style={{ marginTop: 10, lineHeight: 1.55 }}>
+              미팅 · 통화 · 강의를 자동으로 요약하고 정리해요
+            </div>
+          </>
         )}
       </div>
 

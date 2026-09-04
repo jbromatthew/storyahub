@@ -453,7 +453,7 @@
         <p>피칭 현장을 직접 보고 네트워킹에 참여합니다.
            투자사·창업가·업계 관계자를 한자리에서 만납니다.</p>
         <div class="fee">참가비 <b>20,000</b>원 · 계좌이체</div>
-        <div class="seatline" id="seatLine">선착순 50석 의자 · 이후 스탠딩</div>
+        <div class="seatline" id="seatLine">자유석 · 오신 순서대로 앉으시면 됩니다</div>
         <span class="cta" id="visitorCta">참관 등록하기</span>
       </button>
     </div>
@@ -963,7 +963,7 @@
       </div>
 
       <div class="card" id="seatCard">
-        <h3>좌석</h3>
+        <h3>자리 안내</h3>
         <div class="seatbox" id="seatBox">자리를 확인하는 중…</div>
       </div>
 
@@ -1228,6 +1228,9 @@
   /* ── 파일 ── */
   var MAX_UPLOAD = 100 * 1024 * 1024;
   var files = { proof: null, ir: null, extra: null };
+  // 이어서 들어왔을 때 서버에 이미 올라가 있는 것
+  var already = { proof: null, ir: null, extra: null };
+  var DROPS = { proof: "proofDrop", ir: "irDrop", extra: "extraDrop" };
   function bindDrop(kind, dropId, inputId) {
     var drop = $(dropId), input = $(inputId);
     input.addEventListener("change", function () {
@@ -1243,6 +1246,24 @@
       if (e.dataTransfer.files && e.dataTransfer.files[0]) setFile(kind, e.dataTransfer.files[0], drop);
     });
   }
+  var DROP_EMPTY = {};
+  ["proofDrop", "irDrop", "extraDrop"].forEach(function (id) {
+    DROP_EMPTY[id] = $(id).innerHTML;   // 처음 모양을 기억해 둔다
+  });
+  function resetDrop(kind) {
+    var drop = $(DROPS[kind]);
+    drop.classList.remove("has");
+    drop.innerHTML = DROP_EMPTY[DROPS[kind]];
+    bindInput(kind);
+  }
+  function bindInput(kind) {
+    var input = $(DROPS[kind].replace("Drop", "File"));
+    if (!input || input.dataset.bound) return;
+    input.dataset.bound = "1";
+    input.addEventListener("change", function () {
+      if (input.files && input.files[0]) setFile(kind, input.files[0], $(DROPS[kind]));
+    });
+  }
   function setFile(kind, f, drop) {
     if (f.size > MAX_UPLOAD) { msg("e6", f.name + " — " + (MAX_UPLOAD / 1048576) + "MB를 넘습니다"); return; }
     files[kind] = f;
@@ -1254,11 +1275,30 @@
     drop.querySelector(".x").addEventListener("click", function (e) {
       e.preventDefault(); e.stopPropagation();
       files[kind] = null;
-      location.reload();
+      if (already[kind]) { showUploaded(kind, already[kind]); return; }
+      resetDrop(kind);
     });
   }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) {
     return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+  /** 이미 올라간 첨부를 그 자리에 보여준다 — 다시 올리라고 하면 안 된다 */
+  function showUploaded(kind, name) {
+    already[kind] = name;
+    var drop = $(DROPS[kind]);
+    if (!drop) return;
+    drop.classList.add("has");
+    drop.innerHTML = '<span class="ic">✓</span><div><div class="t">' + esc(name) + "</div>" +
+      '<div class="d">이미 제출하셨습니다 · 바꾸시려면 눌러서 다시 선택</div></div>';
+  }
+  function markUploaded(res) {
+    ["proof", "ir", "extra"].forEach(function (k) {
+      var f = (res && res.files && res.files[k]) || null;
+      // 예전 응답은 true/false만 보냈다
+      if (f === true) showUploaded(k, "제출한 파일");
+      else if (f && f.done) showUploaded(k, f.name || "제출한 파일");
+    });
+  }
   bindDrop("proof", "proofDrop", "proofFile");
   bindDrop("ir", "irDrop", "irFile");
   bindDrop("extra", "extraDrop", "extraFile");
@@ -1558,10 +1598,15 @@
           // 접수는 끝났고 자료만 남은 경우 — 첨부 단계로 바로 보낸다
           applyNo = res.j.applyNo;
           phoneForUpload = phone.replace(/[^\d]/g, "");
+          markUploaded(res.j);
+          var need = ["proof", "ir"].filter(function (k) { return !already[k]; });
           $("s6lead").textContent = "접수번호 " + applyNo +
-            (res.j.teamName ? " · " + res.j.teamName : "") + " — 남은 자료를 올려주세요.";
+            (res.j.teamName ? " · " + res.j.teamName : "") +
+            (need.length ? " — 남은 자료를 올려주세요." : " — 자료까지 모두 제출하셨습니다.");
           go(6);
-          toast("접수는 이미 끝나 있습니다. 자료만 올리시면 됩니다");
+          toast(need.length
+            ? "접수는 이미 끝나 있습니다. 남은 자료만 올리시면 됩니다"
+            : "이미 다 제출하셨습니다. 바꾸실 것만 다시 올리시면 됩니다");
         } else {
           formRestore(res.j.payload);
           go(Math.min(res.j.step || 1, 5));
@@ -1640,12 +1685,13 @@
   }
 
   $("finishBtn").addEventListener("click", function () {
-    if (!files.proof) { msg("e6", "사업자등록증을 올려주세요"); return; }
-    if (!files.ir) { msg("e6", "IR 자료를 올려주세요"); return; }
+    if (!files.proof && !already.proof) { msg("e6", "사업자등록증을 올려주세요"); return; }
+    if (!files.ir && !already.ir) { msg("e6", "IR 자료를 올려주세요"); return; }
     var btn = $("finishBtn");
     btn.disabled = true;
-    var jobs = [["proof", files.proof], ["ir", files.ir]];
-    if (files.extra) jobs.push(["extra", files.extra]);
+    // 새로 고른 것만 올린다 — 이미 올라간 것은 그대로 둔다
+    var jobs = [];
+    ["proof", "ir", "extra"].forEach(function (k) { if (files[k]) jobs.push([k, files[k]]); });
 
     var i = 0;
     function next() {
@@ -1803,16 +1849,11 @@
       $("visitorBtn").textContent = "정원 마감";
       return;
     }
-    // 몇 자리 남았는지는 알리지 않는다 — 어느 자리로 배정되는지만
-    if (cap.seatLeft > 0) {
-      line.innerHTML = "선착순 50석 의자 · 이후 스탠딩";
-      box.innerHTML = '<span class="chip">의자석</span>' +
-        "<span>지금 등록하시면 <b>좌석(의자)</b>으로 배정됩니다.</span>";
-    } else {
-      line.innerHTML = "의자석 마감 · 스탠딩 등록 가능";
-      box.innerHTML = '<span class="chip stand">스탠딩</span>' +
-        "<span>의자석 50석이 모두 찼습니다. 지금 등록하시면 <b>스탠딩석</b>으로 배정됩니다.</span>";
-    }
+    // 자리를 미리 정하지 않는다 — 오신 순서대로 앉는다
+    line.innerHTML = "자유석 · 오신 순서대로 앉으시면 됩니다";
+    box.innerHTML = '<span class="chip">자유석</span>' +
+      "<span>자리를 따로 배정하지 않습니다. 오신 순서대로 앉으시고, " +
+      "의자가 다 차면 서서 보실 수 있습니다.</span>";
   }
   function loadCapacity() {
     return fetch(API + "/public/founders/visitor/capacity")
@@ -1860,11 +1901,8 @@
         applyNo = res.j.applyNo;
         $("doneTitle").textContent = "참관 등록이 완료되었습니다";
         $("doneNo").textContent = applyNo;
-        var seatTxt = res.j.seatType === "seat"
-          ? "<b>좌석(의자)</b>으로 배정되었습니다."
-          : res.j.seatType === "standing"
-            ? "<b>스탠딩석</b>으로 배정되었습니다."
-            : "";
+        var seatTxt = "자리는 <b>자유석</b>입니다. 오신 순서대로 앉으시면 되고, " +
+          "의자가 다 차면 서서 보실 수 있습니다.";
         $("doneNote").innerHTML =
           (seatTxt ? seatTxt + "<br><br>" : "") +
           "아래 계좌로 <b>20,000원</b>을 3일 이내에 입금해 주세요.<br>" +
