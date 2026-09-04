@@ -68,6 +68,7 @@
   .kinds{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px}
   @media(max-width:640px){.kinds{grid-template-columns:1fr}}
   .kind{position:relative;text-align:left;border:1px solid var(--line);border-radius:16px;
+    display:flex;flex-direction:column;
     background:linear-gradient(180deg,var(--steel-1) 0%,#FAFBFC 55%,var(--steel-2) 100%);
     box-shadow:var(--lift);padding:26px 24px 24px;cursor:pointer;font:inherit;color:inherit;
     transition:transform .18s cubic-bezier(.34,1.2,.64,1),box-shadow .18s,border-color .18s;
@@ -76,7 +77,7 @@
     background:linear-gradient(90deg,transparent,var(--steel-3),transparent)}
   .kind:hover{transform:translateY(-2px);border-color:#C9CCD3;
     box-shadow:0 1px 0 var(--edge) inset,0 3px 6px rgba(21,23,27,.07),0 16px 32px rgba(21,23,27,.08)}
-  .kind .tag{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.16em;
+  .kind .tag{display:inline-block;align-self:flex-start;font-size:10.5px;font-weight:800;letter-spacing:.16em;
     color:var(--brand-deep);background:var(--brand-wash);border:1px solid var(--brand-line);
     border-radius:999px;padding:3px 10px}
   .kind h3{font-size:21px;font-weight:900;letter-spacing:-.035em;margin:14px 0 6px}
@@ -84,13 +85,20 @@
   .kind .fee{margin-top:14px;font-size:13px;color:var(--ink-2);
     border-top:1px solid var(--line-2);padding-top:12px}
   .kind .fee b{font-size:17px;font-weight:900;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-  .kind .cta{margin-top:16px;display:block;width:100%;text-align:center;border-radius:10px;
+  .kind .cta{margin-top:auto;padding-top:0;display:block;width:100%;text-align:center;border-radius:10px;
     padding:12px;font-weight:800;font-size:14.5px;
     background:linear-gradient(180deg,var(--brand-2),var(--brand));color:#fff;
     box-shadow:0 1px 0 rgba(255,255,255,.35) inset,0 2px 6px rgba(250,100,0,.28)}
   .kind.alt .cta{background:linear-gradient(180deg,#FFFFFF,var(--steel-2));color:var(--ink);
     border:1px solid var(--line);box-shadow:0 1px 0 var(--edge) inset,0 1px 2px rgba(21,23,27,.06)}
   .kind.alt .tag{color:var(--ink-2);background:var(--steel-2);border-color:var(--line)}
+
+  .back-kind{flex:0 0 auto;align-self:flex-start;margin-bottom:16px;
+    padding:9px 16px;font-size:13px;font-weight:800;border-radius:9px;
+    background:linear-gradient(180deg,var(--brand-2),var(--brand));color:#fff;
+    border:1px solid var(--brand-deep);
+    box-shadow:0 1px 0 rgba(255,255,255,.3) inset,0 2px 6px rgba(250,100,0,.26)}
+  .back-kind:hover{filter:brightness(1.04)}
 
   /* 단계 */
   .steps{display:flex;gap:6px;margin:0 0 22px;overflow-x:auto;padding-bottom:2px}
@@ -291,7 +299,7 @@
   .signbar button:hover{color:var(--ink);border-color:#C7CAD1}
 
   /* 좌석 */
-  .seatline{margin-top:9px;font-size:12.5px;color:var(--muted)}
+  .seatline{margin-top:9px;margin-bottom:16px;font-size:12.5px;color:var(--muted)}
   .seatline b{color:var(--brand-deep);font-weight:800}
   .seatline.full{color:var(--bad);font-weight:700}
   .seatbox{display:flex;align-items:center;gap:13px;background:var(--sunk);
@@ -385,6 +393,7 @@
         <p>IR 피칭대회에 출전합니다. 서면 평가를 거쳐 본선에 오르면
            Draper Korea 코칭과 최대 1억 원 투자 기회로 이어집니다.</p>
         <div class="fee">참가비 <b>무료</b> · 사업 기획서와 IR 자료 제출</div>
+        <div class="seatline">접수 마감 <b>9.17(목) 14:00</b> · 서류 온라인 작성</div>
         <span class="cta">참가 신청하기</span>
       </button>
       <button type="button" class="kind alt" data-kind="visitor">
@@ -450,8 +459,7 @@
   </div>
 
   <div id="formArea" style="display:none">
-    <button type="button" class="btn btn-ghost" id="backToKind"
-      style="flex:0 0 auto;padding:8px 14px;font-size:13px;margin-bottom:16px">← 참가 종류 다시 고르기</button>
+    <button type="button" class="btn back-kind" id="backToKind">← 참가 종류 다시 고르기</button>
     <div class="steps" id="steps"></div>
 
     <!-- 1. 기업 정보 -->
