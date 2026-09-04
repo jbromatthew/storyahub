@@ -226,6 +226,32 @@ foundersPublicRouter.get("/apply/lookup", async (req: Request, res: Response) =>
 // 이름·연락처·소속·직함만 받는다 — 보러 오는 분께 서류를 물을 이유가 없다.
 
 const VISITOR_FEE = 20000;
+const SEAT_LIMIT = 50;   // 여기까지는 의자
+const TOTAL_LIMIT = 100; // 그 뒤는 스탠딩, 넘으면 마감
+
+/** 취소를 뺀 실제 등록 인원 */
+function visitorWhere(roundId: string) {
+  return { roundId, kind: "visitor", status: { not: "cancelled" } };
+}
+
+/** 남은 자리 — 화면이 "좌석 12석 남음"을 그릴 수 있게 */
+foundersPublicRouter.get("/visitor/capacity", async (_req: Request, res: Response) => {
+  const round = await openRound();
+  if (!round) return res.json({ capacity: null });
+  const taken = await prisma.erpFoundersApply.count({ where: visitorWhere(round.id) });
+  res.json({
+    capacity: {
+      taken,
+      seatLimit: SEAT_LIMIT,
+      totalLimit: TOTAL_LIMIT,
+      seatLeft: Math.max(SEAT_LIMIT - taken, 0),
+      standingLeft: Math.max(TOTAL_LIMIT - Math.max(taken, SEAT_LIMIT), 0),
+      left: Math.max(TOTAL_LIMIT - taken, 0),
+      full: taken >= TOTAL_LIMIT,
+      nextSeatType: taken < SEAT_LIMIT ? "seat" : taken < TOTAL_LIMIT ? "standing" : "",
+    },
+  });
+});
 
 foundersPublicRouter.post("/visitor", async (req: Request, res: Response) => {
   const round = await openRound();
@@ -247,6 +273,18 @@ foundersPublicRouter.post("/visitor", async (req: Request, res: Response) => {
     orderBy: { createdAt: "desc" },
   });
 
+  // 자리 배정 — 이미 등록한 분은 원래 자리를 그대로 지킨다
+  let seatNo = dup?.seatNo ?? null;
+  let seatType = dup?.seatType ?? "";
+  if (!dup) {
+    const taken = await prisma.erpFoundersApply.count({ where: visitorWhere(round.id) });
+    if (taken >= TOTAL_LIMIT) {
+      return fail(res, `참관 정원 ${TOTAL_LIMIT}명이 모두 찼습니다. 대기를 원하시면 운영사무국으로 연락해 주세요.`);
+    }
+    seatNo = taken + 1;
+    seatType = seatNo <= SEAT_LIMIT ? "seat" : "standing";
+  }
+
   const data = {
     roundId: round.id,
     kind: "visitor",
@@ -261,6 +299,8 @@ foundersPublicRouter.post("/visitor", async (req: Request, res: Response) => {
     privacyAt: now,
     signerName: repName,
     status: "pending",
+    seatNo,
+    seatType,
     submittedIp: str(req.ip, 60),
   };
 
@@ -270,11 +310,15 @@ foundersPublicRouter.post("/visitor", async (req: Request, res: Response) => {
         data: { ...data, applyNo: await nextVisitorNo(round.year) },
       });
 
+  const left = Math.max(TOTAL_LIMIT - await prisma.erpFoundersApply.count({ where: visitorWhere(round.id) }), 0);
   res.json({
     ok: true,
     applyNo: row.applyNo,
     fee: VISITOR_FEE,
     payerName: row.payerName,
+    seatNo: row.seatNo,
+    seatType: row.seatType,
+    left,
     updated: !!dup,
   });
 });

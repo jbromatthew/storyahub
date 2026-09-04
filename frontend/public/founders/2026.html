@@ -193,6 +193,19 @@
     font-size:14px;padding:6px;border-radius:6px}
   .drop .x:hover{color:var(--bad)}
 
+  /* 좌석 */
+  .seatline{margin-top:9px;font-size:12.5px;color:var(--muted)}
+  .seatline b{color:var(--brand-deep);font-weight:800}
+  .seatline.full{color:var(--bad);font-weight:700}
+  .seatbox{display:flex;align-items:center;gap:13px;background:var(--sunk);
+    border:1px solid var(--line);border-radius:10px;padding:14px 16px;box-shadow:var(--press);
+    font-size:13.5px;color:var(--ink-2)}
+  .seatbox .chip{flex:0 0 auto;font-size:11px;font-weight:800;letter-spacing:.1em;
+    border-radius:999px;padding:5px 12px;border:1px solid var(--brand-line);
+    background:var(--brand-wash);color:var(--brand-deep)}
+  .seatbox .chip.stand{border-color:var(--line);background:var(--steel-2);color:var(--ink-2)}
+  .seatbox b{color:var(--ink);font-variant-numeric:tabular-nums}
+
   /* 입금 안내 */
   .pay{background:linear-gradient(180deg,#fff,var(--steel-2));border:1px solid var(--line);
     border-radius:10px;padding:16px 18px;box-shadow:0 1px 0 var(--edge) inset}
@@ -282,7 +295,8 @@
         <p>피칭 현장을 직접 보고 네트워킹에 참여합니다.
            투자사·창업가·업계 관계자를 한자리에서 만납니다.</p>
         <div class="fee">참가비 <b>20,000</b>원 · 계좌이체</div>
-        <span class="cta">참관 등록하기</span>
+        <div class="seatline" id="seatLine">선착순 50석 · 이후 스탠딩 (최대 100명)</div>
+        <span class="cta" id="visitorCta">참관 등록하기</span>
       </button>
     </div>
     <div class="foot" style="margin-top:26px;border-top:0;padding-top:0">
@@ -564,6 +578,11 @@
         <label class="f"><span>이메일 <span style="font-weight:400;color:var(--muted)">선택</span></span>
           <input type="email" id="vEmail" maxlength="120" placeholder="안내 메일을 받으실 주소">
           <span class="hint">적어주시면 행사 안내를 메일로도 보내드립니다.</span></label>
+      </div>
+
+      <div class="card" id="seatCard">
+        <h3>좌석</h3>
+        <div class="seatbox" id="seatBox">자리를 확인하는 중…</div>
       </div>
 
       <div class="card">
@@ -955,6 +974,7 @@
       document.querySelectorAll("section").forEach(function (el) { el.classList.remove("on"); });
       $("v1").classList.add("on");
       $("bar").style.width = "50%";
+      loadCapacity();
       document.title = "참관 등록 · BROJ FOUNDERS 2026";
     } else {
       go(1);
@@ -973,6 +993,40 @@
     $("bar").style.width = "0";
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
+
+  /* ── 참관 정원 ── */
+  var cap = null;
+  function drawSeats() {
+    if (!cap) return;
+    var line = $("seatLine"), box = $("seatBox");
+    if (cap.full) {
+      line.className = "seatline full";
+      line.textContent = "참관 정원 100명 마감";
+      $("visitorCta").textContent = "정원 마감";
+      box.innerHTML = '<span class="chip stand">마감</span>' +
+        "<span>참관 정원 100명이 모두 찼습니다. 대기를 원하시면 운영사무국으로 연락해 주세요.</span>";
+      $("visitorBtn").disabled = true;
+      $("visitorBtn").textContent = "정원 마감";
+      return;
+    }
+    if (cap.seatLeft > 0) {
+      line.innerHTML = "좌석 <b>" + cap.seatLeft + "석</b> 남음 · 선착순 50석";
+      box.innerHTML = '<span class="chip">의자석</span>' +
+        "<span>지금 등록하시면 <b>" + (cap.taken + 1) + "번</b>째로 <b>좌석</b>이 배정됩니다. " +
+        "남은 좌석 " + cap.seatLeft + "석.</span>";
+    } else {
+      line.innerHTML = "좌석 마감 · 스탠딩 <b>" + cap.standingLeft + "석</b> 남음";
+      box.innerHTML = '<span class="chip stand">스탠딩</span>' +
+        "<span>좌석 50석이 모두 찼습니다. 지금 등록하시면 <b>스탠딩석</b>으로 배정됩니다. " +
+        "남은 자리 " + cap.standingLeft + "석.</span>";
+    }
+  }
+  function loadCapacity() {
+    return fetch(API + "/public/founders/visitor/capacity")
+      .then(function (r) { return r.json(); })
+      .then(function (d) { cap = d.capacity; drawSeats(); })
+      .catch(function () {});
+  }
 
   /* ── 참관 등록 ── */
   $("vAgree").addEventListener("click", function (e) {
@@ -1011,7 +1065,13 @@
         applyNo = res.j.applyNo;
         $("doneTitle").textContent = "참관 등록이 완료되었습니다";
         $("doneNo").textContent = applyNo;
+        var seatTxt = res.j.seatType === "seat"
+          ? "<b>좌석(의자)</b> " + res.j.seatNo + "번으로 배정되었습니다."
+          : res.j.seatType === "standing"
+            ? "<b>스탠딩석</b>으로 배정되었습니다. (등록 " + res.j.seatNo + "번)"
+            : "";
         $("doneNote").innerHTML =
+          (seatTxt ? seatTxt + "<br><br>" : "") +
           "아래 계좌로 <b>20,000원</b>을 3일 이내에 입금해 주세요.<br>" +
           "우리은행 <b>1005-704-322242</b> (주)브로제이<br>" +
           "입금자명 <b>" + esc(res.j.payerName) + "</b><br><br>" +
@@ -1061,6 +1121,7 @@
     .catch(function () {});
 
   drawSteps();
+  loadCapacity();
 })();
 </script>
 </body>

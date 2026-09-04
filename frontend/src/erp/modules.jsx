@@ -15064,7 +15064,7 @@ export function FoundersView() {
   const copyList = async () => {
     if (!rows.length) return;
     const head = kind === "visitor"
-      ? ["등록번호", "상태", "등록일", "성함", "연락처", "소속", "직함", "이메일", "참가비", "입금자명", "입금확인"]
+      ? ["등록번호", "상태", "좌석", "등록일", "성함", "연락처", "소속", "직함", "이메일", "참가비", "입금자명", "입금확인"]
       : ["접수번호", "상태", "접수일", "참가구분", "팀명", "대표자", "연락처", "이메일",
          "주제", "분야", "팀원수", "증빙", "IR자료"];
     const lines = [head.join("\t")];
@@ -15072,7 +15072,9 @@ export function FoundersView() {
       const label = [...BF_STATUS, ...BF_VSTATUS].find(([v]) => v === a.status)?.[1] || a.status;
       const day = new Date(a.createdAt).toLocaleDateString("ko-KR");
       lines.push((kind === "visitor"
-        ? [a.applyNo, label, day, a.repName, a.repPhone, a.repOrg, a.repTitle, a.repEmail,
+        ? [a.applyNo, label,
+           a.seatType === "seat" ? `의자 ${a.seatNo}` : a.seatType === "standing" ? `스탠딩 ${a.seatNo}` : "",
+           day, a.repName, a.repPhone, a.repOrg, a.repTitle, a.repEmail,
            a.feeAmount, a.payerName || a.repName,
            a.paidAt ? new Date(a.paidAt).toLocaleDateString("ko-KR") : ""]
         : [a.applyNo, label, day, BF_ENTRY[a.entryType] || "", a.teamName, a.repName, a.repPhone, a.repEmail,
@@ -15129,6 +15131,16 @@ export function FoundersView() {
                 onClick={() => setStatus(v)}>{label}</button>
             ))}
             <span className="small" style={{ color: "var(--muted)" }}>{rows.length}건</span>
+            {kind === "visitor" && (() => {
+              const live = applies.filter((a) => a.status !== "cancelled");
+              const seat = live.filter((a) => a.seatType === "seat").length;
+              const stand = live.filter((a) => a.seatType === "standing").length;
+              return (
+                <span className="small" style={{ color: "var(--muted)", marginLeft: "auto" }}>
+                  좌석 <b>{seat}</b>/50 · 스탠딩 <b>{stand}</b>/50 · 남은 자리 <b>{Math.max(100 - live.length, 0)}</b>
+                </span>
+              );
+            })()}
           </div>
 
           {rows.length === 0 ? (
@@ -15152,6 +15164,11 @@ export function FoundersView() {
                       </span>
                       {!isV && a.irKey && <span className="cc-pill ok">IR</span>}
                       {!isV && a.proofKey && <span className="cc-pill ok">증빙</span>}
+                      {isV && a.seatType && (
+                        <span className={`cc-pill ${a.seatType === "seat" ? "brand" : "off"}`}>
+                          {a.seatType === "seat" ? `좌석 ${a.seatNo}번` : `스탠딩 ${a.seatNo}번`}
+                        </span>
+                      )}
                       {isV && a.feeAmount > 0 && (
                         <span className="small muted">{a.feeAmount.toLocaleString()}원</span>
                       )}
@@ -15169,6 +15186,9 @@ export function FoundersView() {
                               <div className="cc-kv"><span>소속</span><b>{a.repOrg || <i>-</i>}</b></div>
                               <div className="cc-kv"><span>직함</span><b>{a.repTitle || <i>-</i>}</b></div>
                               <div className="cc-kv"><span>이메일</span><b>{a.repEmail || <i>-</i>}</b></div>
+                              <div className="cc-kv"><span>좌석</span>
+                                <b>{a.seatType === "seat" ? `의자 ${a.seatNo}번`
+                                  : a.seatType === "standing" ? `스탠딩 ${a.seatNo}번` : <i>-</i>}</b></div>
                               <div className="cc-kv"><span>참가비</span><b>{(a.feeAmount || 0).toLocaleString()}원</b></div>
                               <div className="cc-kv"><span>입금자명</span><b>{a.payerName || a.repName}</b></div>
                               <div className="cc-kv"><span>입금 확인</span>

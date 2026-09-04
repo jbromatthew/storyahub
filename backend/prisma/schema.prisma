@@ -1280,6 +1280,10 @@ model ErpFoundersApply {
   payerName String    @default("")
   paidAt    DateTime?
 
+  /// 참관 좌석 — 선착순 50명은 의자, 51~100명은 스탠딩. 등록 순번으로 정한다.
+  seatNo   Int?
+  seatType String @default("") // seat | standing
+
   /// 참가자 received|reviewing|passed|rejected · 참관객 pending|paid|cancelled
   status String @default("received")
   memo   String @default("")
