@@ -61,6 +61,22 @@ foundersPublicRouter.get("/round", async (_req: Request, res: Response) => {
   });
 });
 
+/**
+ * 손으로 그린 서명을 R2에 넣는다. data URL(PNG)로 받아 저장하고 키만 돌려준다.
+ * 서명은 동의의 증거라 접수 본문과 같은 요청에서 함께 받는다.
+ */
+const MAX_SIGN = 400 * 1024;
+async function storeSignature(applyNo: string, dataUrl: unknown): Promise<string> {
+  const raw = String(dataUrl ?? "");
+  const m = raw.match(/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/);
+  if (!m || !r2Configured()) return "";
+  const buf = Buffer.from(m[1], "base64");
+  if (!buf.length || buf.length > MAX_SIGN) return "";
+  const key = `${r2KeyPrefix()}founders/${applyNo}/sign-${Date.now()}.png`;
+  await putObjectBytes(key, buf, "image/png");
+  return key;
+}
+
 /** BF2026-0001 */
 async function nextApplyNo(year: number): Promise<string> {
   const prefix = `BF${year}-`;
@@ -99,6 +115,9 @@ foundersPublicRouter.post("/apply", async (req: Request, res: Response) => {
   if (b.pledgeAgreed !== true) return fail(res, "서약서에 동의해 주셔야 접수됩니다");
   const signerName = str(b.signerName, 40);
   if (!signerName) return fail(res, "동의자 성명을 입력해 주세요");
+  if (!String(b.signature ?? "").startsWith("data:image/png;base64,")) {
+    return fail(res, "서명을 해주셔야 접수됩니다");
+  }
 
   // ─ 중복 접수 막기 — 같은 회차에 같은 연락처면 덮어쓴다 ─
   const dup = await prisma.erpFoundersApply.findFirst({
@@ -146,11 +165,13 @@ foundersPublicRouter.post("/apply", async (req: Request, res: Response) => {
     submittedIp: str(req.ip, 60),
   };
 
+  const applyNo = dup?.applyNo ?? (await nextApplyNo(round.year));
+  const signKey = await storeSignature(applyNo, b.signature).catch(() => "");
+  const withSign = signKey ? { ...data, signKey } : data;
+
   const row = dup
-    ? await prisma.erpFoundersApply.update({ where: { id: dup.id }, data })
-    : await prisma.erpFoundersApply.create({
-        data: { ...data, applyNo: await nextApplyNo(round.year) },
-      });
+    ? await prisma.erpFoundersApply.update({ where: { id: dup.id }, data: withSign })
+    : await prisma.erpFoundersApply.create({ data: { ...withSign, applyNo } });
 
   res.json({
     ok: true,
@@ -304,11 +325,13 @@ foundersPublicRouter.post("/visitor", async (req: Request, res: Response) => {
     submittedIp: str(req.ip, 60),
   };
 
+  const applyNo = dup?.applyNo ?? (await nextVisitorNo(round.year));
+  const signKey = await storeSignature(applyNo, b.signature).catch(() => "");
+  const withSign = signKey ? { ...data, signKey } : data;
+
   const row = dup
-    ? await prisma.erpFoundersApply.update({ where: { id: dup.id }, data })
-    : await prisma.erpFoundersApply.create({
-        data: { ...data, applyNo: await nextVisitorNo(round.year) },
-      });
+    ? await prisma.erpFoundersApply.update({ where: { id: dup.id }, data: withSign })
+    : await prisma.erpFoundersApply.create({ data: { ...withSign, applyNo } });
 
   const left = Math.max(TOTAL_LIMIT - await prisma.erpFoundersApply.count({ where: visitorWhere(round.id) }), 0);
   res.json({

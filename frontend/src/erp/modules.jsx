@@ -15198,6 +15198,11 @@ export function FoundersView() {
                                 <b>{new Date(a.createdAt).toLocaleString("ko-KR")}</b></div>
                               <div className="cc-kv"><span>개인정보</span>
                                 <b>{a.privacyAgreed ? "동의" : "미동의"}</b></div>
+                              <div className="cc-kv"><span>서명</span>
+                                <b>{a.signKey
+                                  ? <button type="button" className="btn btn-ghost btn-sm"
+                                      style={{ padding: "2px 10px" }} onClick={() => openFile(a, "sign")}>✍ 보기</button>
+                                  : <i>없음</i>}</b></div>
                             </div>
                             <div className="cc-sec">상태</div>
                             <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -15262,6 +15267,11 @@ export function FoundersView() {
                             {a.signerName}{a.signerTeamName ? ` · ${a.signerTeamName}` : ""}
                             {a.privacyAt ? ` · ${new Date(a.privacyAt).toLocaleString("ko-KR")}` : ""}
                           </span>
+                          {a.signKey && (
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => openFile(a, "sign")}>
+                              ✍ 서명 보기
+                            </button>
+                          )}
                         </div>
                         <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
                           {[["proof", a.proofKey, a.proofName || "증빙 서류"],

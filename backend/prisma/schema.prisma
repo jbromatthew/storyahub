@@ -1266,6 +1266,7 @@ model ErpFoundersApply {
   pledgeAt       DateTime?
   signerName     String    @default("") // 서명란 성명
   signerTeamName String    @default("")
+  signKey        String    @default("") // 손으로 그린 서명 이미지 (R2 키)
 
   // 첨부 — 증빙 서류와 IR 자료
   proofKey  String @default("") // 사실증명 또는 사업자등록증 사본

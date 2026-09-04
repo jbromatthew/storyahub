@@ -614,7 +614,10 @@ erpCenterOpsRouter.get("/founders/applies/:id/file/:kind", async (req: AuthedReq
   const row = await prisma.erpFoundersApply.findUnique({ where: { id: req.params.id } });
   if (!row) return fail(res, "접수 내역을 찾을 수 없습니다", 404);
   const kind = String(req.params.kind);
-  const key = kind === "proof" ? row.proofKey : kind === "ir" ? row.irKey : row.extraKey;
+  const key = kind === "proof" ? row.proofKey
+    : kind === "ir" ? row.irKey
+    : kind === "sign" ? row.signKey
+    : row.extraKey;
   if (!key) return fail(res, "첨부가 없습니다", 404);
   try {
     const { presignGet } = await import("../services/r2.js");

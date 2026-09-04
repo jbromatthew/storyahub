@@ -10,7 +10,7 @@
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@400;500;700;900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
 <style>
   :root{
     /* 화이트 + 메탈 — 은색 계열 무채색에 브랜드 오렌지 하나만 */
@@ -33,7 +33,7 @@
       radial-gradient(1200px 380px at 50% -180px, #FFFFFF 0%, rgba(255,255,255,0) 70%),
       linear-gradient(180deg,#F5F6F8 0%,var(--paper) 100%);
     background-attachment:fixed;
-    font-family:"Gothic A1","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    font-family:"Noto Sans JP","Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
     font-size:15px;line-height:1.7;letter-spacing:-.012em;-webkit-font-smoothing:antialiased;
   }
   a{color:var(--brand-deep)}
@@ -193,6 +193,22 @@
     font-size:14px;padding:6px;border-radius:6px}
   .drop .x:hover{color:var(--bad)}
 
+  /* 서명 */
+  .signwrap{position:relative;border:1px solid var(--line);border-radius:10px;background:#fff;
+    box-shadow:var(--press);overflow:hidden;touch-action:none}
+  .signwrap canvas{display:block;width:100%;height:170px;cursor:crosshair}
+  .signwrap .guide{position:absolute;left:22px;right:22px;bottom:44px;border-bottom:1px dashed #C9CDD5;
+    pointer-events:none}
+  .signwrap .ph{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;
+    color:#A8ADB6;font-size:13.5px;transition:opacity .2s}
+  .signwrap.drawn .ph{opacity:0}
+  .signbar{display:flex;align-items:center;gap:8px;margin-top:9px}
+  .signbar .note{font-size:12px;color:var(--muted)}
+  .signbar button{margin-left:auto;background:linear-gradient(180deg,#fff,var(--steel-2));
+    border:1px solid var(--line);border-radius:8px;padding:7px 14px;font:inherit;font-size:12.5px;
+    font-weight:700;color:var(--ink-2);cursor:pointer;box-shadow:0 1px 0 var(--edge) inset}
+  .signbar button:hover{color:var(--ink);border-color:#C7CAD1}
+
   /* 좌석 */
   .seatline{margin-top:9px;font-size:12.5px;color:var(--muted)}
   .seatline b{color:var(--brand-deep);font-weight:800}
@@ -279,7 +295,11 @@
   <div id="closedBox" style="display:none"></div>
 
   <!-- 0. 참가 종류 -->
-  <div id="chooser">
+  <div id="loading" style="padding:40px 0;text-align:center;color:var(--muted);font-size:13.5px">
+    접수 상태를 확인하는 중…
+  </div>
+
+  <div id="chooser" style="display:none">
     <div class="kinds">
       <button type="button" class="kind" data-kind="applicant">
         <span class="tag">참가자 모집</span>
@@ -506,8 +526,19 @@
         <div class="row">
           <label class="f"><span>팀명</span><input type="text" id="signTeam" maxlength="80"></label>
           <label class="f"><span>성명<em>*</em></span>
-            <input type="text" id="signName" maxlength="40" placeholder="본인 성명">
-            <span class="hint">이름을 적으시면 전자서명으로 갈음합니다.</span></label>
+            <input type="text" id="signName" maxlength="40" placeholder="본인 성명"></label>
+        </div>
+        <div style="margin-top:14px">
+          <div class="f"><span>서명<em>*</em></span></div>
+          <div class="signwrap" id="signWrap">
+            <canvas id="signPad"></canvas>
+            <div class="guide"></div>
+            <div class="ph">이 칸에 마우스나 손가락으로 서명해 주세요</div>
+          </div>
+          <div class="signbar">
+            <span class="note">그리신 서명이 그대로 접수 서류에 남습니다.</span>
+            <button type="button" id="signClear">지우기</button>
+          </div>
         </div>
       </div>
 
@@ -615,6 +646,18 @@
           <label class="pick" id="vAgree"><input type="checkbox"><span class="tick">✓</span>
             <span class="t">위 내용을 확인하였으며 개인정보 수집·이용에 동의합니다.</span></label>
         </div>
+        <div style="margin-top:14px">
+          <div class="f"><span>서명<em>*</em></span></div>
+          <div class="signwrap" id="vSignWrap">
+            <canvas id="vSignPad"></canvas>
+            <div class="guide"></div>
+            <div class="ph">이 칸에 마우스나 손가락으로 서명해 주세요</div>
+          </div>
+          <div class="signbar">
+            <span class="note">현장 확인 때 쓰입니다.</span>
+            <button type="button" id="vSignClear">지우기</button>
+          </div>
+        </div>
       </div>
 
       <div class="msg err" id="ev"></div>
@@ -676,6 +719,7 @@
       if (el) el.classList.toggle("on", i === n);
     }
     drawSteps();
+    if (n === 4 && !signReady) { signReady = true; signPad.ready(); }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   function isTeam() {
@@ -825,6 +869,7 @@
       if (!$("agree1").classList.contains("on")) return "개인정보 수집·이용에 동의해 주세요";
       if (!$("agree2").classList.contains("on")) return "서약서에 동의해 주세요";
       if (!$("signName").value.trim()) return "동의자 성명을 입력해 주세요";
+      if (signPad.isEmpty()) return "서명란에 서명해 주세요";
     }
     return "";
   }
@@ -880,7 +925,8 @@
       privacyAgreed: true,
       pledgeAgreed: true,
       signerName: $("signName").value.trim(),
-      signerTeamName: $("signTeam").value.trim()
+      signerTeamName: $("signTeam").value.trim(),
+      signature: signPad.data()
     };
 
     fetch(API + "/public/founders/apply", {
@@ -974,6 +1020,7 @@
       document.querySelectorAll("section").forEach(function (el) { el.classList.remove("on"); });
       $("v1").classList.add("on");
       $("bar").style.width = "50%";
+      if (!vSignReady) { vSignReady = true; vSignPad.ready(); }
       loadCapacity();
       document.title = "참관 등록 · BROJ FOUNDERS 2026";
     } else {
@@ -993,6 +1040,68 @@
     $("bar").style.width = "0";
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
+
+  /* ── 서명 패드 ── */
+  function makeSignPad(wrapId, canvasId, clearId) {
+    var wrap = $(wrapId), cv = $(canvasId), ctx = cv.getContext("2d");
+    var drawing = false, dirty = false, last = null, ratio = 1;
+
+    function fit() {
+      // 지운 뒤 다시 그리지 않으므로 크기가 바뀌면 내용도 사라진다 — 처음 한 번만 맞춘다
+      ratio = window.devicePixelRatio || 1;
+      var r = cv.getBoundingClientRect();
+      cv.width = Math.round(r.width * ratio);
+      cv.height = Math.round(r.height * ratio);
+      ctx.scale(ratio, ratio);
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = "#15171B";
+    }
+    function pos(e) {
+      var r = cv.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    }
+    function start(e) {
+      e.preventDefault();
+      drawing = true;
+      last = pos(e);
+      cv.setPointerCapture && cv.setPointerCapture(e.pointerId);
+    }
+    function move(e) {
+      if (!drawing) return;
+      e.preventDefault();
+      var p = pos(e);
+      ctx.beginPath();
+      ctx.moveTo(last.x, last.y);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      last = p;
+      if (!dirty) { dirty = true; wrap.classList.add("drawn"); }
+    }
+    function end() { drawing = false; }
+
+    cv.addEventListener("pointerdown", start);
+    cv.addEventListener("pointermove", move);
+    cv.addEventListener("pointerup", end);
+    cv.addEventListener("pointercancel", end);
+    cv.addEventListener("pointerleave", end);
+
+    $(clearId).addEventListener("click", function () {
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      dirty = false;
+      wrap.classList.remove("drawn");
+    });
+
+    return {
+      ready: fit,
+      isEmpty: function () { return !dirty; },
+      data: function () { return dirty ? cv.toDataURL("image/png") : ""; }
+    };
+  }
+  var signPad = makeSignPad("signWrap", "signPad", "signClear");
+  var vSignPad = makeSignPad("vSignWrap", "vSignPad", "vSignClear");
+  var signReady = false, vSignReady = false;
 
   /* ── 참관 정원 ── */
   var cap = null;
@@ -1042,6 +1151,7 @@
     if (!$("vName").value.trim()) { msg("ev", "성함을 입력해 주세요"); return; }
     if ($("vPhone").value.replace(/[^\d]/g, "").length < 10) { msg("ev", "연락처를 확인해 주세요"); return; }
     if (!$("vAgree").classList.contains("on")) { msg("ev", "개인정보 수집·이용에 동의해 주세요"); return; }
+    if (vSignPad.isEmpty()) { msg("ev", "서명란에 서명해 주세요"); return; }
     var btn = $("visitorBtn");
     btn.disabled = true;
     btn.textContent = "등록 중…";
@@ -1055,7 +1165,8 @@
         title: $("vTitle").value.trim(),
         email: $("vEmail").value.trim(),
         payerName: $("vPayer").value.trim(),
-        privacyAgreed: true
+        privacyAgreed: true,
+        signature: vSignPad.data()
       })
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
@@ -1100,7 +1211,14 @@
     .then(function (r) { return r.json(); })
     .then(function (d) {
       round = d.round;
-      if (!round) return;
+      $("loading").style.display = "none";
+      if (!round) {
+        $("closedBox").style.display = "";
+        $("closedBox").innerHTML = '<div class="closed"><h2>접수 준비 중입니다</h2>' +
+          '<p style="color:var(--muted);margin:0">곧 안내드리겠습니다.</p></div>';
+        return;
+      }
+      if (round.open) $("chooser").style.display = "";
       if (round.closesAt) {
         $("dl").innerHTML = "접수 마감<b>" + fmt(round.closesAt) + "</b>";
       }
@@ -1118,7 +1236,11 @@
             : "다음 회차를 기다려 주세요.") + "</p></div>";
       }
     })
-    .catch(function () {});
+    .catch(function () {
+      $("loading").innerHTML =
+        '접수 상태를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.<br>' +
+        '<span style="font-size:12px">문의 broj.company@gmail.com</span>';
+    });
 
   drawSteps();
   loadCapacity();
