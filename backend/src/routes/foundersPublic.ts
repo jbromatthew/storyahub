@@ -8,11 +8,12 @@ import { Router, type Request, type Response } from "express";
 import express from "express";
 import { prisma } from "../db.js";
 import { putObjectBytes, r2Configured, r2KeyPrefix } from "../services/r2.js";
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
 export const foundersPublicRouter = Router();
 
 const TRACKS = ["business", "tech", "content", "product", "next", "market"];
-const MAX_FILE = 30 * 1024 * 1024; // 30MB
+const MAX_FILE = 100 * 1024 * 1024; // 100MB — 발표자료가 무거운 편이다
 const OK_TYPES = [
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -77,6 +78,132 @@ async function storeSignature(applyNo: string, dataUrl: unknown): Promise<string
   return key;
 }
 
+/** 참여신청서 본문 — 길이만 자르고 모양은 그대로 담는다 (회차마다 항목이 바뀐다) */
+function cleanForm(v: unknown): Record<string, unknown> {
+  const cap = (x: unknown, max: number): unknown => {
+    if (typeof x === "string") return x.trim().slice(0, max);
+    if (Array.isArray(x)) return x.slice(0, 40).map((i) => cap(i, max));
+    if (x && typeof x === "object") {
+      const o: Record<string, unknown> = {};
+      for (const [k, val] of Object.entries(x as Record<string, unknown>).slice(0, 60)) {
+        o[String(k).slice(0, 40)] = cap(val, max);
+      }
+      return o;
+    }
+    return typeof x === "number" || typeof x === "boolean" ? x : "";
+  };
+  const out = cap(v, 4000);
+  return out && typeof out === "object" && !Array.isArray(out) ? (out as Record<string, unknown>) : {};
+}
+
+/* ─────────── 이어서 작성하기 ───────────
+   접수 전에는 ErpFoundersDraft에, 접수 뒤에는 ErpFoundersApply.passHash에 담긴다.
+   본인이 정한 짧은 임시 비밀번호라 느리게 검사하고 시도 횟수를 막는다. */
+
+const PW_MIN = 4;
+const PW_MAX_TRIES = 8;
+const PW_LOCK_MIN = 15;
+
+function hashPw(pw: string): string {
+  const salt = randomBytes(16);
+  return "s1$" + salt.toString("hex") + "$" + scryptSync(pw, salt, 32).toString("hex");
+}
+function checkPw(pw: string, stored: string): boolean {
+  const [tag, saltHex, keyHex] = String(stored ?? "").split("$");
+  if (tag !== "s1" || !saltHex || !keyHex) return false;
+  const want = Buffer.from(keyHex, "hex");
+  const got = scryptSync(pw, Buffer.from(saltHex, "hex"), want.length);
+  return want.length === got.length && timingSafeEqual(want, got);
+}
+/** 잠겨 있으면 남은 분, 아니면 0 */
+function lockLeft(lockedAt: Date | null): number {
+  if (!lockedAt) return 0;
+  const left = PW_LOCK_MIN * 60000 - (Date.now() - lockedAt.getTime());
+  return left > 0 ? Math.ceil(left / 60000) : 0;
+}
+
+/** POST /public/founders/draft — 작성 중인 내용을 담아둔다 */
+foundersPublicRouter.post("/draft", async (req: Request, res: Response) => {
+  const b = req.body ?? {};
+  const phone = digits(b.phone);
+  const pw = String(b.password ?? "");
+  if (phone.length < 10) return fail(res, "연락처를 확인해 주세요");
+  if (pw.length < PW_MIN) return fail(res, `임시 비밀번호는 ${PW_MIN}자 이상으로 정해주세요`);
+
+  const step = Math.min(Math.max(Number(b.step) || 1, 1), 7);
+  const payload = cleanForm(b.payload);
+
+  // 이미 접수한 연락처는 임시저장이 아니라 첨부 이어하기 대상이다
+  const done = await prisma.erpFoundersApply.findFirst({
+    where: { repPhone: phone, kind: "applicant" },
+    select: { applyNo: true },
+  });
+  if (done) return fail(res, `이미 ${done.applyNo}으로 접수하신 연락처입니다. 「이어서 작성하기」로 자료 첨부를 이어가실 수 있습니다.`);
+
+  const prev = await prisma.erpFoundersDraft.findUnique({ where: { phone } });
+  if (prev) {
+    const left = lockLeft(prev.lockedAt);
+    if (left) return fail(res, `비밀번호를 여러 번 틀려 ${left}분간 잠겼습니다`, 429);
+    if (!checkPw(pw, prev.passHash)) {
+      const tries = prev.tries + 1;
+      await prisma.erpFoundersDraft.update({
+        where: { phone },
+        data: { tries, lockedAt: tries >= PW_MAX_TRIES ? new Date() : null },
+      });
+      return fail(res, "이 연락처로 저장해두신 내용이 있습니다. 그때 정하신 임시 비밀번호를 입력해 주세요");
+    }
+    await prisma.erpFoundersDraft.update({
+      where: { phone },
+      data: { step, payload: payload as never, tries: 0, lockedAt: null },
+    });
+  } else {
+    await prisma.erpFoundersDraft.create({
+      data: { phone, passHash: hashPw(pw), step, payload: payload as never },
+    });
+  }
+  res.json({ ok: true, savedAt: new Date().toISOString() });
+});
+
+/** POST /public/founders/resume — 저장해둔 내용이나 접수건을 되찾는다 */
+foundersPublicRouter.post("/resume", async (req: Request, res: Response) => {
+  const b = req.body ?? {};
+  const phone = digits(b.phone);
+  const pw = String(b.password ?? "");
+  if (phone.length < 10 || !pw) return fail(res, "연락처와 임시 비밀번호를 입력해 주세요");
+
+  const done = await prisma.erpFoundersApply.findFirst({
+    where: { repPhone: phone, kind: "applicant" },
+    orderBy: { id: "desc" },
+  });
+  if (done) {
+    if (!done.passHash) {
+      return fail(res, `${done.applyNo}으로 접수는 되어 있으나 임시 비밀번호가 설정되지 않은 건입니다. 운영사무국으로 연락 주세요.`);
+    }
+    if (!checkPw(pw, done.passHash)) return fail(res, "임시 비밀번호가 맞지 않습니다");
+    return res.json({
+      mode: "apply",
+      applyNo: done.applyNo,
+      teamName: done.teamName,
+      files: { proof: !!done.proofKey, ir: !!done.irKey, extra: !!done.extraKey },
+    });
+  }
+
+  const d = await prisma.erpFoundersDraft.findUnique({ where: { phone } });
+  if (!d) return fail(res, "이 연락처로 저장해두신 내용이 없습니다", 404);
+  const left = lockLeft(d.lockedAt);
+  if (left) return fail(res, `비밀번호를 여러 번 틀려 ${left}분간 잠겼습니다`, 429);
+  if (!checkPw(pw, d.passHash)) {
+    const tries = d.tries + 1;
+    await prisma.erpFoundersDraft.update({
+      where: { phone },
+      data: { tries, lockedAt: tries >= PW_MAX_TRIES ? new Date() : null },
+    });
+    return fail(res, `임시 비밀번호가 맞지 않습니다 (${PW_MAX_TRIES - tries}번 남음)`);
+  }
+  await prisma.erpFoundersDraft.update({ where: { phone }, data: { tries: 0, lockedAt: null } });
+  res.json({ mode: "draft", step: d.step, payload: d.payload, savedAt: d.updatedAt });
+});
+
 /** BF2026-0001 */
 async function nextApplyNo(year: number): Promise<string> {
   const prefix = `BF${year}-`;
@@ -99,10 +226,11 @@ foundersPublicRouter.post("/apply", async (req: Request, res: Response) => {
   if (!tracks.length) return fail(res, "세부 분야를 하나 이상 선택해 주세요");
 
   const subject = str(b.subject, 200);
-  if (!subject) return fail(res, "참가작 주제를 입력해 주세요");
+  if (!subject) return fail(res, "제품·서비스 한줄소개를 입력해 주세요");
 
-  const entryType = str(b.entryType, 10);
-  if (!["pre", "early"].includes(entryType)) return fail(res, "참가 구분을 선택해 주세요");
+  if (!str(b.teamName, 80)) return fail(res, "기업명을 입력해 주세요");
+
+  const entryType = ["pre", "early"].includes(str(b.entryType, 10)) ? str(b.entryType, 10) : "early";
 
   const repName = str(b.repName, 40);
   const repEmail = str(b.repEmail, 120).toLowerCase();
@@ -162,6 +290,7 @@ foundersPublicRouter.post("/apply", async (req: Request, res: Response) => {
     signerName,
     signerTeamName: str(b.signerTeamName, 80),
     kind: "applicant",
+    formData: cleanForm(b.formData) as never,
     submittedIp: str(req.ip, 60),
   };
 
@@ -169,15 +298,24 @@ foundersPublicRouter.post("/apply", async (req: Request, res: Response) => {
   const signKey = await storeSignature(applyNo, b.signature).catch(() => "");
   const withSign = signKey ? { ...data, signKey } : data;
 
+  // 자료 첨부를 나중에 이어서 하려면 비밀번호가 있어야 한다.
+  // 작성 중 임시저장을 하셨다면 그때 정하신 것을 그대로 쓴다.
+  const draft = await prisma.erpFoundersDraft.findUnique({ where: { phone: repPhone } });
+  const pw = String(b.password ?? "");
+  const passHash = pw.length >= PW_MIN ? hashPw(pw) : draft?.passHash ?? dup?.passHash ?? "";
+
   const row = dup
-    ? await prisma.erpFoundersApply.update({ where: { id: dup.id }, data: withSign })
-    : await prisma.erpFoundersApply.create({ data: { ...withSign, applyNo } });
+    ? await prisma.erpFoundersApply.update({ where: { id: dup.id }, data: { ...withSign, passHash } })
+    : await prisma.erpFoundersApply.create({ data: { ...withSign, applyNo, passHash } });
+
+  if (draft) await prisma.erpFoundersDraft.delete({ where: { phone: repPhone } }).catch(() => {});
 
   res.json({
     ok: true,
     applyNo: row.applyNo,
     id: row.id,
     updated: !!dup,
+    canResume: !!passHash,
     message: dup ? "기존 접수를 갱신했습니다" : "접수되었습니다",
   });
 });
@@ -188,7 +326,7 @@ foundersPublicRouter.post("/apply", async (req: Request, res: Response) => {
  */
 foundersPublicRouter.post(
   "/apply/:applyNo/file/:kind",
-  express.raw({ type: () => true, limit: "32mb" }),
+  express.raw({ type: () => true, limit: "105mb" }),
   async (req: Request, res: Response) => {
     const kind = String(req.params.kind);
     if (!["proof", "ir", "extra"].includes(kind)) return fail(res, "첨부 종류가 올바르지 않습니다");
@@ -202,7 +340,7 @@ foundersPublicRouter.post(
 
     const body = req.body as Buffer;
     if (!Buffer.isBuffer(body) || !body.length) return fail(res, "파일이 비어 있습니다");
-    if (body.length > MAX_FILE) return fail(res, "파일은 30MB까지 올릴 수 있습니다", 413);
+    if (body.length > MAX_FILE) return fail(res, "파일은 100MB까지 올릴 수 있습니다", 413);
 
     const ctype = String(req.header("Content-Type") ?? "application/octet-stream").split(";")[0];
     if (!OK_TYPES.includes(ctype)) {

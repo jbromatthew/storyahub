@@ -1268,6 +1268,14 @@ model ErpFoundersApply {
   signerTeamName String    @default("")
   signKey        String    @default("") // 손으로 그린 서명 이미지 (R2 키)
 
+  /// 이어서 작성·첨부하기용 임시 비밀번호 (scrypt)
+  passHash String @default("")
+
+  /// 참여신청서 본문 전체. 항목이 많고 회차마다 바뀌어 컬럼으로 펴지 않는다.
+  /// { company, rep, manager, overview, history[], sales, staff[],
+  ///   product, essay, channels[], investments[], ipRights[] }
+  formData Json @default("{}")
+
   // 첨부 — 증빙 서류와 IR 자료
   proofKey  String @default("") // 사실증명 또는 사업자등록증 사본
   proofName String @default("")
@@ -1438,4 +1446,20 @@ model ErpOpenApiCenter {
   updatedAt  DateTime @updatedAt
 
   @@index([centerName])
+}
+
+/// 접수 전 임시저장 — 연락처와 본인이 정한 임시 비밀번호로 다시 불러온다.
+/// 접수가 끝나면 지우고, 그때부터는 ErpFoundersApply.passHash로 이어간다.
+model ErpFoundersDraft {
+  id        Int      @id @default(autoincrement())
+  year      Int      @default(2026)
+  phone     String   @unique
+  passHash  String
+  kind      String   @default("applicant")
+  step      Int      @default(1)
+  payload   Json     @default("{}")
+  tries     Int      @default(0) // 비밀번호 틀린 횟수
+  lockedAt  DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

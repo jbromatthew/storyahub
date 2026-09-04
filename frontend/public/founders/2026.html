@@ -118,7 +118,8 @@
   .f>span em{font-style:normal;color:var(--brand);margin-left:2px}
   .hint{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.55}
 
-  input[type=text],input[type=email],input[type=tel],input[type=date],input[type=number],textarea,select{
+  input[type=text],input[type=email],input[type=tel],input[type=date],input[type=month],
+  input[type=number],input[type=password],textarea,select{
     width:100%;background:var(--sunk);border:1px solid var(--line);border-radius:9px;
     padding:11px 13px;color:var(--ink);font:inherit;font-size:14.5px;outline:none;
     box-shadow:var(--press);transition:border-color .15s,box-shadow .15s,background .15s}
@@ -132,7 +133,84 @@
     background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:38px}
 
   .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  @media(max-width:560px){.row{grid-template-columns:1fr}}
+  .row.t3{grid-template-columns:1fr 1fr 1fr}
+  @media(max-width:560px){.row,.row.t3{grid-template-columns:1fr}}
+
+  /* 여러 줄 입력하는 표 — 넓으면 표, 좁으면 카드 */
+  .rep{display:grid;gap:8px}
+  .rep .hd,.rep .rw{display:grid;gap:8px;align-items:start}
+  .rep .hd{font-size:11.5px;font-weight:800;color:var(--ink-2);padding:0 30px 0 2px;
+    letter-spacing:-.01em}
+  .rep .rw{position:relative;padding-right:30px}
+  .rep .rw .del{position:absolute;top:8px;right:0;background:none;border:0;color:#B6BAC2;
+    cursor:pointer;font-size:13px;padding:4px 6px;border-radius:6px;line-height:1}
+  .rep .rw .del:hover{color:var(--bad);background:var(--bad-wash)}
+  .rep input,.rep select,.rep textarea{font-size:13.5px;padding:9px 11px}
+  .rep .lb{display:none;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px}
+  .addrow{width:100%;padding:11px;margin-top:9px}
+  @media(max-width:640px){
+    .rep .hd{display:none}
+    .rep .rw{grid-template-columns:1fr !important;background:var(--sunk);
+      border:1px solid var(--line);border-radius:10px;padding:13px 34px 13px 13px}
+    .rep .lb{display:block}
+  }
+  /* 이어서 작성하기 */
+  .resume-line{margin-top:22px;text-align:center;font-size:13px;color:var(--muted)}
+  .resume-line button{background:none;border:0;font:inherit;font-weight:800;color:var(--brand-deep);
+    cursor:pointer;padding:4px 6px;border-radius:6px;text-decoration:underline;
+    text-underline-offset:3px;text-decoration-thickness:1.5px}
+  .resume-line button:hover{background:var(--brand-wash)}
+  .btn-save{flex:0 0 auto;padding:13px 16px;font-size:13.5px}
+  #saveBox{position:fixed;inset:0;background:rgba(20,22,26,.42);z-index:60;
+    display:flex;align-items:center;justify-content:center;padding:20px;
+    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+  #saveBox .modal-in{width:100%;max-width:420px}
+  .savenote{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:70;
+    background:var(--ink);color:#fff;font-size:13px;font-weight:700;padding:11px 18px;
+    border-radius:999px;box-shadow:0 8px 26px rgba(20,22,26,.3);opacity:0;
+    transition:opacity .2s,transform .2s;pointer-events:none}
+  .savenote.on{opacity:1;transform:translateX(-50%) translateY(-4px)}
+
+  /* 발표자료 가이드 */
+  .guide-card{border-color:#E2D3C4;
+    background:linear-gradient(180deg,#FFFCF9,#FFF8F2)}
+  .guide-dl{display:flex;align-items:center;gap:13px;text-decoration:none;
+    background:#fff;border:1px solid var(--line);border-radius:11px;padding:15px 16px;
+    box-shadow:var(--lift);transition:.15s}
+  .guide-dl:hover{border-color:var(--brand);transform:translateY(-1px)}
+  .guide-dl .ic{font-size:19px;color:var(--brand)}
+  .guide-dl b{display:block;font-size:14px;color:var(--ink);letter-spacing:-.02em}
+  .guide-dl i{display:block;font-style:normal;font-size:12px;color:var(--muted);margin-top:3px}
+  .guide-dl span:nth-child(2){flex:1;min-width:0}
+  .guide-dl .go{font-size:12.5px;font-weight:800;color:var(--brand-deep);white-space:nowrap}
+  .guide-sum{display:none;margin-top:16px;font-size:13px;line-height:1.65;color:var(--ink-2)}
+  .guide-sum.on{display:block}
+  .gs-h{font-size:12px;font-weight:800;color:var(--ink);letter-spacing:-.01em;margin-bottom:8px}
+  .gs-h span{font-weight:500;color:var(--muted);margin-left:6px}
+  .gs-t{width:100%;border-collapse:collapse;font-size:12.8px}
+  .gs-t td{padding:6px 8px;border-bottom:1px solid var(--line)}
+  .gs-t tr:last-child td{border-bottom:0}
+  .gs-t .n{width:44px;font-weight:800;color:var(--brand-deep);font-variant-numeric:tabular-nums;
+    text-align:right;padding-right:12px}
+  .gs-note{margin-top:9px;font-size:12.3px;color:var(--muted);background:#fff;
+    border:1px solid var(--line);border-radius:8px;padding:10px 12px;line-height:1.6}
+  .gs-note b{color:var(--brand-deep)}
+  .gs-o{margin:0;padding-left:20px;font-size:12.8px;columns:2;column-gap:22px}
+  .gs-o li{margin-bottom:4px;break-inside:avoid}
+  .gs-o .opt{color:var(--muted)}
+  .gs-o .opt i{font-style:normal;font-size:11px}
+  .gs-u{margin:0;padding-left:17px;font-size:12.8px}
+  .gs-u li{margin-bottom:4px}
+  .guide-more{width:100%;margin-top:13px;background:none;border:1px solid var(--line);
+    border-radius:9px;padding:10px;font:inherit;font-size:12.5px;font-weight:800;
+    color:var(--ink-2);cursor:pointer;background:#fff}
+  .guide-more:hover{border-color:var(--brand);color:var(--brand-deep)}
+  @media(max-width:560px){.gs-o{columns:1}}
+
+  /* 매출 현황 — 연도별 고정 표 */
+  .yrs{display:grid;grid-template-columns:88px 1fr 1fr;gap:8px;align-items:center}
+  .yrs .yl{font-size:12.5px;font-weight:800;color:var(--ink-2)}
+  .yrs .yh{font-size:11.5px;font-weight:800;color:var(--muted)}
 
   /* 선택 */
   .picks{display:grid;gap:9px}
@@ -319,8 +397,55 @@
         <span class="cta" id="visitorCta">참관 등록하기</span>
       </button>
     </div>
-    <div class="foot" style="margin-top:26px;border-top:0;padding-top:0">
+    <div class="resume-line">
+      쓰다 만 신청서가 있으신가요?
+      <button type="button" id="openResume">이어서 작성하기</button>
+    </div>
+    <div class="foot" style="margin-top:22px;border-top:0;padding-top:0">
       행사 2026년 10월 9일(금) 14:00 – 18:00 · 어브 스튜디오
+    </div>
+  </div>
+
+  <!-- 이어서 작성하기 -->
+  <div id="resumeBox" style="display:none">
+    <div class="card" style="max-width:440px;margin:0 auto">
+      <h3>이어서 작성하기</h3>
+      <div class="hint" style="margin:-4px 0 14px">
+        저장하실 때 쓰신 연락처와 임시 비밀번호를 넣어주세요.
+        이미 접수를 마치셨다면 자료 첨부 단계로 바로 넘어갑니다.
+      </div>
+      <label class="f"><span>연락처</span>
+        <input type="tel" id="rsPhone" inputmode="numeric" maxlength="13" placeholder="010-1234-5678"></label>
+      <label class="f"><span>임시 비밀번호</span>
+        <input type="password" id="rsPw" maxlength="40" autocomplete="off"></label>
+      <div class="msg err" id="ers"></div>
+      <div class="nav" style="margin-top:16px">
+        <button type="button" class="btn btn-back" id="rsCancel">돌아가기</button>
+        <button type="button" class="btn btn-go" id="rsGo">불러오기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 임시저장 -->
+  <div id="saveBox" style="display:none">
+    <div class="modal-in">
+      <div class="card" style="margin:0">
+        <h3>여기까지 저장해두기</h3>
+        <div class="hint" style="margin:-4px 0 14px">
+          연락처와 임시 비밀번호를 정해두시면 나중에 이 두 가지로 다시 불러옵니다.
+          접수를 마친 뒤에도 같은 비밀번호로 들어와 자료를 마저 올리실 수 있습니다.
+        </div>
+        <label class="f"><span>연락처<em>*</em></span>
+          <input type="tel" id="svPhone" inputmode="numeric" maxlength="13" placeholder="010-1234-5678"></label>
+        <label class="f"><span>임시 비밀번호<em>*</em></span>
+          <input type="password" id="svPw" maxlength="40" autocomplete="off" placeholder="4자 이상">
+          <span class="hint">기억하기 쉬운 것으로 정하세요. 다시 알려드릴 수 없습니다.</span></label>
+        <div class="msg err" id="esv"></div>
+        <div class="nav" style="margin-top:16px">
+          <button type="button" class="btn btn-back" id="svCancel">취소</button>
+          <button type="button" class="btn btn-go" id="svGo">저장하기</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -329,41 +454,59 @@
       style="flex:0 0 auto;padding:8px 14px;font-size:13px;margin-bottom:16px">← 참가 종류 다시 고르기</button>
     <div class="steps" id="steps"></div>
 
-    <!-- 1. 참가 구분 -->
+    <!-- 1. 기업 정보 -->
     <section id="s1" class="on">
-      <h2>어떤 자격으로 참가하시나요</h2>
-      <p class="lead">공고일(2026.09.07) 기준으로 판단합니다.</p>
+      <h2>기업 정보</h2>
+      <p class="lead">사업자등록증에 적힌 그대로 적어주세요.</p>
 
       <div class="card">
-        <h3>참가 구분<span class="req">*</span></h3>
-        <div class="picks two" id="entryType">
-          <label class="pick round" data-v="pre">
-            <input type="radio" name="entry"><span class="tick">✓</span>
-            <span><span class="t">예비창업자</span>
-            <span class="d">사업자등록·법인등기를 아직 보유하지 않은 개인 또는 팀</span></span>
-          </label>
-          <label class="pick round" data-v="early">
-            <input type="radio" name="entry"><span class="tick">✓</span>
-            <span><span class="t">초기창업기업</span>
-            <span class="d">이미 사업이 개시된 법인 또는 개인사업자</span></span>
-          </label>
+        <h3>기본 사항<span class="req">*</span></h3>
+        <div class="row">
+          <label class="f"><span>기업명<em>*</em></span>
+            <input type="text" id="coName" maxlength="80" placeholder="㈜브로제이"></label>
+          <label class="f"><span>설립연월<em>*</em></span>
+            <input type="month" id="coFounded"></label>
+        </div>
+        <div class="row">
+          <label class="f"><span>사업자등록번호<em>*</em></span>
+            <input type="text" id="bizNo" maxlength="12" inputmode="numeric" placeholder="000-00-00000"></label>
+          <div class="f"><span>사업자 구분<em>*</em></span>
+            <div class="picks two" id="bizKind" style="gap:8px">
+              <label class="pick round" data-v="personal"><input type="radio" name="bk"><span class="tick">✓</span>
+                <span class="t">개인</span></label>
+              <label class="pick round" data-v="corp"><input type="radio" name="bk"><span class="tick">✓</span>
+                <span class="t">법인</span></label>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <label class="f"><span>업종 / 업태</span>
+            <input type="text" id="coIndustry" maxlength="120" placeholder="예: 정보통신업 / 소프트웨어 개발"></label>
+          <label class="f"><span>주생산품목</span>
+            <input type="text" id="coMainItem" maxlength="120" placeholder="예: 무인 키오스크"></label>
         </div>
       </div>
 
-      <div class="card" id="soloBox" style="display:none">
-        <h3>세부 구분<span class="req">*</span> <span style="font-weight:400;color:var(--muted);font-size:12px">예비창업자만</span></h3>
-        <div class="picks two" id="soloTeam">
-          <label class="pick round" data-v="solo">
-            <input type="radio" name="st"><span class="tick">✓</span><span class="t">개인</span>
-          </label>
-          <label class="pick round" data-v="team">
-            <input type="radio" name="st"><span class="tick">✓</span><span class="t">팀</span>
-          </label>
+      <div class="card">
+        <h3>사업장 주소<span class="req">*</span></h3>
+        <label class="f"><span>본사<em>*</em></span>
+          <input type="text" id="addrMain" maxlength="200" placeholder="도로명 주소"></label>
+        <label class="f"><span>지사 <span class="opt">있는 경우</span></span>
+          <input type="text" id="addrBranch" maxlength="200"></label>
+      </div>
+
+      <div class="card">
+        <h3>홈페이지 · SNS <span class="opt">보유 시</span></h3>
+        <div class="row">
+          <label class="f"><span>홈페이지</span>
+            <input type="text" id="coHomepage" maxlength="200" placeholder="https://"></label>
+          <label class="f"><span>SNS</span>
+            <input type="text" id="coSns" maxlength="200" placeholder="인스타그램 · 링크드인 등"></label>
         </div>
       </div>
 
       <div class="card">
-        <h3>세부 분야<span class="req">*</span> <span style="font-weight:400;color:var(--muted);font-size:12px">복수 선택 가능</span></h3>
+        <h3>세부 분야<span class="req">*</span> <span class="opt">복수 선택 가능</span></h3>
         <div class="picks" id="tracks">
           <label class="pick" data-v="business"><input type="checkbox"><span class="tick">✓</span>
             <span><span class="k">BUSINESS</span><span class="t">피트니스 사업</span>
@@ -386,133 +529,234 @@
         </div>
       </div>
 
-      <div class="card">
-        <h3>참가작 주제<span class="req">*</span></h3>
-        <label class="f">
-          <span>한 줄 소개</span>
-          <input type="text" id="subject" maxlength="200" placeholder="예: 무인 락커 운영을 자동화하는 IoT 솔루션">
-          <span class="hint">심사위원이 가장 먼저 보는 문장입니다.</span>
-        </label>
-      </div>
-
       <div class="msg err" id="e1"></div>
-      <div class="nav"><button class="btn btn-go" data-go="2">다음</button></div>
+      <div class="nav">
+        <button type="button" class="btn btn-ghost btn-save" data-save="1">임시저장</button>
+        <button class="btn btn-go" data-go="2">다음</button>
+      </div>
     </section>
 
-    <!-- 2. 대표자 -->
+    <!-- 2. 대표자 · 실무 담당자 -->
     <section id="s2">
-      <h2>대표자 정보</h2>
-      <p class="lead">연락이 닿는 정보를 정확히 적어주세요. 합격 안내가 이 연락처로 갑니다.</p>
-
-      <div class="card">
-        <h3>참가자<span class="req">*</span></h3>
-        <div class="row">
-          <label class="f"><span>참가자명 또는 팀명<em>*</em></span>
-            <input type="text" id="teamName" maxlength="80" placeholder="개인이면 이름, 팀이면 팀명"></label>
-          <label class="f"><span>팀원 수<em>*</em></span>
-            <input type="number" id="teamSize" min="1" max="50" value="1">
-            <span class="hint">대표자 포함. 초기창업기업은 총 직원 수.</span></label>
-        </div>
-      </div>
+      <h2>대표자 · 실무 담당자</h2>
+      <p class="lead">연락이 닿는 정보를 정확히 적어주세요. 심사 결과가 이 연락처로 갑니다.</p>
 
       <div class="card">
         <h3>대표자<span class="req">*</span></h3>
-        <div class="row">
-          <label class="f"><span>대표자명<em>*</em></span>
+        <div class="row t3">
+          <label class="f"><span>성명<em>*</em></span>
             <input type="text" id="repName" maxlength="40" placeholder="홍길동"></label>
-          <label class="f"><span>성별</span>
-            <select id="repGender"><option value="">선택 안 함</option><option value="M">남</option><option value="F">여</option></select></label>
-        </div>
-        <div class="row">
           <label class="f"><span>생년월일</span><input type="date" id="repBirth"></label>
-          <label class="f"><span>소속</span>
-            <input type="text" id="repOrg" maxlength="80" placeholder="회사·학교 등"></label>
+          <label class="f"><span>성별</span>
+            <select id="repGender"><option value="">선택 안 함</option>
+              <option value="M">남</option><option value="F">여</option></select></label>
         </div>
+        <label class="f"><span>이메일<em>*</em></span>
+          <input type="email" id="repEmail" maxlength="120" placeholder="name@example.com"></label>
         <div class="row">
           <label class="f"><span>휴대전화<em>*</em></span>
             <input type="tel" id="repPhone" inputmode="numeric" maxlength="13" placeholder="010-1234-5678"></label>
-          <label class="f"><span>이메일<em>*</em></span>
-            <input type="email" id="repEmail" maxlength="120" placeholder="name@example.com"></label>
+          <label class="f"><span>직통전화</span>
+            <input type="tel" id="repTel" maxlength="15" placeholder="02-000-0000"></label>
         </div>
-        <label class="f"><span>주소</span>
-          <input type="text" id="repAddress" maxlength="200" placeholder="시·군·구까지만 적으셔도 됩니다"></label>
+        <div class="hint">생년월일과 성별은 숙소 배정에만 씁니다.</div>
       </div>
 
-      <div class="card" id="bizBox">
-        <h3>창업 구분</h3>
-        <div class="picks" id="bizKind">
-          <label class="pick round" data-v="none"><input type="radio" name="bk"><span class="tick">✓</span>
-            <span class="t">미창업 (예비창업자)</span></label>
-          <label class="pick round" data-v="personal"><input type="radio" name="bk"><span class="tick">✓</span>
-            <span class="t">개인 창업</span></label>
-          <label class="pick round" data-v="corp"><input type="radio" name="bk"><span class="tick">✓</span>
-            <span class="t">법인 창업</span></label>
+      <div class="card">
+        <h3>실무 담당자</h3>
+        <div class="picks" style="margin-bottom:13px">
+          <label class="pick" id="mgrSame"><input type="checkbox"><span class="tick">✓</span>
+            <span class="t">대표자와 같습니다</span></label>
         </div>
-        <div class="row" id="bizNoBox" style="display:none;margin-top:14px">
-          <label class="f"><span id="bizNoLabel">사업자등록번호</span>
-            <input type="text" id="bizNo" maxlength="14" placeholder="숫자만 입력"></label>
-          <label class="f"><span>등록일</span><input type="date" id="bizOpenedAt"></label>
+        <div id="mgrBox">
+          <div class="row t3">
+            <label class="f"><span>성명</span><input type="text" id="mgrName" maxlength="40"></label>
+            <label class="f"><span>부서</span><input type="text" id="mgrDept" maxlength="60"></label>
+            <label class="f"><span>직위</span><input type="text" id="mgrTitle" maxlength="60"></label>
+          </div>
+          <label class="f"><span>이메일</span><input type="email" id="mgrEmail" maxlength="120"></label>
+          <div class="row">
+            <label class="f"><span>휴대전화</span>
+              <input type="tel" id="mgrPhone" inputmode="numeric" maxlength="13"></label>
+            <label class="f"><span>직통전화</span><input type="tel" id="mgrTel" maxlength="15"></label>
+          </div>
         </div>
-        <div class="hint" style="margin-top:4px">사업자를 여러 개 보유하신 경우 대표 사업자 하나만 적고, 나머지는 마지막 단계 추가 자료로 올려주세요.</div>
       </div>
 
       <div class="msg err" id="e2"></div>
       <div class="nav">
         <button class="btn btn-back" data-go="1">이전</button>
+        <button type="button" class="btn btn-ghost btn-save" data-save="2">임시저장</button>
         <button class="btn btn-go" data-go="3">다음</button>
       </div>
     </section>
 
-    <!-- 3. 팀원 -->
+    <!-- 3. 기업 현황 -->
     <section id="s3">
-      <h2>팀원 정보</h2>
-      <p class="lead">대표자를 뺀 나머지 팀원을 적어주세요. 혼자 참가하시면 그냥 넘어가시면 됩니다.</p>
-      <div id="members"></div>
-      <button class="btn btn-ghost" id="addMember" style="width:100%;padding:12px">+ 팀원 추가</button>
+      <h2>기업 현황</h2>
+      <p class="lead">해당 사항이 없으면 0으로 두거나 비워두셔도 됩니다.</p>
+
+      <div class="card">
+        <h3>주요 성과 <span class="opt">2025년 기준</span></h3>
+        <div class="row t3">
+          <label class="f"><span>고용 (명)</span>
+            <input type="number" id="ovEmployees" min="0" max="99999" placeholder="0">
+            <span class="hint">신청일 기준, 대표자 제외</span></label>
+          <label class="f"><span>총 매출 (백만원)</span>
+            <input type="number" id="ovRevenue" min="0" placeholder="0">
+            <span class="hint">직전 연도 기준</span></label>
+          <label class="f"><span>최근 3개년 투자유치 총액 (백만원)</span>
+            <input type="number" id="ovInvest" min="0" placeholder="0"></label>
+        </div>
+        <div class="row t3">
+          <label class="f"><span>최근 3개년 R&amp;D 수행이력 (건)</span>
+            <input type="number" id="ovRnd" min="0" placeholder="0"></label>
+          <label class="f"><span>특허 출원 (건)</span>
+            <input type="number" id="ovPatentApplied" min="0" placeholder="0"></label>
+          <label class="f"><span>특허 등록 (건)</span>
+            <input type="number" id="ovPatentReg" min="0" placeholder="0"></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>상세 매출현황 <span class="opt">단위: 백만원</span></h3>
+        <div class="yrs" style="margin-bottom:8px">
+          <span></span><span class="yh">내수</span><span class="yh">수출액</span>
+        </div>
+        <div id="salesYears"></div>
+      </div>
+
+      <div class="card">
+        <h3>회사 연혁</h3>
+        <div class="rep" id="repHistory"></div>
+        <button type="button" class="btn btn-ghost addrow" data-add="repHistory">+ 연혁 추가</button>
+      </div>
+
+      <div class="card">
+        <h3>사업참여인력</h3>
+        <div class="hint" style="margin:-4px 0 12px">이번 대회에 함께 참여하는 인력을 적어주세요.</div>
+        <div class="rep" id="repStaff"></div>
+        <button type="button" class="btn btn-ghost addrow" data-add="repStaff">+ 인력 추가</button>
+      </div>
+
       <div class="msg err" id="e3"></div>
       <div class="nav">
         <button class="btn btn-back" data-go="2">이전</button>
+        <button type="button" class="btn btn-ghost btn-save" data-save="3">임시저장</button>
         <button class="btn btn-go" data-go="4">다음</button>
       </div>
     </section>
 
-    <!-- 4. 동의 -->
+    <!-- 4. 사업 내용 -->
     <section id="s4">
+      <h2>제품 · 사업 내용</h2>
+      <p class="lead">심사위원이 실제로 읽는 부분입니다. 아는 만큼만 적으셔도 됩니다.</p>
+
+      <div class="card">
+        <h3>주요 제품 · 서비스<span class="req">*</span></h3>
+        <div class="row">
+          <label class="f"><span>제품(서비스)명<em>*</em></span>
+            <input type="text" id="pdName" maxlength="120"></label>
+          <label class="f"><span>해외 진출 제품(서비스)명</span>
+            <input type="text" id="pdGlobalName" maxlength="120" placeholder="영문명 등"></label>
+        </div>
+        <label class="f"><span>한 줄 소개<em>*</em></span>
+          <input type="text" id="subject" maxlength="200" placeholder="예: 무인 락커 운영을 자동화하는 IoT 솔루션">
+          <span class="hint">심사위원이 가장 먼저 보는 문장입니다.</span></label>
+        <div class="f"><span>세일즈 타입</span>
+          <div class="picks" id="salesTypes" style="grid-template-columns:repeat(3,1fr);gap:8px">
+            <label class="pick round" data-v="B2B"><input type="checkbox"><span class="tick">✓</span><span class="t">B2B</span></label>
+            <label class="pick round" data-v="B2C"><input type="checkbox"><span class="tick">✓</span><span class="t">B2C</span></label>
+            <label class="pick round" data-v="B2G"><input type="checkbox"><span class="tick">✓</span><span class="t">B2G</span></label>
+            <label class="pick round" data-v="C2C"><input type="checkbox"><span class="tick">✓</span><span class="t">C2C</span></label>
+            <label class="pick round" data-v="B2B2C"><input type="checkbox"><span class="tick">✓</span><span class="t">B2B2C</span></label>
+            <label class="pick round" data-v="기타"><input type="checkbox"><span class="tick">✓</span><span class="t">기타</span></label>
+          </div>
+        </div>
+        <label class="f" style="margin-top:14px"><span>제품 소개<em>*</em></span>
+          <textarea id="pdIntro" maxlength="2000" placeholder="제품(서비스)에 대해 간략하게 소개해 주세요."></textarea></label>
+      </div>
+
+      <div class="card">
+        <h3>사업의 필요성<span class="req">*</span></h3>
+        <div class="hint" style="margin:-4px 0 12px">참가 목적, 지원의 필요성, 목표 타겟층, 참여 의지, 이 프로그램에 기대하는 점 등을 적어주세요.</div>
+        <textarea id="esNeed" maxlength="3000"></textarea>
+      </div>
+
+      <div class="card">
+        <h3>주요 생산제품 및 시장 현황</h3>
+        <label class="f"><span>주요 생산 품목</span>
+          <textarea id="esProduct" maxlength="3000" placeholder="주요 생산 제품 설명, 제품의 용도와 특성을 상세히 적어주세요."></textarea></label>
+        <label class="f"><span>국내외 시장상황 분석 및 진출 현황</span>
+          <textarea id="esMarket" maxlength="3000" placeholder="시장규모, 주요 수요처, 경쟁업체 현황과 점유율, 해외 진출 진행 상황"></textarea></label>
+        <label class="f"><span>국내외 기술품질 경쟁력 분석</span>
+          <textarea id="esEdge" maxlength="3000" placeholder="경쟁 제품과의 기술·기능상 차이, 핵심기술 보유 여부, 기술·품질·가격 비교"></textarea></label>
+      </div>
+
+      <div class="card">
+        <h3>국내외 추진실적 <span class="opt">최근 3년</span></h3>
+        <div class="hint" style="margin:-4px 0 12px">실적이 없으면 비워두세요. 해당 시 증빙 서류를 마지막 단계에서 함께 올려주셔야 합니다.</div>
+        <div class="rep" id="repChannels"></div>
+        <button type="button" class="btn btn-ghost addrow" data-add="repChannels">+ 실적 추가</button>
+      </div>
+
+      <div class="card">
+        <h3>투자유치 현황 <span class="opt">해당 시</span></h3>
+        <div class="hint" style="margin:-4px 0 12px">최근 3년 투자 실적. 대출과 보증은 뺀 금액을 적어주세요.</div>
+        <div class="rep" id="repInvest"></div>
+        <button type="button" class="btn btn-ghost addrow" data-add="repInvest">+ 투자 추가</button>
+      </div>
+
+      <div class="card">
+        <h3>지식재산권 보유 현황 <span class="opt">해당 시</span></h3>
+        <div class="rep" id="repIp"></div>
+        <button type="button" class="btn btn-ghost addrow" data-add="repIp">+ 권리 추가</button>
+      </div>
+
+      <div class="msg err" id="e4"></div>
+      <div class="nav">
+        <button class="btn btn-back" data-go="3">이전</button>
+        <button type="button" class="btn btn-ghost btn-save" data-save="4">임시저장</button>
+        <button class="btn btn-go" data-go="5">다음</button>
+      </div>
+    </section>
+
+    <!-- 5. 동의 -->
+    <section id="s5">
       <h2>동의</h2>
       <p class="lead">두 가지 모두 동의하셔야 접수됩니다. 서류로 내실 필요 없습니다.</p>
 
       <div class="card">
-        <h3>개인정보 수집·이용·처리 동의서<span class="req">*</span></h3>
+        <h3>개인정보 수집 및 이용 동의서<span class="req">*</span></h3>
         <div class="doc">
-          <p>㈜브로제이는 「BROJ FOUNDERS 2026」(이하 ‘IR 피칭대회’) 진행을 위하여 다음과 같은 개인정보를 수집 및 이용하고자 합니다.</p>
-          <h5>개인정보의 수집 및 이용</h5>
+          <p>「BROJ Founders 2026 IR 피칭대회」 신청기관의 모든 개인정보를 다음의 목적으로 보유하고 활용합니다.
+             개인정보 수집 및 동의를 거부하실 수 있으며, 다만 이 경우 참가신청이 제한될 수 있음에 유의하시기 바랍니다.</p>
           <table>
-            <tr><th>수집 및 이용자</th><td>㈜브로제이, Draper Korea, Move CON</td></tr>
-            <tr><th>수집·이용 목적</th><td>IR 피칭대회 접수에 따른 본인 확인, 공지사항 전달, 평가 진행, 통과작 지원, 만족도조사 및 사후관리, 향후 유사 사업 안내 등</td></tr>
-            <tr><th>수집하는 항목</th><td>성명, 생년월일, 성별, 소속, 이메일, 주소, 핸드폰 번호 등</td></tr>
-            <tr><th>보유 및 이용기간</th><td>지원(기업)자 — 모집 종료일로부터 1년간 보유 후 지체 없이 파기<br>최종 선정(기업)자 — 모집 종료일로부터 3년간 보유 후 지체 없이 파기</td></tr>
-            <tr><th>거부 권리</th><td>귀하는 개인정보 수집·이용 동의를 거부할 권리가 있습니다. 다만 동의를 거부하시면 대회 참가 신청이 제한됩니다.</td></tr>
+            <tr><th>개인정보 수집항목</th>
+              <td>성명 / 생년월일<br>소속 / 직위<br>연락처 / 이메일</td></tr>
+            <tr><th>수집 및 이용 목적</th>
+              <td>본인확인, 공지사항의 전달, 실적 확인 등</td></tr>
+            <tr><th>보유 및 이용 기간</th>
+              <td>BROJ Founders 2026 IR 피칭대회 사업 종료일로부터 3년 이후까지</td></tr>
           </table>
-          <h5>업무위탁에 따른 개인정보 처리</h5>
-          <table>
-            <tr><th>수탁업체</th><td>㈜브로제이, Draper Korea</td></tr>
-            <tr><th>업무위탁 내용</th><td>대회 참여기업 선정평가, 통과작 지원 등</td></tr>
-          </table>
+          <p style="color:var(--muted)">※ 개인정보보호법에 의거, 개인정보 수집 및 이용 동의서는 필수 제출해야 합니다.</p>
+          <p style="margin-bottom:0">BROJ, 드레이퍼스타트업하우스 코리아 대표 귀하</p>
         </div>
         <div class="picks" style="margin-top:12px">
           <label class="pick" id="agree1"><input type="checkbox"><span class="tick">✓</span>
-            <span class="t">위 내용을 충분히 읽고 숙지하였으며, 개인정보 수집·이용에 동의합니다.</span></label>
+            <span class="t">위 내용을 충분히 읽고 숙지하였으며, 개인정보 수집 및 이용에 동의합니다.</span></label>
         </div>
       </div>
 
       <div class="card">
         <h3>서약서<span class="req">*</span></h3>
         <div class="doc">
-          <p>㈜브로제이, Draper Korea 주최, Move CON 주관으로 진행되는 「BROJ FOUNDERS 2026」 참가와 관련하여 아래 내용을 숙지했음을 서약합니다.</p>
+          <p>BROJ, 드레이퍼스타트업하우스 코리아가 주최하는 「BROJ Founders 2026 IR 피칭대회」 참가와 관련하여
+             아래 내용을 숙지했음을 서약합니다.</p>
           <ul>
             <li>참가자는 제출한 아이디어·사업계획 및 관련 자료가 본인의 독창적인 창작물이며, 타인의 지식재산권 및 기타 권리를 침해하거나 침해할 우려가 있는 경우에는 선정 또는 수상이 취소될 수 있으며, 지급된 상장 및 상금 등을 반환하여야 합니다.</li>
             <li>주최 측에 제출된 모든 작품은 반환되지 않으며, 응모된 아이디어에 대한 권리는 원칙적으로 응모자에게 귀속됩니다. 단, 응모자는 주최 측이 응모작을 대회의 취지와 목적을 달성하는 데 필요한 한도 내에서 이용하는 것을 허락합니다.</li>
-            <li>참가자는 본 서약서 및 대회 공고문, 운영기준 등 대회와 관련하여 주최 측이 안내하는 사항을 충분히 숙지하고 이에 동의하며, 위 사항을 위반하여 발생하는 불이익에 대하여 이의를 제기하지 않을 것을 서약합니다.</li>
+            <li>참가자는 기재사항과 제출 서류에 허위사실이 없음을 확인하며, 본 서약서 및 대회 공고문, 운영기준 등 주최 측이 안내하는 사항을 충분히 숙지하고 이에 동의합니다. 위 사항을 위반하여 발생하는 불이익에 대하여 이의를 제기하지 않을 것을 서약합니다.</li>
           </ul>
         </div>
         <div class="picks" style="margin-top:12px">
@@ -522,10 +766,10 @@
       </div>
 
       <div class="card">
-        <h3>동의자 확인<span class="req">*</span></h3>
+        <h3>신청자 확인<span class="req">*</span></h3>
         <div class="row">
-          <label class="f"><span>팀명</span><input type="text" id="signTeam" maxlength="80"></label>
-          <label class="f"><span>성명<em>*</em></span>
+          <label class="f"><span>회사명<em>*</em></span><input type="text" id="signTeam" maxlength="80"></label>
+          <label class="f"><span>대표자명<em>*</em></span>
             <input type="text" id="signName" maxlength="40" placeholder="본인 성명"></label>
         </div>
         <div style="margin-top:14px">
@@ -542,35 +786,83 @@
         </div>
       </div>
 
-      <div class="msg err" id="e4"></div>
+      <div class="msg err" id="e5"></div>
       <div class="nav">
-        <button class="btn btn-back" data-go="3">이전</button>
+        <button class="btn btn-back" data-go="4">이전</button>
+        <button type="button" class="btn btn-ghost btn-save" data-save="5">임시저장</button>
         <button class="btn btn-go" id="submitBtn">접수하고 자료 첨부로</button>
       </div>
     </section>
 
-    <!-- 5. 첨부 -->
-    <section id="s5">
+    <!-- 6. 첨부 -->
+    <section id="s6">
       <h2>자료 첨부</h2>
-      <p class="lead" id="s5lead">접수는 완료되었습니다. 이제 자료를 올려주세요.</p>
+      <p class="lead" id="s6lead">접수는 완료되었습니다. 이제 자료를 올려주세요.</p>
 
       <div class="card">
         <h3>필수 증빙 서류<span class="req">*</span></h3>
-        <div class="hint" id="proofHint" style="margin:-4px 0 12px"></div>
+        <div class="hint" id="proofHint" style="margin:-4px 0 12px">사업자등록증 사본을 올려주세요.</div>
         <label class="drop" id="proofDrop">
           <input type="file" id="proofFile" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.hwp,.zip">
           <div><div class="t">파일 선택 또는 끌어다 놓기</div>
-          <div class="d">PDF · 이미지 · HWP · ZIP · 30MB 이하</div></div>
+          <div class="d">PDF · 이미지 · HWP · ZIP · 100MB 이하</div></div>
         </label>
+      </div>
+
+      <div class="card guide-card">
+        <h3>먼저 읽어보세요 — 발표자료 작성 가이드라인</h3>
+        <div class="hint" style="margin:-4px 0 14px">
+          1차 서면 심사는 이 발표자료(PDF)로만 봅니다.
+          무엇을, 왜, 어떤 순서로 담아야 하는지 13장 기준으로 정리해 두었습니다.
+        </div>
+        <a class="guide-dl" href="ir-guide.pdf" target="_blank" rel="noopener">
+          <span class="ic">▤</span>
+          <span><b>발표자료(IR 피칭) 작성 가이드라인</b>
+          <i>PDF · 13장 · BROJ × Draper Startup House Korea</i></span>
+          <span class="go">열기 ↗</span>
+        </a>
+
+        <div class="guide-sum" id="guideSum">
+          <div class="gs-h">심사 배점 <span>총 100점 · 5개 항목</span></div>
+          <table class="gs-t">
+            <tr><td class="n">40</td><td>사업 추진력 및 시장 경쟁력</td></tr>
+            <tr><td class="n">25</td><td>시장 이해도</td></tr>
+            <tr><td class="n">20</td><td>지속가능성과 사회적 기여</td></tr>
+            <tr><td class="n">15</td><td>기업가 정신 및 인적 역량</td></tr>
+            <tr><td class="n">5</td><td>가산점 — 브로제이와의 협력 가능성</td></tr>
+          </table>
+          <div class="gs-note">세 항목에 <b>글로벌 시장 확장 가능성</b>이 5점씩, 총 15점 반영됩니다.
+            국내만 보는 사업보다 해외 확장을 염두에 둔 사업이 높게 평가됩니다.</div>
+
+          <div class="gs-h" style="margin-top:18px">표준 구성 <span>7분 피칭 기준 · 12장 내외</span></div>
+          <ol class="gs-o">
+            <li>표지</li><li>문제 정의</li><li>솔루션</li><li>시장 분석</li>
+            <li>글로벌 시장 확장 전략</li><li>경쟁 구도 및 차별점</li><li>비즈니스 모델</li>
+            <li>트랙션 / 검증 계획</li><li>기술·데이터 활용</li><li>성장 전략 &amp; 로드맵</li>
+            <li>팀 소개</li><li>투자 유치 계획(Ask)</li>
+            <li class="opt">브로제이 협업 포인트 <i>선택</i></li>
+          </ol>
+
+          <div class="gs-h" style="margin-top:18px">자주 하는 실수</div>
+          <ul class="gs-u">
+            <li>문제보다 제품 자랑이 먼저 나온다</li>
+            <li>출처 없는 시장 규모를 쓴다</li>
+            <li>경쟁사 비교를 우리에게 유리한 기준으로만 짠다</li>
+            <li>팀 이력은 화려한데 이 사업과의 연결이 없다</li>
+            <li>얼마가 필요한지만 말하고 어디에 쓸지가 없다</li>
+            <li>한 장에 여러 메시지를 넣는다</li>
+          </ul>
+        </div>
+        <button type="button" class="guide-more" id="guideMore">자세히 보기</button>
       </div>
 
       <div class="card">
         <h3>IR 자료<span class="req">*</span></h3>
-        <div class="hint" style="margin:-4px 0 12px">사업 기획서와 발표자료를 PDF로 올려주세요. 두 개면 ZIP으로 묶어주셔도 됩니다.</div>
+        <div class="hint" style="margin:-4px 0 12px">가이드라인에 맞춰 만든 발표자료를 PDF로 올려주세요. 사업 기획서를 함께 내실 경우 ZIP으로 묶어주셔도 됩니다.</div>
         <label class="drop" id="irDrop">
           <input type="file" id="irFile" accept=".pdf,.ppt,.pptx,.zip,.hwp,.docx">
           <div><div class="t">파일 선택 또는 끌어다 놓기</div>
-          <div class="d">PDF · PPT · ZIP · 30MB 이하</div></div>
+          <div class="d">PDF · PPT · ZIP · 100MB 이하</div></div>
         </label>
       </div>
 
@@ -579,11 +871,11 @@
         <div class="hint" style="margin:-4px 0 12px">시제품 사진, 추가 사업자등록증 등 보태고 싶은 자료가 있으면 올려주세요.</div>
         <label class="drop" id="extraDrop">
           <input type="file" id="extraFile">
-          <div><div class="t">파일 선택</div><div class="d">30MB 이하</div></div>
+          <div><div class="t">파일 선택</div><div class="d">100MB 이하</div></div>
         </label>
       </div>
 
-      <div class="msg err" id="e5"></div>
+      <div class="msg err" id="e6"></div>
       <div class="nav"><button class="btn btn-go" id="finishBtn">제출 완료</button></div>
     </section>
 
@@ -665,7 +957,7 @@
     </section>
 
     <!-- 6. 완료 -->
-    <section id="s6">
+    <section id="s7">
       <div class="done">
         <div style="width:52px;height:52px;margin:0 auto;border-radius:50%;background:linear-gradient(180deg,var(--brand-2),var(--brand));color:#fff;display:grid;place-items:center;font-size:26px;font-weight:900;box-shadow:0 2px 8px rgba(250,100,0,.32)">✓</div>
         <h2 id="doneTitle">접수가 완료되었습니다</h2>
@@ -689,7 +981,7 @@
 (function () {
   "use strict";
   var API = "https://api.storyahub.com";
-  var STEPS = ["참가 구분", "대표자", "팀원", "동의", "자료 첨부", "완료"];
+  var STEPS = ["기업 정보", "대표자", "기업 현황", "사업 내용", "동의", "자료 첨부", "완료"];
   var step = 1, round = null, applyNo = "", phoneForUpload = "";
 
   var $ = function (id) { return document.getElementById(id); };
@@ -711,19 +1003,14 @@
     $("bar").style.width = ((step - 1) / (STEPS.length - 1) * 100) + "%";
   }
   function go(n) {
-    // 팀원 단계는 팀일 때만 — 혼자면 건너뛴다
-    if (n === 3 && !isTeam()) n = step < 3 ? 4 : 2;
     step = n;
-    for (var i = 1; i <= 6; i++) {
+    for (var i = 1; i <= 7; i++) {
       var el = $("s" + i);
       if (el) el.classList.toggle("on", i === n);
     }
     drawSteps();
-    if (n === 4 && !signReady) { signReady = true; signPad.ready(); }
+    if (n === 5 && !signReady) { signReady = true; signPad.ready(); }
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-  function isTeam() {
-    return pick("entryType") === "early" || pick("soloTeam") === "team" || +($("teamSize").value || 1) > 1;
   }
 
   /* ── 선택 UI ── */
@@ -752,65 +1039,133 @@
       box.dispatchEvent(new CustomEvent("picked", { detail: el.getAttribute("data-v") }));
     });
   }
-  ["entryType", "soloTeam", "bizKind"].forEach(function (id) { bindPicks(id, true); });
-  ["tracks"].forEach(function (id) { bindPicks(id, false); });
-  ["agree1", "agree2"].forEach(function (id) {
+  ["bizKind"].forEach(function (id) { bindPicks(id, true); });
+  ["tracks", "salesTypes"].forEach(function (id) { bindPicks(id, false); });
+  ["agree1", "agree2", "mgrSame"].forEach(function (id) {
     var el = $(id);
     el.addEventListener("click", function (e) { e.preventDefault(); el.classList.toggle("on"); });
   });
 
-  $("entryType").addEventListener("picked", function (e) {
-    var pre = e.detail === "pre";
-    $("soloBox").style.display = pre ? "" : "none";
-    // 예비창업자는 미창업이 기본, 창업기업은 개인 창업이 기본
-    var want = pre ? "none" : "personal";
-    Array.prototype.forEach.call($("bizKind").querySelectorAll(".pick"), function (p) {
-      p.classList.toggle("on", p.getAttribute("data-v") === want);
-    });
-    syncBizNo();
-    $("proofHint").textContent = pre
-      ? "예비창업자는 사실증명(사업자등록 사실여부)을 올려주세요. 홈택스에서 발급받으실 수 있습니다."
-      : "창업기업은 사업자등록증 사본을 올려주세요.";
+  // 실무 담당자가 대표자와 같으면 입력칸을 접는다
+  $("mgrSame").addEventListener("click", function () {
+    $("mgrBox").style.display = $("mgrSame").classList.contains("on") ? "none" : "";
   });
-  $("bizKind").addEventListener("picked", syncBizNo);
-  function syncBizNo() {
-    var k = pick("bizKind");
-    $("bizNoBox").style.display = k && k !== "none" ? "" : "none";
-    $("bizNoLabel").textContent = k === "corp" ? "법인등록번호" : "사업자등록번호";
-  }
 
   /* ── 전화번호 자동 하이픈 ── */
-  $("repPhone").addEventListener("input", function (e) {
-    var d = e.target.value.replace(/[^\d]/g, "").slice(0, 11);
-    e.target.value = d.length > 7 ? d.slice(0, 3) + "-" + d.slice(3, 7) + "-" + d.slice(7)
+  function hyphenPhone(el) {
+    el.addEventListener("input", function (e) {
+      var d = e.target.value.replace(/[^\d]/g, "").slice(0, 11);
+      e.target.value = d.length > 7 ? d.slice(0, 3) + "-" + d.slice(3, 7) + "-" + d.slice(7)
+        : d.length > 3 ? d.slice(0, 3) + "-" + d.slice(3) : d;
+    });
+  }
+  hyphenPhone($("repPhone"));
+  hyphenPhone($("mgrPhone"));
+
+  // 사업자등록번호 000-00-00000
+  $("bizNo").addEventListener("input", function (e) {
+    var d = e.target.value.replace(/[^\d]/g, "").slice(0, 10);
+    e.target.value = d.length > 5 ? d.slice(0, 3) + "-" + d.slice(3, 5) + "-" + d.slice(5)
       : d.length > 3 ? d.slice(0, 3) + "-" + d.slice(3) : d;
   });
 
-  /* ── 팀원 ── */
-  function memberRow(i) {
-    var d = document.createElement("div");
-    d.className = "member";
-    d.innerHTML =
-      '<button class="del" type="button" title="삭제">✕</button>' +
-      '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:700">팀원 ' + i + '</div>' +
-      '<div class="row"><label class="f"><span>성명</span><input type="text" class="m-name" maxlength="40"></label>' +
-      '<label class="f"><span>생년월일</span><input type="date" class="m-birth"></label></div>' +
-      '<div class="row"><label class="f"><span>휴대전화</span><input type="tel" class="m-phone" maxlength="13"></label>' +
-      '<label class="f"><span>이메일</span><input type="email" class="m-email" maxlength="120"></label></div>' +
-      '<label class="f" style="margin-bottom:0"><span>소속</span><input type="text" class="m-org" maxlength="80"></label>';
-    d.querySelector(".del").addEventListener("click", function () { d.remove(); renumber(); });
-    return d;
+  /* ── 여러 줄 입력하는 표 ── */
+  var REPS = {
+    repHistory: { label: "연혁", cols: [
+      { k: "date", t: "연월일", w: "150px", type: "text", ph: "2024.03." },
+      { k: "content", t: "주요 내용", w: "1fr", type: "text" }
+    ] },
+    repStaff: { label: "인력", cols: [
+      { k: "rank", t: "직급", w: "110px", type: "text", ph: "대표" },
+      { k: "name", t: "성명", w: "110px", type: "text" },
+      { k: "role", t: "담당업무", w: "1fr", type: "text", ph: "S/W 개발 총괄" },
+      { k: "career", t: "주요 경력", w: "1fr", type: "text" }
+    ] },
+    repChannels: { label: "실적", cols: [
+      { k: "channel", t: "유통채널명", w: "1fr", type: "text", ph: "원스토어" },
+      { k: "period", t: "진출시기", w: "140px", type: "text", ph: "2024.02.~" },
+      { k: "item", t: "진출 아이템", w: "1fr", type: "text" },
+      { k: "amount", t: "판매금액 (백만원)", w: "130px", type: "number" }
+    ] },
+    repInvest: { label: "투자", cols: [
+      { k: "investor", t: "투자회사명", w: "1fr", type: "text" },
+      { k: "form", t: "투자형태", w: "130px", type: "text", ph: "신주·CB 등" },
+      { k: "date", t: "투자일", w: "150px", type: "date" },
+      { k: "amount", t: "투자금액 (원)", w: "150px", type: "number" }
+    ] },
+    repIp: { label: "권리", cols: [
+      { k: "kind", t: "구분", w: "130px", type: "select",
+        opts: ["특허", "실용신안", "상표", "디자인", "기타"] },
+      { k: "name", t: "명 칭", w: "1fr", type: "text" },
+      { k: "date", t: "취득(출원)일", w: "150px", type: "date" },
+      { k: "note", t: "주요내용", w: "1fr", type: "text" }
+    ] }
+  };
+  function repCell(c) {
+    if (c.type === "select") {
+      return '<select class="c-' + c.k + '">' +
+        c.opts.map(function (o) { return '<option>' + o + '</option>'; }).join("") + "</select>";
+    }
+    return '<input type="' + c.type + '" class="c-' + c.k + '" maxlength="200"' +
+      (c.ph ? ' placeholder="' + c.ph + '"' : "") + ">";
   }
-  function renumber() {
-    Array.prototype.forEach.call($("members").children, function (el, i) {
-      el.querySelector("div").textContent = "팀원 " + (i + 1);
+  function repAdd(hostId) {
+    var def = REPS[hostId], host = $(hostId);
+    var grid = def.cols.map(function (c) { return c.w; }).join(" ");
+    if (!host.querySelector(".hd")) {
+      var hd = document.createElement("div");
+      hd.className = "hd";
+      hd.style.gridTemplateColumns = grid;
+      hd.innerHTML = def.cols.map(function (c) { return "<span>" + c.t + "</span>"; }).join("");
+      host.appendChild(hd);
+    }
+    var rw = document.createElement("div");
+    rw.className = "rw";
+    rw.style.gridTemplateColumns = grid;
+    rw.innerHTML = def.cols.map(function (c) {
+      return '<div><span class="lb">' + c.t + "</span>" + repCell(c) + "</div>";
+    }).join("") + '<button class="del" type="button" title="삭제">✕</button>';
+    rw.querySelector(".del").addEventListener("click", function () {
+      rw.remove();
+      if (!host.querySelector(".rw")) host.innerHTML = "";
+    });
+    host.appendChild(rw);
+    return rw;
+  }
+  function repRead(hostId) {
+    var def = REPS[hostId];
+    return Array.prototype.map.call($(hostId).querySelectorAll(".rw"), function (rw) {
+      var o = {};
+      def.cols.forEach(function (c) { o[c.k] = rw.querySelector(".c-" + c.k).value.trim(); });
+      return o;
+    }).filter(function (o) {
+      return def.cols.some(function (c) { return o[c.k] && c.type !== "select"; });
     });
   }
-  $("addMember").addEventListener("click", function () {
-    $("members").appendChild(memberRow($("members").children.length + 1));
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-add]");
+    if (b) repAdd(b.getAttribute("data-add"));
   });
+  Object.keys(REPS).forEach(function (id) { repAdd(id); });
+
+  /* ── 매출현황 ── */
+  var SALES_YEARS = [2023, 2024, 2025];
+  $("salesYears").innerHTML = SALES_YEARS.map(function (y) {
+    return '<div class="yrs" style="margin-bottom:8px">' +
+      '<span class="yl">' + y + '년</span>' +
+      '<input type="number" min="0" id="sd' + y + '" placeholder="0">' +
+      '<input type="number" min="0" id="se' + y + '" placeholder="0"></div>';
+  }).join("");
+  function salesRead() {
+    var o = {};
+    SALES_YEARS.forEach(function (y) {
+      o[y] = { domestic: $("sd" + y).value, export: $("se" + y).value };
+    });
+    return o;
+  }
 
   /* ── 파일 ── */
+  var MAX_UPLOAD = 100 * 1024 * 1024;
   var files = { proof: null, ir: null, extra: null };
   function bindDrop(kind, dropId, inputId) {
     var drop = $(dropId), input = $(inputId);
@@ -828,9 +1183,9 @@
     });
   }
   function setFile(kind, f, drop) {
-    if (f.size > 30 * 1024 * 1024) { msg("e5", f.name + " — 30MB를 넘습니다"); return; }
+    if (f.size > MAX_UPLOAD) { msg("e6", f.name + " — " + (MAX_UPLOAD / 1048576) + "MB를 넘습니다"); return; }
     files[kind] = f;
-    msg("e5", "");
+    msg("e6", "");
     drop.classList.add("has");
     drop.innerHTML = '<span class="ic">▣</span><div><div class="t">' + esc(f.name) + '</div>' +
       '<div class="d">' + (f.size / 1048576).toFixed(1) + 'MB · 준비됨</div></div>' +
@@ -848,27 +1203,36 @@
   bindDrop("extra", "extraDrop", "extraFile");
 
   /* ── 검증 ── */
+  var EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
   function check(n) {
     if (n === 1) {
-      if (!pick("entryType")) return "참가 구분을 선택해 주세요";
-      if (pick("entryType") === "pre" && !pick("soloTeam")) return "개인인지 팀인지 선택해 주세요";
+      if (!$("coName").value.trim()) return "기업명을 입력해 주세요";
+      if (!$("coFounded").value) return "설립연월을 입력해 주세요";
+      if ($("bizNo").value.replace(/[^\d]/g, "").length !== 10) return "사업자등록번호 10자리를 확인해 주세요";
+      if (!pick("bizKind")) return "사업자 구분(개인·법인)을 선택해 주세요";
+      if (!$("addrMain").value.trim()) return "본사 주소를 입력해 주세요";
       if (!picks("tracks").length) return "세부 분야를 하나 이상 선택해 주세요";
-      if (!$("subject").value.trim()) return "참가작 주제를 한 줄로 적어주세요";
     }
     if (n === 2) {
-      if (!$("teamName").value.trim()) return "참가자명 또는 팀명을 입력해 주세요";
-      if (!$("repName").value.trim()) return "대표자명을 입력해 주세요";
-      if ($("repPhone").value.replace(/[^\d]/g, "").length < 10) return "휴대전화 번호를 확인해 주세요";
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test($("repEmail").value.trim())) return "이메일 형식을 확인해 주세요";
-      var k = pick("bizKind");
-      if (k && k !== "none" && $("bizNo").value.replace(/[^\d]/g, "").length < 10) {
-        return (k === "corp" ? "법인등록번호" : "사업자등록번호") + "를 입력해 주세요";
+      if (!$("repName").value.trim()) return "대표자 성명을 입력해 주세요";
+      if (!EMAIL.test($("repEmail").value.trim())) return "대표자 이메일 형식을 확인해 주세요";
+      if ($("repPhone").value.replace(/[^\d]/g, "").length < 10) return "대표자 휴대전화 번호를 확인해 주세요";
+      if (!$("mgrSame").classList.contains("on")) {
+        var me = $("mgrEmail").value.trim();
+        if (me && !EMAIL.test(me)) return "실무 담당자 이메일 형식을 확인해 주세요";
       }
     }
     if (n === 4) {
-      if (!$("agree1").classList.contains("on")) return "개인정보 수집·이용에 동의해 주세요";
+      if (!$("pdName").value.trim()) return "제품(서비스)명을 입력해 주세요";
+      if (!$("subject").value.trim()) return "제품 한 줄 소개를 적어주세요";
+      if (!$("pdIntro").value.trim()) return "제품 소개를 적어주세요";
+      if (!$("esNeed").value.trim()) return "사업의 필요성을 적어주세요";
+    }
+    if (n === 5) {
+      if (!$("agree1").classList.contains("on")) return "개인정보 수집 및 이용에 동의해 주세요";
       if (!$("agree2").classList.contains("on")) return "서약서에 동의해 주세요";
-      if (!$("signName").value.trim()) return "동의자 성명을 입력해 주세요";
+      if (!$("signTeam").value.trim()) return "회사명을 입력해 주세요";
+      if (!$("signName").value.trim()) return "대표자명을 입력해 주세요";
       if (signPad.isEmpty()) return "서명란에 서명해 주세요";
     }
     return "";
@@ -887,47 +1251,281 @@
   });
 
   /* ── 접수 ── */
-  $("submitBtn").addEventListener("click", function () {
-    var err = check(4);
-    if (err) { msg("e4", err); return; }
-    var btn = $("submitBtn");
-    btn.disabled = true;
-    btn.textContent = "접수 중…";
+  function formPayload() {
+    var same = $("mgrSame").classList.contains("on");
+    return {
+      company: {
+        name: $("coName").value.trim(),
+        foundedAt: $("coFounded").value,
+        bizNo: $("bizNo").value,
+        bizKind: pick("bizKind"),
+        industry: $("coIndustry").value.trim(),
+        mainItem: $("coMainItem").value.trim(),
+        addrMain: $("addrMain").value.trim(),
+        addrBranch: $("addrBranch").value.trim(),
+        homepage: $("coHomepage").value.trim(),
+        sns: $("coSns").value.trim()
+      },
+      manager: same ? { sameAsRep: true } : {
+        sameAsRep: false,
+        name: $("mgrName").value.trim(),
+        dept: $("mgrDept").value.trim(),
+        title: $("mgrTitle").value.trim(),
+        email: $("mgrEmail").value.trim(),
+        phone: $("mgrPhone").value,
+        tel: $("mgrTel").value.trim()
+      },
+      overview: {
+        employees: $("ovEmployees").value,
+        revenue: $("ovRevenue").value,
+        investTotal: $("ovInvest").value,
+        rnd: $("ovRnd").value,
+        patentApplied: $("ovPatentApplied").value,
+        patentRegistered: $("ovPatentReg").value
+      },
+      sales: salesRead(),
+      history: repRead("repHistory"),
+      staff: repRead("repStaff"),
+      product: {
+        name: $("pdName").value.trim(),
+        globalName: $("pdGlobalName").value.trim(),
+        oneLine: $("subject").value.trim(),
+        salesTypes: picks("salesTypes"),
+        intro: $("pdIntro").value.trim()
+      },
+      essay: {
+        need: $("esNeed").value.trim(),
+        product: $("esProduct").value.trim(),
+        market: $("esMarket").value.trim(),
+        edge: $("esEdge").value.trim()
+      },
+      channels: repRead("repChannels"),
+      investments: repRead("repInvest"),
+      ipRights: repRead("repIp")
+    };
+  }
 
-    var members = Array.prototype.map.call($("members").children, function (el) {
-      return {
-        name: el.querySelector(".m-name").value.trim(),
-        birth: el.querySelector(".m-birth").value,
-        phone: el.querySelector(".m-phone").value,
-        email: el.querySelector(".m-email").value.trim(),
-        org: el.querySelector(".m-org").value.trim()
-      };
-    }).filter(function (m) { return m.name; });
-
-    var bk = pick("bizKind");
-    var body = {
+  function applyBody() {
+    var f = formPayload();
+    return {
       tracks: picks("tracks"),
-      subject: $("subject").value.trim(),
-      entryType: pick("entryType"),
-      soloTeam: pick("soloTeam"),
-      teamName: $("teamName").value.trim(),
-      teamSize: +($("teamSize").value || 1),
-      bizForms: bk && bk !== "none"
-        ? [{ kind: bk, no: $("bizNo").value, openedAt: $("bizOpenedAt").value }] : [],
+      subject: f.product.oneLine,
+      entryType: "early",
+      teamName: f.company.name,
+      teamSize: +(f.overview.employees || 0) + 1,
+      bizForms: [{ kind: f.company.bizKind, no: f.company.bizNo, openedAt: "" }],
       repName: $("repName").value.trim(),
       repGender: $("repGender").value,
       repBirth: $("repBirth").value,
-      repOrg: $("repOrg").value.trim(),
+      repOrg: f.company.name,
       repEmail: $("repEmail").value.trim(),
       repPhone: $("repPhone").value,
-      repAddress: $("repAddress").value.trim(),
-      members: members,
+      repTitle: "대표",
+      repAddress: f.company.addrMain,
+      members: f.staff.map(function (m) {
+        return { name: m.name, org: m.rank, note: m.role + (m.career ? " · " + m.career : "") };
+      }),
+      formData: f,
       privacyAgreed: true,
       pledgeAgreed: true,
       signerName: $("signName").value.trim(),
       signerTeamName: $("signTeam").value.trim(),
+      password: savedPw,
       signature: signPad.data()
     };
+  }
+
+  /* ── 저장한 내용 되돌리기 ── */
+  function setVal(id, v) { var el = $(id); if (el) el.value = v == null ? "" : v; }
+  function setPicks(boxId, vals) {
+    var want = vals || [];
+    Array.prototype.forEach.call($(boxId).querySelectorAll(".pick"), function (el) {
+      el.classList.toggle("on", want.indexOf(el.getAttribute("data-v")) >= 0);
+    });
+  }
+  function fillRep(hostId, rows) {
+    var host = $(hostId), def = REPS[hostId];
+    host.innerHTML = "";
+    (rows && rows.length ? rows : [{}]).forEach(function (r) {
+      var rw = repAdd(hostId);
+      def.cols.forEach(function (c) {
+        if (r[c.k] != null) rw.querySelector(".c-" + c.k).value = r[c.k];
+      });
+    });
+  }
+  function formRestore(f) {
+    if (!f || typeof f !== "object") return;
+    var c = f.company || {}, m = f.manager || {}, o = f.overview || {},
+        pd = f.product || {}, es = f.essay || {};
+    setVal("coName", c.name); setVal("coFounded", c.foundedAt); setVal("bizNo", c.bizNo);
+    setVal("coIndustry", c.industry); setVal("coMainItem", c.mainItem);
+    setVal("addrMain", c.addrMain); setVal("addrBranch", c.addrBranch);
+    setVal("coHomepage", c.homepage); setVal("coSns", c.sns);
+    setPicks("bizKind", c.bizKind ? [c.bizKind] : []);
+    setPicks("tracks", f.tracks);
+
+    setVal("repName", f.repName); setVal("repBirth", f.repBirth);
+    setVal("repGender", f.repGender); setVal("repEmail", f.repEmail);
+    setVal("repPhone", f.repPhone); setVal("repTel", f.repTel);
+
+    $("mgrSame").classList.toggle("on", !!m.sameAsRep);
+    $("mgrBox").style.display = m.sameAsRep ? "none" : "";
+    setVal("mgrName", m.name); setVal("mgrDept", m.dept); setVal("mgrTitle", m.title);
+    setVal("mgrEmail", m.email); setVal("mgrPhone", m.phone); setVal("mgrTel", m.tel);
+
+    setVal("ovEmployees", o.employees); setVal("ovRevenue", o.revenue);
+    setVal("ovInvest", o.investTotal); setVal("ovRnd", o.rnd);
+    setVal("ovPatentApplied", o.patentApplied); setVal("ovPatentReg", o.patentRegistered);
+    SALES_YEARS.forEach(function (y) {
+      var r = (f.sales || {})[y] || (f.sales || {})[String(y)] || {};
+      setVal("sd" + y, r.domestic); setVal("se" + y, r["export"]);
+    });
+    fillRep("repHistory", f.history);
+    fillRep("repStaff", f.staff);
+    fillRep("repChannels", f.channels);
+    fillRep("repInvest", f.investments);
+    fillRep("repIp", f.ipRights);
+
+    setVal("pdName", pd.name); setVal("pdGlobalName", pd.globalName);
+    setVal("subject", pd.oneLine); setVal("pdIntro", pd.intro);
+    setPicks("salesTypes", pd.salesTypes);
+    setVal("esNeed", es.need); setVal("esProduct", es.product);
+    setVal("esMarket", es.market); setVal("esEdge", es.edge);
+
+    setVal("signTeam", f.signerTeamName || c.name);
+    setVal("signName", f.signerName || f.repName);
+  }
+
+  /* ── 임시저장 ── */
+  var savedPw = "", saveStep = 1;
+  function draftPayload(atStep) {
+    var f = formPayload();
+    f.tracks = picks("tracks");
+    f.repName = $("repName").value.trim();
+    f.repBirth = $("repBirth").value;
+    f.repGender = $("repGender").value;
+    f.repEmail = $("repEmail").value.trim();
+    f.repPhone = $("repPhone").value;
+    f.repTel = $("repTel").value.trim();
+    f.signerTeamName = $("signTeam").value.trim();
+    f.signerName = $("signName").value.trim();
+    f.step = atStep;
+    return f;
+  }
+  function toast(text) {
+    var el = document.createElement("div");
+    el.className = "savenote";
+    el.textContent = text;
+    document.body.appendChild(el);
+    requestAnimationFrame(function () { el.classList.add("on"); });
+    setTimeout(function () {
+      el.classList.remove("on");
+      setTimeout(function () { el.remove(); }, 300);
+    }, 2600);
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-save]");
+    if (!b) return;
+    saveStep = +b.getAttribute("data-save");
+    msg("esv", "");
+    if (!$("svPhone").value) $("svPhone").value = $("repPhone").value;
+    if (savedPw) $("svPw").value = savedPw;
+    $("saveBox").style.display = "flex";
+    $("svPhone").focus();
+  });
+  $("svCancel").addEventListener("click", function () { $("saveBox").style.display = "none"; });
+  $("saveBox").addEventListener("click", function (e) {
+    if (e.target === $("saveBox")) $("saveBox").style.display = "none";
+  });
+  hyphenPhone($("svPhone"));
+  hyphenPhone($("rsPhone"));
+
+  $("svGo").addEventListener("click", function () {
+    var phone = $("svPhone").value, pw = $("svPw").value;
+    if (phone.replace(/[^\d]/g, "").length < 10) { msg("esv", "연락처를 확인해 주세요"); return; }
+    if (pw.length < 4) { msg("esv", "임시 비밀번호는 4자 이상으로 정해주세요"); return; }
+    var btn = $("svGo");
+    btn.disabled = true; btn.textContent = "저장 중…";
+    fetch(API + "/public/founders/draft", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: phone, password: pw, step: saveStep, payload: draftPayload(saveStep) })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        btn.disabled = false; btn.textContent = "저장하기";
+        if (!res.ok) { msg("esv", res.j.error || "저장하지 못했습니다"); return; }
+        savedPw = pw;
+        if (!$("repPhone").value) $("repPhone").value = phone;
+        $("saveBox").style.display = "none";
+        toast("저장했습니다 — 같은 연락처와 비밀번호로 이어서 쓰실 수 있습니다");
+      })
+      .catch(function () {
+        btn.disabled = false; btn.textContent = "저장하기";
+        msg("esv", "서버에 연결할 수 없습니다");
+      });
+  });
+
+  /* ── 이어서 작성하기 ── */
+  $("openResume").addEventListener("click", function () {
+    msg("ers", "");
+    $("chooser").style.display = "none";
+    $("resumeBox").style.display = "";
+    $("rsPhone").focus();
+  });
+  $("rsCancel").addEventListener("click", function () {
+    $("resumeBox").style.display = "none";
+    $("chooser").style.display = "";
+  });
+  $("rsGo").addEventListener("click", function () {
+    var phone = $("rsPhone").value, pw = $("rsPw").value;
+    if (phone.replace(/[^\d]/g, "").length < 10) { msg("ers", "연락처를 확인해 주세요"); return; }
+    if (!pw) { msg("ers", "임시 비밀번호를 입력해 주세요"); return; }
+    var btn = $("rsGo");
+    btn.disabled = true; btn.textContent = "불러오는 중…";
+    fetch(API + "/public/founders/resume", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: phone, password: pw })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        btn.disabled = false; btn.textContent = "불러오기";
+        if (!res.ok) { msg("ers", res.j.error || "불러오지 못했습니다"); return; }
+        savedPw = pw;
+        $("resumeBox").style.display = "none";
+        chooseKind("applicant");
+        if (res.j.mode === "apply") {
+          // 접수는 끝났고 자료만 남은 경우 — 첨부 단계로 바로 보낸다
+          applyNo = res.j.applyNo;
+          phoneForUpload = phone.replace(/[^\d]/g, "");
+          $("s6lead").textContent = "접수번호 " + applyNo +
+            (res.j.teamName ? " · " + res.j.teamName : "") + " — 남은 자료를 올려주세요.";
+          go(6);
+          toast("접수는 이미 끝나 있습니다. 자료만 올리시면 됩니다");
+        } else {
+          formRestore(res.j.payload);
+          go(Math.min(res.j.step || 1, 5));
+          toast("저장해두신 내용을 불러왔습니다");
+        }
+      })
+      .catch(function () {
+        btn.disabled = false; btn.textContent = "불러오기";
+        msg("ers", "서버에 연결할 수 없습니다");
+      });
+  });
+
+  /* ── 가이드라인 펼치기 ── */
+  $("guideMore").addEventListener("click", function () {
+    var on = $("guideSum").classList.toggle("on");
+    $("guideMore").textContent = on ? "접기" : "자세히 보기";
+  });
+
+  $("submitBtn").addEventListener("click", function () {
+    var err = check(5);
+    if (err) { msg("e5", err); return; }
+    var btn = $("submitBtn");
+    btn.disabled = true;
+    btn.textContent = "접수 중…";
+    var body = applyBody();
 
     fetch(API + "/public/founders/apply", {
       method: "POST",
@@ -937,16 +1535,17 @@
       .then(function (res) {
         btn.disabled = false;
         btn.textContent = "접수하고 자료 첨부로";
-        if (!res.ok) { msg("e4", res.j.error || "접수하지 못했습니다"); return; }
+        if (!res.ok) { msg("e5", res.j.error || "접수하지 못했습니다"); return; }
         applyNo = res.j.applyNo;
         phoneForUpload = body.repPhone.replace(/[^\d]/g, "");
-        $("s5lead").textContent = "접수번호 " + applyNo + " — 이제 자료를 올려주세요.";
-        go(5);
+        $("s6lead").textContent = "접수번호 " + applyNo + " — 이제 자료를 올려주세요." +
+          (res.j.canResume ? " 지금 다 못 올리셔도 「이어서 작성하기」로 다시 오실 수 있습니다." : "");
+        go(6);
       })
       .catch(function () {
         btn.disabled = false;
         btn.textContent = "접수하고 자료 첨부로";
-        msg("e4", "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+        msg("e5", "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
       });
   });
 
@@ -966,8 +1565,8 @@
   }
 
   $("finishBtn").addEventListener("click", function () {
-    if (!files.proof) { msg("e5", "필수 증빙 서류를 올려주세요"); return; }
-    if (!files.ir) { msg("e5", "IR 자료를 올려주세요"); return; }
+    if (!files.proof) { msg("e6", "사업자등록증을 올려주세요"); return; }
+    if (!files.ir) { msg("e6", "IR 자료를 올려주세요"); return; }
     var btn = $("finishBtn");
     btn.disabled = true;
     var jobs = [["proof", files.proof], ["ir", files.ir]];
@@ -981,7 +1580,7 @@
           "1차 서면 평가 결과는 <b style='color:var(--ink-2)'>9월 18일(금) 18:00</b>에 발표됩니다.<br>" +
           "결과는 접수하신 이메일과 문자로 안내드립니다.<br>" +
           "문의 broj.company@gmail.com · 카카오톡 @broj";
-        go(6);
+        go(7);
         return;
       }
       btn.textContent = "올리는 중… (" + (i + 1) + "/" + jobs.length + ")";
@@ -989,7 +1588,7 @@
         .catch(function (e) {
           btn.disabled = false;
           btn.textContent = "제출 완료";
-          msg("e5", e.message || "업로드에 실패했습니다");
+          msg("e6", e.message || "업로드에 실패했습니다");
         });
     }
     next();
@@ -1036,6 +1635,7 @@
     $("heroTitle").innerHTML = "1억 원 투자 기회의<br>주인공을 찾습니다";
     $("heroSub").textContent = "출전하실 분과 보러 오실 분 모두 여기서 등록합니다. 어느 쪽인지 골라주세요.";
     $("formArea").style.display = "none";
+    $("resumeBox").style.display = "none";
     $("chooser").style.display = "";
     $("bar").style.width = "0";
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1190,7 +1790,7 @@
           "행사 <b>2026년 10월 9일(금) 14:00</b> · 어브 스튜디오<br>" +
           "문의 broj.company@gmail.com · 카카오톡 @broj";
         document.querySelectorAll("section").forEach(function (el) { el.classList.remove("on"); });
-        $("s6").classList.add("on");
+        $("s7").classList.add("on");
         $("bar").style.width = "100%";
         window.scrollTo({ top: 0, behavior: "smooth" });
       })
