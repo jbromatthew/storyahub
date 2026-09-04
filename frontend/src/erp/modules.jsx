@@ -3907,13 +3907,22 @@ export function IncentiveView() {
                       </div>
                       <div className="inc-score"><i style={{ width: `${Math.min(100, sc.score)}%` }} /></div>
                       <div className="inc-metric" style={{ marginTop: 10 }}>
-                        <span className="k">결제 수</span>
+                        <span className="k">결제 수 <span style={{ fontWeight: 400, opacity: .65 }}>신규</span></span>
                         <span className="v">{sc.count}건 <span style={{ color: "var(--muted)", fontWeight: 500 }}>{sc.countScore.toFixed(0)}점</span></span>
                       </div>
                       <div className="inc-metric">
                         <span className="k">기여 매출</span>
                         <span className="v">{formatWon(sc.revenue)} <span style={{ color: "var(--muted)", fontWeight: 500 }}>{sc.revenueScore.toFixed(0)}점</span></span>
                       </div>
+                      {sc.revenueSplit && (sc.revenueSplit.upgrade > 0 || sc.revenueSplit.addon > 0) && (
+                        <div className="inc-metric" style={{ marginTop: -4 }}>
+                          <span className="k" style={{ fontSize: 11.5 }}>
+                            · 신규 {formatWon(sc.revenueSplit.new)}
+                            {sc.revenueSplit.upgrade > 0 && ` · 업그레이드 ${formatWon(sc.revenueSplit.upgrade)}`}
+                            {sc.revenueSplit.addon > 0 && ` · 상품추가 ${formatWon(sc.revenueSplit.addon)}`}
+                          </span>
+                        </div>
+                      )}
                       <div className="inc-sep" />
                       <div className="inc-metric">
                         <span className="k" style={{ fontWeight: 700, color: "var(--ink)" }}>팀장 평가</span>

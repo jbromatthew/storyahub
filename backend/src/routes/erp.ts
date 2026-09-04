@@ -1323,9 +1323,22 @@ async function requireOwner(req: AuthedRequest, res: Response): Promise<boolean>
  *  - 지급 조건: 분기 3개월 평균 매출 ≥ 월 목표(1.5억). 미달이면 전액 미지급
  *  - 배분: 오웬(영업지원) 15% 고정 + 영업 3명 각 25%, 종합 1위에게 +10%
  *  - 종합 점수 = 결제수 비율×0.4 + 매출 비율×0.4 + 팀장평가 비율×0.2 (영업 3명만)
- *  - 재원은 NBM 기준, 개인 기여도는 결제주문내역(신규센터) 기준 — 두 합계는 다를 수 있다
+ *  - 재원은 NBM 기준, 개인 기여도는 결제주문내역 기준 — 두 합계는 다를 수 있다
+ *  - 결제 수는 신규센터만, 기여 매출은 신규센터 + 기존센터 업그레이드·상품추가
  */
 const INCENTIVE_SALES = ["Jo", "Jeff", "Sofia"] as const;   // 영업 (1위 경쟁 대상)
+
+/** 결제 수로 세는 구분 — 신규 유치 건수라 여기만 본다 */
+const COUNT_KIND = "신규센터";
+/** 기여 매출로 합치는 구분. 기존 고객을 키운 것도 영업이 만든 매출이다.
+ *  요금제 이용권·문자 충전처럼 갱신·운영 성격인 것은 넣지 않는다. */
+const REVENUE_KINDS: Record<string, "new" | "upgrade" | "addon"> = {
+  "신규센터": "new",
+  "기존센터(업그레이드)": "upgrade",
+  "기존센터(상품추가)": "addon",
+};
+/** 시트마다 괄호 앞 띄어쓰기가 들쭉날쭉해 공백을 지우고 맞춘다 */
+const kindKey = (v: unknown) => String(v ?? "").replace(/\s+/g, "");
 const INCENTIVE_SUPPORT = "Owen";                            // 영업지원 (고정 비율)
 const INCENTIVE_DEFAULTS = {
   monthlyTarget: 165_000_000,  // 매출 조건 — 분기 평균 1억 6,500만원 이상
@@ -1364,25 +1377,39 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
     select: { data: true, sheetName: true },
   });
 
-  // 신규센터 결제만 카운트 (인센티브 대상)
   type Agg = { name: string; monthCounts: number[]; total: number };
   const byAssignee = new Map<string, Agg>();
-  // 개인 기여 매출은 결제주문내역의 신규센터 결제 합계로 본다 (NBM 총액과는 기준이 다르다)
   const revenueByAssignee = new Map<string, number>();
+  // 매출이 어디서 왔는지 화면에서 갈라 보여준다
+  type Split = { new: number; upgrade: number; addon: number };
+  const splitByAssignee = new Map<string, Split>();
   const orderMoney = (v: unknown) => Math.round(Number(String(v ?? "").replace(/[^0-9.-]/g, "")) || 0);
   let totalCount = 0;
+  const revenueTotals: Split = { new: 0, upgrade: 0, addon: 0 };
+
   for (const row of rows) {
     const data = row.data as Record<string, string>;
-    if (String(data["구분"] ?? "").trim() !== "신규센터") continue;
-    const name = String(data["결제 담당자"] ?? data["담당자"] ?? "").trim() || "미지정";
+    const bucket = REVENUE_KINDS[kindKey(data["구분"])];
+    if (!bucket) continue;
     const mi = monthKeys.findIndex((m) => row.sheetName.trim().startsWith(m));
     if (mi === -1) continue;
-    const agg = byAssignee.get(name) ?? { name, monthCounts: [0, 0, 0], total: 0 };
-    agg.monthCounts[mi] += 1;
-    agg.total += 1;
-    byAssignee.set(name, agg);
-    revenueByAssignee.set(name, (revenueByAssignee.get(name) ?? 0) + orderMoney(data["합계"] ?? data["총매출"]));
-    totalCount += 1;
+    const name = String(data["결제 담당자"] ?? data["담당자"] ?? "").trim() || "미지정";
+    const amount = orderMoney(data["합계"] ?? data["총매출"]);
+
+    // 결제 수는 신규 유치만 — 개수 목표(분기 평균)도 같은 기준이다
+    if (kindKey(data["구분"]) === kindKey(COUNT_KIND)) {
+      const agg = byAssignee.get(name) ?? { name, monthCounts: [0, 0, 0], total: 0 };
+      agg.monthCounts[mi] += 1;
+      agg.total += 1;
+      byAssignee.set(name, agg);
+      totalCount += 1;
+    }
+
+    revenueByAssignee.set(name, (revenueByAssignee.get(name) ?? 0) + amount);
+    const sp = splitByAssignee.get(name) ?? { new: 0, upgrade: 0, addon: 0 };
+    sp[bucket] += amount;
+    splitByAssignee.set(name, sp);
+    revenueTotals[bucket] += amount;
   }
 
   const saved = await prisma.erpIncentiveQuarter.findUnique({ where: { year_quarter: { year, quarter } } });
@@ -1440,6 +1467,7 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
       name,
       count: byAssignee.get(name)?.total ?? 0,
       revenue: revenueByAssignee.get(name) ?? 0,
+      revenueSplit: splitByAssignee.get(name) ?? { new: 0, upgrade: 0, addon: 0 },
       docs: docCount.get(name) ?? 0,
       cases: caseCount.get(name) ?? 0,
       usage: Number.isFinite(u) && u >= 0 ? u : 0,
@@ -1485,6 +1513,7 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
     months: monthNums.map((m) => `${m}월`),
     assignees,
     totalCount,
+    revenueTotals,
     // NBM은 두 갈래 수기 입력 — 이카운트 HW매출 + 렌탈 매출 (이카운트 손익 조회 API 미제공)
     hwSales,
     rentalSales,
