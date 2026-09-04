@@ -14983,6 +14983,150 @@ const BF_KIND = { applicant: "참가자", visitor: "참관객" };
 const BF_ENTRY = { pre: "예비창업자", early: "초기창업기업" };
 const BF_URL = "https://b2b.broj.io/founders/2026.html";
 
+/** 참여신청서 본문 — 회차마다 항목이 바뀌므로 있는 것만 그린다 */
+const BF_SALES_TYPE = { B2B: "B2B", B2C: "B2C", B2G: "B2G", C2C: "C2C", B2B2C: "B2B2C" };
+function BfKV({ label, children }) {
+  return <div className="cc-kv"><span>{label}</span><b>{children || <i>-</i>}</b></div>;
+}
+function BfEssay({ label, text }) {
+  if (!text) return null;
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div className="small" style={{ fontWeight: 700, marginBottom: 4 }}>{label}</div>
+      <div className="small" style={{ whiteSpace: "pre-wrap", lineHeight: 1.65, color: "var(--text-2)" }}>{text}</div>
+    </div>
+  );
+}
+function BfTable({ title, cols, rows }) {
+  if (!rows || !rows.length) return null;
+  return (
+    <>
+      <div className="cc-sec">{title} {rows.length}건</div>
+      <div className="dash-table-wrap">
+        <table className="dash-table">
+          <thead><tr>{cols.map((c, i) => <th key={c.k} className={i === 0 ? "label" : ""}>{c.t}</th>)}</tr></thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>{cols.map((c, j) => (
+                <td key={c.k} className={j === 0 ? "label" : "small"}>{r[c.k] || "-"}</td>
+              ))}</tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+function BfForm({ data }) {
+  const f = data && typeof data === "object" ? data : null;
+  if (!f || !Object.keys(f).length) return null;
+  const c = f.company || {}, m = f.manager || {}, o = f.overview || {},
+        pd = f.product || {}, es = f.essay || {}, sales = f.sales || {};
+  const num = (v) => (v === "" || v == null ? null : Number(v).toLocaleString());
+  const years = Object.keys(sales).filter((y) => sales[y] && (sales[y].domestic || sales[y].export));
+
+  return (
+    <>
+      <div className="cc-sec">기업 정보</div>
+      <div className="cc-kvgrid" style={{ marginBottom: 14 }}>
+        <BfKV label="기업명">{c.name}</BfKV>
+        <BfKV label="설립연월">{c.foundedAt}</BfKV>
+        <BfKV label="사업자등록번호">{c.bizNo}</BfKV>
+        <BfKV label="사업자 구분">{c.bizKind === "corp" ? "법인" : c.bizKind === "personal" ? "개인" : ""}</BfKV>
+        <BfKV label="업종 / 업태">{c.industry}</BfKV>
+        <BfKV label="주생산품목">{c.mainItem}</BfKV>
+        <BfKV label="본사">{c.addrMain}</BfKV>
+        <BfKV label="지사">{c.addrBranch}</BfKV>
+        <BfKV label="홈페이지">{c.homepage}</BfKV>
+        <BfKV label="SNS">{c.sns}</BfKV>
+      </div>
+
+      {(m.sameAsRep || m.name) && (
+        <>
+          <div className="cc-sec">실무 담당자</div>
+          <div className="cc-kvgrid" style={{ marginBottom: 14 }}>
+            {m.sameAsRep
+              ? <BfKV label="담당자">대표자와 동일</BfKV>
+              : (<>
+                  <BfKV label="성명">{m.name}</BfKV>
+                  <BfKV label="부서 · 직위">{[m.dept, m.title].filter(Boolean).join(" · ")}</BfKV>
+                  <BfKV label="이메일">{m.email}</BfKV>
+                  <BfKV label="휴대전화">{m.phone ? ccPhone(m.phone) : ""}</BfKV>
+                  <BfKV label="직통전화">{m.tel}</BfKV>
+                </>)}
+          </div>
+        </>
+      )}
+
+      <div className="cc-sec">기업 현황</div>
+      <div className="cc-kvgrid" style={{ marginBottom: 14 }}>
+        <BfKV label="고용">{num(o.employees) && `${num(o.employees)}명`}</BfKV>
+        <BfKV label="총 매출">{num(o.revenue) && `${num(o.revenue)}백만원`}</BfKV>
+        <BfKV label="투자유치 총액">{num(o.investTotal) && `${num(o.investTotal)}백만원`}</BfKV>
+        <BfKV label="R&D 수행이력">{num(o.rnd) && `${num(o.rnd)}건`}</BfKV>
+        <BfKV label="특허 출원 · 등록">
+          {(num(o.patentApplied) || num(o.patentRegistered))
+            && `출원 ${num(o.patentApplied) || 0}건 · 등록 ${num(o.patentRegistered) || 0}건`}
+        </BfKV>
+      </div>
+
+      {years.length > 0 && (
+        <>
+          <div className="cc-sec">매출현황 <span className="small muted">단위: 백만원</span></div>
+          <div className="dash-table-wrap">
+            <table className="dash-table">
+              <thead><tr><th className="label">연도</th><th>내수</th><th>수출액</th><th>합계</th></tr></thead>
+              <tbody>
+                {years.map((y) => {
+                  const d = Number(sales[y].domestic || 0), e = Number(sales[y].export || 0);
+                  return (
+                    <tr key={y}>
+                      <td className="label">{y}년</td>
+                      <td className="small num">{d.toLocaleString()}</td>
+                      <td className="small num">{e.toLocaleString()}</td>
+                      <td className="small num"><b>{(d + e).toLocaleString()}</b></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      <BfTable title="회사 연혁" rows={f.history}
+        cols={[{ k: "date", t: "연월일" }, { k: "content", t: "주요 내용" }]} />
+      <BfTable title="사업참여인력" rows={f.staff}
+        cols={[{ k: "rank", t: "직급" }, { k: "name", t: "성명" },
+               { k: "role", t: "담당업무" }, { k: "career", t: "주요 경력" }]} />
+
+      <div className="cc-sec">제품 · 서비스</div>
+      <div className="cc-kvgrid" style={{ marginBottom: 12 }}>
+        <BfKV label="제품(서비스)명">{pd.name}</BfKV>
+        <BfKV label="해외 진출명">{pd.globalName}</BfKV>
+        <BfKV label="세일즈 타입">
+          {(pd.salesTypes || []).map((t) => BF_SALES_TYPE[t] || t).join(", ")}
+        </BfKV>
+      </div>
+      <BfEssay label="제품 소개" text={pd.intro} />
+      <BfEssay label="사업의 필요성" text={es.need} />
+      <BfEssay label="주요 생산 품목" text={es.product} />
+      <BfEssay label="국내외 시장상황 분석 및 진출 현황" text={es.market} />
+      <BfEssay label="국내외 기술품질 경쟁력 분석" text={es.edge} />
+
+      <BfTable title="국내외 추진실적" rows={f.channels}
+        cols={[{ k: "channel", t: "유통채널명" }, { k: "period", t: "진출시기" },
+               { k: "item", t: "진출 아이템" }, { k: "amount", t: "판매금액(백만원)" }]} />
+      <BfTable title="투자유치 현황" rows={f.investments}
+        cols={[{ k: "investor", t: "투자회사명" }, { k: "form", t: "투자형태" },
+               { k: "date", t: "투자일" }, { k: "amount", t: "투자금액(원)" }]} />
+      <BfTable title="지식재산권" rows={f.ipRights}
+        cols={[{ k: "kind", t: "구분" }, { k: "name", t: "명칭" },
+               { k: "date", t: "취득(출원)일" }, { k: "note", t: "주요내용" }]} />
+    </>
+  );
+}
+
 export function FoundersView() {
   const [rounds, setRounds] = useState(null);
   const [sel, setSel] = useState("");
@@ -15233,7 +15377,9 @@ export function FoundersView() {
                               : <i>미창업</i>}</b></div>
                         </div>
 
-                        {(a.members || []).length > 0 && (
+                        <BfForm data={a.formData} />
+
+                        {!a.formData?.staff?.length && (a.members || []).length > 0 && (
                           <>
                             <div className="cc-sec">팀원 {(a.members || []).length}명</div>
                             <div className="dash-table-wrap">

@@ -35,6 +35,8 @@
     background-attachment:fixed;
     font-family:"Noto Sans JP","Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
     font-size:15px;line-height:1.7;letter-spacing:-.012em;-webkit-font-smoothing:antialiased;
+    /* 한글은 단어 중간에서 끊기면 읽기 나쁘다 */
+    word-break:keep-all;overflow-wrap:break-word;
   }
   a{color:var(--brand-deep)}
 
@@ -59,7 +61,8 @@
   .hero{padding:16px 0 28px}
   .eyebrow{font-size:11px;font-weight:800;letter-spacing:.24em;color:var(--brand-deep)}
   h1{font-size:clamp(27px,6vw,38px);font-weight:900;letter-spacing:-.04em;margin:12px 0 0;line-height:1.18}
-  .sub{margin-top:12px;color:var(--ink-2);font-size:15px;max-width:54ch}
+  .sub{margin-top:12px;color:var(--ink-2);font-size:15px;max-width:54ch;
+    text-wrap:pretty}
 
   /* 참가 종류 고르기 */
   .kinds{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px}
@@ -364,10 +367,7 @@
   <div class="hero">
     <div class="eyebrow" id="heroEyebrow">BROJ FOUNDERS 2026</div>
     <h1 id="heroTitle">1억 원 투자 기회의<br>주인공을 찾습니다</h1>
-    <p class="sub" id="heroSub">
-      출전하실 분과 보러 오실 분 모두 여기서 등록합니다.
-      어느 쪽인지 골라주세요.
-    </p>
+    <p class="sub" id="heroSub">출전하실 분과 보러 오실 분, 어느 쪽인지 골라주세요.</p>
   </div>
 
   <div id="closedBox" style="display:none"></div>
@@ -1633,7 +1633,7 @@
   $("backToKind").addEventListener("click", function () {
     $("heroEyebrow").textContent = "BROJ FOUNDERS 2026";
     $("heroTitle").innerHTML = "1억 원 투자 기회의<br>주인공을 찾습니다";
-    $("heroSub").textContent = "출전하실 분과 보러 오실 분 모두 여기서 등록합니다. 어느 쪽인지 골라주세요.";
+    $("heroSub").textContent = "출전하실 분과 보러 오실 분, 어느 쪽인지 골라주세요.";
     $("formArea").style.display = "none";
     $("resumeBox").style.display = "none";
     $("chooser").style.display = "";

@@ -580,9 +580,11 @@ erpCenterOpsRouter.get("/founders/applies", async (req: AuthedRequest, res) => {
   if (roundId) where.roundId = roundId;
   if (status) where.status = status;
   if (["applicant", "visitor"].includes(kind)) where.kind = kind;
-  const applies = await prisma.erpFoundersApply.findMany({
+  const rows = await prisma.erpFoundersApply.findMany({
     where, orderBy: { createdAt: "desc" }, take: 500,
   });
+  // 이어서 작성하기용 비밀번호 해시는 화면에 나갈 이유가 없다
+  const applies = rows.map(({ passHash: _pw, ...rest }) => rest);
   res.json({ applies });
 });
 
