@@ -9,6 +9,7 @@ import express from "express";
 import { prisma } from "../db.js";
 import { putObjectBytes, r2Configured, r2KeyPrefix } from "../services/r2.js";
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { pushFoundersRowSoon } from "../services/foundersSheet.js";
 import { env } from "../env.js";
 
 export const foundersPublicRouter = Router();
@@ -301,6 +302,7 @@ foundersPublicRouter.patch("/review/applies/:id", async (req: Request, res: Resp
   if (b.reviewNote !== undefined) data.reviewNote = str(b.reviewNote, 2000);
 
   const saved = await prisma.erpFoundersApply.update({ where: { id: row.id }, data });
+  pushFoundersRowSoon(saved);
   res.json({ ok: true, apply: forReview(saved as unknown as Record<string, unknown>) });
 });
 
@@ -432,6 +434,7 @@ foundersPublicRouter.post("/apply", async (req: Request, res: Response) => {
     : await prisma.erpFoundersApply.create({ data: { ...withSign, applyNo, passHash } });
 
   if (draft) await prisma.erpFoundersDraft.delete({ where: { phone: repPhone } }).catch(() => {});
+  pushFoundersRowSoon(row);
 
   res.json({
     ok: true,
@@ -474,12 +477,13 @@ foundersPublicRouter.post(
     const key = `${r2KeyPrefix()}founders/${row.applyNo}/${kind}-${Date.now()}-${safe}`;
 
     await putObjectBytes(key, body, ctype);
-    await prisma.erpFoundersApply.update({
+    const after = await prisma.erpFoundersApply.update({
       where: { id: row.id },
       data: kind === "proof" ? { proofKey: key, proofName: fileName }
         : kind === "ir" ? { irKey: key, irName: fileName }
         : { extraKey: key, extraName: fileName },
     });
+    pushFoundersRowSoon(after);
     res.json({ ok: true, name: fileName });
   },
 );
@@ -591,6 +595,7 @@ foundersPublicRouter.post("/visitor", async (req: Request, res: Response) => {
   const row = dup
     ? await prisma.erpFoundersApply.update({ where: { id: dup.id }, data: withSign })
     : await prisma.erpFoundersApply.create({ data: { ...withSign, applyNo } });
+  pushFoundersRowSoon(row);
 
   const left = Math.max(TOTAL_LIMIT - await prisma.erpFoundersApply.count({ where: visitorWhere(round.id) }), 0);
   res.json({

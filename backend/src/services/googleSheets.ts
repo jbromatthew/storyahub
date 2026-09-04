@@ -368,6 +368,87 @@ export async function updateSheetRowCells(
   return { ok: true };
 }
 
+/* ─────────── 시트에 행 쌓기 ───────────
+   접수가 들어오면 담당자들이 보는 시트에 그대로 얹는다. */
+
+/** 탭의 가로 칸이 모자라면 늘린다 — 칸 수를 넘겨 쓰면 그냥 실패한다 */
+async function ensureColumns(spreadsheetId: string, sheetName: string, need: number): Promise<void> {
+  const sheets = getSheetsClient();
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets.properties(title,sheetId,gridProperties.columnCount)",
+  });
+  const tab = meta.data.sheets?.find((x) => x.properties?.title === sheetName);
+  if (!tab?.properties) throw new Error(`시트에 "${sheetName}" 탭이 없습니다`);
+  const have = tab.properties.gridProperties?.columnCount ?? 0;
+  if (have >= need) return;
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [{
+        appendDimension: {
+          sheetId: tab.properties.sheetId!,
+          dimension: "COLUMNS",
+          length: need - have,
+        },
+      }],
+    },
+  });
+}
+
+/** 1행 머리글을 맞춰 둔다. 이미 같으면 건드리지 않는다. */
+export async function ensureSheetHeader(
+  spreadsheetId: string,
+  sheetName: string,
+  headers: string[]
+): Promise<void> {
+  await ensureColumns(spreadsheetId, sheetName, headers.length);
+  const sheets = getSheetsClient();
+  const cur = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${quoteSheetName(sheetName)}!1:1`,
+    valueRenderOption: "FORMATTED_VALUE",
+  });
+  const now = (cur.data.values?.[0] ?? []).map(cellToString);
+  const same = headers.length === now.length && headers.every((h, i) => h === now[i]);
+  if (same) return;
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${quoteSheetName(sheetName)}!A1:${columnLetter(headers.length - 1)}1`,
+    valueInputOption: "RAW",
+    requestBody: { values: [headers] },
+  });
+}
+
+/**
+ * 첫 칸(접수번호)을 열쇠 삼아 이미 있으면 그 줄을 고치고, 없으면 2행부터 이어 붙인다.
+ * 같은 사람이 이어서 수정해도 줄이 늘지 않는다.
+ */
+export async function upsertSheetRow(
+  spreadsheetId: string,
+  sheetName: string,
+  key: string,
+  values: string[]
+): Promise<{ row: number; created: boolean }> {
+  await ensureColumns(spreadsheetId, sheetName, values.length);
+  const sheets = getSheetsClient();
+  const colRes = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${quoteSheetName(sheetName)}!A2:A`,
+    valueRenderOption: "FORMATTED_VALUE",
+  });
+  const keys = (colRes.data.values ?? []).map((r) => cellToString(r?.[0]));
+  const at = keys.indexOf(key);
+  const row = at >= 0 ? at + 2 : keys.length + 2;   // 머리글이 1행이라 데이터는 2행부터
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${quoteSheetName(sheetName)}!A${row}:${columnLetter(values.length - 1)}${row}`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values: [values] },
+  });
+  return { row, created: at < 0 };
+}
+
 /** 시트 1행 기준 컬럼명 (데이터 보기·필터용 정렬) */
 export async function fetchSheetColumnNames(
   spreadsheetId: string,

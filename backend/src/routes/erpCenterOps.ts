@@ -564,6 +564,16 @@ erpCenterOpsRouter.patch("/founders/rounds/:id/review-pass", async (req: AuthedR
   res.json({ ok: true, reviewPassSet: !!pw });
 });
 
+/** 시트에 전부 다시 얹는다 — 연동 붙이기 전 접수나 어긋난 줄을 맞출 때 */
+erpCenterOpsRouter.post("/founders/sheet/sync", async (_req: AuthedRequest, res) => {
+  try {
+    const { syncAllFounders } = await import("../services/foundersSheet.js");
+    res.json({ ok: true, ...(await syncAllFounders()) });
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : "시트 동기화에 실패했습니다" });
+  }
+});
+
 erpCenterOpsRouter.post("/founders/rounds", async (req: AuthedRequest, res) => {
   const b = req.body ?? {};
   const year = Number(b.year);
@@ -623,6 +633,8 @@ erpCenterOpsRouter.patch("/founders/applies/:id", async (req: AuthedRequest, res
   }
   if (b.memo !== undefined) data.memo = str(b.memo, 1000);
   const row = await prisma.erpFoundersApply.update({ where: { id: req.params.id }, data });
+  const { pushFoundersRowSoon } = await import("../services/foundersSheet.js");
+  pushFoundersRowSoon(row);
   res.json({ apply: row });
 });
 

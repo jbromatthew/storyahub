@@ -71,6 +71,8 @@ export const env = {
   // (소유자 ERP_OWNER_EMAIL은 항상 통과. 결제/체험/유예/purge는 billingDisabled로 별도 비활성.)
   erpMode: parseBool("ERP_MODE", isProduction),
   billingDisabled: parseBool("BILLING_DISABLED", isProduction),
+  /// FOUNDERS 접수가 쌓이는 시트 (참가자·참관객 탭)
+  foundersSheetId: (process.env.FOUNDERS_SHEET_ID ?? "1xSsEdHR-yscIuXVTi3fxnVB8n5pEgC6fxTRw4HDFUh8").trim(),
   erpOwnerEmail: (process.env.ERP_OWNER_EMAIL ?? "matthew@broj.company").trim().toLowerCase(),
   /// 가입을 허용하는 메일 도메인. 밖에 열려 있는 주소라 회사 메일만 받는다.
   erpSignupDomains: (process.env.ERP_SIGNUP_DOMAINS ?? "broj.company")
