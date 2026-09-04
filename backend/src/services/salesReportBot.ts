@@ -3,22 +3,28 @@ import { runAutoSync } from "./salesAutoSync.js";
 
 /**
  * 문의/결제 대시보드 요약을 채널톡 그룹(팀챗)으로 자동 보고.
- * 매일 KST 12:00(오전 중간) / 15:00(오후 중간) / 18:30(마감). 환경변수 없으면 조용히 비활성.
+ * 평일 KST 12:00(오전 중간) / 15:00(오후 중간) / 18:30(마감). 환경변수 없으면 조용히 비활성.
  *  - CHANNELTALK_ACCESS_KEY / CHANNELTALK_ACCESS_SECRET: 채널톡 Open API 키
  *  - CHANNELTALK_GROUP_ID: 보낼 그룹(팀챗) ID
  */
 const SLOTS = ["12:00", "15:00", "18:30"];
 let lastRunKey = "";
 
-function kstNow(): { date: string; hhmm: string } {
+function kstNow(): { date: string; hhmm: string; weekday: string } {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
     year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", hour12: false,
+    hour: "2-digit", minute: "2-digit", hour12: false, weekday: "short",
   }).formatToParts(new Date());
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
-  return { date: `${get("year")}-${get("month")}-${get("day")}`, hhmm: `${get("hour")}:${get("minute")}` };
+  return {
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+    hhmm: `${get("hour")}:${get("minute")}`,
+    weekday: get("weekday"),
+  };
 }
+/** 주말엔 볼 사람이 없다 — 자동 보고만 막고 수동 발송은 그대로 둔다 */
+const isWeekend = (weekday: string) => weekday === "Sat" || weekday === "Sun";
 
 // 결제율 분석의 빠른 검색 분류와 동일 — 그 외 업종은 기타업종으로 집계
 const INDUSTRY_GROUPS: Array<{ label: string; industries: string[] }> = [
@@ -118,11 +124,15 @@ async function runReport(hhmm: string): Promise<void> {
 
 export function startSalesReportBot(): void {
   setInterval(() => {
-    const { date, hhmm } = kstNow();
+    const { date, hhmm, weekday } = kstNow();
     if (!SLOTS.includes(hhmm)) return;
     const key = `${date} ${hhmm}`;
     if (lastRunKey === key) return;
     lastRunKey = key;
+    if (isWeekend(weekday)) {
+      console.log(`[sales-report-bot] ${key} (${weekday}) 주말이라 건너뜁니다`);
+      return;
+    }
     void runReport(hhmm);
   }, 30 * 1000);
 }
