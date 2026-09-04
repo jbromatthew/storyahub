@@ -59,6 +59,17 @@
 
   /* 표제 */
   .hero{padding:16px 0 28px}
+  /* 공동 주최 두 곳 — 가운데 세로선으로 나눈다 */
+  .lockup{display:flex;align-items:center;gap:16px;margin-bottom:20px}
+  .lockup img{display:block;width:auto}
+  .lockup .lg-broj{height:27px}
+  .lockup .lg-draper{height:23px}
+  .lockup .lg-x{width:1px;height:22px;background:var(--line);flex:0 0 auto}
+  @media(max-width:400px){
+    .lockup{gap:12px}
+    .lockup .lg-broj{height:23px}
+    .lockup .lg-draper{height:19px}
+  }
   .eyebrow{font-size:11px;font-weight:800;letter-spacing:.24em;color:var(--brand-deep)}
   h1{font-size:clamp(27px,6vw,38px);font-weight:900;letter-spacing:-.04em;margin:12px 0 0;line-height:1.18}
   .sub{margin-top:12px;color:var(--ink-2);font-size:15px;max-width:54ch;
@@ -373,6 +384,11 @@
 <div class="wrap">
 
   <div class="hero">
+    <div class="lockup">
+      <img src="logo-broj.png" alt="BROJ" class="lg-broj">
+      <span class="lg-x"></span>
+      <img src="logo-draper.png" alt="Draper Startup House" class="lg-draper">
+    </div>
     <div class="eyebrow" id="heroEyebrow">BROJ FOUNDERS 2026</div>
     <h1 id="heroTitle">1억 원 투자 기회의<br>주인공을 찾습니다</h1>
     <p class="sub" id="heroSub">출전하실 분과 보러 오실 분, 어느 쪽인지 골라주세요.</p>
