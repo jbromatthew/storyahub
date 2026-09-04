@@ -390,7 +390,7 @@
       <img src="logo-draper.png" alt="Draper Startup House" class="lg-draper">
     </div>
     <div class="eyebrow" id="heroEyebrow">BROJ FOUNDERS 2026</div>
-    <h1 id="heroTitle">1억 원 투자 기회의<br>주인공을 찾습니다</h1>
+    <h1 id="heroTitle">피트니스 다음 혁신을<br>함께 만들 형제를 찾습니다</h1>
     <p class="sub" id="heroSub">출전하실 분과 보러 오실 분, 어느 쪽인지 골라주세요.</p>
   </div>
 
@@ -1028,6 +1028,7 @@
   }
   function go(n) {
     step = n;
+    $("v1").classList.remove("on"); // 참관 화면이 남아 있으면 같이 보인다
     for (var i = 1; i <= 7; i++) {
       var el = $("s" + i);
       if (el) el.classList.toggle("on", i === n);
@@ -1649,7 +1650,7 @@
     $("heroEyebrow").textContent = k === "visitor" ? "참관 등록" : "참가 신청";
     $("heroTitle").innerHTML = k === "visitor"
       ? "피칭 현장에서<br>직접 만나보세요"
-      : "1억 원 투자 기회의<br>주인공을 찾습니다";
+      : "피트니스 다음 혁신을<br>함께 만들 형제를 찾습니다";
     $("heroSub").textContent = k === "visitor"
       ? "네 가지만 적으시면 등록이 끝납니다. 참가비는 계좌이체로 받습니다."
       : "신청서·개인정보동의서·서약서를 여기서 바로 작성합니다. 따로 서류를 내려받으실 필요 없습니다.";
@@ -1661,6 +1662,7 @@
       loadCapacity();
       document.title = "참관 등록 · BROJ FOUNDERS 2026";
     } else {
+      document.title = "참가 신청 · BROJ FOUNDERS 2026";
       go(1);
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1670,7 +1672,7 @@
   });
   $("backToKind").addEventListener("click", function () {
     $("heroEyebrow").textContent = "BROJ FOUNDERS 2026";
-    $("heroTitle").innerHTML = "1억 원 투자 기회의<br>주인공을 찾습니다";
+    $("heroTitle").innerHTML = "피트니스 다음 혁신을<br>함께 만들 형제를 찾습니다";
     $("heroSub").textContent = "출전하실 분과 보러 오실 분, 어느 쪽인지 골라주세요.";
     $("formArea").style.display = "none";
     $("resumeBox").style.display = "none";

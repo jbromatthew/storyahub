@@ -1219,6 +1219,8 @@ model ErpFoundersRound {
   closesAt  DateTime? // 접수 마감
   active    Boolean  @default(true)
   notice    String   @default("") // 화면 상단 안내
+  /// 공동 주최(드레이퍼) 심사 페이지 비밀번호 (scrypt). 계정 없이 이것 하나로 연다.
+  reviewPassHash String @default("")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1295,7 +1297,12 @@ model ErpFoundersApply {
 
   /// 참가자 received|reviewing|passed|rejected · 참관객 pending|paid|cancelled
   status String @default("received")
-  memo   String @default("")
+  memo   String @default("") // 우리 쪽 메모
+
+  /// 공동 주최 심사 페이지에서 남긴 것 — 우리 메모와 섞지 않는다
+  reviewNote String    @default("")
+  reviewedBy String    @default("")
+  reviewedAt DateTime?
 
   submittedIp String   @default("")
   createdAt   DateTime @default(now())
