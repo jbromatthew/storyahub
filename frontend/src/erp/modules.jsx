@@ -6646,7 +6646,6 @@ export function SmartStoreView() {
   const [applies, setApplies] = useState([]);
   const [sel, setSel] = useState("");
   const [tab, setTab] = useState("applies");
-  const [kind, setKind] = useState("applicant"); // applies | rounds
   const [q, setQ] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [loadedAt, setLoadedAt] = useState(null);
@@ -7721,20 +7720,6 @@ export function DashboardIndustryDrill({ industry, detail, onBack, currentPlanGo
   }, [detail, planList]);
   const planItems = editing ? fullPlanItems : detail?.plans;
 
-  /** 내가 최근에 쓴 보고의 대분류를 그대로 쓴다 — 팀이 바뀌면 자동으로 따라간다 */
-  const myGroups = useMemo(() => {
-    const mineAll = reports
-      .filter((r) => (r.authorEmail || "").toLowerCase() === myEmail)
-      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
-    for (const r of mineAll) {
-      const heads = [...parseChecklistItems(r.did || ""), ...parseChecklistItems(r.plan || "", { legacyDone: false })]
-        .filter((t) => t.kind === "header")
-        .map((t) => (t.text || "").trim())
-        .filter(Boolean);
-      if (heads.length) return [...new Set(heads)];
-    }
-    return DAILY_DEFAULT_GROUPS;
-  }, [reports, myEmail]);
 
   const startEdit = () => {
     const pd = {};
@@ -9782,7 +9767,7 @@ export function InstallScheduleView() {
           <div className="isf-modal" onClick={(e) => e.stopPropagation()}>
             <div className="isf-hd">
               <div>
-                <div className="daily-drill-eyebrow">브로제이 설치일정 · {editing.month || month}</div>
+                <div className="daily-drill-eyebrow">브로제이 설치일정 · {editing.month || rangeMonth}</div>
                 <div className="daily-drill-title">{editing.id ? "설치 건 수정" : "새 설치 건 추가"}</div>
               </div>
               <button type="button" className="daily-drill-x" aria-label="닫기" onClick={() => setEditing(null)}>✕</button>
@@ -11253,6 +11238,21 @@ export function DailyReportView() {
     }));
     quickSave(items, parseChecklistItems(r.plan, { legacyDone: false }));
   };
+
+  /** 내가 최근에 쓴 보고의 대분류를 그대로 쓴다 — 팀이 바뀌면 자동으로 따라간다 */
+  const myGroups = useMemo(() => {
+    const mineAll = reports
+      .filter((r) => (r.authorEmail || "").toLowerCase() === myEmail)
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    for (const r of mineAll) {
+      const heads = [...parseChecklistItems(r.did || ""), ...parseChecklistItems(r.plan || "", { legacyDone: false })]
+        .filter((t) => t.kind === "header")
+        .map((t) => (t.text || "").trim())
+        .filter(Boolean);
+      if (heads.length) return [...new Set(heads)];
+    }
+    return DAILY_DEFAULT_GROUPS;
+  }, [reports, myEmail]);
 
   const startEdit = () => {
     if (mine) {
@@ -14991,6 +14991,7 @@ export function FoundersView() {
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState("");
   const [tab, setTab] = useState("applies");
+  const [kind, setKind] = useState("applicant"); // applicant(참가자) | visitor(참관객)
   const [form, setForm] = useState({ year: 2026, title: "", opensAt: "", closesAt: "", notice: "" });
 
   const loadRounds = useCallback(() =>
