@@ -72,6 +72,9 @@ export const env = {
   erpMode: parseBool("ERP_MODE", isProduction),
   billingDisabled: parseBool("BILLING_DISABLED", isProduction),
   erpOwnerEmail: (process.env.ERP_OWNER_EMAIL ?? "matthew@broj.company").trim().toLowerCase(),
+  /// 가입을 허용하는 메일 도메인. 밖에 열려 있는 주소라 회사 메일만 받는다.
+  erpSignupDomains: (process.env.ERP_SIGNUP_DOMAINS ?? "broj.company")
+    .split(",").map((d) => d.trim().toLowerCase().replace(/^@/, "")).filter(Boolean),
   cookieDomain: process.env.COOKIE_DOMAIN || (isProduction ? ".storyahub.com" : undefined),
   bcryptRounds: isProduction ? 12 : 10,
   databaseUrl: need("DATABASE_URL", "postgresql://localhost:5432/storyahub"),

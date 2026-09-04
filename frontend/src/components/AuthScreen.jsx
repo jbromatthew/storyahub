@@ -8,17 +8,25 @@ export default function AuthScreen({ onSuccess, erpMode = false }) {
   const [name, setName] = useState("");
   const [remember, setRemember] = useState(getRememberLogin);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
+    setNotice("");
     setLoading(true);
     try {
       const result =
         mode === "register"
           ? await api.register(email.trim(), password, name.trim() || undefined, remember)
           : await api.login(email.trim(), password, remember);
+      // 가입은 됐지만 아직 승인 전 — 토큰이 없다
+      if (result.pending || !result.token) {
+        setNotice(result.error || "관리자 승인 후 이용할 수 있습니다.");
+        setLoading(false);
+        return;
+      }
       saveToken(result.token, { remember });
       setToken(result.token);
       if (remember) localStorage.setItem(EMAIL_KEY, email.trim());
@@ -118,6 +126,15 @@ export default function AuthScreen({ onSuccess, erpMode = false }) {
 
           {error && (
             <div style={{ color: "var(--accent-deep)", fontSize: 13, marginBottom: 12, lineHeight: 1.4 }}>{error}</div>
+          )}
+          {notice && (
+            <div style={{
+              fontSize: 13, marginBottom: 12, lineHeight: 1.55, padding: "12px 14px",
+              borderRadius: 10, background: "var(--surface-2)", border: "1px solid var(--line)",
+            }}>
+              <b style={{ display: "block", marginBottom: 4 }}>가입 신청이 접수되었습니다</b>
+              {notice}
+            </div>
           )}
 
           <button

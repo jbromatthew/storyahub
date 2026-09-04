@@ -1,10 +1,14 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
+import { requireErpMember } from "../middleware/requireErpMember.js";
+import { env } from "../env.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 
 export const todosRouter = Router();
 todosRouter.use(auth, requireAccess);
+// 밖에 열린 주소라 승인받지 않은 계정은 어떤 데이터도 보지 못한다
+if (env.erpMode) todosRouter.use(requireErpMember);
 
 const STATUS_LABEL: Record<string, string> = { todo: "할 일", doing: "진행 중", done: "완료" };
 

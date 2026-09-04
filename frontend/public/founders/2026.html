@@ -77,7 +77,7 @@
   .eyebrow{font-size:11px;font-weight:800;letter-spacing:.24em;color:var(--brand-deep)}
   h1{font-size:clamp(27px,6vw,38px);font-weight:900;letter-spacing:-.04em;margin:12px 0 0;line-height:1.18}
   .sub{margin-top:12px;color:var(--ink-2);font-size:15px;max-width:54ch;
-    text-wrap:pretty}
+    line-height:1.75;text-wrap:pretty}
 
   h1 em{font-style:normal;color:var(--brand)}
   .wordmark{margin-top:14px;font-size:clamp(16px,3.4vw,21px);font-weight:700;
@@ -90,9 +90,8 @@
   .award{display:inline-flex;align-items:center;gap:10px;
     font-size:clamp(17px,4vw,23px);font-weight:800;letter-spacing:-.035em;color:var(--ink)}
   .award b{color:var(--brand);font-weight:900}
-  .award .lf{color:var(--brand);opacity:.5;font-weight:400;
-    font-size:1.35em;line-height:1;transform:scaleX(.7)}
-  .award .lf.rt{transform:scaleX(-.7)}
+  .award .laurel{width:auto;height:1.55em;color:var(--brand);opacity:.55;flex:0 0 auto}
+  .award .laurel.rt{transform:scaleX(-1)}
   .who{display:inline-block;margin-top:14px;font-size:13px;font-weight:700;color:var(--brand-deep);
     border:1px solid var(--brand-line);background:rgba(255,255,255,.7);
     border-radius:999px;padding:7px 16px}
@@ -422,7 +421,7 @@
     <div class="wordmark" id="wordmark">BROJ Founders <b>2026</b></div>
     <div class="rule" id="rule"></div>
     <div class="prize" id="prize">
-      <div class="award"><span class="lf">❨</span>1등 최대 <b>1억 원</b> 투자 기회<span class="lf rt">❨</span></div>
+      <div class="award"><svg class="laurel" viewBox="0 0 26 44" aria-hidden="true"><path d="M20 3C11 9 6 17 6 24s5 14 14 17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><g fill="currentColor"><ellipse cx="15.4" cy="7.6" rx="4.6" ry="2.2" transform="rotate(-38 15.4 7.6)"/><ellipse cx="10.6" cy="13.6" rx="4.8" ry="2.3" transform="rotate(-22 10.6 13.6)"/><ellipse cx="8.2" cy="20.6" rx="5" ry="2.4" transform="rotate(-6 8.2 20.6)"/><ellipse cx="8.4" cy="27.6" rx="5" ry="2.4" transform="rotate(10 8.4 27.6)"/><ellipse cx="11.2" cy="34" rx="4.8" ry="2.3" transform="rotate(26 11.2 34)"/><ellipse cx="16" cy="39.4" rx="4.6" ry="2.2" transform="rotate(42 16 39.4)"/></g></svg>1등 최대 <b>1억 원</b> 투자 기회<svg class="laurel rt" viewBox="0 0 26 44" aria-hidden="true"><path d="M20 3C11 9 6 17 6 24s5 14 14 17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><g fill="currentColor"><ellipse cx="15.4" cy="7.6" rx="4.6" ry="2.2" transform="rotate(-38 15.4 7.6)"/><ellipse cx="10.6" cy="13.6" rx="4.8" ry="2.3" transform="rotate(-22 10.6 13.6)"/><ellipse cx="8.2" cy="20.6" rx="5" ry="2.4" transform="rotate(-6 8.2 20.6)"/><ellipse cx="8.4" cy="27.6" rx="5" ry="2.4" transform="rotate(10 8.4 27.6)"/><ellipse cx="11.2" cy="34" rx="4.8" ry="2.3" transform="rotate(26 11.2 34)"/><ellipse cx="16" cy="39.4" rx="4.6" ry="2.2" transform="rotate(42 16 39.4)"/></g></svg></div>
       <div><span class="who">피트니스 · 스포츠 · 웰니스 분야 예비 창업자 및 창업기업</span></div>
       <p class="why">브로제이의 현장 데이터와 산업 실증성, 드레이퍼의 투자 네트워크가 만나
         성장 가능성 있는 <b>Founder</b>를 찾습니다.</p>
@@ -1045,6 +1044,7 @@
   var step = 1, round = null, applyNo = "", phoneForUpload = "";
 
   var $ = function (id) { return document.getElementById(id); };
+  var SLOGAN = "피트니스의 다음 혁신,<br>함께할 <em>형제</em>를 찾습니다";
   var msg = function (id, text, ok) {
     var el = $(id);
     if (!el) return;
@@ -1689,20 +1689,21 @@
     $("rule").style.display = "none";
     $("heroTitle").innerHTML = k === "visitor"
       ? "피칭 현장에서<br>직접 만나보세요"
-      : "피트니스의 다음 혁신,<br>함께할 형제를 찾습니다";
-    $("heroSub").textContent = k === "visitor"
-      ? "네 가지만 적으시면 등록이 끝납니다. 참가비는 계좌이체로 받습니다."
-      : "신청서·개인정보동의서·서약서를 여기서 바로 작성합니다. 따로 서류를 내려받으실 필요 없습니다.";
+      : SLOGAN;
+    $("heroSub").innerHTML = k === "visitor"
+      ? "네 가지만 적으시면 등록이 끝납니다.<br>참가비는 계좌이체로 받습니다."
+      : "신청서 · 개인정보동의서 · 서약서를 여기서 바로 작성합니다.<br>따로 서류를 내려받으실 필요 없습니다.";
     if (k === "visitor") {
       document.querySelectorAll("section").forEach(function (el) { el.classList.remove("on"); });
       $("v1").classList.add("on");
       $("bar").style.width = "50%";
       if (!vSignReady) { vSignReady = true; vSignPad.ready(); }
       loadCapacity();
-      $("prize").style.display = "none"; // 참가자에게 걸린 혜택이라 참관 화면에선 감춘다
+      $("prize").style.display = "none";
       document.title = "참관 등록 · BROJ FOUNDERS 2026";
     } else {
-      $("prize").style.display = "";
+      // 첫 화면에서 이미 읽은 안내다 — 폼에서는 접어 입력이 위로 오게 한다
+      $("prize").style.display = "none";
       document.title = "참가 신청 · BROJ FOUNDERS 2026";
       go(1);
     }
@@ -1715,8 +1716,8 @@
     $("heroEyebrow").style.display = "none";
     $("wordmark").style.display = "";
     $("rule").style.display = "";
-    $("heroTitle").innerHTML = "피트니스의 다음 혁신,<br>함께할 형제를 찾습니다";
-    $("heroSub").textContent = "출전하실 분과 보러 오실 분, 어느 쪽인지 골라주세요.";
+    $("heroTitle").innerHTML = SLOGAN;
+    $("heroSub").innerHTML = "출전하실 분과 보러 오실 분, 어느 쪽인지 골라주세요.";
     $("prize").style.display = "";
     $("formArea").style.display = "none";
     $("resumeBox").style.display = "none";

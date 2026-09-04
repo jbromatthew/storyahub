@@ -2,6 +2,8 @@ import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
+import { requireErpMember } from "../middleware/requireErpMember.js";
+import { env } from "../env.js";
 import { requireAccess, type AccessRequest } from "../middleware/requireAccess.js";
 import { getAccessStatus, recordingQuotaError } from "../services/access.js";
 import { clampDurationSec } from "../services/meetingLimits.js";
@@ -17,6 +19,8 @@ import { getMeetingAccess, roleAtLeast } from "../services/shareAccess.js";
 
 export const meetingsRouter = Router();
 meetingsRouter.use(auth, requireAccess);
+// 밖에 열린 주소라 승인받지 않은 계정은 어떤 데이터도 보지 못한다
+if (env.erpMode) meetingsRouter.use(requireErpMember);
 
 function friendlyProcessingError(e: unknown): string {
   const msg = (e as Error).message || "변환 실패";

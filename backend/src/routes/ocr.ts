@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
+import { requireErpMember } from "../middleware/requireErpMember.js";
+import { env } from "../env.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 import { getObjectBytes, isUserMediaKey } from "../services/r2.js";
 import { ocrBusinessCard, ocrDocumentText } from "../services/ocr.js";
@@ -7,6 +9,8 @@ import { mimeFromKey } from "../services/stt.js";
 
 export const ocrRouter = Router();
 ocrRouter.use(auth, requireAccess);
+// 밖에 열린 주소라 승인받지 않은 계정은 어떤 데이터도 보지 못한다
+if (env.erpMode) ocrRouter.use(requireErpMember);
 
 async function loadImageBase64(userId: string, mediaKey: string, mimeType?: string) {
   if (!isUserMediaKey(mediaKey, userId)) throw new Error("forbidden");

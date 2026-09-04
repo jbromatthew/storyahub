@@ -25,6 +25,14 @@ const passwordSchema = env.isProduction
   : z.string().min(6, "비밀번호는 6자 이상");
 const loginPasswordSchema = z.string().min(1, "비밀번호를 입력하세요");
 
+/** 회사 메일인가 — b2b 주소가 밖에 열려 있어 도메인부터 막는다 */
+function allowedSignupDomain(email: string): boolean {
+  const at = email.toLowerCase().lastIndexOf("@");
+  if (at < 0) return false;
+  const domain = email.slice(at + 1).toLowerCase();
+  return env.erpSignupDomains.includes(domain);
+}
+
 export function publicUser(u: User) {
   const access = getAccessStatus(u);
   return {
@@ -81,27 +89,52 @@ authRouter.post("/register", async (req, res) => {
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
   if (env.erpMode) {
-    const invite = await prisma.erpEmployee.findFirst({
-      where: { email: email.toLowerCase(), userId: null },
-    });
-    if (!invite) {
-      return res.status(403).json({ error: "초대된 이메일만 가입할 수 있습니다. 관리자에게 초대를 요청하세요." });
+    if (!allowedSignupDomain(email)) {
+      return res.status(403).json({
+        error: `회사 메일(@${env.erpSignupDomains[0]})로만 가입할 수 있습니다`,
+      });
     }
+    const lower = email.toLowerCase();
+    const invite = await prisma.erpEmployee.findFirst({ where: { email: lower, userId: null } });
+
     const user = await prisma.user.create({
       data: {
-        email: email.toLowerCase(),
+        email: lower,
         passwordHash,
-        name: name ?? invite.name ?? email.split("@")[0],
+        name: name ?? invite?.name ?? email.split("@")[0],
         provider: "email",
         trialStartedAt: new Date(),
         onboardingDone: true,
         lifetimeAccess: true,
       },
     });
-    await prisma.erpEmployee.update({
-      where: { id: invite.id },
-      data: { userId: user.id, name: user.name, email: user.email.toLowerCase() },
-    });
+
+    // 초대가 있으면 그 자리에 붙이고, 없으면 승인 대기로 새로 만든다.
+    // 어느 쪽이든 승인 전에는 토큰을 주지 않는다 — 있으면 그 자체로 열쇠가 된다.
+    if (invite) {
+      await prisma.erpEmployee.update({
+        where: { id: invite.id },
+        data: { userId: user.id, name: user.name, email: lower },
+      });
+    } else {
+      await prisma.erpEmployee.create({
+        data: {
+          userId: user.id,
+          name: user.name,
+          email: lower,
+          employeeNo: lower.split("@")[0],
+          memberStatus: "pending",
+        },
+      });
+    }
+
+    const access = await resolveErpAccess(user.id, user.email);
+    if (access.status !== "approved") {
+      return res.status(202).json({
+        pending: true,
+        error: "가입 신청이 접수되었습니다. 관리자 승인 후 이용할 수 있습니다.",
+      });
+    }
     const remember = req.body?.remember !== false;
     const token = signToken(user.id, remember);
     setSessionCookie(res, token, remember);
@@ -139,8 +172,14 @@ authRouter.post("/login", async (req, res) => {
 
   if (env.erpMode) {
     const erpAccess = await resolveErpAccess(user.id, user.email);
-    if (erpAccess.status === "none") {
-      return res.status(403).json({ error: "접근 권한이 없습니다. 관리자에게 초대를 요청하세요." });
+    if (erpAccess.status !== "approved") {
+      return res.status(403).json({
+        error: erpAccess.status === "pending"
+          ? "관리자 승인 대기 중입니다. 승인 후 이용할 수 있습니다."
+          : erpAccess.status === "rejected"
+            ? "가입이 반려된 계정입니다. 관리자에게 문의하세요."
+            : "접근 권한이 없습니다. 관리자에게 초대를 요청하세요.",
+      });
     }
     const emp = erpAccess.employeeId
       ? await prisma.erpEmployee.findUnique({ where: { id: erpAccess.employeeId } })

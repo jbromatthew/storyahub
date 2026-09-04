@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
+import { requireErpMember } from "../middleware/requireErpMember.js";
+import { env } from "../env.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 import { geocodeAddress } from "../services/geocode.js";
 import { computeIdentityKey, normalizePhone } from "../services/contactIdentity.js";
@@ -8,6 +10,8 @@ import { optionalUserMediaKey } from "../services/mediaValidation.js";
 
 export const contactsRouter = Router();
 contactsRouter.use(auth, requireAccess);
+// 밖에 열린 주소라 승인받지 않은 계정은 어떤 데이터도 보지 못한다
+if (env.erpMode) contactsRouter.use(requireErpMember);
 
 async function applyGeocode(address: string | null | undefined, lat?: number | null, lng?: number | null) {
   if (lat != null && lng != null) return { lat, lng };

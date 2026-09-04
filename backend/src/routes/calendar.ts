@@ -2,12 +2,16 @@ import { Router } from "express";
 import { randomBytes } from "node:crypto";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
+import { requireErpMember } from "../middleware/requireErpMember.js";
+import { env } from "../env.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 import { expandYearlyInRange } from "../services/eventRecurrence.js";
 import { deleteEventFromGoogle, pushEventToGoogle } from "../services/googleCalendar.js";
 
 export const calendarRouter = Router();
 calendarRouter.use(auth, requireAccess);
+// 밖에 열린 주소라 승인받지 않은 계정은 어떤 데이터도 보지 못한다
+if (env.erpMode) calendarRouter.use(requireErpMember);
 
 function normalizeContactIds(raw: unknown, contactId?: string | null): string[] {
   const ids = Array.isArray(raw) ? raw.map(String).filter(Boolean) : [];

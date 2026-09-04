@@ -1,12 +1,16 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
+import { requireErpMember } from "../middleware/requireErpMember.js";
+import { env } from "../env.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 import { searchKakaoPlacesKeyword, searchKakaoPlacesNearby } from "../services/kakaoLocal.js";
 import { assertUserMediaKeys } from "../services/mediaValidation.js";
 
 export const placesRouter = Router();
 placesRouter.use(auth, requireAccess);
+// 밖에 열린 주소라 승인받지 않은 계정은 어떤 데이터도 보지 못한다
+if (env.erpMode) placesRouter.use(requireErpMember);
 
 const MAX_PLACE_PHOTOS = 5;
 

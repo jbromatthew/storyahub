@@ -1,11 +1,15 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
+import { requireErpMember } from "../middleware/requireErpMember.js";
+import { env } from "../env.js";
 import { requireAccess } from "../middleware/requireAccess.js";
 import { optionalUserMediaKey } from "../services/mediaValidation.js";
 
 export const organizationsRouter = Router();
 organizationsRouter.use(auth, requireAccess);
+// 밖에 열린 주소라 승인받지 않은 계정은 어떤 데이터도 보지 못한다
+if (env.erpMode) organizationsRouter.use(requireErpMember);
 
 organizationsRouter.get("/", async (req: AuthedRequest, res) => {
   const orgs = await prisma.organization.findMany({
