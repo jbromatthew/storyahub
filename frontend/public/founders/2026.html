@@ -13,73 +13,118 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@400;500;700;900&display=swap">
 <style>
   :root{
-    --bg:#0E0F12; --panel:#16181C; --raise:#1D2025; --line:#2A2E35; --line-2:#22262C;
-    --ink:#F3F2F0; --ink-2:#B9BCC2; --muted:#7E838C;
-    --brand:#FA6400; --brand-2:#FF8534; --brand-deep:#C24C00; --brand-wash:#241608;
-    --ok:#4ADE80; --ok-wash:#10241A; --bad:#F87171; --bad-wash:#2A1717;
-    --r:14px;
+    /* 화이트 + 메탈 — 은색 계열 무채색에 브랜드 오렌지 하나만 */
+    --paper:#F1F2F4; --card:#FFFFFF; --sunk:#FAFAFB;
+    --steel-1:#FFFFFF; --steel-2:#EDEEF1; --steel-3:#DFE1E6;
+    --line:#DCDEE3; --line-2:#E9EAEE; --edge:#FFFFFF;
+    --ink:#15171B; --ink-2:#41454D; --muted:#7A7F88;
+    --brand:#FA6400; --brand-2:#FF8231; --brand-deep:#C24C00; --brand-wash:#FFF4EC; --brand-line:#FFD3B0;
+    --ok:#1B7A46; --ok-wash:#E9F6EE; --ok-line:#B9E2C9;
+    --bad:#B3261E; --bad-wash:#FCEDEC; --bad-line:#F3C7C4;
+    --r:12px;
+    --lift:0 1px 0 var(--edge) inset, 0 1px 2px rgba(21,23,27,.06), 0 8px 20px rgba(21,23,27,.05);
+    --press:0 1px 2px rgba(21,23,27,.08) inset;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html{scroll-behavior:smooth}
   body{
-    margin:0;background:var(--bg);color:var(--ink);
+    margin:0;color:var(--ink);
+    background:
+      radial-gradient(1200px 380px at 50% -180px, #FFFFFF 0%, rgba(255,255,255,0) 70%),
+      linear-gradient(180deg,#F5F6F8 0%,var(--paper) 100%);
+    background-attachment:fixed;
     font-family:"Gothic A1","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
-    font-size:15px;line-height:1.7;letter-spacing:-.01em;-webkit-font-smoothing:antialiased;
+    font-size:15px;line-height:1.7;letter-spacing:-.012em;-webkit-font-smoothing:antialiased;
   }
-  a{color:var(--brand-2)}
+  a{color:var(--brand-deep)}
 
-  /* 머리 */
-  .top{position:sticky;top:0;z-index:30;background:rgba(14,15,18,.92);
-    backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-  .top-in{max-width:820px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:12px}
-  .brand{font-weight:900;letter-spacing:-.02em;font-size:15px}
+  /* 머리 — 얇은 금속 띠 */
+  .top{position:sticky;top:0;z-index:30;
+    background:linear-gradient(180deg,rgba(255,255,255,.94),rgba(250,251,252,.9));
+    backdrop-filter:saturate(140%) blur(10px);
+    border-bottom:1px solid var(--line);box-shadow:0 1px 0 rgba(255,255,255,.9) inset}
+  .top-in{max-width:840px;margin:0 auto;padding:13px 20px;display:flex;align-items:center;gap:12px}
+  .brand{font-weight:900;letter-spacing:-.03em;font-size:15px}
   .brand em{font-style:normal;color:var(--brand)}
-  .deadline{margin-left:auto;font-size:12px;color:var(--muted);text-align:right;line-height:1.4}
-  .deadline b{color:var(--brand-2);display:block;font-size:13px}
+  .deadline{margin-left:auto;font-size:11.5px;color:var(--muted);text-align:right;line-height:1.35}
+  .deadline b{color:var(--ink);display:block;font-size:13px;font-variant-numeric:tabular-nums}
 
-  .bar{height:3px;background:var(--line-2)}
-  .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--brand),var(--brand-2));
-    width:0;transition:width .35s cubic-bezier(.4,0,.2,1)}
+  .bar{height:2px;background:var(--line-2)}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--brand-deep),var(--brand),var(--brand-2));
+    width:0;transition:width .4s cubic-bezier(.4,0,.2,1)}
 
-  .wrap{max-width:820px;margin:0 auto;padding:28px 20px 120px}
+  .wrap{max-width:840px;margin:0 auto;padding:30px 20px 120px}
 
   /* 표제 */
-  .hero{padding:14px 0 26px}
-  .eyebrow{font-size:12px;font-weight:700;letter-spacing:.2em;color:var(--brand)}
-  h1{font-size:clamp(26px,6vw,36px);font-weight:900;letter-spacing:-.035em;margin:10px 0 0;line-height:1.2}
-  .sub{margin-top:10px;color:var(--ink-2);font-size:15px;max-width:52ch}
+  .hero{padding:16px 0 28px}
+  .eyebrow{font-size:11px;font-weight:800;letter-spacing:.24em;color:var(--brand-deep)}
+  h1{font-size:clamp(27px,6vw,38px);font-weight:900;letter-spacing:-.04em;margin:12px 0 0;line-height:1.18}
+  .sub{margin-top:12px;color:var(--ink-2);font-size:15px;max-width:54ch}
+
+  /* 참가 종류 고르기 */
+  .kinds{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px}
+  @media(max-width:640px){.kinds{grid-template-columns:1fr}}
+  .kind{position:relative;text-align:left;border:1px solid var(--line);border-radius:16px;
+    background:linear-gradient(180deg,var(--steel-1) 0%,#FAFBFC 55%,var(--steel-2) 100%);
+    box-shadow:var(--lift);padding:26px 24px 24px;cursor:pointer;font:inherit;color:inherit;
+    transition:transform .18s cubic-bezier(.34,1.2,.64,1),box-shadow .18s,border-color .18s;
+    overflow:hidden}
+  .kind::before{content:"";position:absolute;inset:0 0 auto;height:3px;
+    background:linear-gradient(90deg,transparent,var(--steel-3),transparent)}
+  .kind:hover{transform:translateY(-2px);border-color:#C9CCD3;
+    box-shadow:0 1px 0 var(--edge) inset,0 3px 6px rgba(21,23,27,.07),0 16px 32px rgba(21,23,27,.08)}
+  .kind .tag{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.16em;
+    color:var(--brand-deep);background:var(--brand-wash);border:1px solid var(--brand-line);
+    border-radius:999px;padding:3px 10px}
+  .kind h3{font-size:21px;font-weight:900;letter-spacing:-.035em;margin:14px 0 6px}
+  .kind p{font-size:13.5px;color:var(--muted);margin:0;line-height:1.65;min-height:44px}
+  .kind .fee{margin-top:14px;font-size:13px;color:var(--ink-2);
+    border-top:1px solid var(--line-2);padding-top:12px}
+  .kind .fee b{font-size:17px;font-weight:900;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .kind .cta{margin-top:16px;display:block;width:100%;text-align:center;border-radius:10px;
+    padding:12px;font-weight:800;font-size:14.5px;
+    background:linear-gradient(180deg,var(--brand-2),var(--brand));color:#fff;
+    box-shadow:0 1px 0 rgba(255,255,255,.35) inset,0 2px 6px rgba(250,100,0,.28)}
+  .kind.alt .cta{background:linear-gradient(180deg,#FFFFFF,var(--steel-2));color:var(--ink);
+    border:1px solid var(--line);box-shadow:0 1px 0 var(--edge) inset,0 1px 2px rgba(21,23,27,.06)}
+  .kind.alt .tag{color:var(--ink-2);background:var(--steel-2);border-color:var(--line)}
 
   /* 단계 */
-  .steps{display:flex;gap:6px;margin:0 0 24px;overflow-x:auto;padding-bottom:2px}
-  .steps b{flex:0 0 auto;font-size:12px;font-weight:600;color:var(--muted);
-    padding:6px 12px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
-  .steps b.on{color:var(--brand-2);border-color:var(--brand);background:var(--brand-wash)}
-  .steps b.done{color:var(--ok);border-color:#265239}
+  .steps{display:flex;gap:6px;margin:0 0 22px;overflow-x:auto;padding-bottom:2px}
+  .steps b{flex:0 0 auto;font-size:11.5px;font-weight:700;color:var(--muted);
+    padding:6px 12px;border-radius:999px;border:1px solid var(--line);white-space:nowrap;
+    background:linear-gradient(180deg,#fff,var(--steel-2))}
+  .steps b.on{color:var(--brand-deep);border-color:var(--brand-line);background:var(--brand-wash)}
+  .steps b.done{color:var(--ok);border-color:var(--ok-line);background:var(--ok-wash)}
 
   section{display:none}
-  section.on{display:block;animation:in .3s ease}
+  section.on{display:block;animation:in .28s ease}
   @keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
-  h2{font-size:20px;font-weight:800;letter-spacing:-.03em;margin:0 0 4px}
+  h2{font-size:20px;font-weight:900;letter-spacing:-.035em;margin:0 0 4px}
   .lead{color:var(--muted);font-size:13.5px;margin:0 0 20px}
 
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
-    padding:18px 20px;margin-bottom:14px}
-  .card h3{font-size:14px;font-weight:700;margin:0 0 12px;letter-spacing:-.02em}
-  .card h3 .req{color:var(--brand);margin-left:3px}
+  .card{background:linear-gradient(180deg,var(--card),#FCFCFD);
+    border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--lift);
+    padding:19px 21px;margin-bottom:14px}
+  .card h3{font-size:13.5px;font-weight:800;margin:0 0 13px;letter-spacing:-.02em;
+    display:flex;align-items:baseline;gap:7px}
+  .card h3 .req{color:var(--brand)}
+  .card h3 .opt{font-weight:500;color:var(--muted);font-size:12px}
 
   label.f{display:block;margin-bottom:14px}
   label.f:last-child{margin-bottom:0}
-  .f>span{display:block;font-size:12.5px;color:var(--ink-2);margin-bottom:6px;font-weight:600}
+  .f>span{display:block;font-size:12px;color:var(--ink-2);margin-bottom:6px;font-weight:700}
   .f>span em{font-style:normal;color:var(--brand);margin-left:2px}
-  .hint{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.5}
+  .hint{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.55}
 
   input[type=text],input[type=email],input[type=tel],input[type=date],input[type=number],textarea,select{
-    width:100%;background:var(--raise);border:1px solid var(--line);border-radius:10px;
+    width:100%;background:var(--sunk);border:1px solid var(--line);border-radius:9px;
     padding:11px 13px;color:var(--ink);font:inherit;font-size:14.5px;outline:none;
-    transition:border-color .15s,box-shadow .15s}
-  input:focus,textarea:focus,select:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(250,100,0,.16)}
-  input::placeholder,textarea::placeholder{color:#5C616A}
+    box-shadow:var(--press);transition:border-color .15s,box-shadow .15s,background .15s}
+  input:focus,textarea:focus,select:focus{background:#fff;border-color:var(--brand);
+    box-shadow:0 0 0 3px rgba(250,100,0,.14)}
+  input::placeholder,textarea::placeholder{color:#A8ADB6}
   textarea{resize:vertical;min-height:86px;line-height:1.6}
   select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
     linear-gradient(135deg,var(--muted) 50%,transparent 50%);
@@ -87,94 +132,114 @@
     background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:38px}
 
   .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  @media(max-width:560px){.row,.row3{grid-template-columns:1fr}}
+  @media(max-width:560px){.row{grid-template-columns:1fr}}
 
-  /* 선택 카드 */
-  .picks{display:grid;gap:10px}
+  /* 선택 */
+  .picks{display:grid;gap:9px}
   .picks.two{grid-template-columns:1fr 1fr}
   @media(max-width:560px){.picks.two{grid-template-columns:1fr}}
-  .pick{display:flex;gap:12px;align-items:flex-start;background:var(--raise);
-    border:1px solid var(--line);border-radius:12px;padding:14px 15px;cursor:pointer;
-    transition:border-color .15s,background .15s}
-  .pick:hover{border-color:#3A404A}
-  .pick.on{border-color:var(--brand);background:var(--brand-wash)}
+  .pick{display:flex;gap:11px;align-items:flex-start;
+    background:linear-gradient(180deg,#fff,var(--steel-2));
+    border:1px solid var(--line);border-radius:10px;padding:13px 14px;cursor:pointer;
+    box-shadow:0 1px 0 var(--edge) inset;transition:border-color .15s,background .15s,box-shadow .15s}
+  .pick:hover{border-color:#C7CAD1}
+  .pick.on{border-color:var(--brand);background:linear-gradient(180deg,#FFF9F4,var(--brand-wash));
+    box-shadow:0 0 0 1px var(--brand) inset,0 1px 0 rgba(255,255,255,.7) inset}
   .pick input{position:absolute;opacity:0;pointer-events:none}
-  .tick{flex:0 0 auto;width:19px;height:19px;border-radius:6px;border:1.5px solid #3E444E;
-    display:grid;place-items:center;margin-top:1px;font-size:11px;color:transparent;transition:.15s}
+  .tick{flex:0 0 auto;width:19px;height:19px;border-radius:5px;border:1.5px solid #B9BEC7;
+    background:#fff;display:grid;place-items:center;margin-top:1px;font-size:11px;
+    color:transparent;transition:.15s}
   .pick.round .tick{border-radius:50%}
   .pick.on .tick{background:var(--brand);border-color:var(--brand);color:#fff}
   .pick .t{font-weight:700;font-size:14px}
   .pick .d{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.5}
-  .pick .k{font-size:10.5px;font-weight:700;letter-spacing:.12em;color:var(--brand);margin-bottom:2px}
+  .pick .k{font-size:10px;font-weight:800;letter-spacing:.14em;color:var(--brand-deep);
+    display:block;margin-bottom:3px}
 
   /* 약관 */
-  .doc{background:var(--raise);border:1px solid var(--line);border-radius:12px;
-    padding:16px 18px;max-height:300px;overflow-y:auto;font-size:13px;line-height:1.75;color:var(--ink-2)}
-  .doc h4{font-size:13px;color:var(--ink);margin:0 0 10px;font-weight:700}
-  .doc h5{font-size:12.5px;color:var(--ink);margin:16px 0 6px;font-weight:700}
+  .doc{background:var(--sunk);border:1px solid var(--line);border-radius:10px;
+    padding:16px 18px;max-height:290px;overflow-y:auto;font-size:12.8px;line-height:1.75;
+    color:var(--ink-2);box-shadow:var(--press)}
+  .doc h5{font-size:12.5px;color:var(--ink);margin:16px 0 6px;font-weight:800}
+  .doc h5:first-child{margin-top:0}
   .doc p{margin:0 0 10px}
   .doc ul{margin:0 0 10px;padding-left:17px}
-  .doc li{margin-bottom:6px}
-  .doc table{width:100%;border-collapse:collapse;font-size:12.5px;margin:0 0 10px}
-  .doc th,.doc td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
-  .doc th{background:#20242A;color:var(--ink);font-weight:700;width:34%;white-space:nowrap}
-  .doc::-webkit-scrollbar{width:8px}
-  .doc::-webkit-scrollbar-thumb{background:#31363E;border-radius:4px}
+  .doc li{margin-bottom:7px}
+  .doc table{width:100%;border-collapse:collapse;font-size:12.3px;margin:0 0 10px}
+  .doc th,.doc td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top;background:#fff}
+  .doc th{background:var(--steel-2);color:var(--ink);font-weight:800;width:34%;white-space:nowrap}
+  .doc::-webkit-scrollbar{width:9px}
+  .doc::-webkit-scrollbar-track{background:transparent}
+  .doc::-webkit-scrollbar-thumb{background:#CBCFD6;border-radius:5px;border:2px solid var(--sunk)}
 
   /* 팀원 */
-  .member{background:var(--raise);border:1px solid var(--line);border-radius:12px;
-    padding:14px 15px;margin-bottom:10px;position:relative}
-  .member .no{position:absolute;top:14px;right:15px;font-size:11.5px;color:var(--muted)}
-  .member .del{position:absolute;top:10px;right:12px;background:none;border:0;color:var(--muted);
-    cursor:pointer;font-size:14px;padding:4px 6px}
-  .member .del:hover{color:var(--bad)}
+  .member{background:var(--sunk);border:1px solid var(--line);border-radius:10px;
+    padding:14px 15px;margin-bottom:10px;position:relative;box-shadow:var(--press)}
+  .member .del{position:absolute;top:9px;right:10px;background:none;border:0;color:var(--muted);
+    cursor:pointer;font-size:14px;padding:5px 7px;border-radius:6px}
+  .member .del:hover{color:var(--bad);background:var(--bad-wash)}
 
   /* 파일 */
-  .drop{border:1.5px dashed #363C45;border-radius:12px;padding:22px 18px;text-align:center;
-    cursor:pointer;transition:.15s;background:var(--raise)}
+  .drop{display:block;border:1.5px dashed #C3C7CF;border-radius:10px;padding:22px 18px;
+    text-align:center;cursor:pointer;transition:.15s;background:var(--sunk)}
   .drop:hover{border-color:var(--brand);background:var(--brand-wash)}
-  .drop.has{border-style:solid;border-color:var(--ok);background:var(--ok-wash);text-align:left;
-    display:flex;align-items:center;gap:12px}
-  .drop .ic{font-size:22px}
+  .drop.has{border-style:solid;border-color:var(--ok-line);background:var(--ok-wash);
+    text-align:left;display:flex;align-items:center;gap:12px}
+  .drop .ic{font-size:20px}
   .drop .t{font-weight:700;font-size:14px}
   .drop .d{font-size:12.5px;color:var(--muted);margin-top:3px}
   .drop input{display:none}
-  .drop .x{margin-left:auto;background:none;border:0;color:var(--muted);cursor:pointer;font-size:15px;padding:6px}
+  .drop .x{margin-left:auto;background:none;border:0;color:var(--muted);cursor:pointer;
+    font-size:14px;padding:6px;border-radius:6px}
+  .drop .x:hover{color:var(--bad)}
+
+  /* 입금 안내 */
+  .pay{background:linear-gradient(180deg,#fff,var(--steel-2));border:1px solid var(--line);
+    border-radius:10px;padding:16px 18px;box-shadow:0 1px 0 var(--edge) inset}
+  .pay .amt{font-size:26px;font-weight:900;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+  .pay .amt em{font-style:normal;font-size:14px;font-weight:700;color:var(--muted);margin-left:4px}
+  .pay dl{display:grid;grid-template-columns:auto 1fr;gap:7px 16px;margin:14px 0 0;
+    font-size:13.5px;border-top:1px solid var(--line-2);padding-top:13px}
+  .pay dt{color:var(--muted);font-size:12.5px;white-space:nowrap}
+  .pay dd{margin:0;font-weight:700}
 
   /* 버튼 */
   .nav{display:flex;gap:10px;margin-top:22px}
-  .btn{flex:1;border:0;border-radius:12px;padding:14px 18px;font:inherit;font-size:15px;
-    font-weight:700;cursor:pointer;transition:.15s;letter-spacing:-.01em}
-  .btn-go{background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff}
-  .btn-go:hover{filter:brightness(1.08)}
-  .btn-go:disabled{opacity:.45;cursor:default;filter:none}
-  .btn-back{flex:0 0 auto;background:var(--raise);color:var(--ink-2);border:1px solid var(--line);padding:14px 22px}
-  .btn-back:hover{color:var(--ink)}
-  .btn-ghost{background:none;border:1px solid var(--line);color:var(--ink-2)}
+  .btn{flex:1;border:0;border-radius:10px;padding:14px 18px;font:inherit;font-size:15px;
+    font-weight:800;cursor:pointer;transition:.15s;letter-spacing:-.015em}
+  .btn-go{background:linear-gradient(180deg,var(--brand-2),var(--brand));color:#fff;
+    box-shadow:0 1px 0 rgba(255,255,255,.35) inset,0 2px 6px rgba(250,100,0,.3)}
+  .btn-go:hover{filter:brightness(1.05)}
+  .btn-go:disabled{opacity:.5;cursor:default;filter:none;box-shadow:none}
+  .btn-back,.btn-ghost{background:linear-gradient(180deg,#fff,var(--steel-2));color:var(--ink-2);
+    border:1px solid var(--line);box-shadow:0 1px 0 var(--edge) inset,0 1px 2px rgba(21,23,27,.05)}
+  .btn-back{flex:0 0 auto;padding:14px 22px}
+  .btn-back:hover,.btn-ghost:hover{color:var(--ink);border-color:#C7CAD1}
 
-  .msg{margin-top:12px;padding:11px 14px;border-radius:10px;font-size:13.5px;line-height:1.55;display:none}
+  .msg{margin-top:12px;padding:11px 14px;border-radius:9px;font-size:13.5px;line-height:1.55;display:none}
   .msg.on{display:block}
-  .msg.err{background:var(--bad-wash);color:#FCA5A5;border:1px solid #4A2626}
-  .msg.ok{background:var(--ok-wash);color:#86EFAC;border:1px solid #265239}
+  .msg.err{background:var(--bad-wash);color:var(--bad);border:1px solid var(--bad-line)}
+  .msg.ok{background:var(--ok-wash);color:var(--ok);border:1px solid var(--ok-line)}
 
   /* 완료 */
-  .done{text-align:center;padding:36px 20px}
-  .done .ic{font-size:46px}
-  .done h2{font-size:24px;margin:14px 0 6px}
-  .done .no{display:inline-block;margin-top:16px;background:var(--raise);border:1px solid var(--brand);
-    border-radius:12px;padding:14px 26px;font-size:22px;font-weight:900;letter-spacing:.06em;color:var(--brand-2)}
-  .done .note{color:var(--muted);font-size:13.5px;margin-top:18px;line-height:1.8}
+  .done{text-align:center;padding:34px 20px}
+  .done h2{font-size:23px;margin:12px 0 6px}
+  .done .no{display:inline-block;margin-top:16px;
+    background:linear-gradient(180deg,#fff,var(--steel-2));
+    border:1px solid var(--brand-line);border-radius:11px;padding:14px 28px;
+    font-size:22px;font-weight:900;letter-spacing:.08em;color:var(--brand-deep);
+    font-variant-numeric:tabular-nums;box-shadow:0 1px 0 var(--edge) inset,var(--lift)}
+  .done .note{color:var(--muted);font-size:13.5px;margin-top:18px;line-height:1.85}
+  .done .note b{color:var(--ink-2)}
 
-  .foot{margin-top:34px;padding-top:20px;border-top:1px solid var(--line);
+  .foot{margin-top:36px;padding-top:20px;border-top:1px solid var(--line);
     font-size:12.5px;color:var(--muted);line-height:1.9}
   .foot a{color:var(--ink-2);text-decoration:none}
-  .foot a:hover{color:var(--brand-2)}
+  .foot a:hover{color:var(--brand-deep)}
 
-  .closed{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
-    padding:34px 24px;text-align:center}
-  .closed .ic{font-size:38px}
-  .closed h2{margin:14px 0 6px}
+  .closed{background:linear-gradient(180deg,#fff,var(--steel-2));border:1px solid var(--line);
+    border-radius:16px;padding:38px 24px;text-align:center;box-shadow:var(--lift)}
+  .closed h2{margin:0 0 6px}
 </style>
 </head>
 <body>
@@ -190,17 +255,44 @@
 <div class="wrap">
 
   <div class="hero">
-    <div class="eyebrow">참가 신청</div>
-    <h1>1억 원 투자 기회의<br>주인공을 찾습니다</h1>
-    <p class="sub">
-      신청서·개인정보동의서·서약서를 여기서 바로 작성합니다.
-      따로 서류를 내려받아 작성하실 필요 없습니다. 마지막에 IR 자료만 첨부하시면 접수가 끝납니다.
+    <div class="eyebrow" id="heroEyebrow">BROJ FOUNDERS 2026</div>
+    <h1 id="heroTitle">1억 원 투자 기회의<br>주인공을 찾습니다</h1>
+    <p class="sub" id="heroSub">
+      출전하실 분과 보러 오실 분 모두 여기서 등록합니다.
+      어느 쪽인지 골라주세요.
     </p>
   </div>
 
   <div id="closedBox" style="display:none"></div>
 
-  <div id="formArea">
+  <!-- 0. 참가 종류 -->
+  <div id="chooser">
+    <div class="kinds">
+      <button type="button" class="kind" data-kind="applicant">
+        <span class="tag">참가자 모집</span>
+        <h3>참가 신청</h3>
+        <p>IR 피칭대회에 출전합니다. 서면 평가를 거쳐 본선에 오르면
+           Draper Korea 코칭과 최대 1억 원 투자 기회로 이어집니다.</p>
+        <div class="fee">참가비 <b>무료</b> · 사업 기획서와 IR 자료 제출</div>
+        <span class="cta">참가 신청하기</span>
+      </button>
+      <button type="button" class="kind alt" data-kind="visitor">
+        <span class="tag">참관객</span>
+        <h3>참관 등록</h3>
+        <p>피칭 현장을 직접 보고 네트워킹에 참여합니다.
+           투자사·창업가·업계 관계자를 한자리에서 만납니다.</p>
+        <div class="fee">참가비 <b>20,000</b>원 · 계좌이체</div>
+        <span class="cta">참관 등록하기</span>
+      </button>
+    </div>
+    <div class="foot" style="margin-top:26px;border-top:0;padding-top:0">
+      행사 2026년 10월 9일(금) 14:00 – 18:00 · 어브 스튜디오
+    </div>
+  </div>
+
+  <div id="formArea" style="display:none">
+    <button type="button" class="btn btn-ghost" id="backToKind"
+      style="flex:0 0 auto;padding:8px 14px;font-size:13px;margin-bottom:16px">← 참가 종류 다시 고르기</button>
     <div class="steps" id="steps"></div>
 
     <!-- 1. 참가 구분 -->
@@ -450,11 +542,71 @@
       <div class="nav"><button class="btn btn-go" id="finishBtn">제출 완료</button></div>
     </section>
 
+    <!-- V. 참관 등록 -->
+    <section id="v1">
+      <h2>참관 등록</h2>
+      <p class="lead">현장에서 뵙겠습니다. 아래 네 가지만 적어주시면 됩니다.</p>
+
+      <div class="card">
+        <h3>참관자 정보<span class="req">*</span></h3>
+        <div class="row">
+          <label class="f"><span>성함<em>*</em></span>
+            <input type="text" id="vName" maxlength="40" placeholder="홍길동"></label>
+          <label class="f"><span>연락처<em>*</em></span>
+            <input type="tel" id="vPhone" inputmode="numeric" maxlength="13" placeholder="010-1234-5678"></label>
+        </div>
+        <div class="row">
+          <label class="f"><span>소속</span>
+            <input type="text" id="vOrg" maxlength="80" placeholder="회사·기관명"></label>
+          <label class="f"><span>직함</span>
+            <input type="text" id="vTitle" maxlength="60" placeholder="대표 · 팀장 · 매니저 등"></label>
+        </div>
+        <label class="f"><span>이메일 <span style="font-weight:400;color:var(--muted)">선택</span></span>
+          <input type="email" id="vEmail" maxlength="120" placeholder="안내 메일을 받으실 주소">
+          <span class="hint">적어주시면 행사 안내를 메일로도 보내드립니다.</span></label>
+      </div>
+
+      <div class="card">
+        <h3>참가비<span class="req">*</span></h3>
+        <div class="pay">
+          <div class="amt">20,000<em>원</em></div>
+          <dl>
+            <dt>입금 계좌</dt><dd>우리은행 1005-704-322242</dd>
+            <dt>예금주</dt><dd>(주)브로제이</dd>
+            <dt>입금 기한</dt><dd>등록 후 3일 이내</dd>
+          </dl>
+        </div>
+        <label class="f" style="margin-top:14px"><span>입금자명<em>*</em></span>
+          <input type="text" id="vPayer" maxlength="40" placeholder="성함과 다르면 적어주세요">
+          <span class="hint">비워두시면 위 성함으로 대조합니다.</span></label>
+      </div>
+
+      <div class="card">
+        <h3>개인정보 수집·이용 동의<span class="req">*</span></h3>
+        <div class="doc" style="max-height:190px">
+          <table>
+            <tr><th>수집 및 이용자</th><td>㈜브로제이</td></tr>
+            <tr><th>수집·이용 목적</th><td>참관 등록 확인, 입금 대조, 행사 안내 및 사후 공지</td></tr>
+            <tr><th>수집하는 항목</th><td>성명, 연락처, 소속, 직함, 이메일(선택), 입금자명</td></tr>
+            <tr><th>보유 및 이용기간</th><td>행사 종료일로부터 1년간 보유 후 지체 없이 파기</td></tr>
+            <tr><th>거부 권리</th><td>동의를 거부하실 수 있으나, 거부 시 참관 등록이 제한됩니다.</td></tr>
+          </table>
+        </div>
+        <div class="picks" style="margin-top:12px">
+          <label class="pick" id="vAgree"><input type="checkbox"><span class="tick">✓</span>
+            <span class="t">위 내용을 확인하였으며 개인정보 수집·이용에 동의합니다.</span></label>
+        </div>
+      </div>
+
+      <div class="msg err" id="ev"></div>
+      <div class="nav"><button class="btn btn-go" id="visitorBtn">참관 등록하기</button></div>
+    </section>
+
     <!-- 6. 완료 -->
     <section id="s6">
       <div class="done">
-        <div class="ic">🎉</div>
-        <h2>접수가 완료되었습니다</h2>
+        <div style="width:52px;height:52px;margin:0 auto;border-radius:50%;background:linear-gradient(180deg,var(--brand-2),var(--brand));color:#fff;display:grid;place-items:center;font-size:26px;font-weight:900;box-shadow:0 2px 8px rgba(250,100,0,.32)">✓</div>
+        <h2 id="doneTitle">접수가 완료되었습니다</h2>
         <p style="color:var(--ink-2);margin:0">아래 접수번호를 꼭 저장해 두세요.</p>
         <div class="no" id="doneNo">—</div>
         <div class="note" id="doneNote"></div>
@@ -617,7 +769,7 @@
     files[kind] = f;
     msg("e5", "");
     drop.classList.add("has");
-    drop.innerHTML = '<span class="ic">📄</span><div><div class="t">' + esc(f.name) + '</div>' +
+    drop.innerHTML = '<span class="ic">▣</span><div><div class="t">' + esc(f.name) + '</div>' +
       '<div class="d">' + (f.size / 1048576).toFixed(1) + 'MB · 준비됨</div></div>' +
       '<button class="x" type="button">✕</button>';
     drop.querySelector(".x").addEventListener("click", function (e) {
@@ -785,6 +937,99 @@
     });
   });
 
+  /* ── 참가 종류 ── */
+  var kind = "";
+  function chooseKind(k) {
+    kind = k;
+    $("chooser").style.display = "none";
+    $("formArea").style.display = "";
+    $("steps").style.display = k === "visitor" ? "none" : "";
+    $("heroEyebrow").textContent = k === "visitor" ? "참관 등록" : "참가 신청";
+    $("heroTitle").innerHTML = k === "visitor"
+      ? "피칭 현장에서<br>직접 만나보세요"
+      : "1억 원 투자 기회의<br>주인공을 찾습니다";
+    $("heroSub").textContent = k === "visitor"
+      ? "네 가지만 적으시면 등록이 끝납니다. 참가비는 계좌이체로 받습니다."
+      : "신청서·개인정보동의서·서약서를 여기서 바로 작성합니다. 따로 서류를 내려받으실 필요 없습니다.";
+    if (k === "visitor") {
+      document.querySelectorAll("section").forEach(function (el) { el.classList.remove("on"); });
+      $("v1").classList.add("on");
+      $("bar").style.width = "50%";
+      document.title = "참관 등록 · BROJ FOUNDERS 2026";
+    } else {
+      go(1);
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".kind"), function (el) {
+    el.addEventListener("click", function () { chooseKind(el.getAttribute("data-kind")); });
+  });
+  $("backToKind").addEventListener("click", function () {
+    $("heroEyebrow").textContent = "BROJ FOUNDERS 2026";
+    $("heroTitle").innerHTML = "1억 원 투자 기회의<br>주인공을 찾습니다";
+    $("heroSub").textContent = "출전하실 분과 보러 오실 분 모두 여기서 등록합니다. 어느 쪽인지 골라주세요.";
+    $("formArea").style.display = "none";
+    $("chooser").style.display = "";
+    $("bar").style.width = "0";
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+
+  /* ── 참관 등록 ── */
+  $("vAgree").addEventListener("click", function (e) {
+    e.preventDefault();
+    $("vAgree").classList.toggle("on");
+  });
+  $("vPhone").addEventListener("input", function (e) {
+    var d = e.target.value.replace(/[^\d]/g, "").slice(0, 11);
+    e.target.value = d.length > 7 ? d.slice(0, 3) + "-" + d.slice(3, 7) + "-" + d.slice(7)
+      : d.length > 3 ? d.slice(0, 3) + "-" + d.slice(3) : d;
+  });
+  $("visitorBtn").addEventListener("click", function () {
+    if (!$("vName").value.trim()) { msg("ev", "성함을 입력해 주세요"); return; }
+    if ($("vPhone").value.replace(/[^\d]/g, "").length < 10) { msg("ev", "연락처를 확인해 주세요"); return; }
+    if (!$("vAgree").classList.contains("on")) { msg("ev", "개인정보 수집·이용에 동의해 주세요"); return; }
+    var btn = $("visitorBtn");
+    btn.disabled = true;
+    btn.textContent = "등록 중…";
+    fetch(API + "/public/founders/visitor", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: $("vName").value.trim(),
+        phone: $("vPhone").value,
+        org: $("vOrg").value.trim(),
+        title: $("vTitle").value.trim(),
+        email: $("vEmail").value.trim(),
+        payerName: $("vPayer").value.trim(),
+        privacyAgreed: true
+      })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        btn.disabled = false;
+        btn.textContent = "참관 등록하기";
+        if (!res.ok) { msg("ev", res.j.error || "등록하지 못했습니다"); return; }
+        applyNo = res.j.applyNo;
+        $("doneTitle").textContent = "참관 등록이 완료되었습니다";
+        $("doneNo").textContent = applyNo;
+        $("doneNote").innerHTML =
+          "아래 계좌로 <b>20,000원</b>을 3일 이내에 입금해 주세요.<br>" +
+          "우리은행 <b>1005-704-322242</b> (주)브로제이<br>" +
+          "입금자명 <b>" + esc(res.j.payerName) + "</b><br><br>" +
+          "입금이 확인되면 문자로 안내드립니다.<br>" +
+          "행사 <b>2026년 10월 9일(금) 14:00</b> · 어브 스튜디오<br>" +
+          "문의 broj.company@gmail.com · 카카오톡 @broj";
+        document.querySelectorAll("section").forEach(function (el) { el.classList.remove("on"); });
+        $("s6").classList.add("on");
+        $("bar").style.width = "100%";
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      })
+      .catch(function () {
+        btn.disabled = false;
+        btn.textContent = "참관 등록하기";
+        msg("ev", "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+      });
+  });
+
   /* ── 회차 확인 ── */
   function fmt(d) {
     var x = new Date(d);
@@ -803,9 +1048,10 @@
         var now = new Date();
         var before = round.opensAt && now < new Date(round.opensAt);
         $("formArea").style.display = "none";
+        $("chooser").style.display = "none";
         $("closedBox").style.display = "";
         $("closedBox").innerHTML =
-          '<div class="closed"><div class="ic">' + (before ? "🗓️" : "🔒") + "</div><h2>" +
+          '<div class="closed"><div class="ic">' + "" + "</div><h2>" +
           (before ? "아직 접수 시작 전입니다" : "접수가 마감되었습니다") + "</h2>" +
           '<p style="color:var(--muted);margin:0">' +
           (before && round.opensAt ? fmt(round.opensAt) + "부터 접수받습니다."

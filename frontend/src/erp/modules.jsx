@@ -6645,7 +6645,8 @@ export function SmartStoreView() {
   const [rounds, setRounds] = useState(null);
   const [applies, setApplies] = useState([]);
   const [sel, setSel] = useState("");
-  const [tab, setTab] = useState("applies"); // applies | rounds
+  const [tab, setTab] = useState("applies");
+  const [kind, setKind] = useState("applicant"); // applies | rounds
   const [q, setQ] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [loadedAt, setLoadedAt] = useState(null);
@@ -14974,6 +14975,11 @@ const BF_STATUS = [
   ["received", "접수", "warn"], ["reviewing", "검토중", "brand"],
   ["passed", "합격", "ok"], ["rejected", "미선정", "off"],
 ];
+// 참관객은 입금으로 관리한다
+const BF_VSTATUS = [
+  ["pending", "입금대기", "warn"], ["paid", "입금확인", "ok"], ["cancelled", "취소", "off"],
+];
+const BF_KIND = { applicant: "참가자", visitor: "참관객" };
 const BF_ENTRY = { pre: "예비창업자", early: "초기창업기업" };
 const BF_URL = "https://b2b.broj.io/founders/2026.html";
 
@@ -14997,19 +15003,20 @@ export function FoundersView() {
 
   const loadApplies = useCallback(() => {
     if (!sel) return;
-    api.erpFoundersApplies({ roundId: sel, status })
+    api.erpFoundersApplies({ roundId: sel, status, kind })
       .then((d) => setApplies(d.applies || [])).catch(notifyError);
-  }, [sel, status]);
+  }, [sel, status, kind]);
   useEffect(loadApplies, [loadApplies]);
 
   const cur = (rounds || []).find((r) => r.id === sel);
+  const statusList = kind === "visitor" ? BF_VSTATUS : BF_STATUS;
   const kw = q.trim().toLowerCase();
   const rows = applies.filter((a) =>
     !kw || [a.applyNo, a.teamName, a.repName, a.subject, a.repEmail, a.repPhone]
       .some((v) => String(v || "").toLowerCase().includes(kw)));
 
   const setStat = async (a, s) => {
-    const label = BF_STATUS.find(([v]) => v === s)?.[1] || s;
+    const label = [...BF_STATUS, ...BF_VSTATUS].find(([v]) => v === s)?.[1] || s;
     if (!(await confirmAction(`${a.teamName || a.repName} 접수를 '${label}'로 바꿀까요?`))) return;
     try {
       await api.erpFoundersApplyUpdate(a.id, { status: s });
@@ -15056,18 +15063,23 @@ export function FoundersView() {
 
   const copyList = async () => {
     if (!rows.length) return;
-    const head = ["접수번호", "상태", "접수일", "참가구분", "팀명", "대표자", "연락처", "이메일",
-      "주제", "분야", "팀원수", "증빙", "IR자료"];
+    const head = kind === "visitor"
+      ? ["등록번호", "상태", "등록일", "성함", "연락처", "소속", "직함", "이메일", "참가비", "입금자명", "입금확인"]
+      : ["접수번호", "상태", "접수일", "참가구분", "팀명", "대표자", "연락처", "이메일",
+         "주제", "분야", "팀원수", "증빙", "IR자료"];
     const lines = [head.join("\t")];
     for (const a of rows) {
-      lines.push([
-        a.applyNo, BF_STATUS.find(([v]) => v === a.status)?.[1] || a.status,
-        new Date(a.createdAt).toLocaleDateString("ko-KR"),
-        BF_ENTRY[a.entryType] || "", a.teamName, a.repName, a.repPhone, a.repEmail,
-        (a.subject || "").replace(/\s+/g, " "),
-        (a.tracks || []).map((t) => BF_TRACKS[t] || t).join(" "),
-        a.teamSize, a.proofName || "", a.irName || "",
-      ].join("\t"));
+      const label = [...BF_STATUS, ...BF_VSTATUS].find(([v]) => v === a.status)?.[1] || a.status;
+      const day = new Date(a.createdAt).toLocaleDateString("ko-KR");
+      lines.push((kind === "visitor"
+        ? [a.applyNo, label, day, a.repName, a.repPhone, a.repOrg, a.repTitle, a.repEmail,
+           a.feeAmount, a.payerName || a.repName,
+           a.paidAt ? new Date(a.paidAt).toLocaleDateString("ko-KR") : ""]
+        : [a.applyNo, label, day, BF_ENTRY[a.entryType] || "", a.teamName, a.repName, a.repPhone, a.repEmail,
+           (a.subject || "").replace(/\s+/g, " "),
+           (a.tracks || []).map((t) => BF_TRACKS[t] || t).join(" "),
+           a.teamSize, a.proofName || "", a.irName || ""]
+      ).join("\t"));
     }
     try { await navigator.clipboard.writeText(lines.join("\n")); toastSuccess(`${rows.length}건을 복사했어요`); }
     catch { notifyError(new Error("복사에 실패했습니다")); }
@@ -15105,9 +15117,14 @@ export function FoundersView() {
             <button type="button" className="btn btn-ghost btn-sm" onClick={copyList} disabled={!rows.length}>목록 복사</button>
           </div>
 
-          <div className="row" style={{ gap: 6, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <div className="row" style={{ gap: 6, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+            {[["applicant", "참가자"], ["visitor", "참관객"]].map(([v, label]) => (
+              <button key={v} type="button" className={"chip" + (kind === v ? " on" : "")}
+                onClick={() => { setKind(v); setStatus(""); }}>{label}</button>
+            ))}
+            <span className="cc-div" />
             <button type="button" className={"chip" + (status === "" ? " on" : "")} onClick={() => setStatus("")}>전체</button>
-            {BF_STATUS.map(([v, label]) => (
+            {statusList.map(([v, label]) => (
               <button key={v} type="button" className={"chip" + (status === v ? " on" : "")}
                 onClick={() => setStatus(v)}>{label}</button>
             ))}
@@ -15122,22 +15139,57 @@ export function FoundersView() {
           ) : (
             <div className="cc-aslist" style={{ marginTop: 14 }}>
               {rows.map((a) => {
-                const st = BF_STATUS.find(([v]) => v === a.status);
+                const st = [...BF_STATUS, ...BF_VSTATUS].find(([v]) => v === a.status);
+                const isV = a.kind === "visitor";
                 return (
                   <div key={a.id} className={"cc-as" + (openId === a.id ? " on" : "")}>
                     <button type="button" className="cc-as-hd" onClick={() => setOpenId(openId === a.id ? "" : a.id)}>
                       <span className={`cc-pill ${st?.[2] || "off"}`}>{st?.[1] || a.status}</span>
                       <span className="mono small">{a.applyNo}</span>
-                      <span className="cc-as-sym">{a.teamName || a.repName}</span>
-                      <span className="small muted">{BF_ENTRY[a.entryType] || ""}</span>
-                      {a.irKey && <span className="cc-pill ok">IR</span>}
-                      {a.proofKey && <span className="cc-pill ok">증빙</span>}
+                      <span className="cc-as-sym">{isV ? a.repName : (a.teamName || a.repName)}</span>
+                      <span className="small muted">
+                        {isV ? [a.repOrg, a.repTitle].filter(Boolean).join(" · ") : (BF_ENTRY[a.entryType] || "")}
+                      </span>
+                      {!isV && a.irKey && <span className="cc-pill ok">IR</span>}
+                      {!isV && a.proofKey && <span className="cc-pill ok">증빙</span>}
+                      {isV && a.feeAmount > 0 && (
+                        <span className="small muted">{a.feeAmount.toLocaleString()}원</span>
+                      )}
                       <span className="small muted" style={{ marginLeft: "auto" }}>
                         {new Date(a.createdAt).toLocaleDateString("ko-KR")}
                       </span>
                     </button>
                     {openId === a.id && (
                       <div className="cc-as-body">
+                        {isV ? (
+                          <>
+                            <div className="cc-kvgrid" style={{ marginBottom: 14 }}>
+                              <div className="cc-kv"><span>성함</span><b>{a.repName}</b></div>
+                              <div className="cc-kv"><span>연락처</span><b>{ccPhone(a.repPhone)}</b></div>
+                              <div className="cc-kv"><span>소속</span><b>{a.repOrg || <i>-</i>}</b></div>
+                              <div className="cc-kv"><span>직함</span><b>{a.repTitle || <i>-</i>}</b></div>
+                              <div className="cc-kv"><span>이메일</span><b>{a.repEmail || <i>-</i>}</b></div>
+                              <div className="cc-kv"><span>참가비</span><b>{(a.feeAmount || 0).toLocaleString()}원</b></div>
+                              <div className="cc-kv"><span>입금자명</span><b>{a.payerName || a.repName}</b></div>
+                              <div className="cc-kv"><span>입금 확인</span>
+                                <b>{a.paidAt ? new Date(a.paidAt).toLocaleString("ko-KR") : <i>대기</i>}</b></div>
+                              <div className="cc-kv"><span>등록일</span>
+                                <b>{new Date(a.createdAt).toLocaleString("ko-KR")}</b></div>
+                              <div className="cc-kv"><span>개인정보</span>
+                                <b>{a.privacyAgreed ? "동의" : "미동의"}</b></div>
+                            </div>
+                            <div className="cc-sec">상태</div>
+                            <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                              {BF_VSTATUS.map(([v, label]) => (
+                                <button key={v} type="button" className={"chip" + (a.status === v ? " on" : "")}
+                                  onClick={() => setStat(a, v)}>{label}</button>
+                              ))}
+                              <button type="button" className="btn btn-ghost btn-sm"
+                                style={{ marginLeft: "auto", color: "#C0392B" }} onClick={() => remove(a)}>삭제</button>
+                            </div>
+                          </>
+                        ) : (
+                        <>
                         <div className="cc-kvgrid" style={{ marginBottom: 14 }}>
                           <div className="cc-kv"><span>주제</span><b>{a.subject || <i>-</i>}</b></div>
                           <div className="cc-kv"><span>분야</span>
@@ -15215,6 +15267,8 @@ export function FoundersView() {
                           <button type="button" className="btn btn-ghost btn-sm"
                             style={{ marginLeft: "auto", color: "#C0392B" }} onClick={() => remove(a)}>삭제</button>
                         </div>
+                        </>
+                        )}
                       </div>
                     )}
                   </div>

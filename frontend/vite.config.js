@@ -13,7 +13,11 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: "autoUpdate",
         // 스마트상점 공개 가이드는 용량이 커서(수백KB) 서비스워커 프리캐시 대상에서 제외
-        workbox: { globIgnores: ["**/smartstore/**"], navigateFallbackDenylist: [/^\/smartstore\//] },
+        workbox: {
+          // 정적 공개 페이지는 서비스 워커가 가로채면 안 된다 — ERP index.html이 대신 뜬다
+          globIgnores: ["**/smartstore/**", "**/founders/**"],
+          navigateFallbackDenylist: [/^\/smartstore\//, /^\/founders\//],
+        },
         manifest: {
           name: erpMode ? "ERP" : "Storyahub",
           short_name: erpMode ? "ERP" : "Storyahub",

@@ -142,6 +142,7 @@ foundersPublicRouter.post("/apply", async (req: Request, res: Response) => {
     pledgeAt: now,
     signerName,
     signerTeamName: str(b.signerTeamName, 80),
+    kind: "applicant",
     submittedIp: str(req.ip, 60),
   };
 
@@ -218,3 +219,69 @@ foundersPublicRouter.get("/apply/lookup", async (req: Request, res: Response) =>
     },
   });
 });
+
+// ─── 참관객 등록 ────────────────────────────────────────────────────────────
+//
+// 참가비 2만원. 계좌이체로 받고 입금자명으로 대조한다.
+// 이름·연락처·소속·직함만 받는다 — 보러 오는 분께 서류를 물을 이유가 없다.
+
+const VISITOR_FEE = 20000;
+
+foundersPublicRouter.post("/visitor", async (req: Request, res: Response) => {
+  const round = await openRound();
+  if (!round) return fail(res, "지금은 접수 기간이 아닙니다");
+  const now = new Date();
+  if (!round.active) return fail(res, "접수가 마감되었습니다");
+  if (round.opensAt && now < round.opensAt) return fail(res, "아직 접수 시작 전입니다");
+  if (round.closesAt && now > round.closesAt) return fail(res, "접수가 마감되었습니다");
+
+  const b = req.body ?? {};
+  const repName = str(b.name, 40);
+  const repPhone = digits(b.phone);
+  if (!repName) return fail(res, "성함을 입력해 주세요");
+  if (repPhone.length < 10) return fail(res, "연락처를 확인해 주세요");
+  if (b.privacyAgreed !== true) return fail(res, "개인정보 수집·이용에 동의해 주셔야 등록됩니다");
+
+  const dup = await prisma.erpFoundersApply.findFirst({
+    where: { roundId: round.id, kind: "visitor", repPhone },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const data = {
+    roundId: round.id,
+    kind: "visitor",
+    repName,
+    repPhone,
+    repEmail: str(b.email, 120).toLowerCase(),
+    repOrg: str(b.org, 80),
+    repTitle: str(b.title, 60),
+    payerName: str(b.payerName, 40) || repName,
+    feeAmount: VISITOR_FEE,
+    privacyAgreed: true,
+    privacyAt: now,
+    signerName: repName,
+    status: "pending",
+    submittedIp: str(req.ip, 60),
+  };
+
+  const row = dup
+    ? await prisma.erpFoundersApply.update({ where: { id: dup.id }, data })
+    : await prisma.erpFoundersApply.create({
+        data: { ...data, applyNo: await nextVisitorNo(round.year) },
+      });
+
+  res.json({
+    ok: true,
+    applyNo: row.applyNo,
+    fee: VISITOR_FEE,
+    payerName: row.payerName,
+    updated: !!dup,
+  });
+});
+
+/** BV2026-0001 */
+async function nextVisitorNo(year: number): Promise<string> {
+  const prefix = `BV${year}-`;
+  const n = await prisma.erpFoundersApply.count({ where: { applyNo: { startsWith: prefix } } });
+  return `${prefix}${String(n + 1).padStart(4, "0")}`;
+}

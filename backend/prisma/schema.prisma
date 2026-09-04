@@ -1227,9 +1227,12 @@ model ErpFoundersRound {
 
 /// 참가 신청 한 건. 신청서·개인정보동의서·서약서를 온라인에서 받아 그대로 담는다.
 model ErpFoundersApply {
-  id        String @id @default(cuid())
-  roundId   String
-  applyNo   String @unique // BF2026-0001
+  id      String @id @default(cuid())
+  roundId String
+  applyNo String @unique // BF2026-0001 (참가자) · BV2026-0001 (참관객)
+
+  /// applicant(참가 신청) | visitor(참관객)
+  kind String @default("applicant")
 
   // 모집 분야
   tracks  Json   @default("[]") // business·tech·content·product·next·market
@@ -1252,6 +1255,7 @@ model ErpFoundersApply {
   repEmail    String  @default("")
   repPhone    String  @default("")
   repAddress  String  @default("")
+  repTitle    String  @default("") // 직함 — 참관객 접수에서 받는다
 
   members Json @default("[]") // 팀원 [{name,birth,phone,email,org}]
 
@@ -1271,7 +1275,13 @@ model ErpFoundersApply {
   extraKey  String @default("")
   extraName String @default("")
 
-  status String @default("received") // received | reviewing | passed | rejected
+  // 참관객 참가비 — 계좌이체로 받고 입금자명으로 대조한다
+  feeAmount Int       @default(0)
+  payerName String    @default("")
+  paidAt    DateTime?
+
+  /// 참가자 received|reviewing|passed|rejected · 참관객 pending|paid|cancelled
+  status String @default("received")
   memo   String @default("")
 
   submittedIp String   @default("")
@@ -1279,7 +1289,7 @@ model ErpFoundersApply {
   updatedAt   DateTime @updatedAt
 
   @@index([roundId, createdAt])
-  @@index([status])
+  @@index([kind, status])
   @@index([repEmail])
   @@index([repPhone])
 }

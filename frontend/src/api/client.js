@@ -292,6 +292,7 @@ export const api = {
     const p = new URLSearchParams();
     if (q.roundId) p.set("roundId", q.roundId);
     if (q.status) p.set("status", q.status);
+    if (q.kind) p.set("kind", q.kind);
     return req(`/erp/ops/founders/applies?${p}`);
   },
   erpFoundersApplyUpdate: (id, body) => req(`/erp/ops/founders/applies/${id}`, { method: "PATCH", body }),

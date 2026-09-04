@@ -575,9 +575,11 @@ erpCenterOpsRouter.patch("/founders/rounds/:id", async (req: AuthedRequest, res)
 erpCenterOpsRouter.get("/founders/applies", async (req: AuthedRequest, res) => {
   const roundId = str(req.query.roundId, 40);
   const status = str(req.query.status, 20);
+  const kind = str(req.query.kind, 20);
   const where: Record<string, unknown> = {};
   if (roundId) where.roundId = roundId;
   if (status) where.status = status;
+  if (["applicant", "visitor"].includes(kind)) where.kind = kind;
   const applies = await prisma.erpFoundersApply.findMany({
     where, orderBy: { createdAt: "desc" }, take: 500,
   });
@@ -589,8 +591,13 @@ erpCenterOpsRouter.patch("/founders/applies/:id", async (req: AuthedRequest, res
   const data: Record<string, unknown> = {};
   if (b.status !== undefined) {
     const s = str(b.status, 20);
-    if (!["received", "reviewing", "passed", "rejected"].includes(s)) return fail(res, "상태가 올바르지 않습니다");
+    if (!["received", "reviewing", "passed", "rejected", "pending", "paid", "cancelled"].includes(s)) {
+      return fail(res, "상태가 올바르지 않습니다");
+    }
     data.status = s;
+    // 참관객 입금 확인 시각을 같이 남긴다
+    if (s === "paid") data.paidAt = new Date();
+    if (s === "pending") data.paidAt = null;
   }
   if (b.memo !== undefined) data.memo = str(b.memo, 1000);
   const row = await prisma.erpFoundersApply.update({ where: { id: req.params.id }, data });
