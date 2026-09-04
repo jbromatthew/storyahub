@@ -1521,6 +1521,20 @@
       });
   });
 
+  // 비밀번호까지 치고 엔터를 누르면 바로 넘어간다 — 폼이 아니라서 기본 동작이 없다
+  function enterTo(ids, btnId) {
+    ids.forEach(function (id) {
+      $(id).addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" || e.isComposing) return;
+        e.preventDefault();
+        if (!$(btnId).disabled) $(btnId).click();
+      });
+    });
+  }
+  enterTo(["rsPhone", "rsPw"], "rsGo");
+  enterTo(["svPhone", "svPw"], "svGo");
+  enterTo(["vName", "vPhone", "vOrg", "vTitle", "vEmail", "vPayer"], "visitorBtn");
+
   /* ── 가이드라인 펼치기 ── */
   $("guideMore").addEventListener("click", function () {
     var on = $("guideSum").classList.toggle("on");
