@@ -350,8 +350,9 @@ foundersPublicRouter.post("/apply", async (req: Request, res: Response) => {
   const subject = str(b.subject, 200);
   if (!subject) return fail(res, "제품·서비스 한줄소개를 입력해 주세요");
 
-  if (!str(b.teamName, 80)) return fail(res, "기업명을 입력해 주세요");
+  if (!str(b.teamName, 80)) return fail(res, "기업명 또는 팀명을 입력해 주세요");
 
+  // 공고문이 예비 창업자도 자격으로 인정한다 — 사업자 정보를 강제하지 않는다
   const entryType = ["pre", "early"].includes(str(b.entryType, 10)) ? str(b.entryType, 10) : "early";
 
   const repName = str(b.repName, 40);

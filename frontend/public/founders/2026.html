@@ -203,6 +203,54 @@
       border:1px solid var(--line);border-radius:10px;padding:13px 34px 13px 13px}
     .rep .lb{display:block}
   }
+  /* 모집 공고 */
+  #noticeWrap{margin-top:18px}
+  .notice-open{display:flex;width:100%;align-items:center;gap:13px;text-align:left;
+    background:#fff;border:1px solid var(--line);border-radius:12px;padding:15px 17px;
+    font:inherit;color:inherit;cursor:pointer;box-shadow:var(--lift);transition:.15s}
+  .notice-open:hover{border-color:var(--brand);transform:translateY(-1px)}
+  .notice-open .ic{font-size:17px;color:var(--brand);flex:0 0 auto}
+  .notice-open span:nth-child(2){flex:1;min-width:0}
+  .notice-open b{display:block;font-size:14px;letter-spacing:-.02em}
+  .notice-open i{display:block;font-style:normal;font-size:12px;color:var(--muted);margin-top:3px}
+  .notice-open .go{font-size:12.5px;font-weight:800;color:var(--brand-deep);white-space:nowrap}
+
+  .notice{display:none;margin-top:12px;background:#fff;border:1px solid var(--line);
+    border-radius:12px;padding:22px 22px 24px;box-shadow:var(--lift);
+    font-size:13.4px;line-height:1.75;color:var(--ink-2)}
+  .notice.on{display:block}
+  .notice h3{font-size:14px;font-weight:800;color:var(--ink);letter-spacing:-.025em;
+    margin:26px 0 10px;padding-bottom:7px;border-bottom:1px solid var(--line-2)}
+  .notice h3:first-child{margin-top:0}
+  .notice p{margin:0 0 10px}
+  .notice b{color:var(--ink);font-weight:800}
+  .notice a{color:var(--brand-deep);font-weight:700}
+  .notice .s{font-size:12.3px;color:var(--muted)}
+  .notice .q{background:var(--sunk);border-left:2px solid var(--brand-line);
+    border-radius:0 8px 8px 0;padding:12px 14px;margin-bottom:12px;font-size:12.9px}
+  .notice .warn{background:var(--brand-wash);border:1px solid var(--brand-line);
+    border-radius:9px;padding:12px 14px;font-size:12.7px;margin:10px 0}
+  .notice ul{margin:0 0 10px;padding-left:18px}
+  .notice li{margin-bottom:6px}
+  .notice .tw{overflow-x:auto;margin:0 0 12px}
+  .notice table{width:100%;min-width:440px;border-collapse:collapse;font-size:12.6px}
+  .notice th{background:var(--steel-2);color:var(--ink);font-weight:800;font-size:12px;
+    text-align:left;padding:8px 10px;border:1px solid var(--line)}
+  .notice td{padding:8px 10px;border:1px solid var(--line);vertical-align:top;background:#fff}
+  .notice td.n{text-align:center;font-weight:800;color:var(--brand-deep);
+    font-variant-numeric:tabular-nums}
+  .notice tr.sum td{background:var(--sunk)}
+  .notice td .s{display:block;font-weight:500}
+  .steps-list{margin:0 0 10px;padding:0;list-style:none;counter-reset:st}
+  .steps-list li{position:relative;padding:0 0 12px 30px;counter-increment:st}
+  .steps-list li::before{content:counter(st);position:absolute;left:0;top:2px;
+    width:20px;height:20px;border-radius:50%;background:var(--brand-wash);
+    border:1px solid var(--brand-line);color:var(--brand-deep);
+    font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
+  .steps-list b{display:block;font-size:13px}
+  .steps-list span{display:block;font-size:12.6px;color:var(--muted);margin-top:2px}
+  @media(max-width:480px){.notice{padding:18px 16px 20px}}
+
   /* 이어서 작성하기 */
   .resume-line{margin-top:22px;text-align:center;font-size:13px;color:var(--muted)}
   .resume-line button{background:none;border:0;font:inherit;font-weight:800;color:var(--brand-deep);
@@ -457,6 +505,138 @@
         <span class="cta" id="visitorCta">참관 등록하기</span>
       </button>
     </div>
+  <!-- 모집 공고 -->
+  <div id="noticeWrap">
+    <button type="button" class="notice-open" id="noticeOpen">
+      <span class="ic">▤</span>
+      <span><b>모집 공고 전문</b><i>참가 자격 · 일정 · 평가 기준 · 시상 · 유의사항</i></span>
+      <span class="go" id="noticeGo">펼쳐 보기</span>
+    </button>
+
+    <div class="notice" id="notice">
+      <h3>1. 대회 개요</h3>
+      <p><b>목적</b> — 대한민국 피트니스 산업의 혁신을 선도할 유망 Founder를 발굴·육성하고, 전문 투자 역량과
+        글로벌 네트워크를 연결하여 기업 간 실질적인 투자·협업 기회를 창출함으로써 피트니스 산업의 지속적인
+        성장과 혁신 창업 생태계 활성화를 촉진합니다.</p>
+      <p class="q">BROJ Founders는 브로제이 CRM에 축적된 운영 데이터와 전국 피트니스 현장에 기반한 실증성,
+        그리고 스타트업의 유연한 민첩성을 결합해 피트니스 산업의 새로운 혁신을 만들어가는 오픈이노베이션
+        프로그램입니다. 단기적인 트렌드나 일회성 대회에 머무르지 않고, 실제 사업 기반 위에서의 검증과 신뢰를
+        바탕으로 한 장기적 파트너십을 중요하게 생각합니다. Founder를 단순한 심사 대상이 아닌 ‘성장 동반자’로
+        정의하며, 현장 실증부터 마켓 입점, 투자 유치와 시장 확장까지 이어지는 지속 가능한 협력 생태계를
+        구축하고자 합니다.</p>
+      <p><b>선정 규모</b> — 피트니스·스포츠·웰니스 분야 예비창업자 및 창업기업 <b>3개 사</b>
+        (1등 최대 1억 규모 투자 기회)</p>
+
+      <h3>2. 모집 부문 및 참가 자격</h3>
+      <div class="tw"><table>
+        <thead><tr><th style="width:104px">모집 분야</th><th style="width:104px">설명</th><th>세부 분야</th></tr></thead>
+        <tbody>
+          <tr><td><b>BUSINESS</b></td><td>피트니스 사업</td><td>헬스장, PT, 필라테스, 요가, 바레, 태권도, 주짓수 등</td></tr>
+          <tr><td><b>TECH</b></td><td>기술</td><td>SaaS, AI, IoT, Wearable, 데이터 등 IT 기술</td></tr>
+          <tr><td><b>CONTENT</b></td><td>콘텐츠·교육</td><td>운동 프로그램, 컨설팅, 교육, 커뮤니티, 미디어</td></tr>
+          <tr><td><b>PRODUCT</b></td><td>피트니스 제품</td><td>기구, 용품, F&amp;B, Wellness Product, Wearable Device</td></tr>
+          <tr><td><b>NEXT</b></td><td>피트니스 신사업</td><td>기존 카테고리로 정의되지 않는 새로운 Fitness Business</td></tr>
+          <tr><td><b>MARKET PLACE</b></td><td>브로제이 연동·입점</td><td>브로제이 CRM과 데이터를 주고받는 하드웨어·소프트웨어 — 측정기기·웨어러블·스마트기구, 무인 운영기기(디스펜서·락커·출입), 예약·결제·마케팅 자동화, 데이터 분석 등</td></tr>
+        </tbody>
+      </table></div>
+      <p><b>주제</b> — 피트니스 분야 자유 주제 공모</p>
+
+      <div class="tw"><table>
+        <thead><tr><th style="width:110px">자격</th><th>세부 요건</th><th style="width:118px">확인 서류</th></tr></thead>
+        <tbody>
+          <tr><td><b>예비 창업자</b><br><span class="s">개인 또는 팀</span></td>
+            <td>공고일(2026.09.07) 기준 사업자등록·법인등기를 보유하지 않은 자<br>
+                팀 참가 시 대표자 명의의 사업자 미보유 상태</td>
+            <td>사실증명<br><span class="s">(사업자등록사실여부)</span></td></tr>
+          <tr><td><b>창업기업</b></td>
+            <td>공고일(2026.09.07) 기준 사업개시 된 창업기업<br>
+                사업 개시일 = 법인은 법인설립 등기일, 개인사업자는 사업자등록증상 개업일</td>
+            <td>사업자등록증 사본</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>3. 모집 및 접수</h3>
+      <p><b>신청 기간</b> — 2026년 9월 7일(월) ~ <b>9월 17일(목) 오후 2시</b>까지</p>
+      <p><b>신청 방법</b> — 이 페이지에서 온라인 접수</p>
+      <p><b>제출 서류</b> — 참가신청서 · 개인정보 수집 이용 동의서 · 참가자 서약서는 <b>온라인 신청 시 화면에서 바로 작성</b>합니다.
+        여기에 <b>발표 자료(PDF)</b>를 첨부하고, 창업기업은 <b>사업자등록증 사본</b>을, 예비창업자는 <b>사실증명</b>을 함께 올려주세요.</p>
+      <p class="s">2차 평가 시에는 IR 코칭 이후 수정한 발표자료(PDF, 시제품 시연 영상 포함)를 다시 제출합니다.</p>
+
+      <h3>4. 세부 일정 및 절차</h3>
+      <ol class="steps-list">
+        <li><b>9월 7일 ~ 9월 17일</b><span>모집 공고 및 접수 — 사업 기획서 제출</span></li>
+        <li><b>9월 18일 18:00</b><span>1차 평가 및 합격자 발표 — 산출물 기반 서면 평가, 14인·팀 선정</span></li>
+        <li><b>9월 21일</b><span>1차 합격자 지원 — 브로제이 본사에서 핵심 투자 및 평가사(Draper Korea)의 IR 자료·피칭 강연과 1:1 피드백</span></li>
+        <li><b>9월 21일 ~ 10월 7일</b><span>최종 산출물(발표자료) 제출 — Draper Korea 온라인 피드백</span></li>
+        <li><b>10월 9일</b><span>2차 평가 및 발표 — 본선 진출 7인·팀 대면 평가</span></li>
+        <li><b>10월 10일</b><span>최종 평가 및 시상식 — 수상 3인·팀 최종 피칭</span></li>
+      </ol>
+      <p class="s">대회 일정 및 세부 추진 절차는 추진 과정에서 변경될 수 있습니다.</p>
+      <p><b>1차 평가</b> — 참가기업 7개사 및 예비 참가기업 7개사를 선정합니다. 합격 기업의 참가 취소·포기 등으로
+        결원이 생기면 예비 참가기업에게 순차적으로 자격을 부여합니다.</p>
+      <p><b>지원 프로그램</b> — 1차 합격자 전원 대상. OT, 서면평가 사전 진단 및 IR 피칭 실전 교육, 1:1 피드백,
+        발표자료 최종안에 대한 Draper Korea 온라인 피드백. <b>필참이며 미참여 시 2차 평가 대상에서 제외</b>됩니다.</p>
+
+      <h3>5. 평가 및 시상</h3>
+      <p><b>평가위원</b> — 분야별 산·학·연·투자계 전문가로 구성하며, 주최사 브로제이 평가 50%와
+        주관사 Draper Korea 평가 50%를 합산해 최종 점수를 냅니다.</p>
+      <div class="tw"><table>
+        <thead><tr><th>평가 항목</th><th>세부 기준</th><th style="width:56px">배점</th></tr></thead>
+        <tbody>
+          <tr><td rowspan="2"><b>사업 추진력 및<br>시장 경쟁력</b><br><span class="s">30점</span></td>
+            <td>사업 모델의 구조와 실행 전략이 명확하고 구체적인가?</td><td class="n">15</td></tr>
+          <tr><td>시장성이 충분하고, 유사사업 대비 뚜렷한 강점이 있는가?</td><td class="n">15</td></tr>
+          <tr><td rowspan="2"><b>시장 이해도</b><br><span class="s">20점</span></td>
+            <td>시장 구조 및 타겟 세분화 전략이 적절한가?</td><td class="n">10</td></tr>
+          <tr><td>잠재고객의 니즈와 문제 상황에 대한 인식이 명확한가?</td><td class="n">10</td></tr>
+          <tr><td rowspan="2"><b>지속가능성과<br>사회적 기여</b><br><span class="s">20점</span></td>
+            <td>데이터 등 기술 활용이 적절하고 장기적 성장 가능성이 있는가?</td><td class="n">10</td></tr>
+          <tr><td>제안 제품 및 서비스가 기존 공공 행정·서비스 혁신에 기여하는가?</td><td class="n">10</td></tr>
+          <tr><td><b>기업가 정신 및<br>인적 역량</b><br><span class="s">15점</span></td>
+            <td>대표자의 실행 의지가 드러나며 팀 구성의 전문성이 있는가?</td><td class="n">15</td></tr>
+          <tr><td><b>글로벌 시장<br>확장 가능성</b><br><span class="s">10점</span></td>
+            <td>특정 국가·지역에 국한되지 않고 해외 시장에서도 적용 가능한가?</td><td class="n">10</td></tr>
+          <tr><td><b>가산점</b><br><span class="s">5점</span></td>
+            <td>브로제이와 개발·사업적 협력 가능성이 있는가?</td><td class="n">5</td></tr>
+          <tr class="sum"><td colspan="2"><b>합계</b></td><td class="n"><b>100</b></td></tr>
+        </tbody>
+      </table></div>
+      <p class="s">평가위원별 최저점과 최고점을 제외한 점수들의 평균으로 순위를 정합니다.
+        최저점 또는 최고점이 둘 이상이면 각각 하나만 제외합니다.
+        1차 서면평가에서 동점자가 나오면 모두 발표평가 대상이 되고,
+        2차·최종 발표평가에서 동점이면 배점이 높은 항목의 점수가 높은 쪽을 앞에 둡니다.</p>
+
+      <div class="tw"><table>
+        <thead><tr><th style="width:104px">구분</th><th>시상금 / 상품</th></tr></thead>
+        <tbody>
+          <tr><td><b>대상</b></td><td>Draper Korea <b>최대 1억원 투자 검토 기회</b></td></tr>
+          <tr><td><b>최우수상</b></td><td>BROJ 키오스크</td></tr>
+          <tr><td><b>우수상</b></td><td>상금 100만원</td></tr>
+        </tbody>
+      </table></div>
+      <p class="warn"><b>투자금은 상금이 아닙니다.</b> 수상 기업을 대상으로 Draper Korea의 투자 검토 및 협의가
+        진행됩니다. 제출·발표한 내용이 실제 사실과 중대한 차이가 있는 경우 투자가 진행되지 않을 수 있으며,
+        최종 투자 규모와 조건은 기업가치, 사업 현황, 투자 협의 결과 등에 따라 달라집니다.</p>
+      <p class="s">입상작은 차년도 2027년 「BROJ Founders」 참가 신청 시 우대할 예정입니다.</p>
+
+      <h3>6. 유의사항</h3>
+      <ul>
+        <li>참가자는 본 대회의 제반 규정과 유의사항을 숙지해야 하며, 위반 등으로 발생하는 모든 책임은 참가자 본인에게 있습니다.</li>
+        <li>타인의 특허·실용신안 등 지식재산권을 침해하거나 침해할 우려가 있는 아이템은 입상이 취소될 수 있으며, 저작권으로 인해 발생하는 민·형사상 책임은 출품자에게 있습니다.</li>
+        <li>수상작의 지식재산권은 창작자(참가자)에게 귀속되며, 주최 측은 대회 홍보·전시·교육 등 목적에 한하여 활용할 수 있습니다.</li>
+        <li>접수 이후 공개된 아이디어는 법적으로 보호받을 수 없습니다. 보호를 원하시면 공개 이전에 직접 지식재산권을 확보하셔야 합니다.</li>
+        <li>공고문에 명시되지 않은 내용은 주최 측 정책에 따릅니다.</li>
+        <li>심사의 공정성·독립성 보장, 외부 간섭 차단, 심사위원 보호를 위해 심사위원과 심사 내용은 비공개입니다.</li>
+      </ul>
+
+      <h3>7. 문의처</h3>
+      <p>「BROJ Founders 2026」 운영사무국<br>
+        공식 홈페이지 <a href="/founders/2026/home.html">b2b.broj.io/founders/2026/home.html</a><br>
+        이메일 <a href="mailto:broj.network@gmail.com">broj.network@gmail.com</a><br>
+        카카오톡 @broj</p>
+    </div>
+  </div>
+
     <div class="resume-line">
       쓰다 만 신청서가 있으신가요?
       <button type="button" id="openResume">이어서 작성하기</button>
@@ -519,14 +699,31 @@
       <p class="lead">사업자등록증에 적힌 그대로 적어주세요.</p>
 
       <div class="card">
-        <h3>기본 사항<span class="req">*</span></h3>
+        <h3>참가 자격<span class="req">*</span></h3>
+        <div class="hint" style="margin:-4px 0 12px">공고일(2026.09.07) 기준으로 판단합니다.</div>
+        <div class="picks two" id="entryType">
+          <label class="pick round" data-v="pre">
+            <input type="radio" name="entry"><span class="tick">✓</span>
+            <span><span class="t">예비 창업자</span>
+            <span class="d">사업자등록·법인등기를 아직 보유하지 않은 개인 또는 팀</span></span>
+          </label>
+          <label class="pick round" data-v="early">
+            <input type="radio" name="entry"><span class="tick">✓</span>
+            <span><span class="t">창업기업</span>
+            <span class="d">이미 사업이 개시된 법인 또는 개인사업자</span></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 id="basicTitle">기본 사항<span class="req">*</span></h3>
         <div class="row">
-          <label class="f"><span>기업명<em>*</em></span>
+          <label class="f"><span id="coNameLabel">기업명<em>*</em></span>
             <input type="text" id="coName" maxlength="80" placeholder="㈜브로제이"></label>
-          <label class="f"><span>설립연월<em>*</em></span>
+          <label class="f" id="foundedBox"><span>설립연월<em>*</em></span>
             <input type="month" id="coFounded"></label>
         </div>
-        <div class="row">
+        <div class="row" id="bizRow">
           <label class="f"><span>사업자등록번호<em>*</em></span>
             <input type="text" id="bizNo" maxlength="12" inputmode="numeric" placeholder="000-00-00000"></label>
           <div class="f"><span>사업자 구분<em>*</em></span>
@@ -547,10 +744,10 @@
       </div>
 
       <div class="card">
-        <h3>사업장 주소<span class="req">*</span></h3>
-        <label class="f"><span>본사<em>*</em></span>
+        <h3 id="addrTitle">사업장 주소<span class="req">*</span></h3>
+        <label class="f"><span id="addrMainLabel">본사<em>*</em></span>
           <input type="text" id="addrMain" maxlength="200" placeholder="도로명 주소"></label>
-        <label class="f"><span>지사 <span class="opt">있는 경우</span></span>
+        <label class="f" id="branchBox"><span>지사 <span class="opt">있는 경우</span></span>
           <input type="text" id="addrBranch" maxlength="200"></label>
       </div>
 
@@ -652,7 +849,7 @@
 
     <!-- 3. 기업 현황 -->
     <section id="s3">
-      <h2>기업 현황</h2>
+      <h2 id="s3title">기업 현황</h2>
       <p class="lead">해당 사항이 없으면 0으로 두거나 비워두셔도 됩니다.</p>
 
       <div class="card">
@@ -859,7 +1056,7 @@
       <p class="lead" id="s6lead">접수는 완료되었습니다. 이제 자료를 올려주세요.</p>
 
       <div class="card">
-        <h3>필수 증빙 서류<span class="req">*</span></h3>
+        <h3 id="proofTitle">사업자등록증<span class="req">*</span></h3>
         <div class="hint" id="proofHint" style="margin:-4px 0 12px">사업자등록증 사본을 올려주세요.</div>
         <label class="drop" id="proofDrop">
           <input type="file" id="proofFile" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.hwp,.zip">
@@ -1032,7 +1229,7 @@
 
   <div class="foot">
     BROJ FOUNDERS 2026 운영사무국<br>
-    <a href="mailto:broj.company@gmail.com">broj.company@gmail.com</a> · 카카오톡 @broj
+    <a href="mailto:broj.network@gmail.com">broj.network@gmail.com</a> · 카카오톡 @broj
   </div>
 </div>
 
@@ -1100,12 +1297,33 @@
       box.dispatchEvent(new CustomEvent("picked", { detail: el.getAttribute("data-v") }));
     });
   }
-  ["bizKind"].forEach(function (id) { bindPicks(id, true); });
+  ["bizKind", "entryType"].forEach(function (id) { bindPicks(id, true); });
   ["tracks", "salesTypes"].forEach(function (id) { bindPicks(id, false); });
   ["agree1", "agree2", "mgrSame"].forEach(function (id) {
     var el = $(id);
     el.addEventListener("click", function (e) { e.preventDefault(); el.classList.toggle("on"); });
   });
+
+  // 예비 창업자는 사업자가 없다 — 공고문이 인정하는 자격이라 묻지 않는다
+  function isPre() { return pick("entryType") === "pre"; }
+  function syncEntry() {
+    var pre = isPre();
+    $("bizRow").style.display = pre ? "none" : "";
+    $("foundedBox").style.display = pre ? "none" : "";
+    $("branchBox").style.display = pre ? "none" : "";
+    $("basicTitle").innerHTML = (pre ? "참가자 정보" : "기본 사항") + '<span class="req">*</span>';
+    $("coNameLabel").innerHTML = (pre ? "팀명 또는 이름" : "기업명") + "<em>*</em>";
+    $("coName").placeholder = pre ? "개인이면 이름, 팀이면 팀명" : "㈜브로제이";
+    $("addrTitle").innerHTML = (pre ? "주소" : "사업장 주소") + '<span class="req">*</span>';
+    $("addrMainLabel").innerHTML = (pre ? "주소" : "본사") + "<em>*</em>";
+    $("s3title").textContent = pre ? "현황" : "기업 현황";
+    $("proofHint").textContent = pre
+      ? "사실증명(사업자등록 사실여부)을 올려주세요. 홈택스에서 발급받으실 수 있습니다."
+      : "사업자등록증 사본을 올려주세요.";
+    var pt = $("proofTitle");
+    if (pt) pt.innerHTML = (pre ? "사실증명" : "사업자등록증") + '<span class="req">*</span>';
+  }
+  $("entryType").addEventListener("picked", syncEntry);
 
   // 실무 담당자가 대표자와 같으면 입력칸을 접는다
   $("mgrSame").addEventListener("click", function () {
@@ -1307,11 +1525,16 @@
   var EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
   function check(n) {
     if (n === 1) {
-      if (!$("coName").value.trim()) return "기업명을 입력해 주세요";
-      if (!$("coFounded").value) return "설립연월을 입력해 주세요";
-      if ($("bizNo").value.replace(/[^\d]/g, "").length !== 10) return "사업자등록번호 10자리를 확인해 주세요";
-      if (!pick("bizKind")) return "사업자 구분(개인·법인)을 선택해 주세요";
-      if (!$("addrMain").value.trim()) return "본사 주소를 입력해 주세요";
+      if (!pick("entryType")) return "참가 자격을 선택해 주세요";
+      if (!$("coName").value.trim()) {
+        return isPre() ? "팀명 또는 이름을 입력해 주세요" : "기업명을 입력해 주세요";
+      }
+      if (!isPre()) {
+        if (!$("coFounded").value) return "설립연월을 입력해 주세요";
+        if ($("bizNo").value.replace(/[^\d]/g, "").length !== 10) return "사업자등록번호 10자리를 확인해 주세요";
+        if (!pick("bizKind")) return "사업자 구분(개인·법인)을 선택해 주세요";
+      }
+      if (!$("addrMain").value.trim()) return isPre() ? "주소를 입력해 주세요" : "본사 주소를 입력해 주세요";
       if (!picks("tracks").length) return "세부 분야를 하나 이상 선택해 주세요";
     }
     if (n === 2) {
@@ -1355,6 +1578,7 @@
   function formPayload() {
     var same = $("mgrSame").classList.contains("on");
     return {
+      entryType: pick("entryType"),
       company: {
         name: $("coName").value.trim(),
         foundedAt: $("coFounded").value,
@@ -1411,10 +1635,10 @@
     return {
       tracks: picks("tracks"),
       subject: f.product.oneLine,
-      entryType: "early",
+      entryType: pick("entryType") || "early",
       teamName: f.company.name,
       teamSize: +(f.overview.employees || 0) + 1,
-      bizForms: [{ kind: f.company.bizKind, no: f.company.bizNo, openedAt: "" }],
+      bizForms: isPre() ? [] : [{ kind: f.company.bizKind, no: f.company.bizNo, openedAt: "" }],
       repName: $("repName").value.trim(),
       repGender: $("repGender").value,
       repBirth: $("repBirth").value,
@@ -1462,6 +1686,8 @@
     setVal("coIndustry", c.industry); setVal("coMainItem", c.mainItem);
     setVal("addrMain", c.addrMain); setVal("addrBranch", c.addrBranch);
     setVal("coHomepage", c.homepage); setVal("coSns", c.sns);
+    setPicks("entryType", f.entryType ? [f.entryType] : []);
+    syncEntry();
     setPicks("bizKind", c.bizKind ? [c.bizKind] : []);
     setPicks("tracks", f.tracks);
 
@@ -1633,6 +1859,13 @@
   enterTo(["svPhone", "svPw"], "svGo");
   enterTo(["vName", "vPhone", "vOrg", "vTitle", "vEmail", "vPayer"], "visitorBtn");
 
+  /* ── 모집 공고 펼치기 ── */
+  $("noticeOpen").addEventListener("click", function () {
+    var on = $("notice").classList.toggle("on");
+    $("noticeGo").textContent = on ? "접기" : "펼쳐 보기";
+    if (on) $("notice").scrollIntoView({ block: "start", behavior: "smooth" });
+  });
+
   /* ── 가이드라인 펼치기 ── */
   $("guideMore").addEventListener("click", function () {
     var on = $("guideSum").classList.toggle("on");
@@ -1700,7 +1933,7 @@
         $("doneNote").innerHTML =
           "1차 서면 평가 결과는 <b style='color:var(--ink-2)'>9월 18일(금) 18:00</b>에 발표됩니다.<br>" +
           "결과는 접수하신 이메일과 문자로 안내드립니다.<br>" +
-          "문의 broj.company@gmail.com · 카카오톡 @broj";
+          "문의 broj.network@gmail.com · 카카오톡 @broj";
         go(7);
         return;
       }
@@ -1910,7 +2143,7 @@
           "입금자명 <b>" + esc(res.j.payerName) + "</b><br><br>" +
           "입금이 확인되면 문자로 안내드립니다.<br>" +
           "행사 <b>2026년 10월 9일(금) 14:00</b> · 어브 스튜디오<br>" +
-          "문의 broj.company@gmail.com · 카카오톡 @broj";
+          "문의 broj.network@gmail.com · 카카오톡 @broj";
         document.querySelectorAll("section").forEach(function (el) { el.classList.remove("on"); });
         $("s7").classList.add("on");
         $("bar").style.width = "100%";
@@ -1961,7 +2194,7 @@
     .catch(function () {
       $("loading").innerHTML =
         '접수 상태를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.<br>' +
-        '<span style="font-size:12px">문의 broj.company@gmail.com</span>';
+        '<span style="font-size:12px">문의 broj.network@gmail.com</span>';
     });
 
   drawSteps();
