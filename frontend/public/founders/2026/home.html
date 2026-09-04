@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BROJ FOUNDERS 2026</title>
+<meta name="description" content="피트니스의 다음 혁신, 함께할 형제를 찾습니다. BROJ Founders 2026 IR 피칭대회.">
+<meta property="og:title" content="BROJ FOUNDERS 2026">
+<meta property="og:description" content="피트니스의 다음 혁신, 함께할 형제를 찾습니다. 1등 최대 1억 원 투자 기회.">
+<meta property="og:type" content="website">
+<link rel="icon" type="image/png" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+  html, body { margin:0; padding:0; height:100%; background:#FBF6F2; }
+  body { overflow:hidden; }
+
+  /* 안이 다 그려질 때까지 덮어둔다 — 빈 흰 화면이 먼저 보이지 않게 */
+  #veil {
+    position:fixed; inset:0; z-index:2; background:#FBF6F2;
+    display:flex; align-items:center; justify-content:center;
+    transition:opacity .45s ease; 
+  }
+  #veil.gone { opacity:0; pointer-events:none; }
+  #veil .dot {
+    width:38px; height:38px; border-radius:50%;
+    border:2.5px solid rgba(250,100,0,.18); border-top-color:#FA6400;
+    animation:spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg) } }
+  @media (prefers-reduced-motion: reduce) { #veil .dot { animation:none } }
+
+  #site {
+    position:fixed; inset:0; width:100%; height:100%;
+    border:0; display:block;
+  }
+
+  /* 여기서 열리지 않을 때를 위한 안내 — 평소엔 보이지 않는다 */
+  #fallback {
+    position:fixed; inset:0; z-index:3; display:none;
+    align-items:center; justify-content:center; padding:28px;
+    background:#FBF6F2; text-align:center;
+    font:15px/1.7 "Noto Sans KR","Apple SD Gothic Neo",sans-serif; color:#4A443F;
+  }
+  #fallback b { display:block; font-size:19px; color:#171412; margin-bottom:10px; letter-spacing:-.03em }
+  #fallback a {
+    display:inline-block; margin-top:18px; padding:12px 22px; border-radius:10px;
+    background:#FA6400; color:#fff; font-weight:800; text-decoration:none;
+  }
+</style>
+</head>
+<body>
+
+<iframe id="site" title="BROJ FOUNDERS 2026"
+  src="https://broj-founders-2026.figma.site/"
+  allow="clipboard-write; fullscreen"
+  referrerpolicy="no-referrer"></iframe>
+
+<div id="veil"><div class="dot"></div></div>
+
+<div id="fallback">
+  <div>
+    <b>페이지를 불러오지 못했습니다</b>
+    잠시 후 다시 시도해 주세요.
+    <a href="/founders/2026.html">지원 신청하러 가기</a>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var frame = document.getElementById("site");
+  var veil = document.getElementById("veil");
+  var done = false;
+
+  function reveal() {
+    if (done) return;
+    done = true;
+    veil.classList.add("gone");
+    setTimeout(function () { veil.style.display = "none"; }, 500);
+  }
+  // load가 떠도 안쪽은 아직 그리는 중이다 — 곧바로 걷으면 빈 화면이 잠깐 보인다.
+  // 다른 출처라 언제 다 그렸는지 알 수 없으니 조금 더 붙들어 둔다.
+  frame.addEventListener("load", function () { setTimeout(reveal, 900); });
+
+  // load가 오지 않아도 오래 덮어두지는 않는다
+  setTimeout(reveal, 12000);
+  // 그래도 아무것도 안 뜨면 신청 페이지로 갈 길을 열어준다
+  setTimeout(function () {
+    if (done) return;
+    document.getElementById("fallback").style.display = "flex";
+  }, 20000);
+})();
+</script>
+</body>
+</html>
