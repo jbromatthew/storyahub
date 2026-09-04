@@ -287,6 +287,8 @@ export const api = {
   // BROJ FOUNDERS
   erpFoundersRounds: () => req("/erp/ops/founders/rounds"),
   erpFoundersRoundSave: (body) => req("/erp/ops/founders/rounds", { method: "POST", body }),
+  erpFoundersReviewPass: (id, password) =>
+    req(`/erp/ops/founders/rounds/${id}/review-pass`, { method: "PATCH", body: { password } }),
   erpFoundersRoundUpdate: (id, body) => req(`/erp/ops/founders/rounds/${id}`, { method: "PATCH", body }),
   erpFoundersApplies: (q = {}) => {
     const p = new URLSearchParams();

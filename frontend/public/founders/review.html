@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>심사 · BROJ FOUNDERS 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&family=Noto+Sans+KR:wght@400;500;700;800;900&display=swap">
+<style>
+  :root{
+    --paper:#F1F2F4; --card:#FFFFFF; --sunk:#FAFAFB;
+    --steel-2:#EDEEF1; --steel-3:#DFE1E6;
+    --line:#DCDEE3; --line-2:#E9EAEE; --edge:#FFFFFF;
+    --ink:#15171B; --ink-2:#41454D; --muted:#7A7F88;
+    --brand:#FA6400; --brand-2:#FF8231; --brand-deep:#C24C00;
+    --brand-wash:#FFF4EC; --brand-line:#FFD3B0;
+    --ok:#1B7A46; --ok-wash:#E9F6EE; --ok-line:#B9E2C9;
+    --bad:#B3261E; --bad-wash:#FCEDEC; --bad-line:#F3C7C4;
+    --warn:#8A5A00; --warn-wash:#FFF6E3; --warn-line:#F0DAA8;
+    --lift:0 1px 0 var(--edge) inset, 0 1px 2px rgba(21,23,27,.06), 0 8px 20px rgba(21,23,27,.05);
+    --press:0 1px 2px rgba(21,23,27,.08) inset;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;color:var(--ink);background:var(--paper);
+    font-family:"Noto Sans JP","Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    font-size:15px;line-height:1.7;letter-spacing:-.012em;-webkit-font-smoothing:antialiased;
+    word-break:keep-all;overflow-wrap:break-word;
+  }
+  a{color:var(--brand-deep)}
+
+  .top{position:sticky;top:0;z-index:30;background:rgba(255,255,255,.9);
+    backdrop-filter:saturate(180%) blur(12px);-webkit-backdrop-filter:saturate(180%) blur(12px);
+    border-bottom:1px solid var(--line)}
+  .top-in{max-width:1120px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:14px}
+  .lockup{display:flex;align-items:center;gap:12px;flex:0 0 auto}
+  .lockup img{display:block;width:auto}
+  .lockup .lg-broj{height:20px}
+  .lockup .lg-draper{height:17px}
+  .lockup .lg-x{width:1px;height:16px;background:var(--line)}
+  .top .name{font-size:12.5px;font-weight:800;letter-spacing:-.01em;color:var(--ink-2)}
+  .top .sp{flex:1}
+  .top .who{font-size:12.5px;color:var(--muted)}
+
+  .wrap{max-width:1120px;margin:0 auto;padding:22px 20px 80px}
+
+  .btn{border:0;border-radius:9px;padding:11px 16px;font:inherit;font-size:13.5px;
+    font-weight:800;cursor:pointer;transition:.15s}
+  .btn-go{background:linear-gradient(180deg,var(--brand-2),var(--brand));color:#fff;
+    box-shadow:0 1px 0 rgba(255,255,255,.3) inset,0 2px 6px rgba(250,100,0,.26)}
+  .btn-go:hover{filter:brightness(1.04)}
+  .btn-go:disabled{opacity:.55;cursor:default;filter:none}
+  .btn-ghost{background:#fff;border:1px solid var(--line);color:var(--ink-2);box-shadow:var(--lift)}
+  .btn-ghost:hover{border-color:#C7CAD1}
+  .btn-sm{padding:7px 12px;font-size:12.5px;border-radius:8px}
+
+  input[type=text],input[type=password],input[type=search],textarea,select{
+    width:100%;background:var(--sunk);border:1px solid var(--line);border-radius:9px;
+    padding:11px 13px;color:var(--ink);font:inherit;font-size:14.5px;outline:none;
+    box-shadow:var(--press)}
+  input:focus,textarea:focus,select:focus{background:#fff;border-color:var(--brand);
+    box-shadow:0 0 0 3px rgba(250,100,0,.14)}
+  textarea{resize:vertical;min-height:64px;line-height:1.6}
+  label.f{display:block;margin-bottom:14px}
+  .f>span{display:block;font-size:12px;color:var(--ink-2);margin-bottom:6px;font-weight:700}
+
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;
+    padding:20px;box-shadow:var(--lift);margin-bottom:14px}
+  .card h3{font-size:13.5px;font-weight:800;margin:0 0 13px;letter-spacing:-.02em}
+
+  .msg{display:none;font-size:13px;border-radius:9px;padding:10px 13px;margin-top:12px}
+  .msg.on{display:block}
+  .msg.err{background:var(--bad-wash);border:1px solid var(--bad-line);color:var(--bad)}
+
+  /* 로그인 */
+  #gate{max-width:400px;margin:12vh auto 0}
+  #gate .lockup{justify-content:center;margin-bottom:22px}
+  #gate h1{font-size:21px;font-weight:900;letter-spacing:-.035em;margin:0 0 6px;text-align:center}
+  #gate .lead{font-size:13px;color:var(--muted);text-align:center;margin:0 0 22px;line-height:1.6}
+
+  /* 목록 */
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+  .bar .grow{flex:1;min-width:200px}
+  .bar input[type=search]{padding:9px 13px;font-size:13.5px}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap}
+  .tabs button{flex:0 0 auto;font:inherit;font-size:12.5px;font-weight:700;color:var(--muted);
+    padding:7px 13px;border-radius:999px;border:1px solid var(--line);cursor:pointer;
+    background:#fff;white-space:nowrap}
+  .tabs button.on{color:var(--brand-deep);border-color:var(--brand-line);background:var(--brand-wash)}
+  .tabs button i{font-style:normal;opacity:.65;margin-left:5px;font-variant-numeric:tabular-nums}
+
+  .row{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:10px;
+    box-shadow:var(--lift);overflow:hidden}
+  .row.on{border-color:var(--brand-line);box-shadow:0 0 0 3px rgba(250,100,0,.09),var(--lift)}
+  .hd{display:flex;align-items:center;gap:12px;width:100%;background:none;border:0;
+    font:inherit;text-align:left;padding:15px 18px;cursor:pointer;color:inherit}
+  .hd:hover{background:var(--sunk)}
+  .hd .no{font-size:11.5px;font-weight:800;color:var(--muted);font-variant-numeric:tabular-nums;
+    flex:0 0 auto}
+  .hd .nm{font-weight:800;letter-spacing:-.02em;flex:0 0 auto}
+  .hd .sub{font-size:13px;color:var(--muted);flex:1;min-width:0;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  .hd .arw{color:var(--muted);font-size:12px;flex:0 0 auto;transition:transform .18s}
+  .row.on .hd .arw{transform:rotate(90deg)}
+
+  .pill{flex:0 0 auto;font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;
+    border:1px solid var(--line);background:var(--steel-2);color:var(--ink-2);white-space:nowrap}
+  .pill.received{background:var(--steel-2);color:var(--ink-2)}
+  .pill.reviewing{background:var(--warn-wash);border-color:var(--warn-line);color:var(--warn)}
+  .pill.passed{background:var(--ok-wash);border-color:var(--ok-line);color:var(--ok)}
+  .pill.rejected{background:var(--bad-wash);border-color:var(--bad-line);color:var(--bad)}
+  .pill.file{background:var(--brand-wash);border-color:var(--brand-line);color:var(--brand-deep)}
+
+  .body{padding:2px 18px 18px;border-top:1px solid var(--line-2)}
+  .sec{font-size:11.5px;font-weight:800;color:var(--muted);letter-spacing:.02em;
+    margin:18px 0 9px;padding-bottom:6px;border-bottom:1px solid var(--line-2)}
+  .kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:9px 20px}
+  .kv>div{display:flex;gap:10px;font-size:13.2px;min-width:0}
+  .kv span{color:var(--muted);flex:0 0 88px}
+  .kv b{font-weight:700;min-width:0;overflow-wrap:anywhere}
+  .kv i{color:#B6BAC2;font-style:normal}
+  .essay{font-size:13.2px;line-height:1.7;color:var(--ink-2);white-space:pre-wrap;
+    background:var(--sunk);border:1px solid var(--line-2);border-radius:9px;padding:12px 14px;
+    margin-bottom:10px}
+  .essay-t{font-size:12px;font-weight:800;margin-bottom:5px}
+  table.t{width:100%;border-collapse:collapse;font-size:12.8px}
+  table.t th{text-align:left;font-weight:800;color:var(--muted);font-size:11.5px;
+    padding:6px 9px;border-bottom:1px solid var(--line)}
+  table.t td{padding:7px 9px;border-bottom:1px solid var(--line-2);vertical-align:top}
+  table.t tr:last-child td{border-bottom:0}
+  .tw{overflow-x:auto}
+
+  .acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px;
+    padding-top:16px;border-top:1px solid var(--line-2)}
+  .acts .sp{flex:1}
+  .st{font:inherit;font-size:12.5px;font-weight:800;padding:8px 15px;border-radius:999px;
+    border:1px solid var(--line);background:#fff;color:var(--muted);cursor:pointer}
+  .st.on{background:var(--ink);border-color:var(--ink);color:#fff}
+  .empty{text-align:center;color:var(--muted);font-size:13.5px;padding:56px 0}
+  .note{margin-top:14px}
+  .saved{font-size:12px;color:var(--ok);font-weight:700}
+  @media(max-width:640px){
+    .hd{flex-wrap:wrap;gap:8px}
+    .hd .sub{flex:1 0 100%;white-space:normal}
+    .kv span{flex:0 0 76px}
+  }
+</style>
+</head>
+<body>
+
+<!-- 로그인 -->
+<div id="gate">
+  <div class="lockup">
+    <img src="logo-broj.png" alt="BROJ" class="lg-broj">
+    <span class="lg-x"></span>
+    <img src="logo-draper.png" alt="Draper Startup House" class="lg-draper">
+  </div>
+  <h1>BROJ FOUNDERS 2026 심사</h1>
+  <p class="lead">공유받으신 비밀번호로 여시면 됩니다.<br>신청자 목록을 보고 상태를 남기실 수 있습니다.</p>
+  <div class="card">
+    <label class="f"><span>심사자 성함 <i style="font-style:normal;color:var(--muted);font-weight:400">선택</i></span>
+      <input type="text" id="who" maxlength="40" placeholder="누가 상태를 바꿨는지 남습니다"></label>
+    <label class="f" style="margin-bottom:0"><span>비밀번호</span>
+      <input type="password" id="pw" autocomplete="off"></label>
+    <div class="msg err" id="eg"></div>
+    <button type="button" class="btn btn-go" id="go" style="width:100%;margin-top:16px">열기</button>
+  </div>
+</div>
+
+<!-- 목록 -->
+<div id="app" style="display:none">
+  <div class="top">
+    <div class="top-in">
+      <div class="lockup">
+        <img src="logo-broj.png" alt="BROJ" class="lg-broj">
+        <span class="lg-x"></span>
+        <img src="logo-draper.png" alt="Draper Startup House" class="lg-draper">
+      </div>
+      <span class="name" id="roundName"></span>
+      <span class="sp"></span>
+      <span class="who" id="whoTag"></span>
+      <button type="button" class="btn btn-ghost btn-sm" id="out">닫기</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="bar">
+      <div class="tabs" id="tabs"></div>
+      <div class="grow"></div>
+      <input type="search" id="q" placeholder="기업명 · 대표자 · 접수번호 검색" style="max-width:280px">
+      <button type="button" class="btn btn-ghost btn-sm" id="reload">새로고침</button>
+    </div>
+    <div class="msg err" id="ea"></div>
+    <div id="list"></div>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+  var API = "https://api.storyahub.com";
+  var KEY = "broj_founders_review";
+  var TRACKS = {
+    business: "피트니스 사업", tech: "기술", content: "콘텐츠·교육",
+    product: "피트니스 제품", next: "피트니스 신사업", market: "브로제이 연동 입점"
+  };
+  var STATUS = [
+    { k: "received", t: "접수" }, { k: "reviewing", t: "검토중" },
+    { k: "passed", t: "합격" }, { k: "rejected", t: "미선정" }
+  ];
+  var token = "", who = "", applies = [], filter = "", openId = "";
+
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(v) {
+    return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function msg(id, text) {
+    var el = $(id);
+    el.textContent = text || "";
+    el.className = "msg err" + (text ? " on" : "");
+  }
+  function phone(v) {
+    var d = String(v || "").replace(/[^\d]/g, "");
+    if (d.length === 11) return d.slice(0, 3) + "-" + d.slice(3, 7) + "-" + d.slice(7);
+    if (d.length === 10) return d.slice(0, 3) + "-" + d.slice(3, 6) + "-" + d.slice(6);
+    return v || "";
+  }
+  function day(v) {
+    if (!v) return "";
+    var d = new Date(v);
+    return d.getFullYear() + "." + (d.getMonth() + 1) + "." + d.getDate();
+  }
+  function num(v) {
+    return v === "" || v == null ? "" : Number(v).toLocaleString();
+  }
+
+  /* ── 통신 ── */
+  function call(path, opt) {
+    var o = opt || {};
+    o.headers = o.headers || {};
+    o.headers.Authorization = "Bearer " + token;
+    if (o.body) o.headers["Content-Type"] = "application/json";
+    return fetch(API + "/public/founders/review" + path, o).then(function (r) {
+      return r.json().then(function (j) {
+        if (r.status === 401) { signOut(); throw new Error("다시 로그인해 주세요"); }
+        if (!r.ok) throw new Error(j.error || "요청에 실패했습니다");
+        return j;
+      });
+    });
+  }
+
+  /* ── 로그인 ── */
+  function signIn() {
+    var pw = $("pw").value;
+    if (!pw) { msg("eg", "비밀번호를 입력해 주세요"); return; }
+    var btn = $("go");
+    btn.disabled = true; btn.textContent = "여는 중…";
+    fetch(API + "/public/founders/review/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pw, who: $("who").value.trim() })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        btn.disabled = false; btn.textContent = "열기";
+        if (!res.ok) { msg("eg", res.j.error || "열지 못했습니다"); return; }
+        token = res.j.token;
+        who = $("who").value.trim();
+        try {
+          sessionStorage.setItem(KEY, JSON.stringify({
+            token: token, who: who, round: res.j.round
+          }));
+        } catch (e) { /* 저장 못 해도 이번 세션은 쓴다 */ }
+        start(res.j.round);
+      })
+      .catch(function () {
+        btn.disabled = false; btn.textContent = "열기";
+        msg("eg", "서버에 연결할 수 없습니다");
+      });
+  }
+  function signOut() {
+    token = "";
+    try { sessionStorage.removeItem(KEY); } catch (e) { /* 무시 */ }
+    $("app").style.display = "none";
+    $("gate").style.display = "";
+    $("pw").value = "";
+  }
+  function start(round) {
+    $("gate").style.display = "none";
+    $("app").style.display = "";
+    $("roundName").textContent = round ? round.title : "";
+    $("whoTag").textContent = who ? who + " 님" : "";
+    load();
+  }
+
+  /* ── 목록 ── */
+  function load() {
+    call("/applies").then(function (d) {
+      applies = d.applies || [];
+      msg("ea", "");
+      draw();
+    }).catch(function (e) { msg("ea", e.message); });
+  }
+  function counts() {
+    var c = { "": applies.length };
+    STATUS.forEach(function (s) { c[s.k] = 0; });
+    applies.forEach(function (a) { if (c[a.status] != null) c[a.status]++; });
+    return c;
+  }
+  function drawTabs() {
+    var c = counts();
+    var all = [{ k: "", t: "전체" }].concat(STATUS);
+    $("tabs").innerHTML = all.map(function (s) {
+      return '<button type="button" data-st="' + s.k + '"' +
+        (filter === s.k ? ' class="on"' : "") + ">" + s.t +
+        "<i>" + (c[s.k] || 0) + "</i></button>";
+    }).join("");
+  }
+  function visible() {
+    var kw = $("q").value.trim().toLowerCase();
+    return applies.filter(function (a) {
+      if (filter && a.status !== filter) return false;
+      if (!kw) return true;
+      return [a.applyNo, a.teamName, a.repName, a.subject, a.repEmail]
+        .some(function (v) { return String(v || "").toLowerCase().indexOf(kw) >= 0; });
+    });
+  }
+  function draw() {
+    drawTabs();
+    var rows = visible();
+    if (!rows.length) {
+      $("list").innerHTML = '<div class="empty">' +
+        (applies.length ? "조건에 맞는 신청이 없습니다." : "아직 접수된 신청이 없습니다.") + "</div>";
+      return;
+    }
+    $("list").innerHTML = rows.map(function (a, i) {
+      return '<div class="row' + (openId === a.id ? " on" : "") + '" data-id="' + esc(a.id) + '">' +
+        '<button type="button" class="hd">' +
+          '<span class="no">' + (i + 1) + "</span>" +
+          '<span class="nm">' + esc(a.teamName || a.repName) + "</span>" +
+          '<span class="sub">' + esc(a.subject || "") + "</span>" +
+          (a.irKey ? '<span class="pill file">IR</span>' : "") +
+          '<span class="pill ' + esc(a.status) + '">' + statusName(a.status) + "</span>" +
+          '<span class="arw">›</span>' +
+        "</button>" +
+        (openId === a.id ? detail(a) : "") +
+      "</div>";
+    }).join("");
+  }
+  function statusName(k) {
+    var f = STATUS.filter(function (s) { return s.k === k; })[0];
+    return f ? f.t : k;
+  }
+
+  /* ── 상세 ── */
+  function kv(label, value) {
+    return "<div><span>" + label + "</span><b>" +
+      (value ? esc(value) : "<i>-</i>") + "</b></div>";
+  }
+  function essay(title, text) {
+    if (!text) return "";
+    return '<div class="essay-t">' + title + "</div>" +
+      '<div class="essay">' + esc(text) + "</div>";
+  }
+  function table(title, cols, rows) {
+    if (!rows || !rows.length) return "";
+    return '<div class="sec">' + title + " " + rows.length + "건</div>" +
+      '<div class="tw"><table class="t"><thead><tr>' +
+      cols.map(function (c) { return "<th>" + c.t + "</th>"; }).join("") +
+      "</tr></thead><tbody>" +
+      rows.map(function (r) {
+        return "<tr>" + cols.map(function (c) {
+          return "<td>" + esc(r[c.k] || "-") + "</td>";
+        }).join("") + "</tr>";
+      }).join("") +
+      "</tbody></table></div>";
+  }
+  function detail(a) {
+    var f = a.formData || {};
+    var c = f.company || {}, m = f.manager || {}, o = f.overview || {},
+        pd = f.product || {}, es = f.essay || {}, sales = f.sales || {};
+    var years = Object.keys(sales).filter(function (y) {
+      return sales[y] && (sales[y].domestic || sales[y].export);
+    });
+
+    var h = '<div class="body">';
+
+    h += '<div class="sec">접수</div><div class="kv">' +
+      kv("접수번호", a.applyNo) +
+      kv("접수일", day(a.createdAt)) +
+      kv("분야", (a.tracks || []).map(function (t) { return TRACKS[t] || t; }).join(", ")) +
+      kv("한 줄 소개", a.subject) +
+      "</div>";
+
+    h += '<div class="sec">기업</div><div class="kv">' +
+      kv("기업명", c.name || a.teamName) +
+      kv("설립연월", c.foundedAt) +
+      kv("사업자번호", c.bizNo) +
+      kv("사업자 구분", c.bizKind === "corp" ? "법인" : c.bizKind === "personal" ? "개인" : "") +
+      kv("업종 / 업태", c.industry) +
+      kv("주생산품목", c.mainItem) +
+      kv("본사", c.addrMain) +
+      kv("지사", c.addrBranch) +
+      kv("홈페이지", c.homepage) +
+      kv("SNS", c.sns) +
+      "</div>";
+
+    h += '<div class="sec">대표자' + (m.name && !m.sameAsRep ? " · 실무 담당자" : "") + "</div><div class=\"kv\">" +
+      kv("대표자", a.repName + (a.repGender === "M" ? " (남)" : a.repGender === "F" ? " (여)" : "")) +
+      kv("생년월일", a.repBirth) +
+      kv("이메일", a.repEmail) +
+      kv("휴대전화", phone(a.repPhone)) +
+      (m.sameAsRep ? kv("담당자", "대표자와 동일")
+        : kv("담당자", [m.name, m.dept, m.title].filter(Boolean).join(" · ")) +
+          kv("담당자 연락", [m.email, phone(m.phone)].filter(Boolean).join(" · "))) +
+      "</div>";
+
+    var hasOverview = ["employees", "revenue", "investTotal", "rnd", "patentApplied", "patentRegistered"]
+      .some(function (k) { return o[k]; });
+    if (hasOverview) {
+      h += '<div class="sec">기업 현황</div><div class="kv">' +
+        kv("고용", num(o.employees) && num(o.employees) + "명") +
+        kv("총 매출", num(o.revenue) && num(o.revenue) + "백만원") +
+        kv("투자유치 총액", num(o.investTotal) && num(o.investTotal) + "백만원") +
+        kv("R&D 이력", num(o.rnd) && num(o.rnd) + "건") +
+        kv("특허", (num(o.patentApplied) || num(o.patentRegistered))
+          ? "출원 " + (num(o.patentApplied) || 0) + "건 · 등록 " + (num(o.patentRegistered) || 0) + "건" : "") +
+        "</div>";
+    }
+
+    if (years.length) {
+      h += '<div class="sec">매출현황 <span style="font-weight:400">단위: 백만원</span></div>' +
+        '<div class="tw"><table class="t"><thead><tr><th>연도</th><th>내수</th><th>수출액</th><th>합계</th></tr></thead><tbody>' +
+        years.map(function (y) {
+          var d = Number(sales[y].domestic || 0), e = Number(sales[y].export || 0);
+          return "<tr><td>" + esc(y) + "년</td><td>" + d.toLocaleString() +
+            "</td><td>" + e.toLocaleString() + "</td><td><b>" + (d + e).toLocaleString() + "</b></td></tr>";
+        }).join("") +
+        "</tbody></table></div>";
+    }
+
+    h += table("회사 연혁", [{ k: "date", t: "연월일" }, { k: "content", t: "주요 내용" }], f.history);
+    h += table("사업참여인력", [{ k: "rank", t: "직급" }, { k: "name", t: "성명" },
+      { k: "role", t: "담당업무" }, { k: "career", t: "주요 경력" }], f.staff);
+
+    h += '<div class="sec">제품 · 사업</div><div class="kv">' +
+      kv("제품(서비스)명", pd.name) +
+      kv("해외 진출명", pd.globalName) +
+      kv("세일즈 타입", (pd.salesTypes || []).join(", ")) +
+      "</div><div style=\"margin-top:12px\">" +
+      essay("제품 소개", pd.intro) +
+      essay("사업의 필요성", es.need) +
+      essay("주요 생산 품목", es.product) +
+      essay("국내외 시장상황 분석 및 진출 현황", es.market) +
+      essay("국내외 기술품질 경쟁력 분석", es.edge) +
+      "</div>";
+
+    h += table("국내외 추진실적", [{ k: "channel", t: "유통채널명" }, { k: "period", t: "진출시기" },
+      { k: "item", t: "진출 아이템" }, { k: "amount", t: "판매금액(백만원)" }], f.channels);
+    h += table("투자유치 현황", [{ k: "investor", t: "투자회사명" }, { k: "form", t: "투자형태" },
+      { k: "date", t: "투자일" }, { k: "amount", t: "투자금액(원)" }], f.investments);
+    h += table("지식재산권", [{ k: "kind", t: "구분" }, { k: "name", t: "명칭" },
+      { k: "date", t: "취득(출원)일" }, { k: "note", t: "주요내용" }], f.ipRights);
+
+    h += '<div class="sec">첨부</div><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      [["ir", a.irKey, a.irName || "IR 자료"],
+       ["proof", a.proofKey, a.proofName || "사업자등록증"],
+       ["extra", a.extraKey, a.extraName || "추가 자료"],
+       ["sign", a.signKey, "서명"]].map(function (x) {
+        return x[1]
+          ? '<button type="button" class="btn btn-ghost btn-sm" data-file="' + x[0] + '">⭳ ' + esc(x[2]) + "</button>"
+          : '<span style="font-size:12.5px;color:#B6BAC2;align-self:center">' +
+            esc(x[2]) + " 없음</span>";
+      }).join("") + "</div>";
+
+    h += '<label class="f note"><span>심사 메모</span>' +
+      '<textarea data-note maxlength="2000" placeholder="이 신청에 대한 의견을 남겨두세요">' +
+      esc(a.reviewNote || "") + "</textarea></label>";
+
+    h += '<div class="acts">' +
+      STATUS.map(function (s) {
+        return '<button type="button" class="st' + (a.status === s.k ? " on" : "") +
+          '" data-st="' + s.k + '">' + s.t + "</button>";
+      }).join("") +
+      '<span class="sp"></span>' +
+      (a.reviewedBy || a.reviewedAt
+        ? '<span style="font-size:12px;color:var(--muted)">' +
+          esc(a.reviewedBy || "심사") + " · " + day(a.reviewedAt) + "</span>"
+        : "") +
+      '<button type="button" class="btn btn-go btn-sm" data-save>메모 저장</button>' +
+      "</div>";
+
+    return h + "</div>";
+  }
+
+  /* ── 조작 ── */
+  function byId(id) {
+    return applies.filter(function (a) { return a.id === id; })[0];
+  }
+  function patch(id, body, done) {
+    call("/applies/" + id, { method: "PATCH", body: JSON.stringify(body) })
+      .then(function (d) {
+        var i = applies.findIndex(function (a) { return a.id === id; });
+        if (i >= 0) applies[i] = d.apply;
+        if (done) done();
+        draw();
+      })
+      .catch(function (e) { msg("ea", e.message); });
+  }
+
+  $("list").addEventListener("click", function (e) {
+    var row = e.target.closest(".row");
+    if (!row) return;
+    var id = row.getAttribute("data-id");
+
+    if (e.target.closest(".hd")) {
+      openId = openId === id ? "" : id;
+      draw();
+      return;
+    }
+    var st = e.target.closest("[data-st]");
+    if (st) {
+      var note = row.querySelector("[data-note]");
+      patch(id, { status: st.getAttribute("data-st"), reviewNote: note ? note.value : undefined });
+      return;
+    }
+    if (e.target.closest("[data-save]")) {
+      var t = row.querySelector("[data-note]");
+      var btn = e.target.closest("[data-save]");
+      btn.disabled = true; btn.textContent = "저장 중…";
+      patch(id, { reviewNote: t ? t.value : "" }, function () { /* draw가 새로 그린다 */ });
+      return;
+    }
+    var fb = e.target.closest("[data-file]");
+    if (fb) {
+      var kind = fb.getAttribute("data-file");
+      fb.disabled = true;
+      call("/applies/" + id + "/file/" + kind)
+        .then(function (d) { window.open(d.url, "_blank", "noopener"); fb.disabled = false; })
+        .catch(function (err) { fb.disabled = false; msg("ea", err.message); });
+    }
+  });
+
+  $("tabs").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-st]");
+    if (!b) return;
+    filter = b.getAttribute("data-st");
+    draw();
+  });
+  $("q").addEventListener("input", draw);
+  $("reload").addEventListener("click", load);
+  $("out").addEventListener("click", signOut);
+  $("go").addEventListener("click", signIn);
+  ["pw", "who"].forEach(function (id) {
+    $(id).addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); signIn(); }
+    });
+  });
+
+  /* 새로고침해도 이번 세션 안에서는 다시 묻지 않는다 */
+  try {
+    var saved = JSON.parse(sessionStorage.getItem(KEY) || "null");
+    if (saved && saved.token) {
+      token = saved.token;
+      who = saved.who || "";
+      start(saved.round);
+    }
+  } catch (e) { /* 깨졌으면 그냥 로그인 화면 */ }
+})();
+</script>
+</body>
+</html>

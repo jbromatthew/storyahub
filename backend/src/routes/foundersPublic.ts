@@ -8,7 +8,8 @@ import { Router, type Request, type Response } from "express";
 import express from "express";
 import { prisma } from "../db.js";
 import { putObjectBytes, r2Configured, r2KeyPrefix } from "../services/r2.js";
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { env } from "../env.js";
 
 export const foundersPublicRouter = Router();
 
@@ -104,6 +105,9 @@ const PW_MIN = 4;
 const PW_MAX_TRIES = 8;
 const PW_LOCK_MIN = 15;
 
+export function hashFoundersPw(pw: string): string {
+  return hashPw(pw);
+}
 function hashPw(pw: string): string {
   const salt = randomBytes(16);
   return "s1$" + salt.toString("hex") + "$" + scryptSync(pw, salt, 32).toString("hex");
@@ -202,6 +206,119 @@ foundersPublicRouter.post("/resume", async (req: Request, res: Response) => {
   }
   await prisma.erpFoundersDraft.update({ where: { phone }, data: { tries: 0, lockedAt: null } });
   res.json({ mode: "draft", step: d.step, payload: d.payload, savedAt: d.updatedAt });
+});
+
+/* ─────────── 공동 주최 심사 페이지 ───────────
+   드레이퍼 쪽에는 우리 ERP 계정이 없다. 회차마다 정한 비밀번호 하나로 열고,
+   신청자 목록을 보고 상태를 바꾸는 것까지만 한다. */
+
+const REVIEW_TTL_H = 12;
+const REVIEW_STATUS = ["received", "reviewing", "passed", "rejected"];
+
+function reviewSign(payload: string): string {
+  return createHmac("sha256", env.jwtSecret).update(payload).digest("base64url");
+}
+function reviewToken(roundId: string, who: string): string {
+  const body = Buffer.from(
+    JSON.stringify({ r: roundId, w: who, e: Date.now() + REVIEW_TTL_H * 3600_000 })
+  ).toString("base64url");
+  return body + "." + reviewSign(body);
+}
+function reviewOpen(req: Request): { roundId: string; who: string } | null {
+  const raw = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
+  const [body, sig] = raw.split(".");
+  if (!body || !sig) return null;
+  const want = Buffer.from(reviewSign(body));
+  const got = Buffer.from(sig);
+  if (want.length !== got.length || !timingSafeEqual(want, got)) return null;
+  try {
+    const p = JSON.parse(Buffer.from(body, "base64url").toString());
+    if (!p.e || p.e < Date.now()) return null;
+    return { roundId: String(p.r), who: String(p.w ?? "") };
+  } catch {
+    return null;
+  }
+}
+
+/** 심사자에게 내보내는 모양 — 우리 내부 메모와 비밀번호 해시는 빼고 준다 */
+function forReview(a: Record<string, unknown>) {
+  const {
+    passHash: _pw, memo: _memo, submittedIp: _ip, roundId: _rid, ...rest
+  } = a as Record<string, unknown> & { passHash?: string };
+  return rest;
+}
+
+/** POST /public/founders/review/login */
+foundersPublicRouter.post("/review/login", async (req: Request, res: Response) => {
+  const pw = String((req.body ?? {}).password ?? "");
+  const who = str((req.body ?? {}).who, 40);
+  if (!pw) return fail(res, "비밀번호를 입력해 주세요");
+
+  const rounds = await prisma.erpFoundersRound.findMany({
+    where: { active: true }, orderBy: { year: "desc" },
+  });
+  const round = rounds.find((r) => r.reviewPassHash && checkPw(pw, r.reviewPassHash));
+  if (!round) return fail(res, "비밀번호가 맞지 않습니다", 401);
+
+  res.json({
+    token: reviewToken(round.id, who),
+    round: { id: round.id, year: round.year, title: round.title },
+    expiresIn: REVIEW_TTL_H * 3600,
+  });
+});
+
+/** GET /public/founders/review/applies */
+foundersPublicRouter.get("/review/applies", async (req: Request, res: Response) => {
+  const at = reviewOpen(req);
+  if (!at) return fail(res, "다시 로그인해 주세요", 401);
+  const rows = await prisma.erpFoundersApply.findMany({
+    where: { roundId: at.roundId, kind: "applicant" },
+    orderBy: { createdAt: "asc" },
+    take: 500,
+  });
+  res.json({ applies: rows.map((r) => forReview(r as unknown as Record<string, unknown>)) });
+});
+
+/** PATCH /public/founders/review/applies/:id — 상태와 심사 메모만 */
+foundersPublicRouter.patch("/review/applies/:id", async (req: Request, res: Response) => {
+  const at = reviewOpen(req);
+  if (!at) return fail(res, "다시 로그인해 주세요", 401);
+  const row = await prisma.erpFoundersApply.findUnique({ where: { id: String(req.params.id) } });
+  if (!row || row.roundId !== at.roundId) return fail(res, "접수 내역을 찾을 수 없습니다", 404);
+
+  const b = req.body ?? {};
+  const data: Record<string, unknown> = { reviewedAt: new Date(), reviewedBy: at.who };
+  if (b.status !== undefined) {
+    const s = str(b.status, 20);
+    if (!REVIEW_STATUS.includes(s)) return fail(res, "상태가 올바르지 않습니다");
+    data.status = s;
+  }
+  if (b.reviewNote !== undefined) data.reviewNote = str(b.reviewNote, 2000);
+
+  const saved = await prisma.erpFoundersApply.update({ where: { id: row.id }, data });
+  res.json({ ok: true, apply: forReview(saved as unknown as Record<string, unknown>) });
+});
+
+/** GET /public/founders/review/applies/:id/file/:kind */
+foundersPublicRouter.get("/review/applies/:id/file/:kind", async (req: Request, res: Response) => {
+  const at = reviewOpen(req);
+  if (!at) return fail(res, "다시 로그인해 주세요", 401);
+  const row = await prisma.erpFoundersApply.findUnique({ where: { id: String(req.params.id) } });
+  if (!row || row.roundId !== at.roundId) return fail(res, "접수 내역을 찾을 수 없습니다", 404);
+
+  const kind = String(req.params.kind);
+  const key = kind === "proof" ? row.proofKey
+    : kind === "ir" ? row.irKey
+    : kind === "sign" ? row.signKey
+    : kind === "extra" ? row.extraKey
+    : "";
+  if (!key) return fail(res, "첨부가 없습니다", 404);
+  try {
+    const { presignGet } = await import("../services/r2.js");
+    res.json({ url: await presignGet(key) });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
 });
 
 /** BF2026-0001 */

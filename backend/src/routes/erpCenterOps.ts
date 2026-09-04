@@ -541,7 +541,27 @@ erpCenterOpsRouter.get("/founders/rounds", async (_req: AuthedRequest, res) => {
   const rounds = await prisma.erpFoundersRound.findMany({ orderBy: { year: "desc" } });
   const counts = await prisma.erpFoundersApply.groupBy({ by: ["roundId"], _count: { _all: true } });
   const map = new Map(counts.map((c) => [c.roundId, c._count._all]));
-  res.json({ rounds: rounds.map((r) => ({ ...r, applyCount: map.get(r.id) ?? 0 })) });
+  res.json({
+    rounds: rounds.map(({ reviewPassHash, ...r }) => ({
+      ...r,
+      applyCount: map.get(r.id) ?? 0,
+      reviewPassSet: !!reviewPassHash, // 해시 자체는 내보내지 않는다
+    })),
+  });
+});
+
+/** 공동 주최 심사 페이지 비밀번호. 빈 값을 보내면 페이지를 닫는다. */
+erpCenterOpsRouter.patch("/founders/rounds/:id/review-pass", async (req: AuthedRequest, res) => {
+  const round = await prisma.erpFoundersRound.findUnique({ where: { id: String(req.params.id) } });
+  if (!round) return fail(res, "회차를 찾을 수 없습니다", 404);
+  const pw = String((req.body ?? {}).password ?? "");
+  if (pw && pw.length < 8) return fail(res, "비밀번호는 8자 이상으로 정해주세요");
+  const { hashFoundersPw } = await import("./foundersPublic.js");
+  await prisma.erpFoundersRound.update({
+    where: { id: round.id },
+    data: { reviewPassHash: pw ? hashFoundersPw(pw) : "" },
+  });
+  res.json({ ok: true, reviewPassSet: !!pw });
 });
 
 erpCenterOpsRouter.post("/founders/rounds", async (req: AuthedRequest, res) => {

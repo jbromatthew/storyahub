@@ -14967,6 +14967,7 @@ export function CrmCentersView() {
 
 // ─── BROJ FOUNDERS — IR 피칭대회 접수 관리 ──────────────────────────────────
 
+const REVIEW_URL = "https://b2b.broj.io/founders/review.html";
 const BF_TRACKS = {
   business: "피트니스 사업", tech: "기술", content: "콘텐츠·교육",
   product: "제품", next: "신사업", market: "브로제이 연동 입점",
@@ -15137,6 +15138,8 @@ export function FoundersView() {
   const [tab, setTab] = useState("applies");
   const [kind, setKind] = useState("applicant"); // applicant(참가자) | visitor(참관객)
   const [form, setForm] = useState({ year: 2026, title: "", opensAt: "", closesAt: "", notice: "" });
+  const [reviewPw, setReviewPw] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
 
   const loadRounds = useCallback(() =>
     api.erpFoundersRounds().then((d) => {
@@ -15481,6 +15484,60 @@ export function FoundersView() {
               <button type="button" className="btn btn-accent" onClick={saveRound}>저장</button>
             </div>
           </div>
+
+          {cur && (
+            <div className="card" style={{ marginTop: 14, padding: "14px 16px" }}>
+              <div className="h-eyebrow" style={{ marginBottom: 10 }}>공동 주최 심사 페이지</div>
+              <div className="small muted" style={{ marginBottom: 12, lineHeight: 1.65 }}>
+                드레이퍼 쪽에는 우리 계정이 없습니다. 아래 주소와 비밀번호만 넘기면
+                신청자 목록을 보고 상태를 남길 수 있습니다. 우리 메모는 보이지 않습니다.
+              </div>
+              <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+                <code className="small" style={{
+                  background: "var(--surface-2)", padding: "7px 11px", borderRadius: 7,
+                  border: "1px solid var(--line)",
+                }}>{REVIEW_URL}</code>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
+                  navigator.clipboard.writeText(REVIEW_URL)
+                    .then(() => toastSuccess("주소를 복사했어요")).catch(() => {});
+                }}>주소 복사</button>
+                <a className="btn btn-ghost btn-sm" href={REVIEW_URL} target="_blank" rel="noopener">열어보기</a>
+              </div>
+              <div className="oa-form">
+                <OaField label="비밀번호" hint={cur.reviewPassSet ? "설정되어 있습니다 — 새로 넣으면 바뀝니다" : "8자 이상. 설정 전에는 페이지가 열리지 않습니다"}>
+                  <input className="input" type="password" autoComplete="new-password"
+                    value={reviewPw} onChange={(e) => setReviewPw(e.target.value)} />
+                </OaField>
+              </div>
+              <div className="row" style={{ gap: 8, marginTop: 12, alignItems: "center" }}>
+                <button type="button" className="btn btn-accent" disabled={pwBusy || reviewPw.length < 8}
+                  onClick={async () => {
+                    setPwBusy(true);
+                    try {
+                      await api.erpFoundersReviewPass(cur.id, reviewPw);
+                      setReviewPw("");
+                      loadRounds();
+                      toastSuccess("심사 페이지를 열었어요");
+                    } catch (e) { notifyError(e); } finally { setPwBusy(false); }
+                  }}>비밀번호 저장</button>
+                {cur.reviewPassSet && (
+                  <button type="button" className="btn btn-ghost" disabled={pwBusy}
+                    onClick={async () => {
+                      if (!window.confirm("심사 페이지를 닫습니다. 지금 열려 있는 사람도 다음 로그인부터 막힙니다.")) return;
+                      setPwBusy(true);
+                      try {
+                        await api.erpFoundersReviewPass(cur.id, "");
+                        loadRounds();
+                        toastSuccess("심사 페이지를 닫았어요");
+                      } catch (e) { notifyError(e); } finally { setPwBusy(false); }
+                    }}>페이지 닫기</button>
+                )}
+                <span className={`cc-pill ${cur.reviewPassSet ? "ok" : ""}`}>
+                  {cur.reviewPassSet ? "열림" : "닫힘"}
+                </span>
+              </div>
+            </div>
+          )}
 
           <div className="dash-table-wrap" style={{ marginTop: 14 }}>
             <table className="dash-table">

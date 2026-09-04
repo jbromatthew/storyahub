@@ -75,6 +75,15 @@
   .sub{margin-top:12px;color:var(--ink-2);font-size:15px;max-width:54ch;
     text-wrap:pretty}
 
+  /* 무엇이 걸려 있는지 */
+  .prize{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+  .prize span{font-size:12.5px;color:var(--ink-2);background:#fff;
+    border:1px solid var(--line);border-radius:999px;padding:6px 14px;
+    box-shadow:var(--lift)}
+  .prize b{color:var(--brand-deep);font-weight:800}
+  .prize span:first-child{border-color:var(--brand-line);background:var(--brand-wash)}
+  @media(max-width:480px){.prize span{font-size:12px;padding:5px 12px}}
+
   /* 참가 종류 고르기 */
   .kinds{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px}
   @media(max-width:640px){.kinds{grid-template-columns:1fr}}
@@ -390,8 +399,13 @@
       <img src="logo-draper.png" alt="Draper Startup House" class="lg-draper">
     </div>
     <div class="eyebrow" id="heroEyebrow">BROJ FOUNDERS 2026</div>
-    <h1 id="heroTitle">피트니스 다음 혁신을<br>함께 만들 형제를 찾습니다</h1>
+    <h1 id="heroTitle">피트니스의 다음 혁신,<br>함께할 형제를 찾습니다</h1>
     <p class="sub" id="heroSub">출전하실 분과 보러 오실 분, 어느 쪽인지 골라주세요.</p>
+    <div class="prize" id="prize">
+      <span><b>최대 1억 원</b> 투자</span>
+      <span>Draper Startup House <b>글로벌 코칭</b></span>
+      <span>브로제이 <b>CRM · 마켓 연동</b></span>
+    </div>
   </div>
 
   <div id="closedBox" style="display:none"></div>
@@ -418,7 +432,7 @@
         <p>피칭 현장을 직접 보고 네트워킹에 참여합니다.
            투자사·창업가·업계 관계자를 한자리에서 만납니다.</p>
         <div class="fee">참가비 <b>20,000</b>원 · 계좌이체</div>
-        <div class="seatline" id="seatLine">선착순 50석 · 이후 스탠딩 (최대 100명)</div>
+        <div class="seatline" id="seatLine">선착순 50석 의자 · 이후 스탠딩</div>
         <span class="cta" id="visitorCta">참관 등록하기</span>
       </button>
     </div>
@@ -1650,7 +1664,7 @@
     $("heroEyebrow").textContent = k === "visitor" ? "참관 등록" : "참가 신청";
     $("heroTitle").innerHTML = k === "visitor"
       ? "피칭 현장에서<br>직접 만나보세요"
-      : "피트니스 다음 혁신을<br>함께 만들 형제를 찾습니다";
+      : "피트니스의 다음 혁신,<br>함께할 형제를 찾습니다";
     $("heroSub").textContent = k === "visitor"
       ? "네 가지만 적으시면 등록이 끝납니다. 참가비는 계좌이체로 받습니다."
       : "신청서·개인정보동의서·서약서를 여기서 바로 작성합니다. 따로 서류를 내려받으실 필요 없습니다.";
@@ -1660,8 +1674,10 @@
       $("bar").style.width = "50%";
       if (!vSignReady) { vSignReady = true; vSignPad.ready(); }
       loadCapacity();
+      $("prize").style.display = "none"; // 참가자에게 걸린 혜택이라 참관 화면에선 감춘다
       document.title = "참관 등록 · BROJ FOUNDERS 2026";
     } else {
+      $("prize").style.display = "";
       document.title = "참가 신청 · BROJ FOUNDERS 2026";
       go(1);
     }
@@ -1672,8 +1688,9 @@
   });
   $("backToKind").addEventListener("click", function () {
     $("heroEyebrow").textContent = "BROJ FOUNDERS 2026";
-    $("heroTitle").innerHTML = "피트니스 다음 혁신을<br>함께 만들 형제를 찾습니다";
+    $("heroTitle").innerHTML = "피트니스의 다음 혁신,<br>함께할 형제를 찾습니다";
     $("heroSub").textContent = "출전하실 분과 보러 오실 분, 어느 쪽인지 골라주세요.";
+    $("prize").style.display = "";
     $("formArea").style.display = "none";
     $("resumeBox").style.display = "none";
     $("chooser").style.display = "";
@@ -1750,24 +1767,23 @@
     var line = $("seatLine"), box = $("seatBox");
     if (cap.full) {
       line.className = "seatline full";
-      line.textContent = "참관 정원 100명 마감";
+      line.textContent = "참관 정원 마감";
       $("visitorCta").textContent = "정원 마감";
       box.innerHTML = '<span class="chip stand">마감</span>' +
-        "<span>참관 정원 100명이 모두 찼습니다. 대기를 원하시면 운영사무국으로 연락해 주세요.</span>";
+        "<span>참관 정원이 모두 찼습니다. 대기를 원하시면 운영사무국으로 연락해 주세요.</span>";
       $("visitorBtn").disabled = true;
       $("visitorBtn").textContent = "정원 마감";
       return;
     }
+    // 몇 자리 남았는지는 알리지 않는다 — 어느 자리로 배정되는지만
     if (cap.seatLeft > 0) {
-      line.innerHTML = "좌석 <b>" + cap.seatLeft + "석</b> 남음 · 선착순 50석";
+      line.innerHTML = "선착순 50석 의자 · 이후 스탠딩";
       box.innerHTML = '<span class="chip">의자석</span>' +
-        "<span>지금 등록하시면 <b>" + (cap.taken + 1) + "번</b>째로 <b>좌석</b>이 배정됩니다. " +
-        "남은 좌석 " + cap.seatLeft + "석.</span>";
+        "<span>지금 등록하시면 <b>좌석(의자)</b>으로 배정됩니다.</span>";
     } else {
-      line.innerHTML = "좌석 마감 · 스탠딩 <b>" + cap.standingLeft + "석</b> 남음";
+      line.innerHTML = "의자석 마감 · 스탠딩 등록 가능";
       box.innerHTML = '<span class="chip stand">스탠딩</span>' +
-        "<span>좌석 50석이 모두 찼습니다. 지금 등록하시면 <b>스탠딩석</b>으로 배정됩니다. " +
-        "남은 자리 " + cap.standingLeft + "석.</span>";
+        "<span>의자석 50석이 모두 찼습니다. 지금 등록하시면 <b>스탠딩석</b>으로 배정됩니다.</span>";
     }
   }
   function loadCapacity() {
@@ -1817,9 +1833,9 @@
         $("doneTitle").textContent = "참관 등록이 완료되었습니다";
         $("doneNo").textContent = applyNo;
         var seatTxt = res.j.seatType === "seat"
-          ? "<b>좌석(의자)</b> " + res.j.seatNo + "번으로 배정되었습니다."
+          ? "<b>좌석(의자)</b>으로 배정되었습니다."
           : res.j.seatType === "standing"
-            ? "<b>스탠딩석</b>으로 배정되었습니다. (등록 " + res.j.seatNo + "번)"
+            ? "<b>스탠딩석</b>으로 배정되었습니다."
             : "";
         $("doneNote").innerHTML =
           (seatTxt ? seatTxt + "<br><br>" : "") +
