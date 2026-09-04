@@ -37,7 +37,12 @@ export function applySecurityMiddleware(app: Express): void {
       },
       credentials: true,
       methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization", "X-Admin-Secret", "X-Filename", "X-Pin", "X-Site", "X-Kind", "X-Uploader"],
+      // 여기 없는 헤더를 보내면 브라우저가 프리플라이트에서 막고 "Failed to fetch"로만 보인다
+      allowedHeaders: [
+        "Content-Type", "Authorization", "X-Admin-Secret",
+        "X-Filename", "X-File-Name", "X-Apply-Phone",
+        "X-Pin", "X-Site", "X-Kind", "X-Uploader",
+      ],
       maxAge: 86400,
     })
   );
