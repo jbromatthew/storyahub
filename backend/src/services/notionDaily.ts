@@ -100,6 +100,50 @@ async function notionFetch(path: string, init?: RequestInit): Promise<Record<str
   return body;
 }
 
+/* 노션의 select는 목록에 없는 이름을 거부한다.
+   새 직원이 일일보고를 쓰면 그때마다 사람이 노션에 손으로 넣어줘야 했다.
+   없으면 만들어 두고 쓴다. */
+const knownOptions = new Map<string, Set<string>>();
+
+type SelectOption = { id?: string; name: string; color?: string };
+
+async function readOptions(dbId: string, prop: string): Promise<SelectOption[]> {
+  const db = await notionFetch(`/databases/${dbId}`, { method: "GET" });
+  const props = (db.properties ?? {}) as Record<string, { select?: { options?: SelectOption[] } }>;
+  return props[prop]?.select?.options ?? [];
+}
+
+async function ensureSelectOption(dbId: string, prop: string, name: string): Promise<void> {
+  const want = name.trim();
+  if (!want) return;
+  const cacheKey = `${dbId}:${prop}`;
+  if (knownOptions.get(cacheKey)?.has(want)) return;
+
+  const options = await readOptions(dbId, prop);
+  const names = new Set(options.map((o) => o.name));
+  knownOptions.set(cacheKey, names);
+  if (names.has(want)) return;
+
+  // 기존 선택지는 id로 그대로 넘긴다 — 이름만 보내면 색이 바뀌거나 사라질 수 있다
+  await notionFetch(`/databases/${dbId}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      properties: {
+        [prop]: {
+          select: {
+            options: [
+              ...options.map((o) => (o.id ? { id: o.id } : { name: o.name, color: o.color })),
+              { name: want },
+            ],
+          },
+        },
+      },
+    }),
+  });
+  names.add(want);
+  console.log(`[notion] "${prop}" 선택지에 "${want}"를 추가했습니다`);
+}
+
 async function findExistingPage(dbId: string, date: string, author: string): Promise<string | null> {
   const body = await notionFetch(`/databases/${dbId}/query`, {
     method: "POST",
@@ -184,15 +228,33 @@ export async function syncDailyReportToNotion(report: {
   };
   const blocks = buildBlocks(report.did, report.missed, report.plan);
 
+  // 목록에 없는 이름이면 먼저 만들어 둔다. 실패해도 아래에서 한 번 더 잡는다.
+  await ensureSelectOption(dbId, "작성자", author).catch((e) => {
+    console.error("[notion] 작성자 선택지 추가 실패:", e instanceof Error ? e.message : e);
+  });
+
   const existing = await findExistingPage(dbId, report.date, author);
-  if (existing) {
-    await notionFetch(`/pages/${existing}`, { method: "PATCH", body: JSON.stringify({ properties: props }) });
-    await syncChildren(existing, blocks);
-  } else {
-    await notionFetch(`/pages`, {
-      method: "POST",
-      body: JSON.stringify({ parent: { database_id: dbId }, properties: props, children: blocks }),
-    });
+  const write = async () => {
+    if (existing) {
+      await notionFetch(`/pages/${existing}`, { method: "PATCH", body: JSON.stringify({ properties: props }) });
+      await syncChildren(existing, blocks);
+    } else {
+      await notionFetch(`/pages`, {
+        method: "POST",
+        body: JSON.stringify({ parent: { database_id: dbId }, properties: props, children: blocks }),
+      });
+    }
+  };
+
+  try {
+    await write();
+  } catch (e) {
+    // 노션에서 선택지를 지웠거나 우리 기억이 낡았을 때 — 한 번만 다시 맞추고 재시도
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/select option/i.test(msg)) throw e;
+    knownOptions.delete(`${dbId}:작성자`);
+    await ensureSelectOption(dbId, "작성자", author);
+    await write();
   }
 }
 
