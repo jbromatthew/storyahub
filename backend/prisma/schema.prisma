@@ -1470,3 +1470,17 @@ model ErpFoundersDraft {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+/// 협력사 단가가 바뀐 자취. 단가는 발주 금액의 근거라 누가 언제 무엇을
+/// 얼마에서 얼마로 바꿨는지 남아야 한다.
+model ErpVendorPriceLog {
+  id        String   @id @default(cuid())
+  vendorId  String   @default("kreiser")
+  byEmail   String
+  byName    String   @default("")
+  /// [{name, before, after, kind}] — kind: changed | added | removed | renamed
+  changes   Json     @default("[]")
+  createdAt DateTime @default(now())
+
+  @@index([vendorId, createdAt])
+}

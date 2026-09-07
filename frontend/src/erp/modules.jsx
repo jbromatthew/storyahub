@@ -11993,6 +11993,9 @@ export function VendorOrdersView() {
   const [showSettings, setShowSettings] = useState(false);
   const [pinDraft, setPinDraft] = useState("");
   const [productsDraft, setProductsDraft] = useState([]);
+  const [priceLog, setPriceLog] = useState(null);      // 단가 변경 이력
+  const [canEditPrice, setCanEditPrice] = useState(false);
+  const [showLog, setShowLog] = useState(false);
   const [delivery, setDelivery] = useState(null);
   const [expandedOrder, setExpandedOrder] = useState(null);
   const [panelPay, setPanelPay] = useState(null); // 입금 대기 패널 입금일 입력
@@ -12013,6 +12016,13 @@ export function VendorOrdersView() {
 
   const publicUrl = `${window.location.origin}/?vendor=kreiser`;
   const products = Array.isArray(portal?.products) ? portal.products : [];
+
+  const loadPriceLog = useCallback(() => {
+    api.erpVendorPriceLog()
+      .then((r) => { setPriceLog(r.logs || []); setCanEditPrice(!!r.canEdit); })
+      .catch(() => { setPriceLog([]); });
+  }, []);
+  useEffect(() => { loadPriceLog(); }, [loadPriceLog]);
 
   const addItem = () => setDraft((d) => ({ ...d, items: [...d.items, { name: products[0]?.name || "", qty: "", unitPrice: products[0]?.unitPrice || "" }] }));
   const setItem = (i, patch) => setDraft((d) => ({ ...d, items: d.items.map((x, j) => (j === i ? { ...x, ...patch } : x)) }));
@@ -12053,7 +12063,11 @@ export function VendorOrdersView() {
 
   const saveSettings = () => {
     api.erpVendorPortalUpdate({ pin: pinDraft.trim(), products: productsDraft })
-      .then((r) => { setPortal(r.portal); toastSuccess("포털 설정 저장 완료"); })
+      .then((r) => {
+        setPortal(r.portal);
+        toastSuccess("포털 설정 저장 완료");
+        loadPriceLog();   // 방금 바꾼 것이 이력에 바로 보이게
+      })
       .catch(notifyError);
   };
 
@@ -12082,15 +12096,71 @@ export function VendorOrdersView() {
           <div className="small" style={{ fontWeight: 800, margin: "14px 0 6px" }}>제품 단가표 <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 발주 작성 시 선택 목록, 크라이저 포털에도 표시</span></div>
           {productsDraft.map((p, i) => (
             <div key={i} className="row" style={{ gap: 8, marginBottom: 6 }}>
-              <input className="input" style={{ flex: 2 }} placeholder="제품명" value={p.name} onChange={(e) => setProductsDraft((prev) => prev.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
-              <input className="input" style={{ flex: 1, textAlign: "right" }} inputMode="numeric" placeholder="단가 (VAT포함)" value={p.unitPrice ? Number(p.unitPrice).toLocaleString() : ""} onChange={(e) => setProductsDraft((prev) => prev.map((x, j) => (j === i ? { ...x, unitPrice: Number(e.target.value.replace(/[^\d]/g, "")) || 0 } : x)))} />
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setProductsDraft((prev) => prev.filter((_, j) => j !== i))}>✕</button>
+              <input className="input" style={{ flex: 2 }} placeholder="제품명" readOnly={!canEditPrice} value={p.name} onChange={(e) => setProductsDraft((prev) => prev.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+              <input className="input" style={{ flex: 1, textAlign: "right" }} inputMode="numeric" placeholder="단가 (VAT포함)" readOnly={!canEditPrice} value={p.unitPrice ? Number(p.unitPrice).toLocaleString() : ""} onChange={(e) => setProductsDraft((prev) => prev.map((x, j) => (j === i ? { ...x, unitPrice: Number(e.target.value.replace(/[^\d]/g, "")) || 0 } : x)))} />
+              <button type="button" className="btn btn-ghost btn-sm" disabled={!canEditPrice} onClick={() => setProductsDraft((prev) => prev.filter((_, j) => j !== i))}>✕</button>
             </div>
           ))}
-          <div className="row" style={{ gap: 8, marginTop: 8 }}>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setProductsDraft((p) => [...p, { name: "", unitPrice: 0 }])}>+ 제품 추가</button>
-            <button type="button" className="btn btn-accent btn-sm" style={{ marginLeft: "auto" }} onClick={saveSettings}>설정 저장</button>
+          <div className="row" style={{ gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <button type="button" className="btn btn-ghost btn-sm" disabled={!canEditPrice}
+              onClick={() => setProductsDraft((p) => [...p, { name: "", unitPrice: 0 }])}>+ 제품 추가</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowLog((v) => !v)}>
+              {showLog ? "변경 이력 닫기" : `변경 이력${priceLog && priceLog.length ? ` (${priceLog.length})` : ""}`}
+            </button>
+            <button type="button" className="btn btn-accent btn-sm" style={{ marginLeft: "auto" }}
+              disabled={!canEditPrice} onClick={saveSettings}>설정 저장</button>
           </div>
+          {!canEditPrice && (
+            <div className="small" style={{ marginTop: 8, color: "var(--muted)" }}>
+              단가는 보기만 가능합니다. 고치려면 담당자에게 권한을 요청하세요.
+            </div>
+          )}
+
+          {showLog && (
+            <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+              <div className="small" style={{ fontWeight: 800, marginBottom: 8 }}>
+                단가 변경 이력 <span style={{ fontWeight: 500, color: "var(--muted)" }}>— 누가 언제 얼마에서 얼마로</span>
+              </div>
+              {priceLog === null && <div className="small muted">불러오는 중…</div>}
+              {priceLog && !priceLog.length && <div className="small muted">아직 바뀐 적이 없습니다.</div>}
+              {priceLog && priceLog.map((g) => (
+                <div key={g.id} style={{
+                  background: "var(--surface-2)", border: "1px solid var(--line)",
+                  borderRadius: 9, padding: "10px 12px", marginBottom: 7,
+                }}>
+                  <div className="small" style={{ color: "var(--muted)", marginBottom: 5 }}>
+                    <strong style={{ color: "var(--ink)" }}>{g.byName || g.byEmail}</strong>
+                    {" · "}
+                    {new Date(g.createdAt).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" })}
+                  </div>
+                  {(g.changes || []).map((c, i) => (
+                    <div key={i} className="small" style={{ display: "flex", gap: 8, lineHeight: 1.7 }}>
+                      <span style={{ flex: 1, minWidth: 0 }}>{c.name}</span>
+                      <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                        {c.kind === "added" ? (
+                          <><span style={{ color: "var(--muted)" }}>새로 추가</span>{" "}
+                            <strong>{Number(c.after).toLocaleString()}원</strong></>
+                        ) : c.kind === "removed" ? (
+                          <><s style={{ color: "var(--muted)" }}>{Number(c.before).toLocaleString()}원</s>{" "}
+                            <span style={{ color: "var(--muted)" }}>삭제</span></>
+                        ) : (
+                          <><s style={{ color: "var(--muted)" }}>{Number(c.before).toLocaleString()}</s>{" → "}
+                            <strong>{Number(c.after).toLocaleString()}원</strong>
+                            {c.before > 0 && (
+                              <span style={{ marginLeft: 6, color: c.after > c.before ? "var(--bad)" : "var(--ok)" }}>
+                                {c.after > c.before ? "▲" : "▼"}
+                                {Math.abs(Math.round((c.after - c.before) / c.before * 100))}%
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

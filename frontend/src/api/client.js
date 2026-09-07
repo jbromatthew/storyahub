@@ -508,6 +508,7 @@ export const api = {
   // 크라이저 발주 (소유자 전용)
   erpVendorOrders: () => req("/erp/vendor-orders"),
   erpVendorOrdersAccess: () => req("/erp/vendor-orders/access"),
+  erpVendorPriceLog: () => req("/erp/vendor-orders/price-log"),
   erpVendorPortalUpdate: (body) => req("/erp/vendor-orders/portal", { method: "PUT", body }),
   erpVendorOrderCreate: (body) => req("/erp/vendor-orders", { method: "POST", body }),
   erpVendorOrderUpdate: (id, body) => req(`/erp/vendor-orders/${id}`, { method: "PATCH", body }),

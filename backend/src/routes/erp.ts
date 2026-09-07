@@ -3131,6 +3131,34 @@ async function vendorOrderAccess(userId: string): Promise<boolean> {
   return /세일즈|영업|sales|경영지원|경영/i.test(dept);
 }
 
+/** 단가를 고칠 수 있는 사람. 소유자와, vendor-prices 규칙에 올라간 사람. */
+async function canEditVendorPrices(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+  if (isErpOwner(user?.email)) return true;
+  const email = (user?.email || "").trim().toLowerCase();
+  const emp = await prisma.erpEmployee.findFirst({
+    where: { OR: [{ userId }, { email }] },
+    select: { departmentId: true },
+  });
+  return (await menuRuleAllows("vendor-prices", email, emp?.departmentId || "")) === true;
+}
+
+/** 바뀐 것만 골라낸다 — 이름을 열쇠로 본다 */
+type Priced = { name: string; unitPrice: number };
+function diffPrices(before: Priced[], after: Priced[]) {
+  const was = new Map(before.map((p) => [p.name, p.unitPrice]));
+  const now = new Map(after.map((p) => [p.name, p.unitPrice]));
+  const out: Array<{ name: string; before: number | null; after: number | null; kind: string }> = [];
+  for (const [name, price] of now) {
+    if (!was.has(name)) out.push({ name, before: null, after: price, kind: "added" });
+    else if (was.get(name) !== price) out.push({ name, before: was.get(name)!, after: price, kind: "changed" });
+  }
+  for (const [name, price] of was) {
+    if (!now.has(name)) out.push({ name, before: price, after: null, kind: "removed" });
+  }
+  return out;
+}
+
 async function requireVendorAccess(req: AuthedRequest, res: Response): Promise<boolean> {
   if (await vendorOrderAccess(req.userId!)) return true;
   res.status(403).json({ error: "경영지원팀·세일즈팀 전용 메뉴입니다" });
@@ -3153,13 +3181,20 @@ erpRouter.get("/vendor-orders", async (req: AuthedRequest, res) => {
 });
 
 erpRouter.put("/vendor-orders/portal", async (req: AuthedRequest, res) => {
-  if (!(await requireOwner(req, res))) return;
+  // 단가는 소유자 말고도 고칠 수 있게 열어 뒀다. PIN·이름·사용여부는 소유자만.
+  const priceOnly = await canEditVendorPrices(req.userId!);
+  const owner = isErpOwner((await prisma.user.findUnique({ where: { id: req.userId! }, select: { email: true } }))?.email);
+  if (!owner && !priceOnly) {
+    return res.status(403).json({ error: "단가를 고칠 권한이 없습니다" });
+  }
   const b = (req.body ?? {}) as Record<string, unknown>;
   const portal = await getVendorPortal();
   const data: Record<string, unknown> = {};
-  if (typeof b.pin === "string" && /^\d{4,8}$/.test(b.pin.trim())) data.pin = b.pin.trim();
-  if (typeof b.name === "string" && b.name.trim()) data.name = b.name.trim().slice(0, 50);
-  if (b.active !== undefined) data.active = !!b.active;
+  if (owner) {
+    if (typeof b.pin === "string" && /^\d{4,8}$/.test(b.pin.trim())) data.pin = b.pin.trim();
+    if (typeof b.name === "string" && b.name.trim()) data.name = b.name.trim().slice(0, 50);
+    if (b.active !== undefined) data.active = !!b.active;
+  }
   if (Array.isArray(b.products)) {
     data.products = b.products
       .map((p) => {
@@ -3173,7 +3208,44 @@ erpRouter.put("/vendor-orders/portal", async (req: AuthedRequest, res) => {
       .slice(0, 100);
   }
   const updated = await prisma.erpVendorPortal.update({ where: { id: portal.id }, data: data as never });
+
+  // 단가가 실제로 달라졌을 때만 자취를 남긴다
+  if (Array.isArray(b.products)) {
+    const changes = diffPrices(
+      (portal.products as Priced[]) ?? [],
+      (updated.products as Priced[]) ?? []
+    );
+    if (changes.length) {
+      const me = await prisma.user.findUnique({
+        where: { id: req.userId! }, select: { email: true, name: true },
+      });
+      const emp = await prisma.erpEmployee.findFirst({
+        where: { OR: [{ userId: req.userId! }, { email: (me?.email || "").toLowerCase() }] },
+        select: { name: true },
+      });
+      await prisma.erpVendorPriceLog.create({
+        data: {
+          vendorId: portal.id,
+          byEmail: (me?.email || "").toLowerCase(),
+          byName: emp?.name || me?.name || "",
+          changes: changes as never,
+        },
+      });
+    }
+  }
   res.json({ portal: { id: updated.id, name: updated.name, pin: updated.pin, active: updated.active, products: updated.products } });
+});
+
+/** 단가 변경 이력 */
+erpRouter.get("/vendor-orders/price-log", async (req: AuthedRequest, res) => {
+  if (!(await requireVendorAccess(req, res))) return;
+  const portal = await getVendorPortal();
+  const logs = await prisma.erpVendorPriceLog.findMany({
+    where: { vendorId: portal.id },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+  res.json({ logs, canEdit: await canEditVendorPrices(req.userId!) });
 });
 
 erpRouter.post("/vendor-orders", async (req: AuthedRequest, res) => {
