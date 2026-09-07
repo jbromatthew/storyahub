@@ -420,11 +420,30 @@ export async function ensureSheetHeader(
   });
 }
 
+/* 시트 쓰기를 한 줄로 세운다.
+   빈 줄을 찾아 쓰는 방식이라, 둘이 동시에 들어오면 같은 줄을 겨냥해
+   서로를 덮어쓴다. 실제로 접수 한 건이 시트에서 사라진 적이 있다. */
+let sheetQueue: Promise<unknown> = Promise.resolve();
+function inOrder<T>(fn: () => Promise<T>): Promise<T> {
+  const next = sheetQueue.then(fn, fn);
+  sheetQueue = next.catch(() => {});
+  return next;
+}
+
 /**
  * 첫 칸(접수번호)을 열쇠 삼아 이미 있으면 그 줄을 고치고, 없으면 2행부터 이어 붙인다.
  * 같은 사람이 이어서 수정해도 줄이 늘지 않는다.
  */
-export async function upsertSheetRow(
+export function upsertSheetRow(
+  spreadsheetId: string,
+  sheetName: string,
+  key: string,
+  values: string[]
+): Promise<{ row: number; created: boolean }> {
+  return inOrder(() => upsertSheetRowNow(spreadsheetId, sheetName, key, values));
+}
+
+async function upsertSheetRowNow(
   spreadsheetId: string,
   sheetName: string,
   key: string,
@@ -439,7 +458,11 @@ export async function upsertSheetRow(
   });
   const keys = (colRes.data.values ?? []).map((r) => cellToString(r?.[0]));
   const at = keys.indexOf(key);
-  const row = at >= 0 ? at + 2 : keys.length + 2;   // 머리글이 1행이라 데이터는 2행부터
+  // 이어 붙일 때는 값이 있는 마지막 줄 다음으로 간다. 중간에 빈 줄이 있어도
+  // 그 자리를 쓰지 않는다 — 지운 자리에 덮어써서 다른 접수를 잃는 일이 없게.
+  let lastUsed = 0;
+  for (let i = 0; i < keys.length; i++) if (keys[i]) lastUsed = i + 1;
+  const row = at >= 0 ? at + 2 : lastUsed + 2;   // 머리글이 1행이라 데이터는 2행부터
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range: `${quoteSheetName(sheetName)}!A${row}:${columnLetter(values.length - 1)}${row}`,
@@ -453,7 +476,15 @@ export async function upsertSheetRow(
  * 첫 칸이 열쇠인 줄을 시트에서 통째로 지운다.
  * 값만 비우면 빈 줄이 남아 다음 접수가 그 아래에 붙는다 — 줄 자체를 걷어낸다.
  */
-export async function deleteSheetRow(
+export function deleteSheetRow(
+  spreadsheetId: string,
+  sheetName: string,
+  key: string
+): Promise<boolean> {
+  return inOrder(() => deleteSheetRowNow(spreadsheetId, sheetName, key));
+}
+
+async function deleteSheetRowNow(
   spreadsheetId: string,
   sheetName: string,
   key: string
