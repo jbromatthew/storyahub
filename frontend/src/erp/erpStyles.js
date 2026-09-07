@@ -920,4 +920,9 @@ select.input{width:100%}
   .cc-side{position:static}
   .cc-hero-r{margin-left:0;align-items:flex-start}
 }
+
+/* RND 백로그 — 유형의 우선순위를 색으로 가른다 */
+.tag.rnd-t1{background:#FDECEA;border-color:#F3C7C4;color:#B3261E}
+.tag.rnd-t2{background:#FFF6E3;border-color:#F0DAA8;color:#8A5A00}
+.tag.rnd-t3{background:var(--surface-2);border-color:var(--line);color:var(--muted)}
 `;

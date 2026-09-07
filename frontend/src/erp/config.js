@@ -37,6 +37,7 @@ export const ERP_MODULES = [
   // OPEN API 센터관리 — 메뉴에서만 내렸다. 화면과 API는 그대로다.
   // 발급해 둔 키도 살아 있으니, 되살릴 때 이 줄만 다시 켜면 된다.
   // { id: "openapi-center", label: "OPEN API 센터관리", icon: "admin", group: "openapi", groupLabel: "OPEN API", ownerOnly: true },
+  { id: "rnd-backlog", label: "RND 백로그", icon: "board", group: "rnd", groupLabel: "RND" },
   { id: "kb", label: "지식경영", icon: "book", group: "kb", groupLabel: "지식" },
   { id: "my-account", label: "내 계정", icon: "admin", group: "account", groupLabel: "내 정보" },
 ];

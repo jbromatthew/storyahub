@@ -15208,6 +15208,349 @@ function BfForm({ data }) {
   );
 }
 
+/* ─── RND 백로그 — 사업부가 올리고 RND가 받아 처리한다 ─────────────
+   유형 판단과 상태 단계는 서버가 내려준다 (공유받은 표 그대로). */
+
+const RND_KIND_TONE = { defect: "bad", request: "", improve: "", biz: "accent" };
+
+function RndTypeChip({ type, types }) {
+  if (!type) return <span className="small muted">—</span>;
+  const t = (types || []).find((x) => x.k === type);
+  return (
+    <span className={`tag rnd-t${t ? t.rank : 3}`} title={t ? t.desc : ""}>
+      {t ? `${t.rank}순위 · ` : ""}{type}
+    </span>
+  );
+}
+
+export function RndBacklogView() {
+  const [meta, setMeta] = useState(null);          // 도메인·유형·구분·상태
+  const [tickets, setTickets] = useState([]);
+  const [counts, setCounts] = useState({});
+  const [meName, setMeName] = useState("");
+  const [status, setStatus] = useState("");
+  const [domain, setDomain] = useState("");
+  const [mine, setMine] = useState(false);
+  const [q, setQ] = useState("");
+  const [openId, setOpenId] = useState(null);
+  const [showNew, setShowNew] = useState(false);
+  const [showDomains, setShowDomains] = useState(false);
+  const [domainDraft, setDomainDraft] = useState([]);
+  const [busy, setBusy] = useState(false);
+
+  const blank = {
+    domain: "", service: "", kind: "request", title: "", body: "",
+    centerName: "", vip: false, vipNote: "", cxmType: "", ownerName: "",
+  };
+  const [form, setForm] = useState(blank);
+
+  const loadMeta = useCallback(() => {
+    api.erpRndMeta()
+      .then((d) => { setMeta(d); setDomainDraft(d.domains || []); })
+      .catch(notifyError);
+  }, []);
+  const loadTickets = useCallback(() => {
+    api.erpRndTickets({ status, domain, mine })
+      .then((d) => { setTickets(d.tickets || []); setCounts(d.counts || {}); setMeName(d.meName || ""); })
+      .catch(notifyError);
+  }, [status, domain, mine]);
+  useEffect(() => { loadMeta(); }, [loadMeta]);
+  useEffect(() => { loadTickets(); }, [loadTickets]);
+
+  const domains = meta?.domains || [];
+  const types = meta?.types || [];
+  const kinds = meta?.kinds || [];
+  const statuses = meta?.statuses || [];
+  const kindName = (k) => (kinds.find((x) => x.k === k) || {}).t || k;
+  const statusName = (k) => (statuses.find((x) => x.k === k) || {}).t || k;
+  const servicesOf = (name) => (domains.find((d) => d.name === name) || {}).services || [];
+
+  const kw = q.trim().toLowerCase();
+  const rows = tickets.filter((t) =>
+    !kw || [t.id, t.title, t.body, t.authorName, t.centerName, t.plannerName]
+      .some((v) => String(v ?? "").toLowerCase().includes(kw)));
+
+  const submit = async () => {
+    if (!form.title.trim()) { toastError("제목을 입력하세요"); return; }
+    if (!form.domain) { toastError("도메인을 선택하세요"); return; }
+    setBusy(true);
+    try {
+      await api.erpRndTicketCreate(form);
+      setForm(blank); setShowNew(false); loadTickets();
+      toastSuccess("올렸어요");
+    } catch (e) { notifyError(e); } finally { setBusy(false); }
+  };
+
+  const patch = async (id, body, msg) => {
+    try {
+      await api.erpRndTicketUpdate(id, body);
+      loadTickets();
+      if (msg) toastSuccess(msg);
+    } catch (e) { notifyError(e); }
+  };
+
+  const saveDomains = async () => {
+    setBusy(true);
+    try {
+      const d = await api.erpRndDomainsSave(domainDraft);
+      setMeta((m) => ({ ...m, domains: d.domains }));
+      setDomainDraft(d.domains);
+      toastSuccess("도메인을 저장했어요");
+    } catch (e) { notifyError(e); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40, maxWidth: 1000 }}>
+      <div className="h-eyebrow">Backlog</div>
+      <div className="h-title">RND 백로그</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.6, color: "var(--muted)" }}>
+        사업부가 요구사항을 올리면 RND가 유형을 정하고 기획자를 붙여 개발로 넘깁니다.
+        상태가 바뀌면 <strong>올린 사람에게 알림</strong>이 갑니다.
+      </div>
+
+      <div className="row" style={{ gap: 8, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <button type="button" className="btn btn-accent btn-sm" onClick={() => setShowNew((v) => !v)}>
+          {showNew ? "닫기" : "+ 요구사항 올리기"}
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowDomains((v) => !v)}>
+          {showDomains ? "도메인 설정 닫기" : "⚙ 도메인 · 세부서비스"}
+        </button>
+        <span style={{ flex: 1 }} />
+        <label className="small row" style={{ gap: 6, alignItems: "center", cursor: "pointer" }}>
+          <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />
+          내가 올린 것만
+        </label>
+        <input className="input" style={{ maxWidth: 200 }} placeholder="번호 · 제목 · 센터 검색"
+          value={q} onChange={(e) => setQ(e.target.value)} />
+      </div>
+
+      {/* ── 도메인 · 세부서비스 ── */}
+      {showDomains && (
+        <div className="card" style={{ marginTop: 12, padding: 16 }}>
+          <div className="small" style={{ fontWeight: 800, marginBottom: 4 }}>도메인 · 세부서비스</div>
+          <div className="small muted" style={{ marginBottom: 12, lineHeight: 1.6 }}>
+            세부서비스는 쉼표로 나눠 적습니다. 목록에서 지워도 이미 올라간 티켓의 기록은 그대로 남습니다.
+          </div>
+          {domainDraft.map((d, i) => (
+            <div key={i} className="row" style={{ gap: 8, marginBottom: 6, alignItems: "flex-start" }}>
+              <input className="input" style={{ flex: "0 0 160px" }} placeholder="도메인 (예: CRM)"
+                value={d.name || ""}
+                onChange={(e) => setDomainDraft((p) => p.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+              <input className="input" style={{ flex: 1 }} placeholder="고객관리, 캘린더, 전자계약서"
+                value={(d.services || []).join(", ")}
+                onChange={(e) => setDomainDraft((p) => p.map((x, j) => (j === i
+                  ? { ...x, services: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) } : x)))} />
+              <button type="button" className="btn btn-ghost btn-sm"
+                onClick={() => setDomainDraft((p) => p.filter((_, j) => j !== i))}>✕</button>
+            </div>
+          ))}
+          <div className="row" style={{ gap: 8, marginTop: 8 }}>
+            <button type="button" className="btn btn-ghost btn-sm"
+              onClick={() => setDomainDraft((p) => [...p, { name: "", services: [] }])}>+ 도메인 추가</button>
+            <button type="button" className="btn btn-accent btn-sm" style={{ marginLeft: "auto" }}
+              disabled={busy} onClick={saveDomains}>저장</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── 올리기 ── */}
+      {showNew && (
+        <div className="card" style={{ marginTop: 12, padding: 16 }}>
+          <div className="oa-form">
+            <OaField label="도메인">
+              <select className="input" value={form.domain}
+                onChange={(e) => setForm({ ...form, domain: e.target.value, service: "" })}>
+                <option value="">선택</option>
+                {domains.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+              </select>
+            </OaField>
+            <OaField label="세부서비스">
+              <select className="input" value={form.service} disabled={!form.domain}
+                onChange={(e) => setForm({ ...form, service: e.target.value })}>
+                <option value="">선택 안 함</option>
+                {servicesOf(form.domain).map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </OaField>
+            <OaField label="티켓 구분">
+              <select className="input" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+                {kinds.map((k) => <option key={k.k} value={k.k}>{k.t}</option>)}
+              </select>
+            </OaField>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <OaField label="제목">
+              <input className="input" value={form.title} maxLength={200}
+                placeholder="무엇이 필요한지 한 줄로"
+                onChange={(e) => setForm({ ...form, title: e.target.value })} />
+            </OaField>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <OaField label="내용" hint="언제 어떤 상황에서 문제가 되는지, 무엇을 기대하는지">
+              <textarea className="input" rows={5} value={form.body} maxLength={4000}
+                onChange={(e) => setForm({ ...form, body: e.target.value })} />
+            </OaField>
+          </div>
+          <div className="oa-form" style={{ marginTop: 12 }}>
+            <OaField label="요청 센터">
+              <input className="input" value={form.centerName} maxLength={80}
+                onChange={(e) => setForm({ ...form, centerName: e.target.value })} />
+            </OaField>
+            <OaField label="담당자" hint="CXM · 세일즈">
+              <input className="input" value={form.ownerName} maxLength={40} placeholder={meName}
+                onChange={(e) => setForm({ ...form, ownerName: e.target.value })} />
+            </OaField>
+            <OaField label="CXM 유형 판단" hint="비워두면 RND가 정합니다">
+              <select className="input" value={form.cxmType}
+                onChange={(e) => setForm({ ...form, cxmType: e.target.value })}>
+                <option value="">선택 안 함</option>
+                {types.map((t) => <option key={t.k} value={t.k}>{t.rank}순위 · {t.k}</option>)}
+              </select>
+            </OaField>
+          </div>
+          <div className="row" style={{ gap: 10, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <label className="small row" style={{ gap: 6, alignItems: "center", cursor: "pointer" }}>
+              <input type="checkbox" checked={form.vip}
+                onChange={(e) => setForm({ ...form, vip: e.target.checked })} />
+              VIP 센터
+            </label>
+            {form.vip && (
+              <input className="input" style={{ flex: 1, minWidth: 200 }} placeholder="VIP 정보"
+                value={form.vipNote} maxLength={200}
+                onChange={(e) => setForm({ ...form, vipNote: e.target.value })} />
+            )}
+            <button type="button" className="btn btn-accent btn-sm" style={{ marginLeft: "auto" }}
+              disabled={busy} onClick={submit}>올리기</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── 단계별 개수 ── */}
+      <div className="row" style={{ gap: 6, marginTop: 14, flexWrap: "wrap" }}>
+        <button type="button" className={"chip" + (status === "" ? " on" : "")} onClick={() => setStatus("")}>
+          전체 <i style={{ fontStyle: "normal", opacity: .6 }}>{Object.values(counts).reduce((a, b) => a + b, 0)}</i>
+        </button>
+        {statuses.map((s) => (
+          <button key={s.k} type="button" title={s.hint}
+            className={"chip" + (status === s.k ? " on" : "")} onClick={() => setStatus(s.k)}>
+            {s.t} <i style={{ fontStyle: "normal", opacity: .6 }}>{counts[s.k] || 0}</i>
+          </button>
+        ))}
+        <span style={{ flex: 1 }} />
+        <select className="input" style={{ maxWidth: 170 }} value={domain} onChange={(e) => setDomain(e.target.value)}>
+          <option value="">도메인 전체</option>
+          {domains.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+        </select>
+      </div>
+
+      {/* ── 목록 ── */}
+      <div style={{ marginTop: 14 }}>
+        {!rows.length && (
+          <div className="small muted" style={{ textAlign: "center", padding: "48px 0" }}>
+            {domains.length ? "해당하는 티켓이 없습니다." : "먼저 도메인을 등록해 주세요."}
+          </div>
+        )}
+        {rows.map((t) => (
+          <div key={t.id} className={"cc-as" + (openId === t.id ? " on" : "")}>
+            <button type="button" className="cc-as-hd" onClick={() => setOpenId(openId === t.id ? null : t.id)}>
+              <span className="small" style={{ fontWeight: 800, color: "var(--muted)", flex: "0 0 auto" }}>#{t.id}</span>
+              <span className={`tag ${RND_KIND_TONE[t.kind] || ""}`} style={{ flex: "0 0 auto" }}>{kindName(t.kind)}</span>
+              <span className="small" style={{ flex: "0 0 auto", color: "var(--muted)" }}>
+                {t.domain}{t.service ? ` · ${t.service}` : ""}
+              </span>
+              <span style={{ flex: 1, minWidth: 0, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {t.title}
+              </span>
+              {t.vip && <span className="tag accent" style={{ flex: "0 0 auto" }}>VIP</span>}
+              <RndTypeChip type={t.rndType || t.cxmType} types={types} />
+              <span className={`cc-pill ${t.status === "done" ? "ok" : t.status === "rejected" ? "bad" : ""}`}
+                style={{ flex: "0 0 auto" }}>{statusName(t.status)}</span>
+            </button>
+            {openId === t.id && (
+              <div className="cc-as-body">
+                {t.body && (
+                  <div className="small" style={{ whiteSpace: "pre-wrap", lineHeight: 1.7, marginBottom: 12 }}>{t.body}</div>
+                )}
+                <div className="cc-kvgrid" style={{ marginBottom: 12 }}>
+                  <div className="cc-kv"><span>올린 사람</span><b>{t.authorName}</b></div>
+                  <div className="cc-kv"><span>올린 날</span><b>{new Date(t.createdAt).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" })}</b></div>
+                  <div className="cc-kv"><span>요청 센터</span><b>{t.centerName || <i>-</i>}</b></div>
+                  <div className="cc-kv"><span>담당자</span><b>{t.ownerName || <i>-</i>}</b></div>
+                  {t.vip && <div className="cc-kv"><span>VIP 정보</span><b>{t.vipNote || <i>-</i>}</b></div>}
+                  <div className="cc-kv"><span>CXM 유형</span><b><RndTypeChip type={t.cxmType} types={types} /></b></div>
+                </div>
+
+                <div className="cc-sec">RND 처리</div>
+                <div className="oa-form">
+                  <OaField label="RND 유형 판단">
+                    <select className="input" value={t.rndType}
+                      onChange={(e) => patch(t.id, { rndType: e.target.value }, "유형을 정했어요")}>
+                      <option value="">선택 안 함</option>
+                      {types.map((x) => <option key={x.k} value={x.k}>{x.rank}순위 · {x.k}</option>)}
+                    </select>
+                  </OaField>
+                  <OaField label="기획자">
+                    <input className="input" defaultValue={t.plannerName} maxLength={40} placeholder="배정할 기획자"
+                      onBlur={(e) => { if (e.target.value !== t.plannerName) patch(t.id, { plannerName: e.target.value }, "기획자를 배정했어요"); }} />
+                  </OaField>
+                </div>
+                <div className="row" style={{ gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+                  {statuses.map((s) => (
+                    <button key={s.k} type="button" title={s.hint}
+                      className={"chip" + (t.status === s.k ? " on" : "")}
+                      onClick={() => {
+                        if (s.k === t.status) return;
+                        if (s.k === "rejected") {
+                          const why = window.prompt("반려 사유를 적어주세요 (올린 사람에게 함께 전달됩니다)", t.rejectNote || "");
+                          if (why === null) return;
+                          patch(t.id, { status: s.k, rejectNote: why, memo: why }, "반려했어요");
+                          return;
+                        }
+                        patch(t.id, { status: s.k }, `${s.t}(으)로 옮겼어요`);
+                      }}>{s.t}</button>
+                  ))}
+                </div>
+                {t.rejectNote && (
+                  <div className="small" style={{ marginTop: 10, padding: "10px 12px", borderRadius: 8,
+                    background: "var(--bad-wash, #FCEDEC)", border: "1px solid var(--line)", lineHeight: 1.6 }}>
+                    <strong>반려 사유</strong> — {t.rejectNote}
+                  </div>
+                )}
+
+                {!!(t.logs || []).length && (
+                  <>
+                    <div className="cc-sec">지나온 자취</div>
+                    {t.logs.map((l) => (
+                      <div key={l.id} className="small" style={{ display: "flex", gap: 10, lineHeight: 1.8, color: "var(--muted)" }}>
+                        <span style={{ flex: "0 0 128px" }}>
+                          {new Date(l.createdAt).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}
+                        </span>
+                        <span style={{ flex: "0 0 64px", fontWeight: 700, color: "var(--ink)" }}>{l.byName}</span>
+                        <span style={{ flex: 1 }}>
+                          {l.before || "없음"} → <strong style={{ color: "var(--ink)" }}>{l.after || "없음"}</strong>
+                          {l.memo ? ` — ${l.memo}` : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                <div className="row" style={{ marginTop: 14 }}>
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: "auto", color: "var(--bad, #B3261E)" }}
+                    onClick={async () => {
+                      if (!window.confirm(`#${t.id} 티켓을 지웁니다. 되돌릴 수 없습니다.`)) return;
+                      try { await api.erpRndTicketDelete(t.id); loadTickets(); toastSuccess("지웠어요"); }
+                      catch (e) { notifyError(e); }
+                    }}>삭제</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function FoundersView() {
   const [rounds, setRounds] = useState(null);
   const [sel, setSel] = useState("");

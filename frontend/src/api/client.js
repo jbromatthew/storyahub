@@ -509,6 +509,21 @@ export const api = {
   erpVendorOrders: () => req("/erp/vendor-orders"),
   erpVendorOrdersAccess: () => req("/erp/vendor-orders/access"),
   erpVendorPriceLog: () => req("/erp/vendor-orders/price-log"),
+
+  // RND 백로그
+  erpRndMeta: () => req("/erp/rnd/domains"),
+  erpRndDomainsSave: (domains) => req("/erp/rnd/domains", { method: "PUT", body: { domains } }),
+  erpRndTickets: (q = {}) => {
+    const p = new URLSearchParams();
+    if (q.status) p.set("status", q.status);
+    if (q.domain) p.set("domain", q.domain);
+    if (q.mine) p.set("mine", "1");
+    const s = p.toString();
+    return req(`/erp/rnd/tickets${s ? `?${s}` : ""}`);
+  },
+  erpRndTicketCreate: (body) => req("/erp/rnd/tickets", { method: "POST", body }),
+  erpRndTicketUpdate: (id, body) => req(`/erp/rnd/tickets/${id}`, { method: "PATCH", body }),
+  erpRndTicketDelete: (id) => req(`/erp/rnd/tickets/${id}`, { method: "DELETE" }),
   erpVendorPortalUpdate: (body) => req("/erp/vendor-orders/portal", { method: "PUT", body }),
   erpVendorOrderCreate: (body) => req("/erp/vendor-orders", { method: "POST", body }),
   erpVendorOrderUpdate: (id, body) => req(`/erp/vendor-orders/${id}`, { method: "PATCH", body }),

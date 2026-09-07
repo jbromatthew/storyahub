@@ -33,6 +33,7 @@ import { sharesRouter } from "./routes/shares.js";
 import { erpRouter } from "./routes/erp.js";
 import { erpOpenApiRouter } from "./routes/erpOpenApi.js";
 import { erpCrmRouter } from "./routes/erpCrm.js";
+import { erpRndRouter } from "./routes/erpRnd.js";
 import { erpCenterOpsRouter } from "./routes/erpCenterOps.js";
 import { startCenterSync, startCrmKeepAlive } from "./services/centerJourney.js";
 import { salesSyncRouter } from "./routes/salesSync.js";
@@ -92,6 +93,7 @@ app.use("/shares", sharesRouter);
 app.use("/erp/openapi", erpOpenApiRouter);
 app.use("/erp/ops", erpCenterOpsRouter);
 app.use("/erp/crm", erpCrmRouter);
+app.use("/erp/rnd", erpRndRouter);
 app.use("/erp", erpRouter);
 app.use("/erp/sales", salesSyncRouter);
 // 무계정 공개 라우트 (현장 사진 업로드) — PIN + 토큰으로 보호

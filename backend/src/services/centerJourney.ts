@@ -8,6 +8,7 @@
  * 결제주문내역을 안 쓰기로 해서 충전 이력을 여기서 만든다.
  */
 import { prisma } from "../db.js";
+import { env } from "../env.js";
 import { crmGroups, crmGroupCount } from "./openApiGateway.js";
 
 const PAGE = 200;
@@ -216,6 +217,10 @@ export async function syncCenters(): Promise<SyncResult> {
  * 재로그인에는 메일로 오는 인증번호가 있어야 해서 사람 손이 든다.
  */
 export function startCrmKeepAlive(): void {
+  if (!env.crmJobs) {
+    console.log("[crm-keepalive] CRM_JOBS=off — 돌리지 않습니다");
+    return;
+  }
   const ping = () =>
     void crmGroupCount({ groupFirstFilter: "ALL" })
       .then(() => console.log("[crm-keepalive] 토큰 갱신"))
@@ -228,6 +233,10 @@ export function startCrmKeepAlive(): void {
 /** 매일 KST 05:10에 한 번. 토큰이 없으면 조용히 넘어간다. */
 let lastRunDate = "";
 export function startCenterSync(): void {
+  if (!env.crmJobs) {
+    console.log("[center-sync] CRM_JOBS=off — 돌리지 않습니다");
+    return;
+  }
   setInterval(() => {
     const now = new Date(Date.now() + 9 * 3600_000);
     const hhmm = now.toISOString().slice(11, 16);

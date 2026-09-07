@@ -1491,3 +1491,72 @@ model ErpVendorPriceLog {
 
   @@index([vendorId, createdAt])
 }
+
+/// RND 백로그 — 도메인과 그 아래 세부서비스. ERP 화면에서 관리한다.
+model ErpRndDomain {
+  id        String   @id @default(cuid())
+  name      String   @unique // CRM · 운톡관리자 · 운톡 · 출석관리APP · 스페이스
+  services  String[] @default([]) // 고객관리 · 캘린더 · 전자계약서 …
+  sortIndex Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// RND 백로그 티켓. 사업부가 올리면 RND가 유형을 정하고 기획자를 붙여 개발로 넘긴다.
+model ErpRndTicket {
+  id       Int    @id @default(autoincrement()) // 티켓 번호로 그대로 쓴다
+  authorId String
+  authorName  String
+  authorEmail String
+
+  domain  String // 도메인
+  service String @default("") // 세부서비스
+  kind    String // defect 결함 | request 요구사항 | improve 개선사항 | biz 사업부 요청
+  title   String
+  body    String @default("")
+
+  /// 유형 판단 13가지 — CXM이 먼저 보고, RND가 최종으로 정한다
+  cxmType String @default("")
+  rndType String @default("")
+
+  ownerName   String @default("") // CXM·세일즈 담당자
+  plannerName String @default("") // RND 기획자
+
+  centerName String  @default("") // 요청 센터
+  vip        Boolean @default(false)
+  vipNote    String  @default("")
+
+  /// filed 접수 → triaged 유형확정 → planned 기획자배정 → dev 개발착수 → done 완료
+  /// 갈라지는 곳: rejected 반려 · hold 보류
+  status     String    @default("filed")
+  rejectNote String    @default("")
+  plannedAt  DateTime?
+  devAt      DateTime?
+  doneAt     DateTime?
+
+  logs      ErpRndTicketLog[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@index([status, createdAt])
+  @@index([authorEmail])
+  @@index([domain, status])
+}
+
+/// 티켓이 어떻게 흘러갔는지. 상태를 되돌려도 자취는 남는다.
+model ErpRndTicketLog {
+  id       String       @id @default(cuid())
+  ticketId Int
+  ticket   ErpRndTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  byName   String
+  byEmail  String
+  field    String // status | rndType | planner | owner | note
+  before   String @default("")
+  after    String @default("")
+  memo     String @default("")
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
+}

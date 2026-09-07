@@ -71,6 +71,10 @@ export const env = {
   // (소유자 ERP_OWNER_EMAIL은 항상 통과. 결제/체험/유예/purge는 billingDisabled로 별도 비활성.)
   erpMode: parseBool("ERP_MODE", isProduction),
   billingDisabled: parseBool("BILLING_DISABLED", isProduction),
+  /// CRM 자동 작업(매일 센터 동기화 · 6시간마다 연결 유지)을 돌릴지.
+  /// 토큰이 만료되면 다시 로그인하는데 그때마다 담당자 메일로 인증번호가 간다.
+  /// 센터조회 메뉴를 내려둔 동안에는 꺼 둔다. CRM_JOBS=on 으로 다시 켠다.
+  crmJobs: (process.env.CRM_JOBS ?? "on").trim().toLowerCase() !== "off",
   /// FOUNDERS 접수가 쌓이는 시트 (참가자·참관객 탭)
   foundersSheetId: (process.env.FOUNDERS_SHEET_ID ?? "1xSsEdHR-yscIuXVTi3fxnVB8n5pEgC6fxTRw4HDFUh8").trim(),
   erpOwnerEmail: (process.env.ERP_OWNER_EMAIL ?? "matthew@broj.company").trim().toLowerCase(),
