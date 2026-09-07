@@ -380,6 +380,11 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .cmb-table th.gl,.cmb-table td.gl{border-left:1px solid var(--line);}
 .cmb-goalconv{display:block;font-style:normal;font-size:10.5px;font-weight:500;
   color:var(--muted);margin-top:1px;}
+.cmb-drill{border:0;background:none;cursor:pointer;font-family:inherit;font-weight:700;
+  font-size:inherit;color:var(--ink);padding:0;display:inline-flex;align-items:center;gap:4px;}
+.cmb-drill:hover{color:var(--accent-deep);}
+.cmb-drill i{font-style:normal;color:var(--muted);font-size:13px;}
+.cmb-drill:hover i{color:var(--accent-deep);}
 .dash-matrix-table td.dash-matrix-cell{min-width:72px;}
 .dash-weekly-table td.dash-weekly-cell{min-width:64px;}
 .dash-weekly-cell .actual{font-weight:700;}

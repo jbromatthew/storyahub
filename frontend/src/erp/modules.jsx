@@ -8155,15 +8155,90 @@ function cmbConvColor(v) {
   return "#C5221F";
 }
 
+/** 문의 × 계약 표 — 목록에도, 업종을 파고든 화면에도 같은 모양으로 쓴다 */
+function CmbTable({ rows, labelHead, renderLabel }) {
+  const list = rows || [];
+  const add = (fn) => list.reduce((a, r) => a + (Number(fn(r)) || 0), 0);
+  const tot = { mg: add((r) => r.mg), ma: add((r) => r.ma), sg: add((r) => r.sg), sa: add((r) => r.sa) };
+  tot.conv = tot.ma > 0 ? Math.round((tot.sa / tot.ma) * 1000) / 10 : null;
+  tot.convGoal = tot.mg > 0 ? Math.round((tot.sg / tot.mg) * 1000) / 10 : null;
+  const rate = (a, g) => (g > 0 ? Math.round((a / g) * 1000) / 10 : null);
+
+  return (
+    <div className="dash-table-wrap" style={{ marginTop: 10 }}>
+      <table className="dash-table cmb-table">
+        <thead>
+          <tr>
+            <th className="label" rowSpan="2">{labelHead}</th>
+            <th colSpan="3" className="grp mkt">신규 문의 · 마케팅</th>
+            <th colSpan="3" className="grp sal">신규 계약 · 세일즈</th>
+            <th rowSpan="2">전환율</th>
+          </tr>
+          <tr>
+            <th>목표</th><th>현황</th><th>달성률</th>
+            <th className="gl">목표</th><th>현황</th><th>달성률</th>
+          </tr>
+        </thead>
+        <tbody>
+          {!list.length && (
+            <tr><td colSpan={8} className="small" style={{ textAlign: "center", padding: 30 }}>
+              항목이 없습니다
+            </td></tr>
+          )}
+          {list.map((r) => {
+            const mr = rate(r.ma, r.mg), sr = rate(r.sa, r.sg);
+            return (
+              <tr key={r.label}>
+                <td className="label">{renderLabel ? renderLabel(r) : r.label}</td>
+                <td className="num" style={{ color: "var(--muted)" }}>{r.mg || "-"}</td>
+                <td className="num">{r.ma}</td>
+                <td className="num" style={{ color: dashRateColor(mr), fontWeight: 700 }}>
+                  {mr != null ? formatDashRate(mr) : "-"}</td>
+                <td className="num gl" style={{ color: "var(--muted)" }}>{r.sg || "-"}</td>
+                <td className="num">{r.sa}</td>
+                <td className="num" style={{ color: dashRateColor(sr), fontWeight: 700 }}>
+                  {sr != null ? formatDashRate(sr) : "-"}</td>
+                <td className="num" style={{ color: cmbConvColor(r.conv), fontWeight: 700 }}>
+                  {r.conv != null ? `${r.conv}%` : "-"}
+                  {r.convGoal != null && <i className="cmb-goalconv">목표 {r.convGoal}%</i>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr className="dash-sum">
+            <td className="label">합계</td>
+            <td className="num">{tot.mg || "-"}</td>
+            <td className="num">{tot.ma}</td>
+            <td className="num" style={{ color: dashRateColor(rate(tot.ma, tot.mg)), fontWeight: 800 }}>
+              {tot.mg > 0 ? formatDashRate(rate(tot.ma, tot.mg)) : "-"}</td>
+            <td className="num gl">{tot.sg || "-"}</td>
+            <td className="num">{tot.sa}</td>
+            <td className="num" style={{ color: dashRateColor(rate(tot.sa, tot.sg)), fontWeight: 800 }}>
+              {tot.sg > 0 ? formatDashRate(rate(tot.sa, tot.sg)) : "-"}</td>
+            <td className="num" style={{ color: cmbConvColor(tot.conv), fontWeight: 800 }}>
+              {tot.conv != null ? `${tot.conv}%` : "-"}
+              {tot.convGoal != null && <i className="cmb-goalconv">목표 {tot.convGoal}%</i>}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
 export function CombinedDashboardView() {
   const [selectedMonth, setSelectedMonth] = useState(null);
   const [mkt, setMkt] = useState(null);
   const [sal, setSal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("industry");
+  const [drill, setDrill] = useState(null);   // 업종 하나를 파고든 상태
 
   const load = useCallback(() => {
     setLoading(true);
+    setDrill(null);
     const q = selectedMonth ? { month: selectedMonth } : undefined;
     Promise.all([api.erpMarketingDashboard(q), api.erpSalesDashboard(q)])
       .then(([m, s]) => { setMkt(m); setSal(s); })
@@ -8175,19 +8250,18 @@ export function CombinedDashboardView() {
   const months = sal?.months || mkt?.months || [];
 
   /* 두 계기판을 이름으로 맞붙인다. 한쪽에만 있는 항목도 빠뜨리지 않는다. */
-  const rows = useMemo(() => {
-    const pick = (d) => d?.sections?.find((s) => s.id === tab)?.items || [];
+  const knit = (mList, sList) => {
     const box = new Map();
     const put = (list, side) => {
-      for (const it of list) {
+      for (const it of list || []) {
         const cur = box.get(it.label) || { label: it.label, mg: 0, ma: 0, sg: 0, sa: 0 };
         if (side === "m") { cur.mg = it.goal || 0; cur.ma = it.actual || 0; }
         else { cur.sg = it.goal || 0; cur.sa = it.actual || 0; }
         box.set(it.label, cur);
       }
     };
-    put(pick(mkt), "m");
-    put(pick(sal), "s");
+    put(mList, "m");
+    put(sList, "s");
     return [...box.values()]
       .map((r) => ({
         ...r,
@@ -8195,15 +8269,31 @@ export function CombinedDashboardView() {
         convGoal: r.mg > 0 ? Math.round((r.sg / r.mg) * 1000) / 10 : null,
       }))
       .sort((a, b) => b.sa - a.sa || b.ma - a.ma || a.label.localeCompare(b.label, "ko"));
+  };
+
+  const rows = useMemo(() => {
+    const pick = (d) => d?.sections?.find((x) => x.id === tab)?.items || [];
+    return knit(pick(mkt), pick(sal));
   }, [mkt, sal, tab]);
 
-  const tot = useMemo(() => {
-    const add = (fn) => rows.reduce((a, r) => a + (Number(fn(r)) || 0), 0);
-    const t = { mg: add((r) => r.mg), ma: add((r) => r.ma), sg: add((r) => r.sg), sa: add((r) => r.sa) };
-    t.conv = t.ma > 0 ? Math.round((t.sa / t.ma) * 1000) / 10 : null;
-    t.convGoal = t.mg > 0 ? Math.round((t.sg / t.mg) * 1000) / 10 : null;
-    return t;
-  }, [rows]);
+  /* 업종 하나를 파고들면 그 안의 요금제·채널을 같은 방식으로 겹쳐 본다 */
+  const drillData = useMemo(() => {
+    if (!drill) return null;
+    const m = mkt?.industryDrilldowns?.[drill];
+    const s = sal?.industryDrilldowns?.[drill];
+    if (!m && !s) return null;
+    return {
+      industry: drill,
+      head: knit(
+        m ? [{ label: drill, goal: m.summary?.goal || 0, actual: m.summary?.actual || 0 }] : [],
+        s ? [{ label: drill, goal: s.summary?.goal || 0, actual: s.summary?.actual || 0 }] : [],
+      )[0],
+      plans: knit(m?.plans, s?.plans),
+      channels: knit(m?.channels, s?.channels),
+    };
+  }, [drill, mkt, sal]);
+  const canDrill = (label) => tab === "industry"
+    && !!(mkt?.industryDrilldowns?.[label] || sal?.industryDrilldowns?.[label]);
 
   const ms = mkt?.summary;
   const ss = sal?.summary;
@@ -8279,78 +8369,53 @@ export function CombinedDashboardView() {
             )}
           </div>
 
-          <div className="dash-tabs" style={{ marginTop: 18 }}>
+          <div className="sales-tabs" style={{ marginTop: 18 }}>
             {CMB_TABS.map((t) => (
               <button key={t.id} type="button"
-                className={"dash-tab" + (tab === t.id ? " on" : "")}
-                onClick={() => setTab(t.id)}>{t.label}</button>
+                className={"sales-tab" + (tab === t.id ? " on" : "")}
+                onClick={() => { setTab(t.id); setDrill(null); }}>{t.label}</button>
             ))}
           </div>
 
-          <div className="dash-table-wrap" style={{ marginTop: 10 }}>
-            <table className="dash-table cmb-table">
-              <thead>
-                <tr>
-                  <th className="label" rowSpan="2">{CMB_TABS.find((t) => t.id === tab)?.label.replace("별", "")}</th>
-                  <th colSpan="3" className="grp mkt">신규 문의 · 마케팅</th>
-                  <th colSpan="3" className="grp sal">신규 계약 · 세일즈</th>
-                  <th rowSpan="2">전환율</th>
-                </tr>
-                <tr>
-                  <th>목표</th><th>현황</th><th>달성률</th>
-                  <th className="gl">목표</th><th>현황</th><th>달성률</th>
-                </tr>
-              </thead>
-              <tbody>
-                {!rows.length && (
-                  <tr><td colSpan={8} className="small" style={{ textAlign: "center", padding: 30 }}>
-                    항목이 없습니다
-                  </td></tr>
+          {drillData ? (
+            <div style={{ marginTop: 12 }}>
+              <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDrill(null)}>
+                  ← 업종 목록
+                </button>
+                <span style={{ fontSize: 17, fontWeight: 900, letterSpacing: "-.03em" }}>
+                  {drillData.industry}
+                </span>
+                {drillData.head && (
+                  <span className="small" style={{ color: "var(--muted)" }}>
+                    문의 {drillData.head.ma} · 계약 {drillData.head.sa}
+                    {drillData.head.conv != null && (
+                      <> · 전환 <b style={{ color: cmbConvColor(drillData.head.conv) }}>
+                        {drillData.head.conv}%</b></>
+                    )}
+                  </span>
                 )}
-                {rows.map((r) => {
-                  const mr = r.mg > 0 ? Math.round((r.ma / r.mg) * 1000) / 10 : null;
-                  const sr = r.sg > 0 ? Math.round((r.sa / r.sg) * 1000) / 10 : null;
-                  return (
-                    <tr key={r.label}>
-                      <td className="label">{r.label}</td>
-                      <td className="num" style={{ color: "var(--muted)" }}>{r.mg || "-"}</td>
-                      <td className="num">{r.ma}</td>
-                      <td className="num" style={{ color: dashRateColor(mr), fontWeight: 700 }}>
-                        {mr != null ? formatDashRate(mr) : "-"}</td>
-                      <td className="num gl" style={{ color: "var(--muted)" }}>{r.sg || "-"}</td>
-                      <td className="num">{r.sa}</td>
-                      <td className="num" style={{ color: dashRateColor(sr), fontWeight: 700 }}>
-                        {sr != null ? formatDashRate(sr) : "-"}</td>
-                      <td className="num" style={{ color: cmbConvColor(r.conv), fontWeight: 700 }}>
-                        {r.conv != null ? `${r.conv}%` : "-"}
-                        {r.convGoal != null && (
-                          <i className="cmb-goalconv">목표 {r.convGoal}%</i>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="dash-sum">
-                  <td className="label">합계</td>
-                  <td className="num">{tot.mg || "-"}</td>
-                  <td className="num">{tot.ma}</td>
-                  <td className="num" style={{ color: dashRateColor(tot.mg > 0 ? Math.round((tot.ma / tot.mg) * 1000) / 10 : null), fontWeight: 800 }}>
-                    {tot.mg > 0 ? formatDashRate(Math.round((tot.ma / tot.mg) * 1000) / 10) : "-"}</td>
-                  <td className="num gl">{tot.sg || "-"}</td>
-                  <td className="num">{tot.sa}</td>
-                  <td className="num" style={{ color: dashRateColor(tot.sg > 0 ? Math.round((tot.sa / tot.sg) * 1000) / 10 : null), fontWeight: 800 }}>
-                    {tot.sg > 0 ? formatDashRate(Math.round((tot.sa / tot.sg) * 1000) / 10) : "-"}</td>
-                  <td className="num" style={{ color: cmbConvColor(tot.conv), fontWeight: 800 }}>
-                    {tot.conv != null ? `${tot.conv}%` : "-"}
-                    {tot.convGoal != null && <i className="cmb-goalconv">목표 {tot.convGoal}%</i>}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+              </div>
+              <div className="rate-plan-block">
+                <div className="rate-plan-title">요금제별</div>
+                <CmbTable rows={drillData.plans} labelHead="요금제" />
+              </div>
+              <div className="rate-plan-block">
+                <div className="rate-plan-title">채널별</div>
+                <CmbTable rows={drillData.channels} labelHead="채널" />
+              </div>
+            </div>
+          ) : (
+          <CmbTable rows={rows} labelHead={CMB_TABS.find((t) => t.id === tab)?.label.replace("별", "")}
+            renderLabel={(r) => (canDrill(r.label)
+              ? <button type="button" className="cmb-drill" onClick={() => setDrill(r.label)}>
+                  {r.label}<i>›</i>
+                </button>
+              : r.label)} />
+          )}
+
           <div className="small" style={{ marginTop: 8, color: "var(--muted)", lineHeight: 1.6 }}>
+            {tab === "industry" && !drillData && <>업종 이름을 누르면 그 안의 <strong>요금제별·채널별</strong>을 볼 수 있습니다. </>}
             전환율은 <strong>같은 달 안에서</strong> 문의와 계약을 나눈 값입니다.
             지난달 문의가 이번 달에 닫히는 건은 반영되지 않으니, 흐름을 보는 눈금으로 쓰세요.
           </div>
