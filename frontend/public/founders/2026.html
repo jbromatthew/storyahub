@@ -595,7 +595,7 @@
           <tr><td><b>예비 창업자</b><br><span class="s">개인 또는 팀</span></td>
             <td>공고일(2026.09.07) 기준 사업자등록·법인등기를 보유하지 않은 자<br>
                 팀 참가 시 대표자 명의의 사업자 미보유 상태</td>
-            <td>사실증명<br><span class="s">(사업자등록사실여부)</span></td></tr>
+            <td></td></tr>
           <tr><td><b>창업기업</b></td>
             <td>공고일(2026.09.07) 기준 사업개시 된 창업기업<br>
                 사업 개시일 = 법인은 법인설립 등기일, 개인사업자는 사업자등록증상 개업일</td>
@@ -607,7 +607,8 @@
       <p><b>신청 기간</b> — 2026년 9월 7일(월) ~ <b>9월 17일(목) 오후 2시</b>까지</p>
       <p><b>신청 방법</b> — 이 페이지에서 온라인 접수</p>
       <p><b>제출 서류</b> — 참가신청서 · 개인정보 수집 이용 동의서 · 참가자 서약서는 <b>온라인 신청 시 화면에서 바로 작성</b>합니다.
-        여기에 <b>발표 자료(PDF)</b>를 첨부하고, 창업기업은 <b>사업자등록증 사본</b>을, 예비창업자는 <b>사실증명</b>을 함께 올려주세요.</p>
+        여기에 <b>발표 자료(PDF)</b>를 첨부해 주세요. <b>창업기업은 사업자등록증 사본</b>을 함께 올리시고,
+        <b>예비 창업자는 따로 내실 서류가 없습니다.</b></p>
       <p class="s">2차 평가 시에는 IR 코칭 이후 수정한 발표자료(PDF, 시제품 시연 영상 포함)를 다시 제출합니다.</p>
 
       <h3>4. 세부 일정 및 절차</h3>
@@ -1125,7 +1126,7 @@
 
       <div class="card" id="proofCard">
         <h3 id="proofTitle">사업자등록증<span class="req">*</span></h3>
-        <div class="hint" id="proofHint" style="margin:-4px 0 12px">사업자등록증 사본을 올려주세요.</div>
+        <div class="hint" style="margin:-4px 0 12px">사업자등록증 사본을 올려주세요.</div>
         <label class="drop" id="proofDrop">
           <input type="file" id="proofFile" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.hwp,.zip">
           <div><div class="t">파일 선택 또는 끌어다 놓기</div>
@@ -1395,9 +1396,6 @@
     $("s1lead").textContent = pre
       ? "사업자가 없으신 분입니다. 사업자 정보는 묻지 않습니다."
       : "사업자등록증에 적힌 그대로 적어주세요.";
-    $("proofHint").textContent = pre
-      ? "사실증명(사업자등록 사실여부)을 올려주세요. 홈택스에서 발급받으실 수 있습니다."
-      : "사업자등록증 사본을 올려주세요.";
     // 예비 창업자는 낼 사업자 서류가 없다 — 칸을 아예 두지 않는다
     var card = $("proofCard");
     if (card) card.style.display = pre ? "none" : "";
