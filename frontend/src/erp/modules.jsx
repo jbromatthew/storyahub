@@ -15440,7 +15440,7 @@ export function RndBacklogView() {
     && has(`#${t.id}`, f.id)
     && (!f.kind || t.kind === f.kind)
     && (!f.type || (t.rndType || t.cxmType) === f.type)
-    && (!f.center || (t.centerName || "") === f.center)
+    && has(t.centerName, f.center)
     && (!f.planner || (t.plannerName || "") === f.planner)
     && (!f.author || t.authorName === f.author)
     && has(`${t.title} ${t.body} ${(t.files || []).map((x) => x.name).join(" ")}`, f.title));
@@ -15489,7 +15489,6 @@ export function RndBacklogView() {
 
   // 고를 수 있는 값은 지금 불러온 것에서 뽑는다
   const pickList = (fn) => [...new Set(tickets.map(fn).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko"));
-  const centerOpts = pickList((t) => t.centerName);
   const plannerOpts = pickList((t) => t.plannerName);
   const authorOpts = pickList((t) => t.authorName);
 
@@ -15515,7 +15514,7 @@ export function RndBacklogView() {
     if (f.star) c.push("즐겨찾기만");
     if (f.kind) c.push(`구분 ${kindName(f.kind)}`);
     if (f.type) c.push(`유형 ${f.type}`);
-    if (f.center) c.push(`센터 ${f.center}`);
+    if (f.center) c.push(`센터 "${f.center}"`);
     if (f.planner) c.push(`기획자 ${f.planner}`);
     if (f.author) c.push(`올린 사람 ${f.author}`);
     if (f.id) c.push(`번호 ${f.id}`);
@@ -15834,6 +15833,10 @@ export function RndBacklogView() {
       )}
 
       <div className="dash-table-wrap" style={{ marginTop: 12 }}>
+        {/* 이미 올라온 센터 이름은 적다 말면 골라 넣을 수 있게 */}
+        <datalist id="rndCenters">
+          {pickList((t) => t.centerName).map((c) => <option key={c} value={c} />)}
+        </datalist>
         <table className="dash-table rnd-table">
           <thead>
             <tr>
@@ -15880,12 +15883,8 @@ export function RndBacklogView() {
                   {domains.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
                 </select>
               </th>
-              <th>
-                <select className="ff" value={f.center} onChange={(e) => setFf({ center: e.target.value })}>
-                  <option value="">전체</option>
-                  {centerOpts.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </th>
+              <th><input className="ff" value={f.center} placeholder="센터 이름"
+                onChange={(e) => setFf({ center: e.target.value })} list="rndCenters" /></th>
               <th><input className="ff" value={f.title} placeholder="제목 · 내용 · 붙임 이름"
                 onChange={(e) => setFf({ title: e.target.value })} /></th>
               <th>
