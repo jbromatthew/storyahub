@@ -925,4 +925,42 @@ select.input{width:100%}
 .tag.rnd-t1{background:#FDECEA;border-color:#F3C7C4;color:#B3261E}
 .tag.rnd-t2{background:#FFF6E3;border-color:#F0DAA8;color:#8A5A00}
 .tag.rnd-t3{background:var(--surface-2);border-color:var(--line);color:var(--muted)}
+
+/* RND 붙임 */
+.rnd-drop{display:block;text-align:center;padding:16px;border:1.5px dashed var(--line);
+  border-radius:10px;cursor:pointer;font-size:13px;color:var(--muted);background:var(--surface-2);
+  transition:.15s}
+.rnd-drop:hover{border-color:var(--accent);color:var(--accent-deep)}
+.rnd-drop.sm{padding:9px;font-size:12.5px}
+.rnd-files{display:grid;gap:6px}
+.rnd-file{display:flex;align-items:center;gap:6px}
+.rnd-file-open{flex:1;min-width:0;display:flex;align-items:center;gap:9px;text-align:left;
+  background:#fff;border:1px solid var(--line);border-radius:9px;padding:9px 12px;
+  font:inherit;font-size:13px;cursor:pointer;color:inherit}
+.rnd-file-open:hover{border-color:var(--accent)}
+.rnd-file-open .ic{color:var(--accent);flex:0 0 auto}
+.rnd-file-open .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rnd-file-open .sz{flex:0 0 auto;font-size:11.5px;color:var(--muted)}
+.btn-x{background:none;border:0;color:var(--muted);cursor:pointer;font-size:12px;
+  padding:4px 6px;border-radius:6px;line-height:1}
+.btn-x:hover{color:var(--bad,#B3261E);background:var(--bad-wash,#FCEDEC)}
+
+/* RND 백로그 — 표 */
+.rnd-table td{vertical-align:middle}
+.rnd-table tbody tr{cursor:pointer}
+.rnd-table tbody tr:hover{background:var(--surface-2)}
+.rnd-table tbody tr.on{background:var(--accent-wash,var(--surface-2))}
+.rnd-table td.num{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12.5px}
+.rnd-table td.label{font-weight:600;letter-spacing:-.01em}
+.rnd-table input[type=checkbox]{cursor:pointer;margin:0}
+
+/* RND 백로그 — 상세 */
+.rnd-modal{position:fixed;inset:0;z-index:70;background:rgba(17,17,17,.34);
+  display:flex;align-items:flex-start;justify-content:center;padding:5vh 16px;overflow:auto}
+.rnd-modal-in{width:100%;max-width:720px;background:var(--surface);border:1px solid var(--line);
+  border-radius:14px;box-shadow:0 18px 48px rgba(0,0,0,.18);overflow:hidden}
+.rnd-modal-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:12px 16px;border-bottom:1px solid var(--line);background:var(--surface-2)}
+.rnd-modal-body{padding:18px 20px 24px}
+
 `;

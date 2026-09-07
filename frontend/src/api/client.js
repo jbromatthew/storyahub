@@ -100,18 +100,19 @@ export function clearToken() {
   sessionStorage.removeItem(SESSION_TOKEN_KEY);
 }
 
-async function req(path, { method = "GET", body, headers = {} } = {}) {
+async function req(path, { method = "GET", body, raw, headers = {} } = {}) {
   let res;
   try {
     res = await fetch(BASE + path, {
       method,
       credentials: "include",
       headers: {
+        // raw는 파일을 그대로 보낸다 — 형식은 부르는 쪽이 정한다
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...headers,
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: raw !== undefined ? raw : body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
     throw new ApiError("서버에 연결할 수 없습니다", 0);
@@ -524,6 +525,14 @@ export const api = {
   erpRndTicketCreate: (body) => req("/erp/rnd/tickets", { method: "POST", body }),
   erpRndTicketUpdate: (id, body) => req(`/erp/rnd/tickets/${id}`, { method: "PATCH", body }),
   erpRndTicketDelete: (id) => req(`/erp/rnd/tickets/${id}`, { method: "DELETE" }),
+  erpRndFileUpload: (id, file) =>
+    req(`/erp/rnd/tickets/${id}/files`, {
+      method: "POST", raw: file,
+      headers: { "Content-Type": file.type || "application/octet-stream",
+                 "X-File-Name": encodeURIComponent(file.name) },
+    }),
+  erpRndFileOpen: (id, idx) => req(`/erp/rnd/tickets/${id}/files/${idx}`),
+  erpRndFileDelete: (id, idx) => req(`/erp/rnd/tickets/${id}/files/${idx}`, { method: "DELETE" }),
   erpVendorPortalUpdate: (body) => req("/erp/vendor-orders/portal", { method: "PUT", body }),
   erpVendorOrderCreate: (body) => req("/erp/vendor-orders", { method: "POST", body }),
   erpVendorOrderUpdate: (id, body) => req(`/erp/vendor-orders/${id}`, { method: "PATCH", body }),

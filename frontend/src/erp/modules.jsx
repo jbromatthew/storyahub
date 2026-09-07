@@ -14126,6 +14126,8 @@ function CcAs({ groupKey, teams, assets, onChanged }) {
   const [busy, setBusy] = useState(false);
   const blank = { channel: "kakao", symptom: "", assetId: "", receivedAt: "", teamId: "", teamName: "", technician: "", note: "" };
   const [form, setForm] = useState(blank);
+  const [pending, setPending] = useState([]);   // 올리기 전에 고른 파일
+  const [upBusy, setUpBusy] = useState(false);
 
   const load = useCallback(() => {
     api.erpOpsAs({ groupKey }).then((d) => setRows(d.tickets || [])).catch(notifyError);
@@ -15237,6 +15239,9 @@ export function RndBacklogView() {
   const [showDomains, setShowDomains] = useState(false);
   const [domainDraft, setDomainDraft] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState([]);   // 올리기 전에 고른 파일
+  const [upBusy, setUpBusy] = useState(false);
+  const [sel, setSel] = useState(new Set());    // 엑셀로 뽑을 것들
 
   const blank = {
     domain: "", service: "", kind: "request", title: "", body: "",
@@ -15251,7 +15256,12 @@ export function RndBacklogView() {
   }, []);
   const loadTickets = useCallback(() => {
     api.erpRndTickets({ status, domain, mine })
-      .then((d) => { setTickets(d.tickets || []); setCounts(d.counts || {}); setMeName(d.meName || ""); })
+      .then((d) => {
+        const list = d.tickets || [];
+        setTickets(list); setCounts(d.counts || {}); setMeName(d.meName || "");
+        const live = new Set(list.map((t) => t.id));
+        setSel((p) => new Set([...p].filter((id) => live.has(id))));
+      })
       .catch(notifyError);
   }, [status, domain, mine]);
   useEffect(() => { loadMeta(); }, [loadMeta]);
@@ -15269,15 +15279,44 @@ export function RndBacklogView() {
   const rows = tickets.filter((t) =>
     !kw || [t.id, t.title, t.body, t.authorName, t.centerName, t.plannerName]
       .some((v) => String(v ?? "").toLowerCase().includes(kw)));
+  const openTicket = tickets.find((t) => t.id === openId) || null;
+
+  // 뽑아 놓은 것을 엑셀로 — 한글이 깨지지 않게 BOM을 앞에 둔다
+  const exportCsv = (list) => {
+    if (!list.length) { toastError("뽑을 것을 먼저 골라주세요"); return; }
+    const head = ["번호", "구분", "도메인", "세부서비스", "제목", "내용", "RND 유형", "유형 판단",
+      "상태", "기획자", "요청 센터", "담당자", "VIP", "올린 사람", "올린 날", "반려 사유", "붙임"];
+    const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const day = (v) => (v ? new Date(v).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" }) : "");
+    const body = list.map((t) => [
+      t.id, kindName(t.kind), t.domain, t.service, t.title, t.body,
+      t.rndType, t.cxmType, statusName(t.status), t.plannerName, t.centerName, t.ownerName,
+      t.vip ? "VIP" : "", t.authorName, day(t.createdAt), t.rejectNote,
+      (t.files || []).map((f) => f.name).join(" / "),
+    ].map(cell).join(","));
+    const csv = "\uFEFF" + [head.map(cell).join(","), ...body].join("\r\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `RND백로그_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toastSuccess(`${list.length}건을 내려받았어요`);
+  };
 
   const submit = async () => {
     if (!form.title.trim()) { toastError("제목을 입력하세요"); return; }
     if (!form.domain) { toastError("도메인을 선택하세요"); return; }
     setBusy(true);
     try {
-      await api.erpRndTicketCreate(form);
-      setForm(blank); setShowNew(false); loadTickets();
-      toastSuccess("올렸어요");
+      const { ticket } = await api.erpRndTicketCreate(form);
+      // 티켓이 생긴 뒤에야 붙일 곳이 생긴다
+      for (const f of pending) {
+        try { await api.erpRndFileUpload(ticket.id, f); }
+        catch (e) { notifyError(e); }
+      }
+      setForm(blank); setPending([]); setShowNew(false); loadTickets();
+      toastSuccess(pending.length ? `올렸어요 · 붙임 ${pending.length}개` : "올렸어요");
     } catch (e) { notifyError(e); } finally { setBusy(false); }
   };
 
@@ -15288,6 +15327,33 @@ export function RndBacklogView() {
       if (msg) toastSuccess(msg);
     } catch (e) { notifyError(e); }
   };
+
+  const MAX_UPLOAD = 100 * 1024 * 1024;
+  const pickFiles = (list, add) => {
+    const ok = [];
+    for (const f of list) {
+      if (f.size > MAX_UPLOAD) { toastError(`${f.name} — 100MB를 넘습니다`); continue; }
+      ok.push(f);
+    }
+    if (ok.length) add(ok);
+  };
+  const openFile = async (id, idx) => {
+    try {
+      const { url } = await api.erpRndFileOpen(id, idx);
+      window.open(url, "_blank", "noopener");
+    } catch (e) { notifyError(e); }
+  };
+  const attachNow = async (id, files) => {
+    setUpBusy(true);
+    try {
+      for (const f of files) await api.erpRndFileUpload(id, f);
+      loadTickets();
+      toastSuccess(`붙임 ${files.length}개를 올렸어요`);
+    } catch (e) { notifyError(e); } finally { setUpBusy(false); }
+  };
+  const isImage = (t) => String(t || "").startsWith("image/");
+  const isVideo = (t) => String(t || "").startsWith("video/");
+  const sizeText = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 
   const saveDomains = async () => {
     setBusy(true);
@@ -15399,7 +15465,7 @@ export function RndBacklogView() {
               <input className="input" value={form.ownerName} maxLength={40} placeholder={meName}
                 onChange={(e) => setForm({ ...form, ownerName: e.target.value })} />
             </OaField>
-            <OaField label="CXM 유형 판단" hint="비워두면 RND가 정합니다">
+            <OaField label="유형 판단" hint="비워두면 RND가 정합니다">
               <select className="input" value={form.cxmType}
                 onChange={(e) => setForm({ ...form, cxmType: e.target.value })}>
                 <option value="">선택 안 함</option>
@@ -15407,6 +15473,27 @@ export function RndBacklogView() {
               </select>
             </OaField>
           </div>
+          <div style={{ marginTop: 12 }}>
+            <OaField label="붙임" hint="화면 녹화·사진이 글보다 빠릅니다 · 100MB 이하">
+              <label className="rnd-drop">
+                <input type="file" multiple hidden accept="image/*,video/*,.pdf,.hwp,.hwpx,.docx,.pptx,.xlsx,.txt,.csv,.zip"
+                  onChange={(e) => { pickFiles(e.target.files, (ok) => setPending((p) => [...p, ...ok])); e.target.value = ""; }} />
+                파일 선택 또는 끌어다 놓기
+              </label>
+            </OaField>
+            {!!pending.length && (
+              <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                {pending.map((f, i) => (
+                  <span key={i} className="tag" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                    {f.name} <span className="small muted">{sizeText(f.size)}</span>
+                    <button type="button" className="btn-x"
+                      onClick={() => setPending((p) => p.filter((_, j) => j !== i))}>✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="row" style={{ gap: 10, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
             <label className="small row" style={{ gap: 6, alignItems: "center", cursor: "pointer" }}>
               <input type="checkbox" checked={form.vip}
@@ -15442,114 +15529,209 @@ export function RndBacklogView() {
         </select>
       </div>
 
-      {/* ── 목록 ── */}
-      <div style={{ marginTop: 14 }}>
-        {!rows.length && (
-          <div className="small muted" style={{ textAlign: "center", padding: "48px 0" }}>
-            {domains.length ? "해당하는 티켓이 없습니다." : "먼저 도메인을 등록해 주세요."}
-          </div>
-        )}
-        {rows.map((t) => (
-          <div key={t.id} className={"cc-as" + (openId === t.id ? " on" : "")}>
-            <button type="button" className="cc-as-hd" onClick={() => setOpenId(openId === t.id ? null : t.id)}>
-              <span className="small" style={{ fontWeight: 800, color: "var(--muted)", flex: "0 0 auto" }}>#{t.id}</span>
-              <span className={`tag ${RND_KIND_TONE[t.kind] || ""}`} style={{ flex: "0 0 auto" }}>{kindName(t.kind)}</span>
-              <span className="small" style={{ flex: "0 0 auto", color: "var(--muted)" }}>
-                {t.domain}{t.service ? ` · ${t.service}` : ""}
-              </span>
-              <span style={{ flex: 1, minWidth: 0, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {t.title}
-              </span>
-              {t.vip && <span className="tag accent" style={{ flex: "0 0 auto" }}>VIP</span>}
-              <RndTypeChip type={t.rndType || t.cxmType} types={types} />
-              <span className={`cc-pill ${t.status === "done" ? "ok" : t.status === "rejected" ? "bad" : ""}`}
-                style={{ flex: "0 0 auto" }}>{statusName(t.status)}</span>
-            </button>
-            {openId === t.id && (
-              <div className="cc-as-body">
-                {t.body && (
-                  <div className="small" style={{ whiteSpace: "pre-wrap", lineHeight: 1.7, marginBottom: 12 }}>{t.body}</div>
-                )}
-                <div className="cc-kvgrid" style={{ marginBottom: 12 }}>
-                  <div className="cc-kv"><span>올린 사람</span><b>{t.authorName}</b></div>
-                  <div className="cc-kv"><span>올린 날</span><b>{new Date(t.createdAt).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" })}</b></div>
-                  <div className="cc-kv"><span>요청 센터</span><b>{t.centerName || <i>-</i>}</b></div>
-                  <div className="cc-kv"><span>담당자</span><b>{t.ownerName || <i>-</i>}</b></div>
-                  {t.vip && <div className="cc-kv"><span>VIP 정보</span><b>{t.vipNote || <i>-</i>}</b></div>}
-                  <div className="cc-kv"><span>CXM 유형</span><b><RndTypeChip type={t.cxmType} types={types} /></b></div>
-                </div>
+      {/* ── 목록 (표) ── */}
+      {!!sel.size && (
+        <div className="row" style={{ gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap",
+          padding: "9px 12px", borderRadius: 9, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
+          <span className="small" style={{ fontWeight: 700 }}>{sel.size}건 선택</span>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSel(new Set())}>선택 해제</button>
+          <span style={{ flex: 1 }} />
+          <button type="button" className="btn btn-accent btn-sm" onClick={() => exportCsv(rows.filter((t) => sel.has(t.id)))}>
+            선택한 {sel.size}건 엑셀로
+          </button>
+        </div>
+      )}
 
-                <div className="cc-sec">RND 처리</div>
-                <div className="oa-form">
-                  <OaField label="RND 유형 판단">
-                    <select className="input" value={t.rndType}
-                      onChange={(e) => patch(t.id, { rndType: e.target.value }, "유형을 정했어요")}>
-                      <option value="">선택 안 함</option>
-                      {types.map((x) => <option key={x.k} value={x.k}>{x.rank}순위 · {x.k}</option>)}
-                    </select>
-                  </OaField>
-                  <OaField label="기획자">
-                    <input className="input" defaultValue={t.plannerName} maxLength={40} placeholder="배정할 기획자"
-                      onBlur={(e) => { if (e.target.value !== t.plannerName) patch(t.id, { plannerName: e.target.value }, "기획자를 배정했어요"); }} />
-                  </OaField>
-                </div>
-                <div className="row" style={{ gap: 6, marginTop: 12, flexWrap: "wrap" }}>
-                  {statuses.map((s) => (
-                    <button key={s.k} type="button" title={s.hint}
-                      className={"chip" + (t.status === s.k ? " on" : "")}
-                      onClick={() => {
-                        if (s.k === t.status) return;
-                        if (s.k === "rejected") {
-                          const why = window.prompt("반려 사유를 적어주세요 (올린 사람에게 함께 전달됩니다)", t.rejectNote || "");
-                          if (why === null) return;
-                          patch(t.id, { status: s.k, rejectNote: why, memo: why }, "반려했어요");
-                          return;
-                        }
-                        patch(t.id, { status: s.k }, `${s.t}(으)로 옮겼어요`);
-                      }}>{s.t}</button>
+      <div className="dash-table-wrap" style={{ marginTop: 12 }}>
+        <table className="dash-table rnd-table">
+          <thead>
+            <tr>
+              <th style={{ width: 34 }}>
+                <input type="checkbox" checked={!!rows.length && sel.size === rows.length}
+                  onChange={(e) => setSel(e.target.checked ? new Set(rows.map((t) => t.id)) : new Set())} />
+              </th>
+              <th style={{ width: 48 }}>번호</th>
+              <th style={{ width: 82 }}>구분</th>
+              <th style={{ width: 150 }}>도메인</th>
+              <th className="label">제목</th>
+              <th style={{ width: 104 }}>유형</th>
+              <th style={{ width: 90 }}>상태</th>
+              <th style={{ width: 82 }}>기획자</th>
+              <th style={{ width: 82 }}>올린 사람</th>
+              <th style={{ width: 84 }}>올린 날</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!rows.length && (
+              <tr><td colSpan={10} className="small muted" style={{ textAlign: "center", padding: "40px 0" }}>
+                {domains.length ? "해당하는 티켓이 없습니다." : "먼저 도메인을 등록해 주세요."}
+              </td></tr>
+            )}
+            {rows.map((t) => (
+              <tr key={t.id} className={openId === t.id ? "on" : ""}>
+                <td onClick={(e) => e.stopPropagation()}>
+                  <input type="checkbox" checked={sel.has(t.id)}
+                    onChange={(e) => setSel((p) => {
+                      const n = new Set(p);
+                      if (e.target.checked) n.add(t.id); else n.delete(t.id);
+                      return n;
+                    })} />
+                </td>
+                <td className="num" onClick={() => setOpenId(t.id)}>#{t.id}</td>
+                <td onClick={() => setOpenId(t.id)}>
+                  <span className={`tag ${RND_KIND_TONE[t.kind] || ""}`}>{kindName(t.kind)}</span>
+                </td>
+                <td className="small" onClick={() => setOpenId(t.id)}>
+                  {t.domain}{t.service ? <span className="muted"> · {t.service}</span> : null}
+                </td>
+                <td className="label" onClick={() => setOpenId(t.id)} style={{ cursor: "pointer" }}>
+                  {t.vip && <span className="tag accent" style={{ marginRight: 6 }}>VIP</span>}
+                  {t.title}
+                  {!!(t.files || []).length && <span className="small muted"> · 붙임 {t.files.length}</span>}
+                </td>
+                <td onClick={() => setOpenId(t.id)}><RndTypeChip type={t.rndType || t.cxmType} types={types} /></td>
+                <td onClick={() => setOpenId(t.id)}>
+                  <span className={`cc-pill ${t.status === "done" ? "ok" : t.status === "rejected" ? "bad" : ""}`}>
+                    {statusName(t.status)}
+                  </span>
+                </td>
+                <td className="small" onClick={() => setOpenId(t.id)}>{t.plannerName || <span className="muted">-</span>}</td>
+                <td className="small" onClick={() => setOpenId(t.id)}>{t.authorName}</td>
+                <td className="small muted" onClick={() => setOpenId(t.id)}>
+                  {new Date(t.createdAt).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── 상세 ── */}
+      {openTicket && (
+        <div className="rnd-modal" onClick={(e) => { if (e.target === e.currentTarget) setOpenId(null); }}>
+          <div className="rnd-modal-in">
+            <div className="rnd-modal-hd">
+              <span className="small" style={{ fontWeight: 800, color: "var(--muted)" }}>#{openTicket.id}</span>
+              <span className={`tag ${RND_KIND_TONE[openTicket.kind] || ""}`}>{kindName(openTicket.kind)}</span>
+              <span className="small muted">{openTicket.domain}{openTicket.service ? ` · ${openTicket.service}` : ""}</span>
+              <span style={{ flex: 1 }} />
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpenId(null)}>닫기</button>
+            </div>
+            <div className="rnd-modal-body">
+              <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-.02em", marginBottom: 10 }}>
+                {openTicket.vip && <span className="tag accent" style={{ marginRight: 8 }}>VIP</span>}
+                {openTicket.title}
+              </div>
+              {openTicket.body && (
+                <div className="small" style={{ whiteSpace: "pre-wrap", lineHeight: 1.75, marginBottom: 14 }}>{openTicket.body}</div>
+              )}
+              <div className="cc-kvgrid" style={{ marginBottom: 14 }}>
+                <div className="cc-kv"><span>올린 사람</span><b>{openTicket.authorName}</b></div>
+                <div className="cc-kv"><span>올린 날</span><b>{new Date(openTicket.createdAt).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" })}</b></div>
+                <div className="cc-kv"><span>요청 센터</span><b>{openTicket.centerName || <i>-</i>}</b></div>
+                <div className="cc-kv"><span>담당자</span><b>{openTicket.ownerName || <i>-</i>}</b></div>
+                {openTicket.vip && <div className="cc-kv"><span>VIP 정보</span><b>{openTicket.vipNote || <i>-</i>}</b></div>}
+                <div className="cc-kv"><span>유형 판단</span><b><RndTypeChip type={openTicket.cxmType} types={types} /></b></div>
+              </div>
+
+              <div className="cc-sec">붙임 {(openTicket.files || []).length ? `${openTicket.files.length}개` : ""}</div>
+              {!!(openTicket.files || []).length && (
+                <div className="rnd-files">
+                  {openTicket.files.map((f, i) => (
+                    <div key={i} className="rnd-file">
+                      <button type="button" className="rnd-file-open" onClick={() => openFile(openTicket.id, i)} title={f.name}>
+                        <span className="ic">{isImage(f.type) ? "▣" : isVideo(f.type) ? "▶" : "▤"}</span>
+                        <span className="nm">{f.name}</span>
+                        <span className="sz">{sizeText(f.size)}</span>
+                      </button>
+                      <button type="button" className="btn-x" title="붙임 지우기"
+                        onClick={async () => {
+                          if (!window.confirm(`${f.name} 을(를) 지웁니다.`)) return;
+                          try { await api.erpRndFileDelete(openTicket.id, i); loadTickets(); }
+                          catch (e) { notifyError(e); }
+                        }}>✕</button>
+                    </div>
                   ))}
                 </div>
-                {t.rejectNote && (
-                  <div className="small" style={{ marginTop: 10, padding: "10px 12px", borderRadius: 8,
-                    background: "var(--bad-wash, #FCEDEC)", border: "1px solid var(--line)", lineHeight: 1.6 }}>
-                    <strong>반려 사유</strong> — {t.rejectNote}
-                  </div>
-                )}
+              )}
+              <label className="rnd-drop sm" style={{ marginTop: (openTicket.files || []).length ? 8 : 0 }}>
+                <input type="file" multiple hidden disabled={upBusy}
+                  accept="image/*,video/*,.pdf,.hwp,.hwpx,.docx,.pptx,.xlsx,.txt,.csv,.zip"
+                  onChange={(e) => { pickFiles(e.target.files, (ok) => attachNow(openTicket.id, ok)); e.target.value = ""; }} />
+                {upBusy ? "올리는 중…" : "+ 붙임 추가"}
+              </label>
 
-                {!!(t.logs || []).length && (
-                  <>
-                    <div className="cc-sec">지나온 자취</div>
-                    {t.logs.map((l) => (
-                      <div key={l.id} className="small" style={{ display: "flex", gap: 10, lineHeight: 1.8, color: "var(--muted)" }}>
-                        <span style={{ flex: "0 0 128px" }}>
-                          {new Date(l.createdAt).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}
-                        </span>
-                        <span style={{ flex: "0 0 64px", fontWeight: 700, color: "var(--ink)" }}>{l.byName}</span>
-                        <span style={{ flex: 1 }}>
-                          {l.before || "없음"} → <strong style={{ color: "var(--ink)" }}>{l.after || "없음"}</strong>
-                          {l.memo ? ` — ${l.memo}` : ""}
-                        </span>
-                      </div>
-                    ))}
-                  </>
-                )}
-
-                <div className="row" style={{ marginTop: 14 }}>
-                  <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: "auto", color: "var(--bad, #B3261E)" }}
-                    onClick={async () => {
-                      if (!window.confirm(`#${t.id} 티켓을 지웁니다. 되돌릴 수 없습니다.`)) return;
-                      try { await api.erpRndTicketDelete(t.id); loadTickets(); toastSuccess("지웠어요"); }
-                      catch (e) { notifyError(e); }
-                    }}>삭제</button>
-                </div>
+              <div className="cc-sec">RND 처리</div>
+              <div className="oa-form">
+                <OaField label="RND 유형 판단">
+                  <select className="input" value={openTicket.rndType}
+                    onChange={(e) => patch(openTicket.id, { rndType: e.target.value }, "유형을 정했어요")}>
+                    <option value="">선택 안 함</option>
+                    {types.map((x) => <option key={x.k} value={x.k}>{x.rank}순위 · {x.k}</option>)}
+                  </select>
+                </OaField>
+                <OaField label="기획자">
+                  <input className="input" defaultValue={openTicket.plannerName} maxLength={40} placeholder="배정할 기획자"
+                    onBlur={(e) => { if (e.target.value !== openTicket.plannerName) patch(openTicket.id, { plannerName: e.target.value }, "기획자를 배정했어요"); }} />
+                </OaField>
               </div>
-            )}
+              <div className="row" style={{ gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+                {statuses.map((s) => (
+                  <button key={s.k} type="button" title={s.hint}
+                    className={"chip" + (openTicket.status === s.k ? " on" : "")}
+                    onClick={() => {
+                      if (s.k === openTicket.status) return;
+                      if (s.k === "rejected") {
+                        const why = window.prompt("반려 사유를 적어주세요 (올린 사람에게 함께 전달됩니다)", openTicket.rejectNote || "");
+                        if (why === null) return;
+                        patch(openTicket.id, { status: s.k, rejectNote: why, memo: why }, "반려했어요");
+                        return;
+                      }
+                      patch(openTicket.id, { status: s.k }, `${s.t}(으)로 옮겼어요`);
+                    }}>{s.t}</button>
+                ))}
+              </div>
+              {openTicket.rejectNote && (
+                <div className="small" style={{ marginTop: 10, padding: "10px 12px", borderRadius: 8,
+                  background: "var(--bad-wash, #FCEDEC)", border: "1px solid var(--line)", lineHeight: 1.6 }}>
+                  <strong>반려 사유</strong> — {openTicket.rejectNote}
+                </div>
+              )}
+
+              {!!(openTicket.logs || []).length && (
+                <>
+                  <div className="cc-sec">지나온 자취</div>
+                  {openTicket.logs.map((l) => (
+                    <div key={l.id} className="small" style={{ display: "flex", gap: 10, lineHeight: 1.8, color: "var(--muted)" }}>
+                      <span style={{ flex: "0 0 128px" }}>
+                        {new Date(l.createdAt).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}
+                      </span>
+                      <span style={{ flex: "0 0 64px", fontWeight: 700, color: "var(--ink)" }}>{l.byName}</span>
+                      <span style={{ flex: 1 }}>
+                        {l.before || "없음"} → <strong style={{ color: "var(--ink)" }}>{l.after || "없음"}</strong>
+                        {l.memo ? ` — ${l.memo}` : ""}
+                      </span>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              <div className="row" style={{ marginTop: 16 }}>
+                <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: "auto", color: "var(--bad, #B3261E)" }}
+                  onClick={async () => {
+                    if (!window.confirm(`#${openTicket.id} 티켓을 지웁니다. 되돌릴 수 없습니다.`)) return;
+                    try { await api.erpRndTicketDelete(openTicket.id); setOpenId(null); loadTickets(); toastSuccess("지웠어요"); }
+                    catch (e) { notifyError(e); }
+                  }}>삭제</button>
+              </div>
+            </div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 export function FoundersView() {
   const [rounds, setRounds] = useState(null);

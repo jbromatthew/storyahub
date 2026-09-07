@@ -6,6 +6,8 @@
  * 무엇이 바뀌든 자취를 남기고, 올린 사람에게 알린다.
  */
 import { Router, type Response } from "express";
+import express from "express";
+import { putObjectBytes, presignGet, r2KeyPrefix } from "../services/r2.js";
 import { prisma } from "../db.js";
 import { auth, type AuthedRequest } from "../middleware/auth.js";
 import { requireAccess } from "../middleware/requireAccess.js";
@@ -223,6 +225,72 @@ erpRndRouter.patch("/tickets/:id", async (req: AuthedRequest, res) => {
       }).catch(() => {});
     }
   }
+  res.json({ ticket: t });
+});
+
+/* ─────────── 붙임 파일 ───────────
+   화면 녹화나 사진이 글 열 줄보다 빠르다. 영상까지 받는다. */
+const MAX_FILE = 100 * 1024 * 1024;
+const OK_EXT = [
+  "png", "jpg", "jpeg", "gif", "webp", "heic", "heif", "bmp",
+  "mp4", "mov", "webm", "m4v",
+  "pdf", "hwp", "hwpx", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "txt", "csv", "zip",
+];
+const EXT_TYPE: Record<string, string> = {
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+  webp: "image/webp", heic: "image/heic", heif: "image/heif", bmp: "image/bmp",
+  mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm", m4v: "video/x-m4v",
+  pdf: "application/pdf", zip: "application/zip", txt: "text/plain; charset=utf-8",
+  csv: "text/csv; charset=utf-8",
+};
+type Attached = { key: string; name: string; size: number; type: string };
+
+erpRndRouter.post(
+  "/tickets/:id/files",
+  express.raw({ type: () => true, limit: "105mb" }),
+  async (req: AuthedRequest, res) => {
+    const id = Number(req.params.id);
+    const cur = await prisma.erpRndTicket.findUnique({ where: { id } });
+    if (!cur) return fail(res, "티켓을 찾을 수 없습니다", 404);
+
+    const body = req.body as Buffer;
+    if (!Buffer.isBuffer(body) || !body.length) return fail(res, "파일이 비어 있습니다");
+    if (body.length > MAX_FILE) return fail(res, "파일은 100MB까지 올릴 수 있습니다", 413);
+
+    const name = decodeURIComponent(req.header("X-File-Name") ?? "").trim().slice(0, 120) || "첨부파일";
+    const ext = (name.split(".").pop() ?? "").toLowerCase();
+    if (!OK_EXT.includes(ext)) return fail(res, "이미지·영상·문서만 올릴 수 있습니다");
+
+    const safe = name.replace(/[^\w가-힣.\-() ]/g, "_");
+    const key = `${r2KeyPrefix()}rnd/${id}/${Date.now()}-${safe}`;
+    const type = EXT_TYPE[ext] ?? "application/octet-stream";
+    await putObjectBytes(key, body, type);
+
+    const files = [...((cur.files as Attached[]) ?? []), { key, name, size: body.length, type }].slice(0, 20);
+    const t = await prisma.erpRndTicket.update({ where: { id }, data: { files: files as never } });
+    res.json({ ticket: t });
+  },
+);
+
+/** 붙임 열기 — 서명 URL로 넘긴다 */
+erpRndRouter.get("/tickets/:id/files/:idx", async (req: AuthedRequest, res) => {
+  const cur = await prisma.erpRndTicket.findUnique({ where: { id: Number(req.params.id) } });
+  if (!cur) return fail(res, "티켓을 찾을 수 없습니다", 404);
+  const f = ((cur.files as Attached[]) ?? [])[Number(req.params.idx)];
+  if (!f) return fail(res, "첨부가 없습니다", 404);
+  try {
+    res.json({ url: await presignGet(f.key), name: f.name, type: f.type });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+erpRndRouter.delete("/tickets/:id/files/:idx", async (req: AuthedRequest, res) => {
+  const id = Number(req.params.id);
+  const cur = await prisma.erpRndTicket.findUnique({ where: { id } });
+  if (!cur) return fail(res, "티켓을 찾을 수 없습니다", 404);
+  const files = ((cur.files as Attached[]) ?? []).filter((_, i) => i !== Number(req.params.idx));
+  const t = await prisma.erpRndTicket.update({ where: { id }, data: { files: files as never } });
   res.json({ ticket: t });
 });
 

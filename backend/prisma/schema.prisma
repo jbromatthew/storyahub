@@ -1516,9 +1516,13 @@ model ErpRndTicket {
   title   String
   body    String @default("")
 
-  /// 유형 판단 13가지 — CXM이 먼저 보고, RND가 최종으로 정한다
+  /// 유형 판단 13가지 — 올린 사람이 먼저 보고, RND가 최종으로 정한다
   cxmType String @default("")
   rndType String @default("")
+
+  /// 붙임 파일 — 화면 녹화·사진이 글보다 빠르다
+  /// [{ key, name, size, type }]
+  files Json @default("[]")
 
   ownerName   String @default("") // CXM·세일즈 담당자
   plannerName String @default("") // RND 기획자
