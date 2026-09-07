@@ -15276,9 +15276,19 @@ export function RndBacklogView() {
   const servicesOf = (name) => (domains.find((d) => d.name === name) || {}).services || [];
 
   const kw = q.trim().toLowerCase();
-  const rows = tickets.filter((t) =>
-    !kw || [t.id, t.title, t.body, t.authorName, t.centerName, t.plannerName]
-      .some((v) => String(v ?? "").toLowerCase().includes(kw)));
+  // 표에 보이는 모든 칸에서 찾는다 — 화면에 뜨는 한글 이름(구분·상태·유형)과 붙임 이름까지
+  const hay = (t) => [
+    t.id, `#${t.id}`,
+    kindName(t.kind), t.domain, t.service, t.title, t.body,
+    t.rndType, t.cxmType, statusName(t.status),
+    t.plannerName, t.ownerName, t.centerName, t.authorName, t.authorEmail,
+    t.vip ? "VIP" : "", t.vipNote, t.rejectNote,
+    ...(t.files || []).map((f) => f.name),
+    // 날짜는 두 가지 모양으로 — "2026. 9. 7." 과 "2026-09-07"
+    new Date(t.createdAt).toLocaleDateString("ko-KR"),
+    new Date(t.createdAt).toISOString().slice(0, 10),
+  ].join(" ").toLowerCase();
+  const rows = tickets.filter((t) => !kw || hay(t).includes(kw));
   const openTicket = tickets.find((t) => t.id === openId) || null;
 
   // 뽑아 놓은 것을 엑셀로 — 한글이 깨지지 않게 BOM을 앞에 둔다
@@ -15386,7 +15396,7 @@ export function RndBacklogView() {
           <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />
           내가 올린 것만
         </label>
-        <input className="input" style={{ maxWidth: 200 }} placeholder="번호 · 제목 · 센터 검색"
+        <input className="input" style={{ maxWidth: 200 }} placeholder="모든 칸에서 찾기"
           value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
 
