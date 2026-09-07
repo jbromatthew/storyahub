@@ -11,8 +11,8 @@ export const ERP_MODULES = [
   { id: "sales-closing", label: "클로징 관리", icon: "board", group: "sales" },
   { id: "sales-inquiry-trend", label: "문의 월간추이", icon: "trend", group: "sales" },
   { id: "sales-trend", label: "세일즈 월간추이", icon: "trend", group: "sales" },
-  { id: "sales-dashboard", label: "세일즈 계기판", icon: "gauge", group: "sales" },
-  { id: "marketing-dashboard", label: "마케팅 계기판", icon: "gauge", group: "sales" },
+  // 종합·세일즈·마케팅을 화면 위에서 갈아 끼운다 (예전 id 는 라우트로 남아 있다)
+  { id: "dashboard", label: "계기판", icon: "gauge", group: "sales" },
   { id: "broj-dashboard", label: "브로제이 계기판", icon: "gauge", group: "sales", ownerOnly: true },
   { id: "sales-revenue", label: "매출 분석", icon: "chart", group: "sales", ownerOnly: true },
   { id: "iot-leads", label: "IoT 견적 관리", icon: "board", group: "sales" },

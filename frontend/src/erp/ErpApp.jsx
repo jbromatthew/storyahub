@@ -13,7 +13,7 @@ import { ERP_CSS } from "./erpStyles.js";
 import { ERP_MODULES, ERP_ADMIN_MODULES } from "./config.js";
 import { BROJ_LOGO } from "./brojSeal.js";
 import { erpIcons as I } from "./icons.jsx";
-import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesClosingView, IncentiveView, SmartStoreView, SalesDashboardView, MarketingDashboardView, BrojDashboardView, RevenueView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, ConsultDocsView, SalesCasesView, MembersView, DailyReportView, IotLeadsView, VendorOrdersView, OpenApiCenterView, CrmCentersView, ProfileView, FoundersView, RndBacklogView, ErpBell} from "./modules.jsx";
+import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesClosingView, IncentiveView, SmartStoreView, SalesDashboardView, MarketingDashboardView, BrojDashboardView, RevenueView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, ConsultDocsView, SalesCasesView, MembersView, DailyReportView, IotLeadsView, VendorOrdersView, OpenApiCenterView, CrmCentersView, ProfileView, FoundersView, RndBacklogView, ErpBell, DashboardHubView} from "./modules.jsx";
 
 function NavBtn({ on, icon, label, onClick, hidden, fav, onFav, layout = "side" }) {
   const cls = layout === "side" ? "sidenavitem" : "sidenavitem";
@@ -434,8 +434,8 @@ export default function ErpApp() {
       case "smart-store": return <SmartStoreView />;
       case "founders": return <FoundersView />;
       case "sales-inquiry-trend": return <SalesInquiryTrendView />;
-      case "sales-dashboard": return <SalesDashboardView />;
-      case "marketing-dashboard": return <MarketingDashboardView />;
+      case "sales-dashboard": return <DashboardHubView initial="sales" />;
+      case "marketing-dashboard": return <DashboardHubView initial="marketing" />;
       case "daily-report": return <DailyReportView />;
       case "iot-leads": return <IotLeadsView />;
       case "vendor-orders": return <VendorOrdersView />;
@@ -452,6 +452,7 @@ export default function ErpApp() {
         <SalesCasesView articles={kbArticles} prefs={prefs} reload={loadKb} />
       );
       case "my-account": return <ProfileView user={user} onLogout={handleLogout} />;
+      case "dashboard": return <DashboardHubView />;
       case "rnd-backlog": return <RndBacklogView />;
       case "crm-centers": return <CrmCentersView />;
       case "openapi-center": return <OpenApiCenterView />;

@@ -333,6 +333,53 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .dash-goal-tally .pill.bad{background:#FCE8E6;color:#C5221F;}
 .dash-goal-tally.over{border-color:#F3C7C4;background:#FFF8F7;}
 .dash-goal-tally.done{border-color:#C8E6D4;background:#F5FBF7;}
+
+/* 계기판 고르기 — 종합 · 세일즈 · 마케팅 */
+.dash-switch{display:inline-flex;gap:3px;padding:3px;border-radius:12px;
+  border:1px solid var(--line);background:#F4F2ED;}
+.dash-switch-btn{border:0;background:none;cursor:pointer;font-family:inherit;
+  padding:7px 16px;border-radius:9px;color:var(--muted);line-height:1.25;text-align:center;
+  font-size:14px;font-weight:700;letter-spacing:-.01em;}
+.dash-switch-btn i{display:block;font-style:normal;font-size:10.5px;font-weight:500;
+  opacity:.75;margin-top:1px;}
+.dash-switch-btn:hover{color:var(--ink);}
+.dash-switch-btn.on{background:#fff;color:var(--accent-deep);
+  box-shadow:0 1px 2px rgba(0,0,0,.06),0 2px 8px rgba(0,0,0,.05);}
+
+/* 종합 계기판 */
+.cmb-top{display:flex;align-items:stretch;gap:12px;margin:16px 0 0;flex-wrap:wrap;}
+.cmb-card{flex:1 1 260px;display:flex;align-items:center;gap:14px;padding:14px 16px;
+  border:1px solid var(--line);border-radius:14px;background:#fff;}
+.cmb-side{min-width:0;flex:1;}
+.cmb-kind{font-size:11px;font-weight:800;letter-spacing:.06em;padding:2px 8px;
+  border-radius:6px;display:inline-block;margin-bottom:6px;}
+.cmb-kind.mkt{background:#EEF3FF;color:#33529E;}
+.cmb-kind.sal{background:#FBEAE1;color:#C2491F;}
+.cmb-big{font-size:30px;font-weight:900;letter-spacing:-.035em;line-height:1.1;
+  font-variant-numeric:tabular-nums;}
+.cmb-big i{font-style:normal;font-size:12.5px;font-weight:600;color:var(--muted);
+  margin-left:7px;letter-spacing:0;}
+.cmb-gap{font-size:12.5px;font-weight:700;margin-top:3px;}
+.cmb-gap.pos{color:#0D7A3E;}
+.cmb-gap.neg{color:#C5221F;}
+.cmb-arrow{flex:0 0 auto;align-self:center;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;min-width:74px;padding:8px 6px;
+  border-radius:12px;background:#F4F2ED;border:1px dashed var(--line);}
+.cmb-arrow .v{font-size:17px;font-weight:900;letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums;}
+.cmb-arrow .l{font-size:10.5px;color:var(--muted);font-weight:700;letter-spacing:.08em;}
+@media(max-width:640px){.cmb-arrow{width:100%;flex-direction:row;gap:8px;}}
+.cmb-conv{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;
+  padding:10px 14px;border-radius:11px;border:1px solid var(--line);background:#FAF9F7;
+  font-size:13px;}
+.cmb-conv .sep{flex:1;}
+.cmb-conv .muted{color:var(--muted);font-size:12.5px;}
+.cmb-table th.grp{text-align:center;font-size:11px;letter-spacing:.04em;}
+.cmb-table th.grp.mkt{color:#33529E;background:#F4F7FF;}
+.cmb-table th.grp.sal{color:#C2491F;background:#FDF5F1;}
+.cmb-table th.gl,.cmb-table td.gl{border-left:1px solid var(--line);}
+.cmb-goalconv{display:block;font-style:normal;font-size:10.5px;font-weight:500;
+  color:var(--muted);margin-top:1px;}
 .dash-matrix-table td.dash-matrix-cell{min-width:72px;}
 .dash-weekly-table td.dash-weekly-cell{min-width:64px;}
 .dash-weekly-cell .actual{font-weight:700;}

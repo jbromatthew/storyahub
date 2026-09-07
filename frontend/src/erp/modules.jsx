@@ -8103,6 +8103,263 @@ function GaugeRing({ rate, size = 132 }) {
 // 세일즈/마케팅 계기판 응답 캐시 (variant+월별) — 재방문 시 즉시 표시 후 백그라운드 갱신
 const salesDashCache = new Map();
 
+/** 계기판 — 종합 · 세일즈 · 마케팅을 위에서 갈아 끼운다 */
+const DASH_HUB = [
+  { id: "combined", label: "종합", hint: "문의와 계약을 한 줄에" },
+  { id: "sales", label: "세일즈", hint: "신규 계약" },
+  { id: "marketing", label: "마케팅", hint: "신규 문의" },
+];
+
+export function DashboardHubView({ initial = "combined" }) {
+  const [pick, setPick] = useState(() => {
+    try { return window.localStorage.getItem("erp.dashPick") || initial; }
+    catch { return initial; }
+  });
+  const choose = (id) => {
+    setPick(id);
+    try { window.localStorage.setItem("erp.dashPick", id); } catch { /* 사파리 비공개 창 */ }
+  };
+  return (
+    <>
+      <div className="pad" style={{ marginTop: 8 }}>
+        <div className="dash-switch" role="tablist" aria-label="계기판 고르기">
+          {DASH_HUB.map((d) => (
+            <button key={d.id} type="button" role="tab" aria-selected={pick === d.id}
+              className={"dash-switch-btn" + (pick === d.id ? " on" : "")}
+              onClick={() => choose(d.id)}>
+              {d.label}<i>{d.hint}</i>
+            </button>
+          ))}
+        </div>
+      </div>
+      {pick === "combined" ? <CombinedDashboardView />
+        : pick === "marketing" ? <SalesDashboardView variant="marketing" />
+        : <SalesDashboardView variant="sales" />}
+    </>
+  );
+}
+
+/* ── 종합 계기판 — 마케팅(문의)과 세일즈(계약)를 한 표에 겹쳐 본다 ── */
+
+const CMB_TABS = [
+  { id: "industry", label: "업종별" },
+  { id: "channel", label: "채널별" },
+  { id: "plan", label: "요금제별" },
+];
+
+/** 문의 대비 계약 — 전환율 색 */
+function cmbConvColor(v) {
+  if (v == null) return "var(--muted)";
+  if (v >= 40) return "#0D7A3E";
+  if (v >= 20) return "#B06A00";
+  return "#C5221F";
+}
+
+export function CombinedDashboardView() {
+  const [selectedMonth, setSelectedMonth] = useState(null);
+  const [mkt, setMkt] = useState(null);
+  const [sal, setSal] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState("industry");
+
+  const load = useCallback(() => {
+    setLoading(true);
+    const q = selectedMonth ? { month: selectedMonth } : undefined;
+    Promise.all([api.erpMarketingDashboard(q), api.erpSalesDashboard(q)])
+      .then(([m, s]) => { setMkt(m); setSal(s); })
+      .catch(notifyError)
+      .finally(() => setLoading(false));
+  }, [selectedMonth]);
+  useEffect(() => { load(); }, [load]);
+
+  const months = sal?.months || mkt?.months || [];
+
+  /* 두 계기판을 이름으로 맞붙인다. 한쪽에만 있는 항목도 빠뜨리지 않는다. */
+  const rows = useMemo(() => {
+    const pick = (d) => d?.sections?.find((s) => s.id === tab)?.items || [];
+    const box = new Map();
+    const put = (list, side) => {
+      for (const it of list) {
+        const cur = box.get(it.label) || { label: it.label, mg: 0, ma: 0, sg: 0, sa: 0 };
+        if (side === "m") { cur.mg = it.goal || 0; cur.ma = it.actual || 0; }
+        else { cur.sg = it.goal || 0; cur.sa = it.actual || 0; }
+        box.set(it.label, cur);
+      }
+    };
+    put(pick(mkt), "m");
+    put(pick(sal), "s");
+    return [...box.values()]
+      .map((r) => ({
+        ...r,
+        conv: r.ma > 0 ? Math.round((r.sa / r.ma) * 1000) / 10 : null,
+        convGoal: r.mg > 0 ? Math.round((r.sg / r.mg) * 1000) / 10 : null,
+      }))
+      .sort((a, b) => b.sa - a.sa || b.ma - a.ma || a.label.localeCompare(b.label, "ko"));
+  }, [mkt, sal, tab]);
+
+  const tot = useMemo(() => {
+    const add = (fn) => rows.reduce((a, r) => a + (Number(fn(r)) || 0), 0);
+    const t = { mg: add((r) => r.mg), ma: add((r) => r.ma), sg: add((r) => r.sg), sa: add((r) => r.sa) };
+    t.conv = t.ma > 0 ? Math.round((t.sa / t.ma) * 1000) / 10 : null;
+    t.convGoal = t.mg > 0 ? Math.round((t.sg / t.mg) * 1000) / 10 : null;
+    return t;
+  }, [rows]);
+
+  const ms = mkt?.summary;
+  const ss = sal?.summary;
+  const convNow = ms?.actual > 0 ? Math.round((ss?.actual / ms.actual) * 1000) / 10 : null;
+  const convGoal = ms?.totalGoal > 0 ? Math.round((ss?.totalGoal / ms.totalGoal) * 1000) / 10 : null;
+  const leftDays = ss?.remainingBusinessDays ?? ss?.remainingDays;
+
+  return (
+    <div className="fade pad rate-page" style={{ marginTop: 4, paddingBottom: 40 }}>
+      <div className="h-eyebrow">Marketing × Sales</div>
+      <div className="h-title">종합 계기판</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.55 }}>
+        마케팅이 만든 <strong>신규 문의</strong>와 세일즈가 닫은 <strong>신규 계약</strong>을
+        같은 줄에 놓고 봅니다. 목표와 현황은 각 계기판과 같은 값이고,
+        <strong> 전환율</strong>은 여기서만 계산합니다 — 계약 ÷ 문의.
+        목표를 고치려면 각 계기판에서 하세요.
+      </div>
+
+      {months.length > 0 && (
+        <div className="sales-toolbar" style={{ marginTop: 12, alignItems: "center", gap: 8 }}>
+          <span className="small" style={{ fontWeight: 700 }}>월</span>
+          <select className="input" style={{ maxWidth: 150 }}
+            value={sal?.month || mkt?.month || ""}
+            onChange={(e) => setSelectedMonth(e.target.value)}>
+            {months.map((m) => <option key={m} value={m}>{m.replace(/\.$/, "")}</option>)}
+          </select>
+          {leftDays != null && <span className="small">남은 영업일 <strong>{leftDays}일</strong></span>}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="spinner" />
+      ) : !mkt || !sal ? (
+        <div className="small" style={{ textAlign: "center", padding: 40 }}>데이터가 없습니다</div>
+      ) : (
+        <>
+          <div className="cmb-top">
+            <div className="cmb-card">
+              <div className="dash-gauge-wrap"><GaugeRing rate={ms?.rate} size={104} /></div>
+              <div className="cmb-side">
+                <div className="cmb-kind mkt">신규 문의 · 마케팅</div>
+                <div className="cmb-big">{ms?.actual ?? 0}<i>／ 목표 {ms?.totalGoal ?? 0}</i></div>
+                <div className={"cmb-gap" + ((ms?.gap ?? 0) >= 0 ? " pos" : " neg")}>
+                  {formatDashGap(ms?.gap ?? 0)}
+                </div>
+              </div>
+            </div>
+
+            <div className="cmb-arrow" aria-hidden="true">
+              <span className="v">{convNow != null ? `${convNow}%` : "-"}</span>
+              <span className="l">전환</span>
+            </div>
+
+            <div className="cmb-card">
+              <div className="dash-gauge-wrap"><GaugeRing rate={ss?.rate} size={104} /></div>
+              <div className="cmb-side">
+                <div className="cmb-kind sal">신규 계약 · 세일즈</div>
+                <div className="cmb-big">{ss?.actual ?? 0}<i>／ 목표 {ss?.totalGoal ?? 0}</i></div>
+                <div className={"cmb-gap" + ((ss?.gap ?? 0) >= 0 ? " pos" : " neg")}>
+                  {formatDashGap(ss?.gap ?? 0)}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="cmb-conv">
+            <span>문의 <b>{ms?.actual ?? 0}</b>건 중 <b>{ss?.actual ?? 0}</b>건이 계약으로</span>
+            <span className="sep" />
+            <span>지금 전환율 <b style={{ color: cmbConvColor(convNow) }}>
+              {convNow != null ? `${convNow}%` : "-"}</b></span>
+            {convGoal != null && (
+              <span className="muted">· 목표대로라면 {convGoal}%</span>
+            )}
+          </div>
+
+          <div className="dash-tabs" style={{ marginTop: 18 }}>
+            {CMB_TABS.map((t) => (
+              <button key={t.id} type="button"
+                className={"dash-tab" + (tab === t.id ? " on" : "")}
+                onClick={() => setTab(t.id)}>{t.label}</button>
+            ))}
+          </div>
+
+          <div className="dash-table-wrap" style={{ marginTop: 10 }}>
+            <table className="dash-table cmb-table">
+              <thead>
+                <tr>
+                  <th className="label" rowSpan="2">{CMB_TABS.find((t) => t.id === tab)?.label.replace("별", "")}</th>
+                  <th colSpan="3" className="grp mkt">신규 문의 · 마케팅</th>
+                  <th colSpan="3" className="grp sal">신규 계약 · 세일즈</th>
+                  <th rowSpan="2">전환율</th>
+                </tr>
+                <tr>
+                  <th>목표</th><th>현황</th><th>달성률</th>
+                  <th className="gl">목표</th><th>현황</th><th>달성률</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!rows.length && (
+                  <tr><td colSpan={8} className="small" style={{ textAlign: "center", padding: 30 }}>
+                    항목이 없습니다
+                  </td></tr>
+                )}
+                {rows.map((r) => {
+                  const mr = r.mg > 0 ? Math.round((r.ma / r.mg) * 1000) / 10 : null;
+                  const sr = r.sg > 0 ? Math.round((r.sa / r.sg) * 1000) / 10 : null;
+                  return (
+                    <tr key={r.label}>
+                      <td className="label">{r.label}</td>
+                      <td className="num" style={{ color: "var(--muted)" }}>{r.mg || "-"}</td>
+                      <td className="num">{r.ma}</td>
+                      <td className="num" style={{ color: dashRateColor(mr), fontWeight: 700 }}>
+                        {mr != null ? formatDashRate(mr) : "-"}</td>
+                      <td className="num gl" style={{ color: "var(--muted)" }}>{r.sg || "-"}</td>
+                      <td className="num">{r.sa}</td>
+                      <td className="num" style={{ color: dashRateColor(sr), fontWeight: 700 }}>
+                        {sr != null ? formatDashRate(sr) : "-"}</td>
+                      <td className="num" style={{ color: cmbConvColor(r.conv), fontWeight: 700 }}>
+                        {r.conv != null ? `${r.conv}%` : "-"}
+                        {r.convGoal != null && (
+                          <i className="cmb-goalconv">목표 {r.convGoal}%</i>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="dash-sum">
+                  <td className="label">합계</td>
+                  <td className="num">{tot.mg || "-"}</td>
+                  <td className="num">{tot.ma}</td>
+                  <td className="num" style={{ color: dashRateColor(tot.mg > 0 ? Math.round((tot.ma / tot.mg) * 1000) / 10 : null), fontWeight: 800 }}>
+                    {tot.mg > 0 ? formatDashRate(Math.round((tot.ma / tot.mg) * 1000) / 10) : "-"}</td>
+                  <td className="num gl">{tot.sg || "-"}</td>
+                  <td className="num">{tot.sa}</td>
+                  <td className="num" style={{ color: dashRateColor(tot.sg > 0 ? Math.round((tot.sa / tot.sg) * 1000) / 10 : null), fontWeight: 800 }}>
+                    {tot.sg > 0 ? formatDashRate(Math.round((tot.sa / tot.sg) * 1000) / 10) : "-"}</td>
+                  <td className="num" style={{ color: cmbConvColor(tot.conv), fontWeight: 800 }}>
+                    {tot.conv != null ? `${tot.conv}%` : "-"}
+                    {tot.convGoal != null && <i className="cmb-goalconv">목표 {tot.convGoal}%</i>}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div className="small" style={{ marginTop: 8, color: "var(--muted)", lineHeight: 1.6 }}>
+            전환율은 <strong>같은 달 안에서</strong> 문의와 계약을 나눈 값입니다.
+            지난달 문의가 이번 달에 닫히는 건은 반영되지 않으니, 흐름을 보는 눈금으로 쓰세요.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // 마케팅 계기판 — 세일즈 계기판과 동일 UI를 신규문의 기준으로 (목표 읽기 전용)
 export function MarketingDashboardView() {
   return <SalesDashboardView variant="marketing" />;
