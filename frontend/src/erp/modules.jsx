@@ -15532,7 +15532,7 @@ export function RndBacklogView() {
       {/* ── 목록 (표) ── */}
       {!!sel.size && (
         <div className="row" style={{ gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap",
-          padding: "9px 12px", borderRadius: 9, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
+          padding: "9px 12px", borderRadius: 9, background: "var(--surface-2,#F5F6F8)", border: "1px solid var(--line)" }}>
           <span className="small" style={{ fontWeight: 700 }}>{sel.size}건 선택</span>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSel(new Set())}>선택 해제</button>
           <span style={{ flex: 1 }} />
