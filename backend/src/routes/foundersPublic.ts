@@ -469,7 +469,12 @@ foundersPublicRouter.post("/apply", async (req: Request, res: Response) => {
   const passHash = pw.length >= PW_MIN ? hashPw(pw) : draft?.passHash ?? dup?.passHash ?? "";
 
   const row = dup
-    ? await prisma.erpFoundersApply.update({ where: { id: dup.id }, data: { ...withSign, passHash } })
+    // 덮어쓰면 접수일도 그날로 옮긴다 — 마감을 따질 때 기준이 되는 것은
+    // 지금 남아 있는 내용을 언제 냈는가다
+    ? await prisma.erpFoundersApply.update({
+        where: { id: dup.id },
+        data: { ...withSign, passHash, createdAt: now },
+      })
     : await prisma.erpFoundersApply.create({ data: { ...withSign, applyNo, passHash } });
 
   if (draft) await prisma.erpFoundersDraft.delete({ where: { phone: repPhone } }).catch(() => {});
