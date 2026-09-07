@@ -15047,6 +15047,7 @@ export function CrmCentersView() {
 // ─── D·BROJ FOUNDERS — IR 피칭대회 접수 관리 ──────────────────────────────────
 
 const REVIEW_URL = "https://b2b.broj.io/founders/review.html";
+const FAQ_URL = "https://b2b.broj.io/founders/faq.html";
 const BF_TRACKS = {
   business: "피트니스 사업", tech: "기술", content: "콘텐츠·교육",
   product: "제품", next: "신사업", market: "브로제이 연동 입점",
@@ -15332,7 +15333,25 @@ export function FoundersView() {
           신청 링크 복사
         </button>
         <a className="btn btn-ghost btn-sm" href={BF_URL} target="_blank" rel="noopener">신청 화면 열기</a>
+        <a className="btn btn-ghost btn-sm" href={FAQ_URL} target="_blank" rel="noopener">자주 묻는 질문</a>
+        {/* 심사 페이지는 비밀번호를 정해야 열린다 — 상태를 함께 보여준다 */}
+        <a className={`btn btn-sm ${cur?.reviewPassSet ? "btn-accent" : "btn-ghost"}`}
+          href={REVIEW_URL} target="_blank" rel="noopener"
+          title={cur?.reviewPassSet ? "드레이퍼 심사 페이지" : "회차 관리에서 비밀번호를 정해야 열립니다"}>
+          심사 페이지 열기{cur?.reviewPassSet ? "" : " (닫힘)"}
+        </a>
       </div>
+      {cur && !cur.reviewPassSet && (
+        <div className="small" style={{
+          marginTop: 10, padding: "10px 13px", borderRadius: 9,
+          background: "var(--surface-2)", border: "1px solid var(--line)", lineHeight: 1.6,
+        }}>
+          심사 페이지가 아직 <strong>닫혀 있습니다.</strong>{" "}
+          <button type="button" className="btn btn-ghost btn-sm" style={{ padding: "2px 10px" }}
+            onClick={() => setTab("rounds")}>회차 관리</button>
+          {" "}에서 비밀번호를 정하시면 드레이퍼 쪽에 주소와 함께 넘기실 수 있습니다.
+        </div>
+      )}
 
       {tab === "applies" && (
         <>
