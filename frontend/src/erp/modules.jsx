@@ -15301,6 +15301,7 @@ export function RndBacklogView() {
   const [pending, setPending] = useState([]);   // 올리기 전에 고른 파일
   const [upBusy, setUpBusy] = useState(false);
   const [sel, setSel] = useState(new Set());    // 엑셀로 뽑을 것들
+  const [sort, setSort] = useState({ key: "createdAt", dir: "desc" });
 
   const blank = {
     domain: "", service: "", kind: "request", title: "", body: "",
@@ -15343,7 +15344,7 @@ export function RndBacklogView() {
 
   /* ── 칸별 거르기 ── */
   const has = (v, kw) => !kw || String(v ?? "").toLowerCase().includes(kw.trim().toLowerCase());
-  const rows = tickets.filter((t) =>
+  const shown = tickets.filter((t) =>
     has(`#${t.id}`, f.id)
     && (!f.kind || t.kind === f.kind)
     && (!f.type || (t.rndType || t.cxmType) === f.type)
@@ -15351,6 +15352,46 @@ export function RndBacklogView() {
     && (!f.planner || (t.plannerName || "") === f.planner)
     && (!f.author || t.authorName === f.author)
     && has(`${t.title} ${t.body} ${(t.files || []).map((x) => x.name).join(" ")}`, f.title));
+
+  /* ── 줄 세우기. 빈 값은 방향과 상관없이 늘 뒤로 보낸다 ── */
+  const SORT_VAL = {
+    id: (t) => t.id,
+    kind: (t) => kindName(t.kind),
+    domain: (t) => `${t.domain || ""} ${t.service || ""}`.trim(),
+    center: (t) => t.centerName || "",
+    title: (t) => t.title || "",
+    // 유형은 이름순이 아니라 순위순 — 1순위가 먼저 온다
+    type: (t) => {
+      const v = t.rndType || t.cxmType;
+      const i = types.findIndex((x) => x.k === v);
+      return i < 0 ? null : (types[i].rank || 9) * 100 + i;
+    },
+    // 상태도 접수 → 완료 흐름 순서대로
+    status: (t) => {
+      const i = statuses.findIndex((x) => x.k === t.status);
+      return i < 0 ? null : i;
+    },
+    planner: (t) => t.plannerName || "",
+    author: (t) => t.authorName || "",
+    createdAt: (t) => new Date(t.createdAt).getTime(),
+  };
+  const sortBy = (k) => setSort((p) => (p.key === k
+    ? { key: k, dir: p.dir === "asc" ? "desc" : "asc" }
+    : { key: k, dir: k === "createdAt" || k === "id" ? "desc" : "asc" }));
+
+  const val = SORT_VAL[sort.key] || SORT_VAL.createdAt;
+  const empty = (v) => v === null || v === undefined || v === "";
+  const rows = [...shown].sort((p, q) => {
+    const x = val(p), y = val(q);
+    if (empty(x) && empty(y)) return q.id - p.id;
+    if (empty(x)) return 1;
+    if (empty(y)) return -1;
+    const c = typeof x === "number" && typeof y === "number"
+      ? x - y
+      : String(x).localeCompare(String(y), "ko");
+    return (sort.dir === "asc" ? c : -c) || q.id - p.id;
+  });
+
   const openTicket = tickets.find((t) => t.id === openId) || null;
 
   // 고를 수 있는 값은 지금 불러온 것에서 뽑는다
@@ -15692,16 +15733,16 @@ export function RndBacklogView() {
                 <input type="checkbox" checked={!!rows.length && sel.size === rows.length}
                   onChange={(e) => setSel(e.target.checked ? new Set(rows.map((t) => t.id)) : new Set())} />
               </th>
-              <th style={{ width: 52 }}>번호</th>
-              <th style={{ width: 96 }}>구분</th>
-              <th style={{ width: 130 }}>도메인</th>
-              <th style={{ width: 110 }}>요청 센터</th>
-              <th className="label">제목</th>
-              <th style={{ width: 112 }}>유형</th>
-              <th style={{ width: 104 }}>상태</th>
-              <th style={{ width: 96 }}>기획자</th>
-              <th style={{ width: 96 }}>올린 사람</th>
-              <th style={{ width: 78 }}>올린 날</th>
+              <CcSortHead k="id" sortKey={sort.key} dir={sort.dir} onSort={sortBy} style={{ width: 62 }}>번호</CcSortHead>
+              <CcSortHead k="kind" sortKey={sort.key} dir={sort.dir} onSort={sortBy} style={{ width: 96 }}>구분</CcSortHead>
+              <CcSortHead k="domain" sortKey={sort.key} dir={sort.dir} onSort={sortBy} style={{ width: 130 }}>도메인</CcSortHead>
+              <CcSortHead k="center" sortKey={sort.key} dir={sort.dir} onSort={sortBy} style={{ width: 110 }}>요청 센터</CcSortHead>
+              <CcSortHead k="title" sortKey={sort.key} dir={sort.dir} onSort={sortBy}>제목</CcSortHead>
+              <CcSortHead k="type" sortKey={sort.key} dir={sort.dir} onSort={sortBy} style={{ width: 112 }}>유형</CcSortHead>
+              <CcSortHead k="status" sortKey={sort.key} dir={sort.dir} onSort={sortBy} style={{ width: 104 }}>상태</CcSortHead>
+              <CcSortHead k="planner" sortKey={sort.key} dir={sort.dir} onSort={sortBy} style={{ width: 96 }}>기획자</CcSortHead>
+              <CcSortHead k="author" sortKey={sort.key} dir={sort.dir} onSort={sortBy} style={{ width: 96 }}>올린 사람</CcSortHead>
+              <CcSortHead k="createdAt" sortKey={sort.key} dir={sort.dir} onSort={sortBy} style={{ width: 88 }}>올린 날</CcSortHead>
             </tr>
             {/* 칸마다 거르개 — 여기에 걸어둔 것이 빠른검색으로 저장된다 */}
             <tr className="rnd-filters">
