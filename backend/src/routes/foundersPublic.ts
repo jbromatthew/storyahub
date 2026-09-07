@@ -16,6 +16,15 @@ export const foundersPublicRouter = Router();
 
 const TRACKS = ["business", "tech", "content", "product", "next", "market"];
 const MAX_FILE = 100 * 1024 * 1024; // 100MB — 발표자료가 무거운 편이다
+/* 확장자로 판단한다.
+   브라우저는 .hwp에 형식 이름을 붙이지 못해 application/octet-stream으로 보낸다.
+   형식 이름만 보면 한글 문서가 통째로 막힌다 — 실제로 막혀 있었다. */
+const OK_EXT = [
+  "pdf", "hwp", "hwpx", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "txt",
+  "png", "jpg", "jpeg", "gif", "webp", "heic", "heif",
+  "zip", "mp4", "mov",
+];
+/** 확장자를 못 읽었을 때 기대는 두 번째 잣대 */
 const OK_TYPES = [
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -25,6 +34,22 @@ const OK_TYPES = [
   "image/jpeg", "image/png", "image/webp", "image/heic",
   "application/zip",
 ];
+/** 내려받을 때 제대로 열리도록 확장자에 맞는 형식을 붙여 저장한다 */
+const EXT_TYPE: Record<string, string> = {
+  pdf: "application/pdf",
+  hwp: "application/haansofthwp", hwpx: "application/haansofthwpx",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  txt: "text/plain; charset=utf-8",
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+  webp: "image/webp", heic: "image/heic", heif: "image/heif",
+  zip: "application/zip", mp4: "video/mp4", mov: "video/quicktime",
+};
+const extOf = (name: string) => (name.split(".").pop() ?? "").toLowerCase();
 
 const str = (v: unknown, max = 200) => String(v ?? "").trim().slice(0, max);
 const digits = (v: unknown) => String(v ?? "").replace(/[^\d]/g, "");
@@ -471,14 +496,17 @@ foundersPublicRouter.post(
     if (body.length > MAX_FILE) return fail(res, "파일은 100MB까지 올릴 수 있습니다", 413);
 
     const ctype = String(req.header("Content-Type") ?? "application/octet-stream").split(";")[0];
-    if (!OK_TYPES.includes(ctype)) {
-      return fail(res, "PDF·PPT·HWP·이미지·ZIP만 올릴 수 있습니다");
-    }
     const fileName = decodeURIComponent(req.header("X-File-Name") ?? "").trim().slice(0, 120) || "첨부파일";
+    const ext = extOf(fileName);
+    if (!OK_EXT.includes(ext) && !OK_TYPES.includes(ctype)) {
+      return fail(res, "PDF·HWP·오피스 문서·이미지·ZIP·영상만 올릴 수 있습니다");
+    }
     const safe = fileName.replace(/[^\w가-힣.\-() ]/g, "_");
     const key = `${r2KeyPrefix()}founders/${row.applyNo}/${kind}-${Date.now()}-${safe}`;
 
-    await putObjectBytes(key, body, ctype);
+    // 브라우저가 못 붙인 형식은 우리가 확장자로 채워 넣는다
+    const storeType = EXT_TYPE[ext] ?? (ctype !== "application/octet-stream" ? ctype : "application/octet-stream");
+    await putObjectBytes(key, body, storeType);
     const after = await prisma.erpFoundersApply.update({
       where: { id: row.id },
       data: kind === "proof" ? { proofKey: key, proofName: fileName }
