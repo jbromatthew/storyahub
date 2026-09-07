@@ -557,8 +557,10 @@
 
     <div class="notice" id="notice">
       <div class="notice-get">
-        <a class="dl" href="broj-founders-2026-notice.hwp"
-          download="BROJ Founders 2026 모집공고.hwp"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6v8.2m0 0L4.9 6.7M8 9.8l3.1-3.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.4 11.6v1.6a1.2 1.2 0 0 0 1.2 1.2h8.8a1.2 1.2 0 0 0 1.2-1.2v-1.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>공고문 내려받기 <i>HWP</i></a>
+        <a class="dl" href="broj-founders-2026-notice.pdf"
+          download="BROJ Founders 2026 모집공고.pdf"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6v8.2m0 0L4.9 6.7M8 9.8l3.1-3.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.4 11.6v1.6a1.2 1.2 0 0 0 1.2 1.2h8.8a1.2 1.2 0 0 0 1.2-1.2v-1.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>공고문 내려받기 <i>PDF</i></a>
+        <a class="dl alt" href="broj-founders-2026-notice.hwp"
+          download="BROJ Founders 2026 모집공고.hwp"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6v8.2m0 0L4.9 6.7M8 9.8l3.1-3.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.4 11.6v1.6a1.2 1.2 0 0 0 1.2 1.2h8.8a1.2 1.2 0 0 0 1.2-1.2v-1.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><i>HWP</i></a>
         <button type="button" class="dl alt" id="noticePrint"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 6V2.2h7.2V6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><rect x="1.8" y="6" width="12.4" height="5.2" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4.4 9.6h7.2v4.2H4.4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>인쇄 · PDF로 저장</button>
       </div>
 
@@ -625,6 +627,7 @@
         결원이 생기면 예비 참가기업에게 순차적으로 자격을 부여합니다.</p>
       <p><b>지원 프로그램</b> — 1차 합격자 전원 대상. OT, 서면평가 사전 진단 및 IR 피칭 실전 교육, 1:1 피드백,
         발표자료 최종안에 대한 Draper Korea 온라인 피드백. <b>필참이며 미참여 시 2차 평가 대상에서 제외</b>됩니다.</p>
+      <p class="s">Draper Korea의 온라인 피드백 일정은 추후 안내 예정입니다.</p>
 
       <h3>5. 평가 및 시상</h3>
       <p><b>평가위원</b> — 분야별 산·학·연·투자계 전문가로 구성하며, 주최사 브로제이 평가 50%와
@@ -790,9 +793,9 @@
           </div>
         </div>
         <div class="row">
-          <label class="f"><span>업종 / 업태</span>
+          <label class="f biz-only"><span>업종 / 업태</span>
             <input type="text" id="coIndustry" maxlength="120" placeholder="예: 정보통신업 / 소프트웨어 개발"></label>
-          <label class="f"><span>주생산품목</span>
+          <label class="f biz-only"><span>주생산품목</span>
             <input type="text" id="coMainItem" maxlength="120" placeholder="예: 무인 키오스크"></label>
         </div>
       </div>
@@ -909,8 +912,8 @@
       <p class="lead">해당 사항이 없으면 0으로 두거나 비워두셔도 됩니다.</p>
 
       <div class="card">
-        <h3>주요 성과 <span class="opt">2025년 기준</span></h3>
-        <div class="row t3">
+        <h3 id="ovTitle">주요 성과 <span class="opt">2025년 기준</span></h3>
+        <div class="row t3 biz-only">
           <label class="f"><span>고용 (명)</span>
             <input type="number" id="ovEmployees" min="0" max="99999" placeholder="0">
             <span class="hint">신청일 기준, 대표자 제외</span></label>
@@ -921,7 +924,7 @@
             <input type="number" id="ovInvest" min="0" placeholder="0"></label>
         </div>
         <div class="row t3">
-          <label class="f"><span>최근 3개년 R&amp;D 수행이력 (건)</span>
+          <label class="f biz-only"><span>최근 3개년 R&amp;D 수행이력 (건)</span>
             <input type="number" id="ovRnd" min="0" placeholder="0"></label>
           <label class="f"><span>특허 출원 (건)</span>
             <input type="number" id="ovPatentApplied" min="0" placeholder="0"></label>
@@ -930,7 +933,7 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card biz-only">
         <h3>상세 매출현황 <span class="opt">단위: 백만원</span></h3>
         <div class="yrs" style="margin-bottom:8px">
           <span></span><span class="yh">내수</span><span class="yh">수출액</span>
@@ -938,7 +941,7 @@
         <div id="salesYears"></div>
       </div>
 
-      <div class="card">
+      <div class="card biz-only">
         <h3>회사 연혁</h3>
         <div class="rep" id="repHistory"></div>
         <button type="button" class="btn btn-ghost addrow" data-add="repHistory">+ 연혁 추가</button>
@@ -946,7 +949,7 @@
 
       <div class="card">
         <h3>사업참여인력</h3>
-        <div class="hint" style="margin:-4px 0 12px">이번 대회에 함께 참여하는 인력을 적어주세요.</div>
+        <div class="hint" id="staffHint" style="margin:-4px 0 12px">이번 대회에 함께 참여하는 인력을 적어주세요.</div>
         <div class="rep" id="repStaff"></div>
         <button type="button" class="btn btn-ghost addrow" data-add="repStaff">+ 인력 추가</button>
       </div>
@@ -1005,14 +1008,14 @@
           <textarea id="esEdge" maxlength="3000" placeholder="경쟁 제품과의 기술·기능상 차이, 핵심기술 보유 여부, 기술·품질·가격 비교"></textarea></label>
       </div>
 
-      <div class="card">
+      <div class="card biz-only">
         <h3>국내외 추진실적 <span class="opt">최근 3년</span></h3>
         <div class="hint" style="margin:-4px 0 12px">실적이 없으면 비워두세요. 해당 시 증빙 서류를 마지막 단계에서 함께 올려주셔야 합니다.</div>
         <div class="rep" id="repChannels"></div>
         <button type="button" class="btn btn-ghost addrow" data-add="repChannels">+ 실적 추가</button>
       </div>
 
-      <div class="card">
+      <div class="card biz-only">
         <h3>투자유치 현황 <span class="opt">해당 시</span></h3>
         <div class="hint" style="margin:-4px 0 12px">최근 3년 투자 실적. 대출과 보증은 뺀 금액을 적어주세요.</div>
         <div class="rep" id="repInvest"></div>
@@ -1307,6 +1310,7 @@
   "use strict";
   var API = "https://api.storyahub.com";
   var STEPS = ["기업 정보", "대표자", "기업 현황", "사업 내용", "동의", "자료 첨부", "완료"];
+  var STEPS_PRE = ["참가자 정보", "대표자", "보유 현황", "사업 내용", "동의", "자료 첨부", "완료"];
   var step = 1, round = null, applyNo = "", phoneForUpload = "";
 
   var $ = function (id) { return document.getElementById(id); };
@@ -1321,12 +1325,13 @@
 
   /* ── 단계 이동 ── */
   function drawSteps() {
-    $("steps").innerHTML = STEPS.map(function (s, i) {
+    var names = (kind === "applicant" && isPre()) ? STEPS_PRE : STEPS;
+    $("steps").innerHTML = names.map(function (s, i) {
       var n = i + 1;
       return '<b class="' + (n === step ? "on" : n < step ? "done" : "") + '">' +
         (n < step ? "✓ " : "") + s + "</b>";
     }).join("");
-    $("bar").style.width = ((step - 1) / (STEPS.length - 1) * 100) + "%";
+    $("bar").style.width = ((step - 1) / (names.length - 1) * 100) + "%";
   }
   function go(n) {
     step = n;
@@ -1392,13 +1397,26 @@
     $("coName").placeholder = pre ? "개인이면 이름, 팀이면 팀명" : "㈜브로제이";
     $("addrTitle").innerHTML = (pre ? "주소" : "사업장 주소") + '<span class="req">*</span>';
     $("addrMainLabel").innerHTML = (pre ? "주소" : "본사") + "<em>*</em>";
-    $("s3title").textContent = pre ? "현황" : "기업 현황";
+    $("s3title").textContent = pre ? "보유 현황" : "기업 현황";
+    drawSteps();
     $("s1lead").textContent = pre
       ? "사업자가 없으신 분입니다. 사업자 정보는 묻지 않습니다."
       : "사업자등록증에 적힌 그대로 적어주세요.";
     // 예비 창업자는 낼 사업자 서류가 없다 — 칸을 아예 두지 않는다
     var card = $("proofCard");
     if (card) card.style.display = pre ? "none" : "";
+
+    // 사업자가 있어야 답할 수 있는 것들 — 매출·연혁·고용·투자·추진실적.
+    // 특허와 사업참여인력은 개인·팀도 있을 수 있어 남겨 둔다.
+    Array.prototype.forEach.call(document.querySelectorAll(".biz-only"), function (el) {
+      el.style.display = pre ? "none" : "";
+    });
+    $("ovTitle").innerHTML = pre
+      ? '보유 특허 <span class="opt">있는 경우</span>'
+      : '주요 성과 <span class="opt">2025년 기준</span>';
+    $("staffHint").textContent = pre
+      ? "함께 준비하는 팀원을 적어주세요. 혼자시면 비워두셔도 됩니다."
+      : "이번 대회에 함께 참여하는 인력을 적어주세요.";
   }
   $("entryType").addEventListener("picked", syncEntry);
 
