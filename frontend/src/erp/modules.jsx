@@ -15044,7 +15044,7 @@ export function CrmCentersView() {
   );
 }
 
-// ─── D·BROJ FOUNDERS — IR 피칭대회 접수 관리 ──────────────────────────────────
+// ─── BROJ Founders x Draper — IR 피칭대회 접수 관리 ──────────────────────────────────
 
 const REVIEW_URL = "https://b2b.broj.io/founders/review.html";
 const FAQ_URL = "https://b2b.broj.io/founders/faq.html";
@@ -15320,7 +15320,7 @@ export function FoundersView() {
   return (
     <div className="fade pad wide" style={{ marginTop: 8, paddingBottom: 40 }}>
       <div className="h-eyebrow">행사</div>
-      <div className="h-title">D·BROJ FOUNDERS</div>
+      <div className="h-title">BROJ Founders x Draper</div>
       <div className="small" style={{ marginTop: 8, color: "var(--muted)", lineHeight: 1.5 }}>
         IR 피칭대회 참가 신청을 받고 관리합니다. 신청서·개인정보동의서·서약서는 신청 화면에서 바로 받습니다.
       </div>
@@ -15564,7 +15564,7 @@ export function FoundersView() {
             <div className="oa-form">
               <OaField label="연도"><input className="input" inputMode="numeric" value={form.year}
                 onChange={(e) => setForm({ ...form, year: e.target.value })} /></OaField>
-              <OaField label="이름" hint="비우면 D·BROJ FOUNDERS {연도}">
+              <OaField label="이름" hint="비우면 BROJ Founders x Draper {연도}">
                 <input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></OaField>
               <OaField label="접수 시작"><input className="input" type="datetime-local" value={form.opensAt}
                 onChange={(e) => setForm({ ...form, opensAt: e.target.value })} /></OaField>
