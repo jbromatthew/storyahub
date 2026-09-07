@@ -24,6 +24,18 @@ const OK_EXT = [
   "png", "jpg", "jpeg", "gif", "webp", "heic", "heif",
   "zip", "mp4", "mov",
 ];
+/** 칸마다 받는 것이 다르다. 사업자등록증을 한글 문서로 가진 사람은 없다. */
+const SLOT_EXT: Record<string, { ext: string[]; label: string }> = {
+  proof: {
+    ext: ["pdf", "png", "jpg", "jpeg", "webp", "heic", "heif", "gif"],
+    label: "사업자등록증은 PDF 또는 이미지로 올려주세요",
+  },
+  ir: {
+    ext: ["pdf", "ppt", "pptx", "doc", "docx", "hwp", "hwpx", "zip"],
+    label: "IR 자료는 PDF·PPT·문서·ZIP으로 올려주세요",
+  },
+  extra: { ext: OK_EXT, label: "PDF·HWP·오피스 문서·이미지·ZIP·영상만 올릴 수 있습니다" },
+};
 /** 확장자를 못 읽었을 때 기대는 두 번째 잣대 */
 const OK_TYPES = [
   "application/pdf",
@@ -498,8 +510,9 @@ foundersPublicRouter.post(
     const ctype = String(req.header("Content-Type") ?? "application/octet-stream").split(";")[0];
     const fileName = decodeURIComponent(req.header("X-File-Name") ?? "").trim().slice(0, 120) || "첨부파일";
     const ext = extOf(fileName);
-    if (!OK_EXT.includes(ext) && !OK_TYPES.includes(ctype)) {
-      return fail(res, "PDF·HWP·오피스 문서·이미지·ZIP·영상만 올릴 수 있습니다");
+    const slot = SLOT_EXT[kind] ?? SLOT_EXT.extra;
+    if (!slot.ext.includes(ext) && !(ext === "" && OK_TYPES.includes(ctype))) {
+      return fail(res, slot.label);
     }
     const safe = fileName.replace(/[^\w가-힣.\-() ]/g, "_");
     const key = `${r2KeyPrefix()}founders/${row.applyNo}/${kind}-${Date.now()}-${safe}`;
