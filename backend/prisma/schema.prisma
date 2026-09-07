@@ -1549,6 +1549,22 @@ model ErpRndTicket {
 }
 
 /// 티켓이 어떻게 흘러갔는지. 상태를 되돌려도 자취는 남는다.
+/// RND 백로그 빠른검색 — 걸어둔 칸별 조건에 이름을 붙여 둔다
+model ErpRndSegment {
+  id         String   @id @default(cuid())
+  name       String
+  filters    Json     @default("{}") // 칸별 조건 (상태·도메인·구분·유형·기획자 …)
+  ownerEmail String
+  ownerName  String   @default("")
+  shared     Boolean  @default(false) // 켜면 팀 전체가 본다
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([ownerEmail])
+  @@index([shared])
+}
+
 model ErpRndTicketLog {
   id       String       @id @default(cuid())
   ticketId Int

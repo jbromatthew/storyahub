@@ -75,6 +75,80 @@ async function me(req: AuthedRequest) {
   return { id: req.userId!, email, name: emp?.name || user?.name || email };
 }
 
+/* ─────────── 빠른검색(세그먼트) ─────────── */
+
+/** 화면에서 온 값을 그대로 믿지 않는다 — 우리가 아는 칸만 남긴다 */
+function cleanFilters(v: unknown) {
+  const f = (v ?? {}) as Record<string, unknown>;
+  const pick = (k: string, allow: string[]) => {
+    const x = str(f[k], 40);
+    return allow.includes(x) ? x : "";
+  };
+  return {
+    status: pick("status", STATUS_KEYS),
+    kind: pick("kind", KIND_KEYS),
+    type: pick("type", TYPE_KEYS),
+    domain: str(f.domain, 40),
+    center: str(f.center, 80),
+    planner: str(f.planner, 40),
+    author: str(f.author, 40),
+    id: str(f.id, 20),
+    title: str(f.title, 100),
+    mine: f.mine === true,
+  };
+}
+
+erpRndRouter.get("/segments", async (req: AuthedRequest, res) => {
+  const who = await me(req);
+  const rows = await prisma.erpRndSegment.findMany({
+    where: { OR: [{ ownerEmail: who.email }, { shared: true }] },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+  res.json({ segments: rows.map((s) => ({ ...s, mine: s.ownerEmail === who.email })) });
+});
+
+erpRndRouter.post("/segments", async (req: AuthedRequest, res) => {
+  const who = await me(req);
+  const name = str(req.body?.name, 40);
+  if (!name) return fail(res, "빠른검색 이름을 입력하세요");
+  const count = await prisma.erpRndSegment.count({ where: { ownerEmail: who.email } });
+  if (count >= 40) return fail(res, "빠른검색은 40개까지 저장할 수 있습니다");
+  const row = await prisma.erpRndSegment.create({
+    data: {
+      name,
+      filters: cleanFilters(req.body?.filters),
+      ownerEmail: who.email,
+      ownerName: who.name,
+      shared: req.body?.shared === true,
+      sortOrder: count,
+    },
+  });
+  res.json({ segment: { ...row, mine: true } });
+});
+
+erpRndRouter.patch("/segments/:id", async (req: AuthedRequest, res) => {
+  const who = await me(req);
+  const row = await prisma.erpRndSegment.findUnique({ where: { id: req.params.id } });
+  if (!row) return fail(res, "빠른검색을 찾을 수 없습니다", 404);
+  if (row.ownerEmail !== who.email) return fail(res, "만든 사람만 고칠 수 있습니다", 403);
+  const data: Record<string, unknown> = {};
+  const name = str(req.body?.name, 40);
+  if (name) data.name = name;
+  if (req.body?.filters !== undefined) data.filters = cleanFilters(req.body.filters);
+  if (typeof req.body?.shared === "boolean") data.shared = req.body.shared;
+  const saved = await prisma.erpRndSegment.update({ where: { id: row.id }, data });
+  res.json({ segment: { ...saved, mine: true } });
+});
+
+erpRndRouter.delete("/segments/:id", async (req: AuthedRequest, res) => {
+  const who = await me(req);
+  const row = await prisma.erpRndSegment.findUnique({ where: { id: req.params.id } });
+  if (!row) return fail(res, "빠른검색을 찾을 수 없습니다", 404);
+  if (row.ownerEmail !== who.email) return fail(res, "만든 사람만 지울 수 있습니다", 403);
+  await prisma.erpRndSegment.delete({ where: { id: row.id } });
+  res.json({ ok: true });
+});
+
 /* ─────────── 도메인·세부서비스 ─────────── */
 
 erpRndRouter.get("/domains", async (_req: AuthedRequest, res) => {

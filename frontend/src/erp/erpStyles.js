@@ -953,6 +953,12 @@ select.input{width:100%}
 .rnd-table td.num{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12.5px}
 .rnd-table td.label{font-weight:600;letter-spacing:-.01em}
 .rnd-table input[type=checkbox]{cursor:pointer;margin:0}
+.rnd-filters th{padding:5px 6px !important;background:var(--surface-2,#F5F6F8);
+  border-bottom:1px solid var(--line);vertical-align:middle}
+.rnd-filters .ff{width:100%;min-width:0;box-sizing:border-box;font-size:11.5px;
+  padding:4px 6px;border:1px solid var(--line);border-radius:7px;
+  background:var(--card,#fff);color:var(--ink);font-family:inherit}
+.rnd-filters .ff:focus{outline:none;border-color:var(--accent)}
 
 /* RND 백로그 — 상세 */
 .rnd-modal{position:fixed;inset:0;z-index:70;background:rgba(17,17,17,.34);

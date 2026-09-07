@@ -15225,15 +15225,74 @@ function RndTypeChip({ type, types }) {
   );
 }
 
+/** 지금 걸어둔 조건에 이름을 붙인다 — 나만 볼지, 모두에게 보일지 고른다 */
+function RndSegmentSave({ chips, filters, onClose, onDone }) {
+  const [name, setName] = useState("");
+  const [shared, setShared] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    if (!name.trim()) { toastError("이름을 입력하세요"); return; }
+    setBusy(true);
+    try {
+      const r = await api.erpRndSegmentCreate({ name: name.trim(), filters, shared });
+      toastSuccess(`"${r.segment.name}" 을(를) 저장했어요`);
+      onDone(r.segment);
+    } catch (e) { notifyError(e); } finally { setBusy(false); }
+  };
+
+  return (
+    <OaOverlay title="빠른검색으로 저장" onClose={onClose}>
+      <div className="small" style={{ color: "var(--muted)", marginBottom: 12, lineHeight: 1.6 }}>
+        지금 칸에 걸어둔 조건에 이름을 붙여 둡니다. 나중에 이름만 누르면 그대로 다시 걸립니다.
+      </div>
+      <OaField label="이름">
+        <input className="input" value={name} autoFocus maxLength={40}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") save(); }}
+          placeholder="예: 교통문화원 미처리" />
+      </OaField>
+      <div style={{ marginTop: 12 }}>
+        <div className="small" style={{ marginBottom: 6 }}>저장될 조건</div>
+        <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+          {chips.map((c, i) => <span key={i} className="tag">{c}</span>)}
+        </div>
+      </div>
+      <div className="row" style={{ gap: 6, marginTop: 16, flexWrap: "wrap" }}>
+        <button type="button" className={"chip" + (!shared ? " on" : "")} onClick={() => setShared(false)}>
+          나만 보기
+        </button>
+        <button type="button" className={"chip" + (shared ? " on" : "")} onClick={() => setShared(true)}>
+          모두에게 공개
+        </button>
+      </div>
+      <div className="small muted" style={{ marginTop: 8, lineHeight: 1.6 }}>
+        {shared ? "RND 백로그를 보는 사람 모두의 빠른검색 줄에 뜹니다. 지우고 고치는 건 만든 사람만."
+                : "나에게만 보입니다."}
+      </div>
+      <div className="row" style={{ gap: 8, marginTop: 18 }}>
+        <button type="button" className="btn btn-accent" onClick={save} disabled={busy || !name.trim()}>저장</button>
+        <button type="button" className="btn btn-ghost" onClick={onClose}>취소</button>
+      </div>
+    </OaOverlay>
+  );
+}
+
+/** 칸별로 걸어둔 조건. 빠른검색은 이 덩어리에 이름을 붙인 것이다. */
+const RND_BLANK_F = {
+  status: "", domain: "", mine: false,            // 서버에서 걸러 온다
+  kind: "", type: "", center: "", planner: "", author: "", id: "", title: "",
+};
+
 export function RndBacklogView() {
   const [meta, setMeta] = useState(null);          // 도메인·유형·구분·상태
   const [tickets, setTickets] = useState([]);
   const [counts, setCounts] = useState({});
   const [meName, setMeName] = useState("");
-  const [status, setStatus] = useState("");
-  const [domain, setDomain] = useState("");
-  const [mine, setMine] = useState(false);
-  const [q, setQ] = useState("");
+  const [f, setF] = useState(RND_BLANK_F);
+  const [segments, setSegments] = useState([]);
+  const [activeSeg, setActiveSeg] = useState("");
+  const [showSave, setShowSave] = useState(false);
   const [openId, setOpenId] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showDomains, setShowDomains] = useState(false);
@@ -15249,13 +15308,20 @@ export function RndBacklogView() {
   };
   const [form, setForm] = useState(blank);
 
+  // 조건을 손대면 빠른검색에서 벗어난 것으로 본다
+  const setFf = (patch) => { setF((p) => ({ ...p, ...patch })); setActiveSeg(""); };
+  const dirty = JSON.stringify(f) !== JSON.stringify(RND_BLANK_F);
+
   const loadMeta = useCallback(() => {
     api.erpRndMeta()
       .then((d) => { setMeta(d); setDomainDraft(d.domains || []); })
       .catch(notifyError);
   }, []);
+  const loadSegments = useCallback(() => {
+    api.erpRndSegments().then((d) => setSegments(d.segments || [])).catch(notifyError);
+  }, []);
   const loadTickets = useCallback(() => {
-    api.erpRndTickets({ status, domain, mine })
+    api.erpRndTickets({ status: f.status, domain: f.domain, mine: f.mine })
       .then((d) => {
         const list = d.tickets || [];
         setTickets(list); setCounts(d.counts || {}); setMeName(d.meName || "");
@@ -15263,8 +15329,8 @@ export function RndBacklogView() {
         setSel((p) => new Set([...p].filter((id) => live.has(id))));
       })
       .catch(notifyError);
-  }, [status, domain, mine]);
-  useEffect(() => { loadMeta(); }, [loadMeta]);
+  }, [f.status, f.domain, f.mine]);
+  useEffect(() => { loadMeta(); loadSegments(); }, [loadMeta, loadSegments]);
   useEffect(() => { loadTickets(); }, [loadTickets]);
 
   const domains = meta?.domains || [];
@@ -15275,21 +15341,52 @@ export function RndBacklogView() {
   const statusName = (k) => (statuses.find((x) => x.k === k) || {}).t || k;
   const servicesOf = (name) => (domains.find((d) => d.name === name) || {}).services || [];
 
-  const kw = q.trim().toLowerCase();
-  // 표에 보이는 모든 칸에서 찾는다 — 화면에 뜨는 한글 이름(구분·상태·유형)과 붙임 이름까지
-  const hay = (t) => [
-    t.id, `#${t.id}`,
-    kindName(t.kind), t.domain, t.service, t.title, t.body,
-    t.rndType, t.cxmType, statusName(t.status),
-    t.plannerName, t.ownerName, t.centerName, t.authorName, t.authorEmail,
-    t.vip ? "VIP" : "", t.vipNote, t.rejectNote,
-    ...(t.files || []).map((f) => f.name),
-    // 날짜는 두 가지 모양으로 — "2026. 9. 7." 과 "2026-09-07"
-    new Date(t.createdAt).toLocaleDateString("ko-KR"),
-    new Date(t.createdAt).toISOString().slice(0, 10),
-  ].join(" ").toLowerCase();
-  const rows = tickets.filter((t) => !kw || hay(t).includes(kw));
+  /* ── 칸별 거르기 ── */
+  const has = (v, kw) => !kw || String(v ?? "").toLowerCase().includes(kw.trim().toLowerCase());
+  const rows = tickets.filter((t) =>
+    has(`#${t.id}`, f.id)
+    && (!f.kind || t.kind === f.kind)
+    && (!f.type || (t.rndType || t.cxmType) === f.type)
+    && (!f.center || (t.centerName || "") === f.center)
+    && (!f.planner || (t.plannerName || "") === f.planner)
+    && (!f.author || t.authorName === f.author)
+    && has(`${t.title} ${t.body} ${(t.files || []).map((x) => x.name).join(" ")}`, f.title));
   const openTicket = tickets.find((t) => t.id === openId) || null;
+
+  // 고를 수 있는 값은 지금 불러온 것에서 뽑는다
+  const pickList = (fn) => [...new Set(tickets.map(fn).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko"));
+  const centerOpts = pickList((t) => t.centerName);
+  const plannerOpts = pickList((t) => t.plannerName);
+  const authorOpts = pickList((t) => t.authorName);
+
+  /* ── 빠른검색 ── */
+  const applySeg = (seg) => { setF({ ...RND_BLANK_F, ...(seg.filters || {}) }); setActiveSeg(seg.id); };
+  const overwriteSeg = async (seg) => {
+    if (!window.confirm(`"${seg.name}" 을(를) 지금 조건으로 덮어씁니다.`)) return;
+    try { await api.erpRndSegmentUpdate(seg.id, { filters: f }); loadSegments(); setActiveSeg(seg.id); toastSuccess("덮어썼어요"); }
+    catch (e) { notifyError(e); }
+  };
+  const removeSeg = async (seg) => {
+    if (!window.confirm(`"${seg.name}" 빠른검색을 지웁니다.`)) return;
+    try { await api.erpRndSegmentDelete(seg.id); loadSegments(); if (activeSeg === seg.id) setActiveSeg(""); }
+    catch (e) { notifyError(e); }
+  };
+
+  /* ── 지금 걸린 조건을 사람 말로 ── */
+  const segChips = () => {
+    const c = [];
+    if (f.status) c.push(`상태 ${statusName(f.status)}`);
+    if (f.domain) c.push(`도메인 ${f.domain}`);
+    if (f.mine) c.push("내가 올린 것만");
+    if (f.kind) c.push(`구분 ${kindName(f.kind)}`);
+    if (f.type) c.push(`유형 ${f.type}`);
+    if (f.center) c.push(`센터 ${f.center}`);
+    if (f.planner) c.push(`기획자 ${f.planner}`);
+    if (f.author) c.push(`올린 사람 ${f.author}`);
+    if (f.id) c.push(`번호 ${f.id}`);
+    if (f.title) c.push(`제목·내용 "${f.title}"`);
+    return c.length ? c : ["조건 없음 (전체)"];
+  };
 
   // 뽑아 놓은 것을 엑셀로 — 한글이 깨지지 않게 BOM을 앞에 둔다
   const exportCsv = (list) => {
@@ -15302,7 +15399,7 @@ export function RndBacklogView() {
       t.id, kindName(t.kind), t.domain, t.service, t.title, t.body,
       t.rndType, t.cxmType, statusName(t.status), t.plannerName, t.centerName, t.ownerName,
       t.vip ? "VIP" : "", t.authorName, day(t.createdAt), t.rejectNote,
-      (t.files || []).map((f) => f.name).join(" / "),
+      (t.files || []).map((x) => x.name).join(" / "),
     ].map(cell).join(","));
     const csv = "\uFEFF" + [head.map(cell).join(","), ...body].join("\r\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -15341,9 +15438,9 @@ export function RndBacklogView() {
   const MAX_UPLOAD = 100 * 1024 * 1024;
   const pickFiles = (list, add) => {
     const ok = [];
-    for (const f of list) {
-      if (f.size > MAX_UPLOAD) { toastError(`${f.name} — 100MB를 넘습니다`); continue; }
-      ok.push(f);
+    for (const one of list) {
+      if (one.size > MAX_UPLOAD) { toastError(`${one.name} — 100MB를 넘습니다`); continue; }
+      ok.push(one);
     }
     if (ok.length) add(ok);
   };
@@ -15356,7 +15453,7 @@ export function RndBacklogView() {
   const attachNow = async (id, files) => {
     setUpBusy(true);
     try {
-      for (const f of files) await api.erpRndFileUpload(id, f);
+      for (const one of files) await api.erpRndFileUpload(id, one);
       loadTickets();
       toastSuccess(`붙임 ${files.length}개를 올렸어요`);
     } catch (e) { notifyError(e); } finally { setUpBusy(false); }
@@ -15376,7 +15473,7 @@ export function RndBacklogView() {
   };
 
   return (
-    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40, maxWidth: 1000 }}>
+    <div className="fade pad wide" style={{ marginTop: 8, paddingBottom: 40 }}>
       <div className="h-eyebrow">Backlog</div>
       <div className="h-title">RND 백로그</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.6, color: "var(--muted)" }}>
@@ -15393,12 +15490,50 @@ export function RndBacklogView() {
         </button>
         <span style={{ flex: 1 }} />
         <label className="small row" style={{ gap: 6, alignItems: "center", cursor: "pointer" }}>
-          <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />
+          <input type="checkbox" checked={f.mine} onChange={(e) => setFf({ mine: e.target.checked })} />
           내가 올린 것만
         </label>
-        <input className="input" style={{ maxWidth: 200 }} placeholder="모든 칸에서 찾기"
-          value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
+
+      {/* ── 빠른검색 — 걸어둔 조건에 이름을 붙여둔 것 ── */}
+      <div className="cc-segbar">
+        <span className="cc-seglabel">빠른검색</span>
+        {segments.length === 0 && (
+          <span className="small" style={{ color: "var(--muted)" }}>
+            아래 칸에 조건을 걸고 <b>☆ 지금 조건 저장</b>을 누르면 여기에 남습니다
+          </span>
+        )}
+        {segments.map((seg) => (
+          <span key={seg.id} className={"cc-seg" + (activeSeg === seg.id ? " on" : "")}>
+            <button type="button" className="cc-seg-main" onClick={() => applySeg(seg)}
+              title={seg.shared ? `${seg.ownerName} · 모두에게 공개` : "나만 보기"}>
+              {seg.name}
+              {seg.shared && <span className="cc-seg-share">공개</span>}
+            </button>
+            {seg.mine && (
+              <>
+                <button type="button" className="cc-seg-x" title="지금 조건으로 덮어쓰기"
+                  onClick={() => overwriteSeg(seg)}>⤴</button>
+                <button type="button" className="cc-seg-x" title="지우기"
+                  onClick={() => removeSeg(seg)}>✕</button>
+              </>
+            )}
+          </span>
+        ))}
+        <span style={{ flex: 1 }} />
+        {dirty && (
+          <button type="button" className="btn btn-ghost btn-sm"
+            onClick={() => { setF(RND_BLANK_F); setActiveSeg(""); }}>↺ 조건 지우기</button>
+        )}
+        <button type="button" className="btn btn-ghost btn-sm" disabled={!dirty}
+          onClick={() => setShowSave(true)}>☆ 지금 조건 저장</button>
+      </div>
+
+      {showSave && (
+        <RndSegmentSave chips={segChips()} filters={f}
+          onClose={() => setShowSave(false)}
+          onDone={(seg) => { setShowSave(false); loadSegments(); setActiveSeg(seg.id); }} />
+      )}
 
       {/* ── 도메인 · 세부서비스 ── */}
       {showDomains && (
@@ -15493,9 +15628,9 @@ export function RndBacklogView() {
             </OaField>
             {!!pending.length && (
               <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                {pending.map((f, i) => (
+                {pending.map((one, i) => (
                   <span key={i} className="tag" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                    {f.name} <span className="small muted">{sizeText(f.size)}</span>
+                    {one.name} <span className="small muted">{sizeText(one.size)}</span>
                     <button type="button" className="btn-x"
                       onClick={() => setPending((p) => p.filter((_, j) => j !== i))}>✕</button>
                   </span>
@@ -15523,20 +15658,17 @@ export function RndBacklogView() {
 
       {/* ── 단계별 개수 ── */}
       <div className="row" style={{ gap: 6, marginTop: 14, flexWrap: "wrap" }}>
-        <button type="button" className={"chip" + (status === "" ? " on" : "")} onClick={() => setStatus("")}>
+        <button type="button" className={"chip" + (f.status === "" ? " on" : "")} onClick={() => setFf({ status: "" })}>
           전체 <i style={{ fontStyle: "normal", opacity: .6 }}>{Object.values(counts).reduce((a, b) => a + b, 0)}</i>
         </button>
         {statuses.map((s) => (
           <button key={s.k} type="button" title={s.hint}
-            className={"chip" + (status === s.k ? " on" : "")} onClick={() => setStatus(s.k)}>
+            className={"chip" + (f.status === s.k ? " on" : "")} onClick={() => setFf({ status: s.k })}>
             {s.t} <i style={{ fontStyle: "normal", opacity: .6 }}>{counts[s.k] || 0}</i>
           </button>
         ))}
         <span style={{ flex: 1 }} />
-        <select className="input" style={{ maxWidth: 170 }} value={domain} onChange={(e) => setDomain(e.target.value)}>
-          <option value="">도메인 전체</option>
-          {domains.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
-        </select>
+        <span className="small muted">{rows.length}건</span>
       </div>
 
       {/* ── 목록 (표) ── */}
@@ -15560,21 +15692,79 @@ export function RndBacklogView() {
                 <input type="checkbox" checked={!!rows.length && sel.size === rows.length}
                   onChange={(e) => setSel(e.target.checked ? new Set(rows.map((t) => t.id)) : new Set())} />
               </th>
-              <th style={{ width: 48 }}>번호</th>
-              <th style={{ width: 82 }}>구분</th>
-              <th style={{ width: 150 }}>도메인</th>
+              <th style={{ width: 52 }}>번호</th>
+              <th style={{ width: 96 }}>구분</th>
+              <th style={{ width: 130 }}>도메인</th>
+              <th style={{ width: 110 }}>요청 센터</th>
               <th className="label">제목</th>
-              <th style={{ width: 104 }}>유형</th>
-              <th style={{ width: 90 }}>상태</th>
-              <th style={{ width: 82 }}>기획자</th>
-              <th style={{ width: 82 }}>올린 사람</th>
-              <th style={{ width: 84 }}>올린 날</th>
+              <th style={{ width: 112 }}>유형</th>
+              <th style={{ width: 104 }}>상태</th>
+              <th style={{ width: 96 }}>기획자</th>
+              <th style={{ width: 96 }}>올린 사람</th>
+              <th style={{ width: 78 }}>올린 날</th>
+            </tr>
+            {/* 칸마다 거르개 — 여기에 걸어둔 것이 빠른검색으로 저장된다 */}
+            <tr className="rnd-filters">
+              <th>
+                {dirty && (
+                  <button type="button" className="btn-x" title="조건 모두 지우기"
+                    onClick={() => { setF(RND_BLANK_F); setActiveSeg(""); }}>↺</button>
+                )}
+              </th>
+              <th><input className="ff" value={f.id} placeholder="번호"
+                onChange={(e) => setFf({ id: e.target.value })} /></th>
+              <th>
+                <select className="ff" value={f.kind} onChange={(e) => setFf({ kind: e.target.value })}>
+                  <option value="">전체</option>
+                  {kinds.map((k) => <option key={k.k} value={k.k}>{k.t}</option>)}
+                </select>
+              </th>
+              <th>
+                <select className="ff" value={f.domain} onChange={(e) => setFf({ domain: e.target.value })}>
+                  <option value="">전체</option>
+                  {domains.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+                </select>
+              </th>
+              <th>
+                <select className="ff" value={f.center} onChange={(e) => setFf({ center: e.target.value })}>
+                  <option value="">전체</option>
+                  {centerOpts.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </th>
+              <th><input className="ff" value={f.title} placeholder="제목 · 내용 · 붙임 이름"
+                onChange={(e) => setFf({ title: e.target.value })} /></th>
+              <th>
+                <select className="ff" value={f.type} onChange={(e) => setFf({ type: e.target.value })}>
+                  <option value="">전체</option>
+                  {types.map((x) => <option key={x.k} value={x.k}>{x.k}</option>)}
+                </select>
+              </th>
+              <th>
+                <select className="ff" value={f.status} onChange={(e) => setFf({ status: e.target.value })}>
+                  <option value="">전체</option>
+                  {statuses.map((x) => <option key={x.k} value={x.k}>{x.t}</option>)}
+                </select>
+              </th>
+              <th>
+                <select className="ff" value={f.planner} onChange={(e) => setFf({ planner: e.target.value })}>
+                  <option value="">전체</option>
+                  {plannerOpts.map((x) => <option key={x} value={x}>{x}</option>)}
+                </select>
+              </th>
+              <th>
+                <select className="ff" value={f.author} onChange={(e) => setFf({ author: e.target.value })}>
+                  <option value="">전체</option>
+                  {authorOpts.map((x) => <option key={x} value={x}>{x}</option>)}
+                </select>
+              </th>
+              <th />
             </tr>
           </thead>
           <tbody>
             {!rows.length && (
-              <tr><td colSpan={10} className="small muted" style={{ textAlign: "center", padding: "40px 0" }}>
-                {domains.length ? "해당하는 티켓이 없습니다." : "먼저 도메인을 등록해 주세요."}
+              <tr><td colSpan={11} className="small muted" style={{ textAlign: "center", padding: "40px 0" }}>
+                {!domains.length ? "먼저 도메인을 등록해 주세요."
+                  : dirty ? "걸어둔 조건에 맞는 티켓이 없습니다." : "아직 올라온 티켓이 없습니다."}
               </td></tr>
             )}
             {rows.map((t) => (
@@ -15593,6 +15783,9 @@ export function RndBacklogView() {
                 </td>
                 <td className="small" onClick={() => setOpenId(t.id)}>
                   {t.domain}{t.service ? <span className="muted"> · {t.service}</span> : null}
+                </td>
+                <td className="small" onClick={() => setOpenId(t.id)}>
+                  {t.centerName || <span className="muted">-</span>}
                 </td>
                 <td className="label" onClick={() => setOpenId(t.id)} style={{ cursor: "pointer" }}>
                   {t.vip && <span className="tag accent" style={{ marginRight: 6 }}>VIP</span>}
@@ -15647,16 +15840,16 @@ export function RndBacklogView() {
               <div className="cc-sec">붙임 {(openTicket.files || []).length ? `${openTicket.files.length}개` : ""}</div>
               {!!(openTicket.files || []).length && (
                 <div className="rnd-files">
-                  {openTicket.files.map((f, i) => (
+                  {openTicket.files.map((at, i) => (
                     <div key={i} className="rnd-file">
-                      <button type="button" className="rnd-file-open" onClick={() => openFile(openTicket.id, i)} title={f.name}>
-                        <span className="ic">{isImage(f.type) ? "▣" : isVideo(f.type) ? "▶" : "▤"}</span>
-                        <span className="nm">{f.name}</span>
-                        <span className="sz">{sizeText(f.size)}</span>
+                      <button type="button" className="rnd-file-open" onClick={() => openFile(openTicket.id, i)} title={at.name}>
+                        <span className="ic">{isImage(at.type) ? "▣" : isVideo(at.type) ? "▶" : "▤"}</span>
+                        <span className="nm">{at.name}</span>
+                        <span className="sz">{sizeText(at.size)}</span>
                       </button>
                       <button type="button" className="btn-x" title="붙임 지우기"
                         onClick={async () => {
-                          if (!window.confirm(`${f.name} 을(를) 지웁니다.`)) return;
+                          if (!window.confirm(`${at.name} 을(를) 지웁니다.`)) return;
                           try { await api.erpRndFileDelete(openTicket.id, i); loadTickets(); }
                           catch (e) { notifyError(e); }
                         }}>✕</button>
