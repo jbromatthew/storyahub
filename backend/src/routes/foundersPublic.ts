@@ -10,6 +10,7 @@ import { prisma } from "../db.js";
 import { putObjectBytes, r2Configured, r2KeyPrefix } from "../services/r2.js";
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { pushFoundersRowSoon } from "../services/foundersSheet.js";
+import { notifyFoundersApplySoon } from "../services/foundersNotify.js";
 import { env } from "../env.js";
 
 export const foundersPublicRouter = Router();
@@ -547,6 +548,7 @@ foundersPublicRouter.post("/apply", async (req: Request, res: Response) => {
 
   if (draft) await prisma.erpFoundersDraft.delete({ where: { phone: repPhone } }).catch(() => {});
   pushFoundersRowSoon(row);
+  if (!dup) notifyFoundersApplySoon(round.id, "applicant");   // 고쳐 낸 것은 알리지 않는다
 
   res.json({
     ok: true,
@@ -712,6 +714,7 @@ foundersPublicRouter.post("/visitor", async (req: Request, res: Response) => {
     ? await prisma.erpFoundersApply.update({ where: { id: dup.id }, data: withSign })
     : await prisma.erpFoundersApply.create({ data: { ...withSign, applyNo } });
   pushFoundersRowSoon(row);
+  if (!dup) notifyFoundersApplySoon(round.id, "visitor");
 
   const left = Math.max(TOTAL_LIMIT - await prisma.erpFoundersApply.count({ where: visitorWhere(round.id) }), 0);
   res.json({

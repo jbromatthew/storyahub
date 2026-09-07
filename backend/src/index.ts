@@ -45,6 +45,7 @@ import { foundersPublicRouter } from "./routes/foundersPublic.js";
 import { startPurgeScheduler } from "./services/purge.js";
 import { startSalesDashboardWarmer } from "./services/salesDashboard.js";
 import { startSalesAutoSync } from "./services/salesAutoSync.js";
+import { startSmartStoreReport } from "./services/smartStoreReport.js";
 import { startSalesReportBot } from "./services/salesReportBot.js";
 
 const app = express();
@@ -135,6 +136,7 @@ app.listen(env.port, () => {
       if (!env.erpMode && !env.billingDisabled) startPurgeScheduler();
       startSalesDashboardWarmer();
       startSalesAutoSync();
+      startSmartStoreReport();
       startSalesReportBot();
       startCenterSync();
       startCrmKeepAlive();
