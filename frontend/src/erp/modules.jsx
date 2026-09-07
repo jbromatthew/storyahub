@@ -7751,6 +7751,19 @@ function DrillGoalTable({ title, labelHeader, items, editable, draft, onChange, 
     : list.reduce((a, r) => a + (r.goal || 0), 0);
   const remaining = industryGoal - sum;
   const over = industryGoal > 0 && sum > industryGoal;
+
+  // 칸별 합계 — 목표를 나눌 때 총합이 업종 목표와 맞는지 바로 보이게
+  const add = (fn) => list.reduce((a, r) => a + (Number(fn(r)) || 0), 0);
+  const one = (v) => Math.round(v * 10) / 10;   // 평균 합은 소수 한 자리
+  const tot = {
+    goal: sum,
+    prev1: add((r) => r.prev1),
+    avg3: one(add((r) => r.avg3)),
+    avg12: one(add((r) => r.avg12)),
+    actual: add((r) => r.actual),
+  };
+  tot.rate = tot.goal > 0 ? Math.round((tot.actual / tot.goal) * 1000) / 10 : null;
+  tot.gap = tot.actual - tot.goal;
   return (
     <div className="rate-plan-block">
       <div className="rate-plan-title">{title}</div>
@@ -7807,12 +7820,36 @@ function DrillGoalTable({ title, labelHeader, items, editable, draft, onChange, 
               );
             })}
           </tbody>
+          <tfoot>
+            <tr className="dash-sum">
+              <td className="label">합계</td>
+              <td className="num">{tot.goal || "-"}</td>
+              <td className="num" style={{ color: "var(--muted)" }}>{tot.prev1 || "-"}</td>
+              <td className="num" style={{ color: "var(--muted)" }}>{tot.avg3 || "-"}</td>
+              <td className="num" style={{ color: "var(--muted)" }}>{tot.avg12 || "-"}</td>
+              <td className="num">{tot.actual}</td>
+              <td className="num" style={{ color: dashRateColor(tot.rate), fontWeight: 800 }}>
+                {tot.goal > 0 ? formatDashRate(tot.rate) : "-"}
+              </td>
+              <td className={"num" + (tot.goal > 0 ? (tot.gap >= 0 ? " gap-pos" : " gap-neg") : "")}>
+                {tot.goal > 0 ? formatDashGap(tot.gap) : "-"}
+              </td>
+              <td />
+            </tr>
+          </tfoot>
         </table>
       </div>
-      {editable && (
-        <div className={"dash-goal-hint" + (over ? " dash-goal-mismatch" : "")}>
-          {title} 목표 합계 <strong>{sum}</strong> / 업종 목표 {industryGoal}
-          {industryGoal > 0 && (over ? ` · ${-remaining}개 초과` : ` · 남은 ${remaining}개`)}
+      {industryGoal > 0 && (
+        <div className={"dash-goal-tally" + (over ? " over" : remaining === 0 ? " done" : "")}>
+          <span className="lab">{title} 목표 합계</span>
+          <b>{sum}</b>
+          <span className="of">／ 업종 목표 {industryGoal}</span>
+          <span className="sep" />
+          {over
+            ? <span className="pill bad">{-remaining}개 초과</span>
+            : remaining === 0
+              ? <span className="pill ok">딱 맞음</span>
+              : <span className="pill">{remaining}개 남음</span>}
         </div>
       )}
     </div>

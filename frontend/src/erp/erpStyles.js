@@ -315,6 +315,24 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .dash-goal-warn{margin:8px 0 0;padding:10px 12px;border-radius:10px;background:#FFF4E5;color:#8A3B12;line-height:1.5;}
 .dash-goal-input{width:72px;min-height:32px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:13px;text-align:right;}
 .dash-goal-mismatch td{background:#FFF8F5;}
+/* 표 맨 아래 합계 줄 */
+.dash-table tfoot td{border-top:2px solid var(--line);border-bottom:0;font-weight:800;
+  background:#FAF9F7;}
+.dash-table tfoot td.label{background:#FAF9F7;}
+/* 목표를 나눌 때 총합·남은 수 */
+.dash-goal-tally{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;
+  padding:9px 13px;border-radius:10px;border:1px solid var(--line);background:#FAF9F7;
+  font-size:13px;}
+.dash-goal-tally .lab{color:var(--muted);font-size:12px;}
+.dash-goal-tally b{font-size:16px;font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
+.dash-goal-tally .of{color:var(--muted);font-size:12.5px;}
+.dash-goal-tally .sep{flex:1;}
+.dash-goal-tally .pill{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;
+  background:#EEF1F4;color:var(--muted);white-space:nowrap;}
+.dash-goal-tally .pill.ok{background:#E4F4EA;color:#0D7A3E;}
+.dash-goal-tally .pill.bad{background:#FCE8E6;color:#C5221F;}
+.dash-goal-tally.over{border-color:#F3C7C4;background:#FFF8F7;}
+.dash-goal-tally.done{border-color:#C8E6D4;background:#F5FBF7;}
 .dash-matrix-table td.dash-matrix-cell{min-width:72px;}
 .dash-weekly-table td.dash-weekly-cell{min-width:64px;}
 .dash-weekly-cell .actual{font-weight:700;}
