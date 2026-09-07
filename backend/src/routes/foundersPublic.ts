@@ -458,6 +458,20 @@ foundersPublicRouter.post("/apply", async (req: Request, res: Response) => {
     submittedIp: str(req.ip, 60),
   };
 
+  // 이미 낸 건이 있으면 조용히 덮어쓰지 않는다. 새 건인 줄 알고 낸 사람이
+  // 이전 내용을 잃는 일이 있었다 — 한 번 확인받고 진행한다.
+  if (dup && b.confirmOverwrite !== true) {
+    return res.status(409).json({
+      needsConfirm: true,
+      applyNo: dup.applyNo,
+      teamName: dup.teamName,
+      repName: dup.repName,
+      createdAt: dup.createdAt,
+      matchedBy: digits(dup.repPhone) === repPhone ? "phone" : "email",
+      error: "이미 접수하신 건이 있습니다",
+    });
+  }
+
   const applyNo = dup?.applyNo ?? (await nextApplyNo(round.year));
   const signKey = await storeSignature(applyNo, b.signature).catch(() => "");
   const withSign = signKey ? { ...data, signKey } : data;

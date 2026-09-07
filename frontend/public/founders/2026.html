@@ -292,6 +292,19 @@
     text-underline-offset:3px;text-decoration-thickness:1.5px}
   .resume-line button:hover{background:var(--brand-wash)}
   .btn-save{flex:0 0 auto;padding:13px 16px;font-size:13.5px}
+  #dupBox{position:fixed;inset:0;background:rgba(20,22,26,.42);z-index:60;
+    display:flex;align-items:center;justify-content:center;padding:20px;
+    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+  #dupBox .modal-in{width:100%;max-width:460px}
+  .dup-info{background:var(--sunk);border:1px solid var(--line);border-radius:10px;
+    padding:13px 15px;font-size:13.4px;line-height:1.7}
+  .dup-info b{font-weight:800}
+  .dup-info .no{display:block;font-size:15px;font-weight:900;letter-spacing:-.02em;
+    color:var(--brand-deep);margin-bottom:3px}
+  .dup-warn{margin:13px 0 0;font-size:13.2px;line-height:1.7;color:var(--bad);
+    background:var(--bad-wash);border:1px solid var(--bad-line);
+    border-radius:9px;padding:11px 13px}
+  .dup-warn b{color:var(--bad);font-weight:800}
   #saveBox{position:fixed;inset:0;background:rgba(20,22,26,.42);z-index:60;
     display:flex;align-items:center;justify-content:center;padding:20px;
     backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
@@ -719,6 +732,26 @@
       <div class="nav" style="margin-top:16px">
         <button type="button" class="btn btn-back" id="rsCancel">돌아가기</button>
         <button type="button" class="btn btn-go" id="rsGo">불러오기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 이미 접수한 건을 덮어쓰기 전에 -->
+  <div id="dupBox" style="display:none">
+    <div class="modal-in">
+      <div class="card" style="margin:0">
+        <h3>이미 접수하신 건이 있습니다</h3>
+        <div class="dup-info" id="dupInfo"></div>
+        <p class="dup-warn">계속하시면 그 접수를 <b>이번에 적으신 내용으로 고칩니다.</b>
+          이전 내용은 남지 않습니다.</p>
+        <p class="hint" style="margin-top:10px">
+          새로 한 건을 더 내시려면 다른 연락처와 이메일로 접수해 주세요.
+          공고문은 대표자 명의로 1건을 받습니다.
+        </p>
+        <div class="nav" style="margin-top:16px">
+          <button type="button" class="btn btn-back" id="dupCancel">취소</button>
+          <button type="button" class="btn btn-go" id="dupGo">기존 접수 고치기</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2031,13 +2064,17 @@
     $("guideMore").textContent = on ? "접기" : "자세히 보기";
   });
 
-  $("submitBtn").addEventListener("click", function () {
-    var err = check(5);
-    if (err) { msg("e5", err); return; }
+  function submitApply(confirmOverwrite) {
     var btn = $("submitBtn");
     btn.disabled = true;
     btn.textContent = "접수 중…";
     var body = applyBody();
+    if (confirmOverwrite) body.confirmOverwrite = true;
+
+    var done = function () {
+      btn.disabled = false;
+      btn.textContent = "접수하고 자료 첨부로";
+    };
 
     fetch(API + "/public/founders/apply", {
       method: "POST",
@@ -2045,20 +2082,51 @@
       body: JSON.stringify(body)
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
-        btn.disabled = false;
-        btn.textContent = "접수하고 자료 첨부로";
+        done();
+        // 이미 낸 건이 있다 — 덮어쓰기 전에 한 번 보여주고 물어본다
+        if (!res.ok && res.j.needsConfirm) { askOverwrite(res.j); return; }
         if (!res.ok) { msg("e5", res.j.error || "접수하지 못했습니다"); return; }
         applyNo = res.j.applyNo;
         phoneForUpload = body.repPhone.replace(/[^\d]/g, "");
-        $("s6lead").textContent = "접수번호 " + applyNo + " — 이제 자료를 올려주세요." +
+        $("s6lead").textContent = "접수번호 " + applyNo +
+          (res.j.updated ? " — 기존 접수를 고쳤습니다. 자료도 다시 확인해 주세요." : " — 이제 자료를 올려주세요.") +
           (res.j.canResume ? " 지금 다 못 올리셔도 「이어서 작성하기」로 다시 오실 수 있습니다." : "");
         go(6);
       })
       .catch(function () {
-        btn.disabled = false;
-        btn.textContent = "접수하고 자료 첨부로";
+        done();
         msg("e5", "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
       });
+  }
+
+  function askOverwrite(info) {
+    var when = info.createdAt ? new Date(info.createdAt) : null;
+    var day = when
+      ? when.getFullYear() + "년 " + (when.getMonth() + 1) + "월 " + when.getDate() + "일 " +
+        String(when.getHours()).padStart(2, "0") + ":" + String(when.getMinutes()).padStart(2, "0")
+      : "";
+    $("dupInfo").innerHTML =
+      '<span class="no">' + esc(info.applyNo) + "</span>" +
+      esc(info.teamName || info.repName || "") +
+      (day ? "<br>접수 " + esc(day) : "") +
+      "<br><span style=\"color:var(--muted)\">" +
+      (info.matchedBy === "email" ? "이메일이 같습니다" : "연락처가 같습니다") + "</span>";
+    $("dupBox").style.display = "flex";
+  }
+
+  $("dupCancel").addEventListener("click", function () { $("dupBox").style.display = "none"; });
+  $("dupBox").addEventListener("click", function (e) {
+    if (e.target === $("dupBox")) $("dupBox").style.display = "none";
+  });
+  $("dupGo").addEventListener("click", function () {
+    $("dupBox").style.display = "none";
+    submitApply(true);
+  });
+
+  $("submitBtn").addEventListener("click", function () {
+    var err = check(5);
+    if (err) { msg("e5", err); return; }
+    submitApply(false);
   });
 
   /* ── 첨부 업로드 ── */
@@ -2172,12 +2240,19 @@
   /* ── 서명 패드 ── */
   function makeSignPad(wrapId, canvasId, clearId) {
     var wrap = $(wrapId), cv = $(canvasId), ctx = cv.getContext("2d");
-    var drawing = false, dirty = false, last = null, ratio = 1;
+    var drawing = false, dirty = false, last = null, ratio = 1, fitTries = 0;
 
     function fit() {
       // 지운 뒤 다시 그리지 않으므로 크기가 바뀌면 내용도 사라진다 — 처음 한 번만 맞춘다
       ratio = window.devicePixelRatio || 1;
       var r = cv.getBoundingClientRect();
+      // 화면에 자리를 잡기 전에 재면 폭이 0으로 나온다. 그대로 두면 그려도
+      // 빈 그림이 되어 "서명을 해주셔야 접수됩니다"에서 막힌다 — 잡힐 때까지 기다린다.
+      if (r.width < 1) {
+        if (fitTries < 60) { fitTries += 1; requestAnimationFrame(fit); }
+        return;
+      }
+      fitTries = 0;
       cv.width = Math.round(r.width * ratio);
       cv.height = Math.round(r.height * ratio);
       ctx.scale(ratio, ratio);
