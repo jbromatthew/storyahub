@@ -8,7 +8,7 @@
 import type { ErpFoundersApply } from "@prisma/client";
 import { prisma } from "../db.js";
 import { env } from "../env.js";
-import { ensureSheetHeader, isGoogleSheetsConfigured, upsertSheetRow } from "./googleSheets.js";
+import { deleteSheetRow, ensureSheetHeader, isGoogleSheetsConfigured, upsertSheetRow } from "./googleSheets.js";
 
 const TAB_APPLICANT = "참가자";
 const TAB_VISITOR = "참관객";
@@ -140,6 +140,15 @@ export function pushFoundersRowSoon(a: ErpFoundersApply): void {
   if (!foundersSheetReady()) return;
   void pushFoundersRow(a).catch((e) => {
     console.error(`[founders-sheet] ${a.applyNo} 실패:`, e instanceof Error ? e.message : e);
+  });
+}
+
+/** 접수를 지우면 시트에서도 그 줄을 걷어낸다 */
+export function dropFoundersRowSoon(applyNo: string, kind: string): void {
+  if (!foundersSheetReady()) return;
+  const tab = kind === "visitor" ? TAB_VISITOR : TAB_APPLICANT;
+  void deleteSheetRow(sheetId(), tab, applyNo).catch((e) => {
+    console.error(`[founders-sheet] ${applyNo} 줄 삭제 실패:`, e instanceof Error ? e.message : e);
   });
 }
 

@@ -639,7 +639,12 @@ erpCenterOpsRouter.patch("/founders/applies/:id", async (req: AuthedRequest, res
 });
 
 erpCenterOpsRouter.delete("/founders/applies/:id", async (req: AuthedRequest, res) => {
-  await prisma.erpFoundersApply.delete({ where: { id: req.params.id } });
+  const row = await prisma.erpFoundersApply.findUnique({ where: { id: req.params.id } });
+  if (!row) return fail(res, "접수 내역을 찾을 수 없습니다", 404);
+  await prisma.erpFoundersApply.delete({ where: { id: row.id } });
+  // 시트에서도 그 줄을 걷어낸다 — 여기서 지운 것이 저기 남아 있으면 안 된다
+  const { dropFoundersRowSoon } = await import("../services/foundersSheet.js");
+  dropFoundersRowSoon(row.applyNo, row.kind);
   res.json({ ok: true });
 });
 

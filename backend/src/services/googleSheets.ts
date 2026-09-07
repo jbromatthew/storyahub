@@ -449,6 +449,50 @@ export async function upsertSheetRow(
   return { row, created: at < 0 };
 }
 
+/**
+ * 첫 칸이 열쇠인 줄을 시트에서 통째로 지운다.
+ * 값만 비우면 빈 줄이 남아 다음 접수가 그 아래에 붙는다 — 줄 자체를 걷어낸다.
+ */
+export async function deleteSheetRow(
+  spreadsheetId: string,
+  sheetName: string,
+  key: string
+): Promise<boolean> {
+  const sheets = getSheetsClient();
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets.properties(title,sheetId)",
+  });
+  const tab = meta.data.sheets?.find((x) => x.properties?.title === sheetName);
+  if (!tab?.properties?.sheetId && tab?.properties?.sheetId !== 0) return false;
+
+  const colRes = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${quoteSheetName(sheetName)}!A2:A`,
+    valueRenderOption: "FORMATTED_VALUE",
+  });
+  const at = (colRes.data.values ?? []).map((r) => cellToString(r?.[0])).indexOf(key);
+  if (at < 0) return false;
+
+  const row = at + 1; // 0부터 세는 좌표. 머리글이 0행이니 데이터 첫 줄이 1
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [{
+        deleteDimension: {
+          range: {
+            sheetId: tab.properties.sheetId!,
+            dimension: "ROWS",
+            startIndex: row,
+            endIndex: row + 1,
+          },
+        },
+      }],
+    },
+  });
+  return true;
+}
+
 /** 시트 1행 기준 컬럼명 (데이터 보기·필터용 정렬) */
 export async function fetchSheetColumnNames(
   spreadsheetId: string,
