@@ -256,7 +256,46 @@ foundersPublicRouter.post("/resume", async (req: Request, res: Response) => {
    신청자 목록을 보고 상태를 바꾸는 것까지만 한다. */
 
 const REVIEW_TTL_H = 12;
-const REVIEW_STATUS = ["received", "reviewing", "passed", "rejected"];
+/* 공고문 4항 「세부일정 및 절차」를 그대로 옮긴 단계.
+   접수 → 1차 서면 → 본선 7팀 / 예비 7팀 → 2차 대면 → 최종 3팀 → 시상 */
+const REVIEW_STATUS = [
+  "received",   // 접수
+  "screening",  // 1차 서면 심사중
+  "finalist",   // 1차 합격 · 본선 진출 (7)
+  "reserve",    // 1차 합격 · 예비 (7)
+  "rejected",   // 미선정
+  "final3",     // 2차 통과 · 최종 평가 대상 (3)
+];
+const AWARDS = ["", "grand", "excellent", "good"];   // 대상·최우수·우수
+
+/* 공고문 5항 배점표. 합계 100점. */
+const SCORE_ITEMS = [
+  { k: "biz1", max: 15, label: "사업 모델의 구조와 실행 전략이 명확하고 구체적인가?", group: "사업 추진력 및 시장 경쟁력" },
+  { k: "biz2", max: 15, label: "시장성이 충분하고, 유사사업 대비 뚜렷한 강점이 있는가?", group: "사업 추진력 및 시장 경쟁력" },
+  { k: "mkt1", max: 10, label: "시장 구조 및 타겟 세분화 전략이 적절한가?", group: "시장 이해도" },
+  { k: "mkt2", max: 10, label: "잠재고객의 니즈와 문제 상황에 대한 인식이 명확한가?", group: "시장 이해도" },
+  { k: "sus1", max: 10, label: "데이터 등 기술 활용이 적절하고 장기적 성장 가능성이 있는가?", group: "지속가능성과 사회적 기여" },
+  { k: "sus2", max: 10, label: "제안 제품 및 서비스가 기존 공공 행정·서비스 혁신에 기여하는가?", group: "지속가능성과 사회적 기여" },
+  { k: "team", max: 15, label: "대표자의 실행 의지가 드러나며 팀 구성의 전문성이 있는가?", group: "기업가 정신 및 인적 역량" },
+  { k: "global", max: 10, label: "특정 국가·지역에 국한되지 않고 해외 시장에서도 적용 가능한가?", group: "글로벌 시장 확장 가능성" },
+  { k: "bonus", max: 5, label: "브로제이와 개발·사업적 협력 가능성이 있는가?", group: "가산점" },
+];
+
+/** 심사표 한 벌을 받아 배점 안으로 자른다 */
+function cleanScore(v: unknown): Record<string, number> {
+  const o = (v ?? {}) as Record<string, unknown>;
+  const out: Record<string, number> = {};
+  for (const it of SCORE_ITEMS) {
+    const raw = o[it.k];
+    if (raw === "" || raw === null || raw === undefined) continue;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) continue;
+    out[it.k] = Math.min(it.max, Math.max(0, Math.round(n)));
+  }
+  return out;
+}
+const scoreSum = (s: Record<string, number>) =>
+  SCORE_ITEMS.reduce((a, it) => a + (Number(s[it.k]) || 0), 0);
 
 function reviewSign(payload: string): string {
   return createHmac("sha256", env.jwtSecret).update(payload).digest("base64url");
@@ -306,6 +345,7 @@ foundersPublicRouter.post("/review/login", async (req: Request, res: Response) =
   res.json({
     token: reviewToken(round.id, who),
     round: { id: round.id, year: round.year, title: round.title },
+    scoreItems: SCORE_ITEMS,
     expiresIn: REVIEW_TTL_H * 3600,
   });
 });
@@ -319,7 +359,8 @@ foundersPublicRouter.get("/review/applies", async (req: Request, res: Response) 
     orderBy: { createdAt: "asc" },
     take: 500,
   });
-  res.json({ applies: rows.map((r) => forReview(r as unknown as Record<string, unknown>)) });
+  const applies = rows.map((r) => forReview(r as unknown as Record<string, unknown>));
+  res.json({ applies, scoreItems: SCORE_ITEMS, who: at.who });
 });
 
 /** PATCH /public/founders/review/applies/:id — 상태와 심사 메모만 */
@@ -336,7 +377,20 @@ foundersPublicRouter.patch("/review/applies/:id", async (req: Request, res: Resp
     if (!REVIEW_STATUS.includes(s)) return fail(res, "상태가 올바르지 않습니다");
     data.status = s;
   }
+  if (b.award !== undefined) {
+    const a = str(b.award, 20);
+    if (!AWARDS.includes(a)) return fail(res, "시상 구분이 올바르지 않습니다");
+    data.award = a;
+  }
   if (b.reviewNote !== undefined) data.reviewNote = str(b.reviewNote, 2000);
+  if (b.score !== undefined) {
+    // 주관사 몫만 고친다 — 주최사 점수는 건드리지 않는다
+    const cur = (row.scores ?? {}) as Record<string, unknown>;
+    data.scores = {
+      ...cur,
+      draper: { ...cleanScore(b.score), by: at.who, at: new Date().toISOString() },
+    };
+  }
 
   const saved = await prisma.erpFoundersApply.update({ where: { id: row.id }, data });
   pushFoundersRowSoon(saved);

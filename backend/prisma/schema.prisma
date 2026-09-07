@@ -1304,6 +1304,13 @@ model ErpFoundersApply {
   reviewedBy String    @default("")
   reviewedAt DateTime?
 
+  /// 심사 점수. 주최(브로제이) 50% + 주관(Draper) 50%로 합산한다.
+  /// { broj: {biz1,biz2,mkt1,mkt2,sus1,sus2,team,global,bonus, by, at},
+  ///   draper: {…같은 모양} } — 항목별 만점은 공고문 배점표를 따른다
+  scores Json @default("{}")
+  /// 최종 시상 — grand(대상) | excellent(최우수) | good(우수)
+  award  String @default("")
+
   submittedIp String   @default("")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
