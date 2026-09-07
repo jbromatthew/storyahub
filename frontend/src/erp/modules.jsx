@@ -730,6 +730,111 @@ export function LeaveView({ isAdmin }) {
   );
 }
 
+/** 알림 종 — 어디서든 보이게 사이드바·모바일 머리에 단다 */
+export function ErpBell({ onGo }) {
+  const [items, setItems] = useState([]);
+  const [open, setOpen] = useState(false);
+  const box = useRef(null);
+
+  const load = useCallback(() => {
+    api.erpNotifications().then((d) => setItems(Array.isArray(d) ? d : [])).catch(() => {});
+  }, []);
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 60000);       // 1분마다 새로 본다
+    return () => clearInterval(t);
+  }, [load]);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e) => { if (box.current && !box.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [open]);
+
+  const unread = items.filter((n) => !n.read).length;
+
+  const go = async (n) => {
+    setOpen(false);
+    if (!n.read) {
+      setItems((p) => p.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+      api.erpReadNotification(n.id).catch(() => {});
+    }
+    const tab = ERP_NOTI_TAB[n.module];
+    if (!tab || !onGo) return;
+    onGo(tab);
+    // 티켓 번호가 제목 앞에 붙어 있다 — 그 건을 바로 편다
+    const hit = /^#(\d+)/.exec(n.title || "");
+    if (hit) {
+      setTimeout(() => window.dispatchEvent(
+        new CustomEvent("erp:open-rnd", { detail: Number(hit[1]) })), 60);
+    }
+  };
+
+  const markAll = async () => {
+    setItems((p) => p.map((n) => ({ ...n, read: true })));
+    try { await api.erpReadAllNotifications(); } catch (e) { notifyError(e); load(); }
+  };
+
+  const when = (v) => {
+    const gap = Date.now() - new Date(v).getTime();
+    if (gap < 60000) return "방금";
+    if (gap < 3600000) return `${Math.floor(gap / 60000)}분 전`;
+    if (gap < 86400000) return `${Math.floor(gap / 3600000)}시간 전`;
+    if (gap < 604800000) return `${Math.floor(gap / 86400000)}일 전`;
+    return new Date(v).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" });
+  };
+
+  return (
+    <div className="erp-bell" ref={box}>
+      <button type="button" className={"erp-bell-btn" + (open ? " on" : "")}
+        aria-label={unread ? `알림 ${unread}건` : "알림"} onClick={() => setOpen((v) => !v)}>
+        <svg viewBox="0 0 20 20" width="17" height="17" aria-hidden="true">
+          <path d="M10 2.6a4.6 4.6 0 0 0-4.6 4.6v3L4 12.9h12l-1.4-2.7v-3A4.6 4.6 0 0 0 10 2.6Z"
+            fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="M8.2 15.2a1.9 1.9 0 0 0 3.6 0" fill="none" stroke="currentColor"
+            strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+        {unread > 0 && <i>{unread > 99 ? "99+" : unread}</i>}
+      </button>
+
+      {open && (
+        <div className="erp-bell-pop">
+          <div className="erp-bell-hd">
+            <b>알림</b>
+            {unread > 0 && <span className="small muted">읽지 않은 {unread}건</span>}
+            <span style={{ flex: 1 }} />
+            {unread > 0 && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={markAll}>모두 읽음</button>
+            )}
+          </div>
+          <div className="erp-bell-list">
+            {!items.length && (
+              <div className="small muted" style={{ padding: "28px 0", textAlign: "center" }}>
+                아직 온 알림이 없습니다
+              </div>
+            )}
+            {items.map((n) => (
+              <button key={n.id} type="button"
+                className={"erp-noti" + (n.read ? " read" : "")} onClick={() => go(n)}>
+                <span className="dot" aria-hidden="true" />
+                <span className="txt">
+                  <span className="t">{n.title}</span>
+                  {n.body && <span className="b">{n.body}</span>}
+                  <span className="m">{ERP_NOTI_NAME[n.module] || n.module} · {when(n.createdAt)}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 알림을 누르면 갈 곳 */
+const ERP_NOTI_TAB = { rnd: "rnd-backlog" };
+const ERP_NOTI_NAME = { rnd: "RND 백로그" };
+
 export function NotificationsView() {
   const [items, setItems] = useState([]);
   useEffect(() => { api.erpNotifications().then(setItems).catch(notifyError); }, []);
@@ -15407,6 +15512,12 @@ export function RndBacklogView() {
       .catch(notifyError);
   }, [f.status, f.domain, f.mine]);
   useEffect(() => { loadMeta(); loadSegments(); }, [loadMeta, loadSegments]);
+  // 알림을 눌러 들어오면 그 티켓을 바로 편다
+  useEffect(() => {
+    const open = (e) => setOpenId(Number(e.detail));
+    window.addEventListener("erp:open-rnd", open);
+    return () => window.removeEventListener("erp:open-rnd", open);
+  }, []);
   useEffect(() => { loadTickets(); }, [loadTickets]);
 
   const domains = meta?.domains || [];

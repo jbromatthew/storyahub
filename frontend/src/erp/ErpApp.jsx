@@ -13,7 +13,7 @@ import { ERP_CSS } from "./erpStyles.js";
 import { ERP_MODULES, ERP_ADMIN_MODULES } from "./config.js";
 import { BROJ_LOGO } from "./brojSeal.js";
 import { erpIcons as I } from "./icons.jsx";
-import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesClosingView, IncentiveView, SmartStoreView, SalesDashboardView, MarketingDashboardView, BrojDashboardView, RevenueView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, ConsultDocsView, SalesCasesView, MembersView, DailyReportView, IotLeadsView, VendorOrdersView, OpenApiCenterView, CrmCentersView, ProfileView, FoundersView, RndBacklogView} from "./modules.jsx";
+import { MeetingNotesView, OkrView, SalesSyncView, PaymentRateView, SalesTrendView, SalesInquiryTrendView, SalesClosingView, IncentiveView, SmartStoreView, SalesDashboardView, MarketingDashboardView, BrojDashboardView, RevenueView, SalesDailyView, TaxInvoiceView, ConstructionView, VendorsView, InstallScheduleView, ConsultDocsView, SalesCasesView, MembersView, DailyReportView, IotLeadsView, VendorOrdersView, OpenApiCenterView, CrmCentersView, ProfileView, FoundersView, RndBacklogView, ErpBell} from "./modules.jsx";
 
 function NavBtn({ on, icon, label, onClick, hidden, fav, onFav, layout = "side" }) {
   const cls = layout === "side" ? "sidenavitem" : "sidenavitem";
@@ -471,6 +471,7 @@ export default function ErpApp() {
           <aside className={"app-sidebar" + (sideCollapsed ? " collapsed" : "")}>
             <div className="app-sidebar-hd">
               <div className="app-brand"><img src={BROJ_LOGO} alt="브로제이" /></div>
+              <ErpBell onGo={goTab} />
               <button type="button" className="side-toggle" title={sideCollapsed ? "메뉴 펼치기" : "메뉴 접기"} aria-label={sideCollapsed ? "메뉴 펼치기" : "메뉴 접기"} onClick={toggleSidebar}>
                 {sideCollapsed ? "»" : "«"}
               </button>
@@ -503,6 +504,7 @@ export default function ErpApp() {
                 {I.menu({})}
               </button>
               <div className="mobile-header-title">{kbView ? "지식경영" : erpModuleLabel(tab)}</div>
+              <ErpBell onGo={goTab} />
             </header>
           )}
           <div className={"screen" + (kbView ? " screen-kb" : "")}>

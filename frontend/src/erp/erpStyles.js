@@ -969,6 +969,39 @@ select.input{width:100%}
 .rnd-star.on{color:#E8A302}
 .rnd-star.sm{font-size:13px}
 
+/* 알림 종 */
+.erp-bell{position:relative;flex:0 0 auto}
+.erp-bell-btn{position:relative;display:flex;align-items:center;justify-content:center;
+  width:30px;height:30px;border:0;border-radius:9px;background:none;cursor:pointer;
+  color:var(--muted);font-family:inherit}
+.erp-bell-btn:hover,.erp-bell-btn.on{background:var(--surface-2,#F5F6F8);color:var(--ink)}
+.erp-bell-btn i{position:absolute;top:1px;right:0;min-width:15px;height:15px;padding:0 4px;
+  border-radius:999px;background:var(--accent);color:#fff;font-style:normal;font-size:9.5px;
+  font-weight:800;line-height:15px;text-align:center;box-shadow:0 0 0 2px var(--card,#fff)}
+.erp-bell-pop{position:absolute;top:36px;left:0;z-index:80;width:330px;max-width:86vw;
+  background:var(--card,#fff);border:1px solid var(--line);border-radius:12px;
+  box-shadow:0 16px 40px rgba(0,0,0,.16);overflow:hidden}
+.erp-bell-hd{display:flex;align-items:center;gap:8px;padding:10px 12px;
+  border-bottom:1px solid var(--line);background:var(--surface-2,#F5F6F8)}
+.erp-bell-hd b{font-size:13px}
+.erp-bell-list{max-height:min(60vh,420px);overflow:auto}
+.erp-noti{display:flex;gap:9px;width:100%;text-align:left;padding:10px 12px;border:0;
+  border-bottom:1px solid var(--line);background:none;cursor:pointer;font-family:inherit}
+.erp-noti:last-child{border-bottom:0}
+.erp-noti:hover{background:var(--surface-2,#F5F6F8)}
+.erp-noti .dot{flex:0 0 auto;width:6px;height:6px;border-radius:50%;background:var(--accent);
+  margin-top:6px}
+.erp-noti.read{opacity:.62}
+.erp-noti.read .dot{background:var(--line)}
+.erp-noti .txt{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.erp-noti .t{font-size:12.5px;font-weight:700;color:var(--ink);line-height:1.45}
+.erp-noti .b{font-size:12px;color:var(--ink-2,var(--muted));line-height:1.5;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.erp-noti .m{font-size:11px;color:var(--muted)}
+.app-sidebar-hd .erp-bell{margin:0 4px 14px auto}
+.app-sidebar.collapsed .app-sidebar-hd .erp-bell{margin:0 2px 14px 0}
+.mobile-header .erp-bell-pop{left:auto;right:0}
+
 /* RND — 일하는 법 안내 */
 .rnd-howto{margin-top:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden;
   background:var(--card,#fff)}
