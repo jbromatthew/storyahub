@@ -63,12 +63,6 @@
 
   /* 표제 */
   .hero{padding:16px 0 28px}
-  /* 대회 로고 — 주최 두 곳과 대회 이름이 한 장에 들어 있다 */
-  .hero-logo{display:block;width:auto;height:auto;max-width:340px;
-    margin:0 0 22px;
-    /* 밝은 바탕에 얹으면 은색 테두리가 묻힌다 — 아주 옅은 그림자로 띄운다 */
-    filter:drop-shadow(0 2px 4px rgba(21,23,27,.12))}
-  @media(max-width:560px){.hero-logo{max-width:270px;margin-bottom:18px}}
 
   /* 공동 주최 두 곳 — 가운데 세로선으로 나눈다 */
   .lockup{display:flex;align-items:center;gap:16px;margin-bottom:20px}
@@ -510,8 +504,11 @@
 <div class="wrap">
 
   <div class="hero">
-    <img src="logo-founders.png" class="hero-logo"
-      alt="Draper Startup House × BROJ · Founders 2026">
+    <div class="lockup">
+      <img src="logo-broj.png" alt="BROJ" class="lg-broj">
+      <span class="lg-x"></span>
+      <img src="logo-draperx.png" alt="Draper X Ventures" class="lg-draper">
+    </div>
     <div class="eyebrow" id="heroEyebrow" style="display:none">2026 BROJ Founders x Draper</div>
     <h1 id="heroTitle">피트니스의 다음 혁신,<br>함께할 <em>형제</em>를 찾습니다</h1>
     <div class="rule" id="rule"></div>
