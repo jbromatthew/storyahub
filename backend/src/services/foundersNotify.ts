@@ -47,6 +47,9 @@ export async function notifyFoundersApply(roundId: string, kind: string): Promis
   const left = daysToDeadline(round?.closesAt ?? null);
 
   await send([
+    // 회차 이름을 그대로 쓴다 — 이름이 바뀌면 알림도 따라간다
+    `[${round?.title || "FOUNDERS"}]`,
+    "",
     `${who} 1명 추가 신청하였습니다`,
     "",
     `참가자 ${applicants}명 · 참관객 ${visitors}명`,
