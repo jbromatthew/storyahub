@@ -861,7 +861,7 @@
             <input type="text" id="repName" maxlength="40" placeholder="홍길동"></label>
           <label class="f"><span>생년월일</span>
             <input type="text" id="repBirth" inputmode="numeric" maxlength="10"
-              placeholder="1991-04-01" autocomplete="bday"></label>
+              placeholder="1991-01-01" autocomplete="bday"></label>
           <label class="f"><span>성별</span>
             <select id="repGender"><option value="">선택 안 함</option>
               <option value="M">남</option><option value="F">여</option></select></label>
@@ -1433,7 +1433,7 @@
         : d.length > 3 ? d.slice(0, 3) + "-" + d.slice(3) : d;
     });
   }
-  /** 여덟 자리를 받아 1991-04-01 꼴로 맞춘다 — 연도가 넉 자를 넘지 못한다 */
+  /** 여덟 자리를 받아 1991-01-01 꼴로 맞춘다 — 연도가 넉 자를 넘지 못한다 */
   function dateMask(el) {
     el.addEventListener("input", function () {
       var d = el.value.replace(/[^\d]/g, "").slice(0, 8);
@@ -1678,7 +1678,7 @@
       if ($("repPhone").value.replace(/[^\d]/g, "").length < 10) return "대표자 휴대전화 번호를 확인해 주세요";
       var bd = $("repBirth").value.trim();
       if (bd && !/^(19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(bd)) {
-        return "생년월일을 1991-04-01 처럼 여덟 자리로 적어주세요";
+        return "생년월일을 1991-01-01 처럼 여덟 자리로 적어주세요";
       }
       if (!$("mgrSame").classList.contains("on")) {
         var me = $("mgrEmail").value.trim();
