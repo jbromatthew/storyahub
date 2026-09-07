@@ -1544,6 +1544,7 @@ model ErpRndTicket {
   doneAt     DateTime?
 
   logs      ErpRndTicketLog[]
+  stars     ErpRndStar[]
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 
@@ -1553,6 +1554,19 @@ model ErpRndTicket {
 }
 
 /// 티켓이 어떻게 흘러갔는지. 상태를 되돌려도 자취는 남는다.
+/// 즐겨찾기 — 사람마다 따로 둔다. 내가 별을 단 티켓만 나에게 보인다.
+model ErpRndStar {
+  id       String       @id @default(cuid())
+  ticketId Int
+  ticket   ErpRndTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  email    String
+
+  createdAt DateTime @default(now())
+
+  @@unique([ticketId, email])
+  @@index([email])
+}
+
 /// RND 백로그 빠른검색 — 걸어둔 칸별 조건에 이름을 붙여 둔다
 model ErpRndSegment {
   id         String   @id @default(cuid())

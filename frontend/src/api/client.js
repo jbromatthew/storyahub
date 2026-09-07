@@ -533,6 +533,7 @@ export const api = {
     }),
   erpRndFileOpen: (id, idx) => req(`/erp/rnd/tickets/${id}/files/${idx}`),
   erpRndFileDelete: (id, idx) => req(`/erp/rnd/tickets/${id}/files/${idx}`, { method: "DELETE" }),
+  erpRndStar: (id, on) => req(`/erp/rnd/tickets/${id}/star`, { method: "PUT", body: { on } }),
   erpRndSegments: () => req("/erp/rnd/segments"),
   erpRndSegmentCreate: (body) => req("/erp/rnd/segments", { method: "POST", body }),
   erpRndSegmentUpdate: (id, body) => req(`/erp/rnd/segments/${id}`, { method: "PATCH", body }),

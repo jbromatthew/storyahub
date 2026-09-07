@@ -15353,6 +15353,7 @@ function RndSegmentSave({ chips, filters, onClose, onDone }) {
 /** 칸별로 걸어둔 조건. 빠른검색은 이 덩어리에 이름을 붙인 것이다. */
 const RND_BLANK_F = {
   status: "", domain: "", mine: false,            // 서버에서 걸러 온다
+  star: false,                                    // 내가 별 단 것만
   kind: "", type: "", center: "", planner: "", author: "", id: "", title: "",
 };
 
@@ -15360,6 +15361,7 @@ export function RndBacklogView() {
   const [meta, setMeta] = useState(null);          // 도메인·유형·구분·상태
   const [tickets, setTickets] = useState([]);
   const [counts, setCounts] = useState({});
+  const [starCount, setStarCount] = useState(0);
   const [meName, setMeName] = useState("");
   const [f, setF] = useState(RND_BLANK_F);
   const [segments, setSegments] = useState([]);
@@ -15398,6 +15400,7 @@ export function RndBacklogView() {
       .then((d) => {
         const list = d.tickets || [];
         setTickets(list); setCounts(d.counts || {}); setMeName(d.meName || "");
+        setStarCount(d.starCount || 0);
         const live = new Set(list.map((t) => t.id));
         setSel((p) => new Set([...p].filter((id) => live.has(id))));
       })
@@ -15414,6 +15417,14 @@ export function RndBacklogView() {
   const statusName = (k) => (statuses.find((x) => x.k === k) || {}).t || k;
   const servicesOf = (name) => (domains.find((d) => d.name === name) || {}).services || [];
   const typeHint = (k) => (types.find((x) => x.k === k) || {}).desc || "";
+  // 즐겨찾기는 사람마다 따로다 — 화면을 먼저 바꾸고 뒤에서 저장한다
+  const toggleStar = async (t) => {
+    const on = !t.star;
+    setTickets((p) => p.map((x) => (x.id === t.id ? { ...x, star: on } : x)));
+    setStarCount((n) => Math.max(0, n + (on ? 1 : -1)));
+    try { await api.erpRndStar(t.id, on); }
+    catch (e) { notifyError(e); loadTickets(); }
+  };
   // 구분마다 지나가는 단계가 다르다 — 보류·반려는 여기 없다
   const flowOf = (k) => (kinds.find((x) => x.k === k) || {}).flow || ["filed", "triaged", "planned", "dev", "done"];
   const nextOf = (t) => {
@@ -15425,7 +15436,8 @@ export function RndBacklogView() {
   /* ── 칸별 거르기 ── */
   const has = (v, kw) => !kw || String(v ?? "").toLowerCase().includes(kw.trim().toLowerCase());
   const shown = tickets.filter((t) =>
-    has(`#${t.id}`, f.id)
+    (!f.star || t.star)
+    && has(`#${t.id}`, f.id)
     && (!f.kind || t.kind === f.kind)
     && (!f.type || (t.rndType || t.cxmType) === f.type)
     && (!f.center || (t.centerName || "") === f.center)
@@ -15436,6 +15448,7 @@ export function RndBacklogView() {
   /* ── 줄 세우기. 빈 값은 방향과 상관없이 늘 뒤로 보낸다 ── */
   const SORT_VAL = {
     id: (t) => t.id,
+    star: (t) => (t.star ? 0 : null),   // 별 단 것이 위로, 나머지는 뒤로
     kind: (t) => kindName(t.kind),
     domain: (t) => `${t.domain || ""} ${t.service || ""}`.trim(),
     center: (t) => t.centerName || "",
@@ -15499,6 +15512,7 @@ export function RndBacklogView() {
     if (f.status) c.push(`상태 ${statusName(f.status)}`);
     if (f.domain) c.push(`도메인 ${f.domain}`);
     if (f.mine) c.push("내가 올린 것만");
+    if (f.star) c.push("즐겨찾기만");
     if (f.kind) c.push(`구분 ${kindName(f.kind)}`);
     if (f.type) c.push(`유형 ${f.type}`);
     if (f.center) c.push(`센터 ${f.center}`);
@@ -15512,13 +15526,13 @@ export function RndBacklogView() {
   // 뽑아 놓은 것을 엑셀로 — 한글이 깨지지 않게 BOM을 앞에 둔다
   const exportCsv = (list) => {
     if (!list.length) { toastError("뽑을 것을 먼저 골라주세요"); return; }
-    const head = ["번호", "구분", "도메인", "세부서비스", "제목", "내용", "RND 유형", "유형 판단",
+    const head = ["즐겨찾기", "번호", "구분", "도메인", "세부서비스", "제목", "내용", "RND 유형", "유형 판단",
       "상태", "담당자·기획자", "요청 센터", "사업부 담당", "VIP", "올린 사람", "올린 날",
       "노션 티켓", "반려 사유", "붙임"];
     const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const day = (v) => (v ? new Date(v).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" }) : "");
     const body = list.map((t) => [
-      t.id, kindName(t.kind), t.domain, t.service, t.title, t.body,
+      t.star ? "★" : "", t.id, kindName(t.kind), t.domain, t.service, t.title, t.body,
       t.rndType, t.cxmType, statusName(t.status), t.plannerName, t.centerName, t.ownerName,
       t.vip ? "VIP" : "", t.authorName, day(t.createdAt), t.notionUrl, t.rejectNote,
       (t.files || []).map((x) => x.name).join(" / "),
@@ -15613,6 +15627,11 @@ export function RndBacklogView() {
           {showDomains ? "도메인 설정 닫기" : "⚙ 도메인 · 세부서비스"}
         </button>
         <span style={{ flex: 1 }} />
+        <button type="button" className={"chip" + (f.star ? " on" : "")}
+          title="내가 별을 단 티켓만 봅니다"
+          onClick={() => setFf({ star: !f.star })}>
+          ★ 즐겨찾기 <i style={{ fontStyle: "normal", opacity: .6 }}>{starCount}</i>
+        </button>
         <label className="small row" style={{ gap: 6, alignItems: "center", cursor: "pointer" }}>
           <input type="checkbox" checked={f.mine} onChange={(e) => setFf({ mine: e.target.checked })} />
           내가 올린 것만
@@ -15822,6 +15841,7 @@ export function RndBacklogView() {
                 <input type="checkbox" checked={!!rows.length && sel.size === rows.length}
                   onChange={(e) => setSel(e.target.checked ? new Set(rows.map((t) => t.id)) : new Set())} />
               </th>
+              <CcSortHead k="star" sortKey={sort.key} dir={sort.dir} onSort={sortBy} style={{ width: 34 }}>★</CcSortHead>
               <CcSortHead k="id" sortKey={sort.key} dir={sort.dir} onSort={sortBy} style={{ width: 62 }}>번호</CcSortHead>
               <CcSortHead k="kind" sortKey={sort.key} dir={sort.dir} onSort={sortBy} style={{ width: 96 }}>구분</CcSortHead>
               <CcSortHead k="domain" sortKey={sort.key} dir={sort.dir} onSort={sortBy} style={{ width: 130 }}>도메인</CcSortHead>
@@ -15840,6 +15860,11 @@ export function RndBacklogView() {
                   <button type="button" className="btn-x" title="조건 모두 지우기"
                     onClick={() => { setF(RND_BLANK_F); setActiveSeg(""); }}>↺</button>
                 )}
+              </th>
+              <th style={{ textAlign: "center" }}>
+                <button type="button" className={"rnd-star sm" + (f.star ? " on" : "")}
+                  title={f.star ? "전체 보기" : "즐겨찾기만 보기"}
+                  onClick={() => setFf({ star: !f.star })}>{f.star ? "★" : "☆"}</button>
               </th>
               <th><input className="ff" value={f.id} placeholder="번호"
                 onChange={(e) => setFf({ id: e.target.value })} /></th>
@@ -15892,7 +15917,7 @@ export function RndBacklogView() {
           </thead>
           <tbody>
             {!rows.length && (
-              <tr><td colSpan={11} className="small muted" style={{ textAlign: "center", padding: "40px 0" }}>
+              <tr><td colSpan={12} className="small muted" style={{ textAlign: "center", padding: "40px 0" }}>
                 {!domains.length ? "먼저 도메인을 등록해 주세요."
                   : dirty ? "걸어둔 조건에 맞는 티켓이 없습니다." : "아직 올라온 티켓이 없습니다."}
               </td></tr>
@@ -15906,6 +15931,11 @@ export function RndBacklogView() {
                       if (e.target.checked) n.add(t.id); else n.delete(t.id);
                       return n;
                     })} />
+                </td>
+                <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "center" }}>
+                  <button type="button" className={"rnd-star" + (t.star ? " on" : "")}
+                    title={t.star ? "즐겨찾기에서 빼기" : "즐겨찾기에 넣기"}
+                    onClick={() => toggleStar(t)}>{t.star ? "★" : "☆"}</button>
                 </td>
                 <td className="num" onClick={() => setOpenId(t.id)}>#{t.id}</td>
                 <td onClick={() => setOpenId(t.id)}>
@@ -15944,6 +15974,9 @@ export function RndBacklogView() {
         <div className="rnd-modal" onClick={(e) => { if (e.target === e.currentTarget) setOpenId(null); }}>
           <div className="rnd-modal-in">
             <div className="rnd-modal-hd">
+              <button type="button" className={"rnd-star" + (openTicket.star ? " on" : "")}
+                title={openTicket.star ? "즐겨찾기에서 빼기" : "즐겨찾기에 넣기"}
+                onClick={() => toggleStar(openTicket)}>{openTicket.star ? "★" : "☆"}</button>
               <span className="small" style={{ fontWeight: 800, color: "var(--muted)" }}>#{openTicket.id}</span>
               <span className={`tag ${RND_KIND_TONE[openTicket.kind] || ""}`}>{kindName(openTicket.kind)}</span>
               <span className="small muted">{openTicket.domain}{openTicket.service ? ` · ${openTicket.service}` : ""}</span>

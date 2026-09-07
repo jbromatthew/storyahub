@@ -963,6 +963,11 @@ select.input{width:100%}
   padding:4px 6px;border:1px solid var(--line);border-radius:7px;
   background:var(--card,#fff);color:var(--ink);font-family:inherit}
 .rnd-filters .ff:focus{outline:none;border-color:var(--accent)}
+.rnd-star{border:0;background:none;cursor:pointer;font-size:15px;line-height:1;
+  padding:2px 3px;color:var(--line);font-family:inherit}
+.rnd-star:hover{color:#E0A400}
+.rnd-star.on{color:#E8A302}
+.rnd-star.sm{font-size:13px}
 
 /* RND — 일하는 법 안내 */
 .rnd-howto{margin-top:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden;

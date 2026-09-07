@@ -87,6 +87,26 @@ async function me(req: AuthedRequest) {
   return { id: req.userId!, email, name: emp?.name || user?.name || email };
 }
 
+/* ─────────── 즐겨찾기 ─────────── */
+
+erpRndRouter.put("/tickets/:id/star", async (req: AuthedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  const who = await me(req);
+  const on = req.body?.on !== false;
+  const cur = await prisma.erpRndTicket.findUnique({ where: { id: ticketId }, select: { id: true } });
+  if (!cur) return fail(res, "티켓을 찾을 수 없습니다", 404);
+  if (on) {
+    await prisma.erpRndStar.upsert({
+      where: { ticketId_email: { ticketId, email: who.email } },
+      create: { ticketId, email: who.email },
+      update: {},
+    });
+  } else {
+    await prisma.erpRndStar.deleteMany({ where: { ticketId, email: who.email } });
+  }
+  res.json({ ok: true, star: on });
+});
+
 /* ─────────── 빠른검색(세그먼트) ─────────── */
 
 /** 화면에서 온 값을 그대로 믿지 않는다 — 우리가 아는 칸만 남긴다 */
@@ -107,6 +127,7 @@ function cleanFilters(v: unknown) {
     id: str(f.id, 20),
     title: str(f.title, 100),
     mine: f.mine === true,
+    star: f.star === true,
   };
 }
 
@@ -204,14 +225,21 @@ erpRndRouter.get("/tickets", async (req: AuthedRequest, res) => {
   if (domain) where.domain = domain;
   if (mineOnly) where.authorEmail = who.email;
 
-  const tickets = await prisma.erpRndTicket.findMany({
+  const rowsRaw = await prisma.erpRndTicket.findMany({
     where, orderBy: { createdAt: "desc" }, take: 500,
     include: { logs: { orderBy: { createdAt: "desc" }, take: 30 } },
   });
+  // 즐겨찾기는 사람마다 따로 — 내 별만 얹어 보낸다
+  const mineStars = await prisma.erpRndStar.findMany({
+    where: { email: who.email }, select: { ticketId: true },
+  });
+  const starred = new Set(mineStars.map((s) => s.ticketId));
+  const tickets = rowsRaw.map((t) => ({ ...t, star: starred.has(t.id) }));
   const counts = await prisma.erpRndTicket.groupBy({ by: ["status"], _count: { _all: true } });
   res.json({
     tickets,
     counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])),
+    starCount: starred.size,
     meName: who.name,
   });
 });
