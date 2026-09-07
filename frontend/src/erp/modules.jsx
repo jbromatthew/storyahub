@@ -15213,7 +15213,79 @@ function BfForm({ data }) {
 /* ─── RND 백로그 — 사업부가 올리고 RND가 받아 처리한다 ─────────────
    유형 판단과 상태 단계는 서버가 내려준다 (공유받은 표 그대로). */
 
-const RND_KIND_TONE = { defect: "bad", request: "", improve: "", biz: "accent" };
+const RND_KIND_TONE = { qa: "rnd-k-qa", improve: "rnd-k-improve", sales: "rnd-k-sales", cxm: "rnd-k-cxm" };
+
+/** RND팀이 일하는 법 — 대응 플로우를 그대로 옮겼다 */
+const RND_FLOW_DOC = [
+  { k: "qa", t: "QA티켓",
+    steps: ["티켓 인입", "CXM 유형판단", "노션 티켓", "RND 유형판단", "담당자 배정", "대응"] },
+  { k: "improve", t: "개선사항",
+    steps: ["티켓 인입", "CXM 유형판단", "노션 티켓", "RND 유형판단", "RND 백로그",
+            "기획 및 일정 회신", "고객사 공유"] },
+  { k: "sales", t: "사업부 티켓",
+    steps: ["티켓 인입", "CXM · 세일즈 유형판단", "노션 티켓", "RND 유형판단", "RND 백로그",
+            "기획 및 일정 회신", "고객사 · 신규영업장 공유"] },
+];
+
+/** 일하는 법 — 접었다 펼치는 안내 */
+function RndHowTo({ kinds, types }) {
+  const [open, setOpen] = useState(false);
+  const byRank = [1, 2, 3].map((r) => ({ r, list: (types || []).filter((t) => t.rank === r) }));
+  return (
+    <div className="rnd-howto">
+      <button type="button" className="rnd-howto-hd" onClick={() => setOpen((v) => !v)}>
+        <span className="ic">▤</span>
+        <span><b>브로제이 RND팀의 일하는 법</b><i>티켓 구분 · 유형판단 13가지 · 대응 플로우</i></span>
+        <span className="go">{open ? "접기" : "펼쳐 보기"}</span>
+      </button>
+      {open && (
+        <div className="rnd-howto-body">
+          <div className="cc-sec">1. 티켓 구분</div>
+          <div className="rnd-kindcards">
+            {kinds.map((k) => (
+              <div key={k.k} className="rnd-kindcard">
+                <span className={`tag ${RND_KIND_TONE[k.k] || ""}`}>{k.t}</span>
+                <span className="small muted">{k.desc}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="cc-sec">2. 유형 판단 — RAW 요구사항의 성격 판단기준</div>
+          <div className="dash-table-wrap">
+            <table className="dash-table">
+              <thead><tr>
+                <th style={{ width: 56 }}>순위</th>
+                <th style={{ width: 96 }}>유형</th>
+                <th>판단 기준</th>
+              </tr></thead>
+              <tbody>
+                {byRank.map(({ r, list }) => list.map((t, i) => (
+                  <tr key={t.k}>
+                    {i === 0 && <td rowSpan={list.length} className="small" style={{ fontWeight: 800, verticalAlign: "middle" }}>{r}순위</td>}
+                    <td><span className={`tag rnd-t${r}`}>{t.k}</span></td>
+                    <td className="small">{t.desc}</td>
+                  </tr>
+                )))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="cc-sec">3. 티켓 대응 플로우</div>
+          {RND_FLOW_DOC.map((f) => (
+            <div key={f.k} className="rnd-flow">
+              <span className={`tag ${RND_KIND_TONE[f.k] || ""}`}>{f.t}</span>
+              <div className="rnd-flow-steps">
+                {f.steps.map((x, i) => (
+                  <span key={i} className="rnd-step">{x}</span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function RndTypeChip({ type, types }) {
   if (!type) return <span className="small muted">—</span>;
@@ -15341,6 +15413,14 @@ export function RndBacklogView() {
   const kindName = (k) => (kinds.find((x) => x.k === k) || {}).t || k;
   const statusName = (k) => (statuses.find((x) => x.k === k) || {}).t || k;
   const servicesOf = (name) => (domains.find((d) => d.name === name) || {}).services || [];
+  const typeHint = (k) => (types.find((x) => x.k === k) || {}).desc || "";
+  // 구분마다 지나가는 단계가 다르다 — 보류·반려는 여기 없다
+  const flowOf = (k) => (kinds.find((x) => x.k === k) || {}).flow || ["filed", "triaged", "planned", "dev", "done"];
+  const nextOf = (t) => {
+    const fl = flowOf(t.kind);
+    const i = fl.indexOf(t.status);
+    return i < 0 || i + 1 >= fl.length ? "" : fl[i + 1];
+  };
 
   /* ── 칸별 거르기 ── */
   const has = (v, kw) => !kw || String(v ?? "").toLowerCase().includes(kw.trim().toLowerCase());
@@ -15433,13 +15513,14 @@ export function RndBacklogView() {
   const exportCsv = (list) => {
     if (!list.length) { toastError("뽑을 것을 먼저 골라주세요"); return; }
     const head = ["번호", "구분", "도메인", "세부서비스", "제목", "내용", "RND 유형", "유형 판단",
-      "상태", "기획자", "요청 센터", "담당자", "VIP", "올린 사람", "올린 날", "반려 사유", "붙임"];
+      "상태", "담당자·기획자", "요청 센터", "사업부 담당", "VIP", "올린 사람", "올린 날",
+      "노션 티켓", "반려 사유", "붙임"];
     const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const day = (v) => (v ? new Date(v).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" }) : "");
     const body = list.map((t) => [
       t.id, kindName(t.kind), t.domain, t.service, t.title, t.body,
       t.rndType, t.cxmType, statusName(t.status), t.plannerName, t.centerName, t.ownerName,
-      t.vip ? "VIP" : "", t.authorName, day(t.createdAt), t.rejectNote,
+      t.vip ? "VIP" : "", t.authorName, day(t.createdAt), t.notionUrl, t.rejectNote,
       (t.files || []).map((x) => x.name).join(" / "),
     ].map(cell).join(","));
     const csv = "\uFEFF" + [head.map(cell).join(","), ...body].join("\r\n");
@@ -15518,9 +15599,11 @@ export function RndBacklogView() {
       <div className="h-eyebrow">Backlog</div>
       <div className="h-title">RND 백로그</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.6, color: "var(--muted)" }}>
-        사업부가 요구사항을 올리면 RND가 유형을 정하고 기획자를 붙여 개발로 넘깁니다.
+        사업부가 요구사항을 올리면 RND가 유형을 정하고 담당자를 붙여 대응합니다.
         상태가 바뀌면 <strong>올린 사람에게 알림</strong>이 갑니다.
       </div>
+
+      <RndHowTo kinds={kinds} types={types} />
 
       <div className="row" style={{ gap: 8, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
         <button type="button" className="btn btn-accent btn-sm" onClick={() => setShowNew((v) => !v)}>
@@ -15623,9 +15706,9 @@ export function RndBacklogView() {
                 {servicesOf(form.domain).map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </OaField>
-            <OaField label="티켓 구분">
+            <OaField label="티켓 구분" hint={(kinds.find((k) => k.k === form.kind) || {}).desc}>
               <select className="input" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
-                {kinds.map((k) => <option key={k.k} value={k.k}>{k.t}</option>)}
+                {kinds.map((k) => <option key={k.k} value={k.k}>{k.t} — {k.desc}</option>)}
               </select>
             </OaField>
           </div>
@@ -15651,11 +15734,17 @@ export function RndBacklogView() {
               <input className="input" value={form.ownerName} maxLength={40} placeholder={meName}
                 onChange={(e) => setForm({ ...form, ownerName: e.target.value })} />
             </OaField>
-            <OaField label="유형 판단" hint="비워두면 RND가 정합니다">
+            <OaField label="유형 판단" hint={typeHint(form.cxmType) || "비워두면 RND가 정합니다"}>
               <select className="input" value={form.cxmType}
                 onChange={(e) => setForm({ ...form, cxmType: e.target.value })}>
                 <option value="">선택 안 함</option>
-                {types.map((t) => <option key={t.k} value={t.k}>{t.rank}순위 · {t.k}</option>)}
+                {[1, 2, 3].map((r) => (
+                  <optgroup key={r} label={`${r}순위`}>
+                    {types.filter((t) => t.rank === r).map((t) => (
+                      <option key={t.k} value={t.k}>{t.k} — {t.desc}</option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
             </OaField>
           </div>
@@ -15876,6 +15965,11 @@ export function RndBacklogView() {
                 <div className="cc-kv"><span>담당자</span><b>{openTicket.ownerName || <i>-</i>}</b></div>
                 {openTicket.vip && <div className="cc-kv"><span>VIP 정보</span><b>{openTicket.vipNote || <i>-</i>}</b></div>}
                 <div className="cc-kv"><span>유형 판단</span><b><RndTypeChip type={openTicket.cxmType} types={types} /></b></div>
+                <div className="cc-kv"><span>노션 티켓</span><b>
+                  {openTicket.notionUrl
+                    ? <a href={openTicket.notionUrl} target="_blank" rel="noopener noreferrer">열기 ↗</a>
+                    : <i>-</i>}
+                </b></div>
               </div>
 
               <div className="cc-sec">붙임 {(openTicket.files || []).length ? `${openTicket.files.length}개` : ""}</div>
@@ -15907,33 +16001,64 @@ export function RndBacklogView() {
 
               <div className="cc-sec">RND 처리</div>
               <div className="oa-form">
-                <OaField label="RND 유형 판단">
+                <OaField label="RND 유형 판단" hint={typeHint(openTicket.rndType)}>
                   <select className="input" value={openTicket.rndType}
                     onChange={(e) => patch(openTicket.id, { rndType: e.target.value }, "유형을 정했어요")}>
                     <option value="">선택 안 함</option>
-                    {types.map((x) => <option key={x.k} value={x.k}>{x.rank}순위 · {x.k}</option>)}
+                    {[1, 2, 3].map((r) => (
+                      <optgroup key={r} label={`${r}순위`}>
+                        {types.filter((x) => x.rank === r).map((x) => (
+                          <option key={x.k} value={x.k}>{x.k} — {x.desc}</option>
+                        ))}
+                      </optgroup>
+                    ))}
                   </select>
                 </OaField>
-                <OaField label="기획자">
-                  <input className="input" defaultValue={openTicket.plannerName} maxLength={40} placeholder="배정할 기획자"
-                    onBlur={(e) => { if (e.target.value !== openTicket.plannerName) patch(openTicket.id, { plannerName: e.target.value }, "기획자를 배정했어요"); }} />
+                <OaField label={openTicket.kind === "qa" ? "담당자" : "기획자"}>
+                  <input className="input" defaultValue={openTicket.plannerName} maxLength={40}
+                    placeholder={openTicket.kind === "qa" ? "대응할 담당자" : "배정할 기획자"}
+                    onBlur={(e) => { if (e.target.value !== openTicket.plannerName) patch(openTicket.id, { plannerName: e.target.value }, "담당자를 배정했어요"); }} />
+                </OaField>
+                <OaField label="노션 티켓" hint="노션에 만든 티켓 주소">
+                  <input className="input" defaultValue={openTicket.notionUrl} maxLength={300}
+                    placeholder="https://www.notion.so/…"
+                    onBlur={(e) => { if (e.target.value !== openTicket.notionUrl) patch(openTicket.id, { notionUrl: e.target.value }, "노션 티켓을 이어뒀어요"); }} />
                 </OaField>
               </div>
-              <div className="row" style={{ gap: 6, marginTop: 12, flexWrap: "wrap" }}>
-                {statuses.map((s) => (
-                  <button key={s.k} type="button" title={s.hint}
-                    className={"chip" + (openTicket.status === s.k ? " on" : "")}
-                    onClick={() => {
-                      if (s.k === openTicket.status) return;
-                      if (s.k === "rejected") {
-                        const why = window.prompt("반려 사유를 적어주세요 (올린 사람에게 함께 전달됩니다)", openTicket.rejectNote || "");
-                        if (why === null) return;
-                        patch(openTicket.id, { status: s.k, rejectNote: why, memo: why }, "반려했어요");
-                        return;
-                      }
-                      patch(openTicket.id, { status: s.k }, `${s.t}(으)로 옮겼어요`);
-                    }}>{s.t}</button>
-                ))}
+              <div className="rnd-track">
+                {flowOf(openTicket.kind).map((k, i) => {
+                  const st = statuses.find((x) => x.k === k) || { k, t: k };
+                  const here = openTicket.status === k;
+                  const done = flowOf(openTicket.kind).indexOf(openTicket.status) > i;
+                  const next = k === nextOf(openTicket);
+                  return (
+                    <button key={k} type="button" title={st.hint}
+                      className={"rnd-step-btn" + (here ? " on" : done ? " done" : "") + (next ? " next" : "")}
+                      onClick={() => { if (!here) patch(openTicket.id, { status: k }, `${st.t}(으)로 옮겼어요`); }}>
+                      {st.t}{next && <i>다음</i>}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                <span className="small muted" style={{ alignSelf: "center", marginRight: 2 }}>갈라지는 곳</span>
+                {["hold", "rejected"].map((k) => {
+                  const st = statuses.find((x) => x.k === k) || { k, t: k };
+                  return (
+                    <button key={k} type="button" title={st.hint}
+                      className={"chip" + (openTicket.status === k ? " on" : "")}
+                      onClick={() => {
+                        if (openTicket.status === k) return;
+                        if (k === "rejected") {
+                          const why = window.prompt("반려 사유를 적어주세요 (올린 사람에게 함께 전달됩니다)", openTicket.rejectNote || "");
+                          if (why === null) return;
+                          patch(openTicket.id, { status: k, rejectNote: why, memo: why }, "반려했어요");
+                          return;
+                        }
+                        patch(openTicket.id, { status: k }, `${st.t}(으)로 옮겼어요`);
+                      }}>{st.t}</button>
+                  );
+                })}
               </div>
               {openTicket.rejectNote && (
                 <div className="small" style={{ marginTop: 10, padding: "10px 12px", borderRadius: 8,

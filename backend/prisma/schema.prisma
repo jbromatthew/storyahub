@@ -1512,7 +1512,7 @@ model ErpRndTicket {
 
   domain  String // 도메인
   service String @default("") // 세부서비스
-  kind    String // defect 결함 | request 요구사항 | improve 개선사항 | biz 사업부 요청
+  kind    String // qa QA티켓 | improve 개선사항 | sales 세일즈 요구사항 | cxm CXM 요구사항
   title   String
   body    String @default("")
 
@@ -1531,7 +1531,11 @@ model ErpRndTicket {
   vip        Boolean @default(false)
   vipNote    String  @default("")
 
-  /// filed 접수 → triaged 유형확정 → planned 기획자배정 → dev 개발착수 → done 완료
+  /// 노션에 만든 티켓 주소 — 대응 플로우의 '노션 티켓' 단계
+  notionUrl String @default("")
+
+  /// filed 접수 → triaged 유형확정 → backlog 백로그등재 → planned 담당자배정
+  ///  → replied 일정회신 → shared 고객사공유 → dev 개발착수 → done 완료
   /// 갈라지는 곳: rejected 반려 · hold 보류
   status     String    @default("filed")
   rejectNote String    @default("")

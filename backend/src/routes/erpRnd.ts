@@ -43,23 +43,35 @@ export const RND_TYPES = [
 ];
 const TYPE_KEYS = RND_TYPES.map((t) => t.k);
 
+/**
+ * 티켓 구분 — RND팀이 일하는 법 문서 그대로.
+ *   QA티켓(결함) / 고객 요구사항(개선사항) / 사업부 티켓(세일즈·CXM)
+ * flow 는 이 구분이 지나가는 단계다. 보류·반려는 어디서든 갈 수 있어 빠져 있다.
+ */
 export const RND_KINDS = [
-  { k: "defect", t: "결함" },
-  { k: "request", t: "요구사항" },
-  { k: "improve", t: "개선사항" },
-  { k: "biz", t: "사업부 요청사항" },
+  { k: "qa", t: "QA티켓", desc: "결함 · 버그 · 데이터 꼬임",
+    flow: ["filed", "triaged", "planned", "dev", "done"] },
+  { k: "improve", t: "개선사항", desc: "고객 요구사항 — 백로그 · 신규 백로그",
+    flow: ["filed", "triaged", "backlog", "planned", "replied", "shared", "dev", "done"] },
+  { k: "sales", t: "세일즈 요구사항", desc: "사업부 티켓 — 신규 영업",
+    flow: ["filed", "triaged", "backlog", "planned", "replied", "shared", "dev", "done"] },
+  { k: "cxm", t: "CXM 요구사항", desc: "사업부 티켓 — 이탈 방어",
+    flow: ["filed", "triaged", "backlog", "planned", "replied", "shared", "dev", "done"] },
 ];
 const KIND_KEYS = RND_KINDS.map((k) => k.k);
 
-/** 접수부터 완료까지. 반려·보류는 어디서든 갈 수 있다. */
+/** 티켓 대응 플로우의 단계들. 반려·보류는 어디서든 갈 수 있다. */
 export const RND_STATUS = [
-  { k: "filed",    t: "접수",       hint: "사업부가 올린 상태" },
-  { k: "triaged",  t: "유형 확정",  hint: "RND가 유형을 정했다" },
-  { k: "planned",  t: "기획자 배정", hint: "기획자가 붙었다" },
-  { k: "dev",      t: "개발 착수",  hint: "개발이 시작됐다" },
-  { k: "done",     t: "완료",       hint: "" },
-  { k: "hold",     t: "보류",       hint: "지금은 진행하지 않는다" },
-  { k: "rejected", t: "반려",       hint: "진행하지 않기로 했다" },
+  { k: "filed",    t: "접수",        hint: "티켓 인입 — 사업부가 올렸다" },
+  { k: "triaged",  t: "유형 확정",   hint: "RND 유형판단이 끝났다" },
+  { k: "backlog",  t: "백로그 등재", hint: "RND 백로그에 올렸다" },
+  { k: "planned",  t: "담당자 배정", hint: "QA는 담당자, 개선·사업부는 기획자" },
+  { k: "replied",  t: "일정 회신",   hint: "기획과 일정을 회신했다" },
+  { k: "shared",   t: "고객사 공유", hint: "고객사 · 신규영업장에 공유했다" },
+  { k: "dev",      t: "개발 착수",   hint: "개발이 시작됐다" },
+  { k: "done",     t: "완료",        hint: "대응이 끝났다" },
+  { k: "hold",     t: "보류",        hint: "지금은 진행하지 않는다" },
+  { k: "rejected", t: "반려",        hint: "잘못된 요구사항 — 진행하지 않는다" },
 ];
 const STATUS_KEYS = RND_STATUS.map((s) => s.k);
 const STATUS_KO = Object.fromEntries(RND_STATUS.map((s) => [s.k, s.t]));
@@ -222,6 +234,7 @@ erpRndRouter.post("/tickets", async (req: AuthedRequest, res) => {
       ownerName: str(b.ownerName, 40),
       centerName: str(b.centerName, 80),
       vip: !!b.vip, vipNote: str(b.vipNote, 200),
+      notionUrl: str(b.notionUrl, 300),
     },
   });
   res.status(201).json({ ticket: t });
@@ -272,6 +285,11 @@ erpRndRouter.patch("/tickets/:id", async (req: AuthedRequest, res) => {
     const v = str(b.ownerName, 40);
     data.ownerName = v;
     push("owner", cur.ownerName, v);
+  }
+  if (b.notionUrl !== undefined) {
+    const v = str(b.notionUrl, 300);
+    data.notionUrl = v;
+    push("notionUrl", cur.notionUrl, v);
   }
   if (b.rejectNote !== undefined) data.rejectNote = str(b.rejectNote, 1000);
   for (const f of ["title", "body", "service", "centerName", "vipNote"] as const) {

@@ -922,6 +922,10 @@ select.input{width:100%}
 }
 
 /* RND 백로그 — 유형의 우선순위를 색으로 가른다 */
+.tag.rnd-k-qa{background:#FDECEA;border:1px solid #F3C7C4;color:#B3261E}
+.tag.rnd-k-improve{background:var(--surface-2,#F5F6F8);border:1px solid var(--line);color:var(--ink)}
+.tag.rnd-k-sales{background:#EEF3FF;border:1px solid #D3DEF7;color:#33529E}
+.tag.rnd-k-cxm{background:#E9F6EE;border:1px solid #C8E6D4;color:#1E6B3E}
 .tag.rnd-t1{background:#FDECEA;border-color:#F3C7C4;color:#B3261E}
 .tag.rnd-t2{background:#FFF6E3;border-color:#F0DAA8;color:#8A5A00}
 .tag.rnd-t3{background:var(--surface-2,#F5F6F8);border-color:var(--line);color:var(--muted)}
@@ -959,6 +963,41 @@ select.input{width:100%}
   padding:4px 6px;border:1px solid var(--line);border-radius:7px;
   background:var(--card,#fff);color:var(--ink);font-family:inherit}
 .rnd-filters .ff:focus{outline:none;border-color:var(--accent)}
+
+/* RND — 일하는 법 안내 */
+.rnd-howto{margin-top:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  background:var(--card,#fff)}
+.rnd-howto-hd{width:100%;display:flex;align-items:center;gap:12px;padding:12px 14px;
+  background:var(--surface-2,#F5F6F8);border:0;cursor:pointer;text-align:left;font-family:inherit;color:var(--ink)}
+.rnd-howto-hd:hover{background:var(--accent-soft,#FBEAE1)}
+.rnd-howto-hd .ic{color:var(--accent);font-size:15px}
+.rnd-howto-hd b{display:block;font-size:13.5px;letter-spacing:-.01em}
+.rnd-howto-hd i{display:block;font-style:normal;font-size:11.5px;color:var(--muted);margin-top:2px}
+.rnd-howto-hd .go{margin-left:auto;font-size:12px;color:var(--accent-deep);font-weight:700}
+.rnd-howto-body{padding:4px 16px 18px}
+.rnd-kindcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.rnd-kindcard{display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid var(--line);
+  border-radius:9px;background:var(--surface-2,#F5F6F8)}
+.rnd-flow{display:flex;align-items:flex-start;gap:10px;margin-bottom:9px;flex-wrap:wrap}
+.rnd-flow-steps{display:flex;align-items:center;gap:5px;flex-wrap:wrap;flex:1;min-width:0}
+.rnd-step{font-size:11.5px;padding:3px 9px;border-radius:999px;background:var(--surface-2,#F5F6F8);
+  border:1px solid var(--line);color:var(--ink);white-space:nowrap}
+.rnd-flow-steps .rnd-step + .rnd-step::before{content:"→";margin-right:7px;color:var(--muted);opacity:.7}
+
+/* RND — 대응 플로우 단추 */
+.rnd-track{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:12px}
+.rnd-step-btn{position:relative;font-size:12px;padding:6px 11px;border-radius:999px;
+  border:1px solid var(--line);background:var(--card,#fff);color:var(--muted);
+  cursor:pointer;font-family:inherit;white-space:nowrap}
+.rnd-step-btn + .rnd-step-btn{margin-left:9px}
+.rnd-step-btn + .rnd-step-btn::before{content:"→";position:absolute;left:-15px;top:50%;
+  transform:translateY(-50%);color:var(--line);font-size:11px}
+.rnd-step-btn:hover{border-color:var(--accent);color:var(--accent-deep)}
+.rnd-step-btn.done{background:var(--surface-2,#F5F6F8);color:var(--ink);opacity:.75}
+.rnd-step-btn.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.rnd-step-btn.next{border-color:var(--accent);color:var(--accent-deep);border-style:dashed}
+.rnd-step-btn i{font-style:normal;font-size:9.5px;margin-left:5px;padding:1px 5px;border-radius:5px;
+  background:var(--accent-soft,#FBEAE1);color:var(--accent-deep);font-weight:700}
 
 /* RND 백로그 — 상세 */
 .rnd-modal{position:fixed;inset:0;z-index:70;background:rgba(17,17,17,.34);
