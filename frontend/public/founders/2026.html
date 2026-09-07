@@ -224,6 +224,8 @@
   .notice-get .dl:hover{filter:brightness(1.04)}
   .notice-get .dl i{font-style:normal;font-size:11px;opacity:.8;font-weight:700}
   .notice-get .dl svg{width:15px;height:15px;flex:0 0 auto}
+  input[readonly]{background:var(--steel-2);color:var(--ink-2);cursor:default}
+  input[readonly]:focus{border-color:var(--line);box-shadow:var(--press)}
   .notice-get .dl.alt{background:#fff;color:var(--ink-2);border:1px solid var(--line);
     box-shadow:var(--lift)}
   .notice-get .dl.alt:hover{border-color:var(--brand);color:var(--brand-deep);filter:none}
@@ -853,7 +855,9 @@
         <div class="row t3">
           <label class="f"><span>성명<em>*</em></span>
             <input type="text" id="repName" maxlength="40" placeholder="홍길동"></label>
-          <label class="f"><span>생년월일</span><input type="date" id="repBirth"></label>
+          <label class="f"><span>생년월일</span>
+            <input type="text" id="repBirth" inputmode="numeric" maxlength="10"
+              placeholder="1991-04-01" autocomplete="bday"></label>
           <label class="f"><span>성별</span>
             <select id="repGender"><option value="">선택 안 함</option>
               <option value="M">남</option><option value="F">여</option></select></label>
@@ -1074,10 +1078,12 @@
 
       <div class="card">
         <h3>신청자 확인<span class="req">*</span></h3>
+        <div class="hint" style="margin:-4px 0 13px">앞에서 적으신 내용입니다. 고치시려면 해당 단계로 돌아가 주세요.</div>
         <div class="row">
-          <label class="f"><span>회사명<em>*</em></span><input type="text" id="signTeam" maxlength="80"></label>
-          <label class="f"><span>대표자명<em>*</em></span>
-            <input type="text" id="signName" maxlength="40" placeholder="본인 성명"></label>
+          <label class="f"><span id="signTeamLabel">회사명</span>
+            <input type="text" id="signTeam" maxlength="80" readonly></label>
+          <label class="f"><span id="signNameLabel">대표자명</span>
+            <input type="text" id="signName" maxlength="40" readonly></label>
         </div>
         <div style="margin-top:14px">
           <div class="f"><span>서명<em>*</em></span></div>
@@ -1117,7 +1123,7 @@
       <h2>자료 첨부</h2>
       <p class="lead" id="s6lead">접수는 완료되었습니다. 이제 자료를 올려주세요.</p>
 
-      <div class="card">
+      <div class="card" id="proofCard">
         <h3 id="proofTitle">사업자등록증<span class="req">*</span></h3>
         <div class="hint" id="proofHint" style="margin:-4px 0 12px">사업자등록증 사본을 올려주세요.</div>
         <label class="drop" id="proofDrop">
@@ -1329,7 +1335,14 @@
       if (el) el.classList.toggle("on", i === n);
     }
     drawSteps();
-    if (n === 5 && !signReady) { signReady = true; signPad.ready(); }
+    if (n === 5) {
+      // 앞 단계에서 적은 것을 그대로 옮겨 온다 — 두 번 적게 하지 않는다
+      $("signTeam").value = $("coName").value.trim();
+      $("signName").value = $("repName").value.trim();
+      $("signTeamLabel").textContent = isPre() ? "팀명 또는 이름" : "회사명";
+      $("signNameLabel").textContent = isPre() ? "성명" : "대표자명";
+      if (!signReady) { signReady = true; signPad.ready(); }
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -1385,8 +1398,9 @@
     $("proofHint").textContent = pre
       ? "사실증명(사업자등록 사실여부)을 올려주세요. 홈택스에서 발급받으실 수 있습니다."
       : "사업자등록증 사본을 올려주세요.";
-    var pt = $("proofTitle");
-    if (pt) pt.innerHTML = (pre ? "사실증명" : "사업자등록증") + '<span class="req">*</span>';
+    // 예비 창업자는 낼 사업자 서류가 없다 — 칸을 아예 두지 않는다
+    var card = $("proofCard");
+    if (card) card.style.display = pre ? "none" : "";
   }
   $("entryType").addEventListener("picked", syncEntry);
 
@@ -1403,6 +1417,28 @@
         : d.length > 3 ? d.slice(0, 3) + "-" + d.slice(3) : d;
     });
   }
+  /** 여덟 자리를 받아 1991-04-01 꼴로 맞춘다 — 연도가 넉 자를 넘지 못한다 */
+  function dateMask(el) {
+    el.addEventListener("input", function () {
+      var d = el.value.replace(/[^\d]/g, "").slice(0, 8);
+      el.value = d.length > 6 ? d.slice(0, 4) + "-" + d.slice(4, 6) + "-" + d.slice(6)
+        : d.length > 4 ? d.slice(0, 4) + "-" + d.slice(4)
+        : d;
+    });
+    el.addEventListener("blur", function () {
+      var v = el.value.trim();
+      if (!v) return;
+      var m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      var y = m && +m[1], mo = m && +m[2], da = m && +m[3];
+      var thisYear = new Date().getFullYear();
+      var ok = m && y >= 1900 && y <= thisYear && mo >= 1 && mo <= 12 && da >= 1 && da <= 31
+        && new Date(y, mo - 1, da).getMonth() === mo - 1;   // 2월 31일 같은 날 거르기
+      el.setAttribute("aria-invalid", ok ? "false" : "true");
+      el.style.borderColor = ok ? "" : "var(--bad)";
+    });
+  }
+  dateMask($("repBirth"));
+
   hyphenPhone($("repPhone"));
   hyphenPhone($("mgrPhone"));
 
@@ -1491,6 +1527,24 @@
     if (b) repAdd(b.getAttribute("data-add"));
   });
   Object.keys(REPS).forEach(function (id) { repAdd(id); });
+
+  /* 남은 날짜 칸들 — 위아래를 묶어두면 연도 자리가 넉 자로 제한된다 */
+  function boundDates(root) {
+    var today = new Date();
+    var max = today.toISOString().slice(0, 10);
+    (root || document).querySelectorAll("input[type=date],input[type=month]").forEach(function (el) {
+      if (el.getAttribute("max")) return;
+      el.setAttribute("min", el.type === "month" ? "1900-01" : "1900-01-01");
+      el.setAttribute("max", el.type === "month" ? max.slice(0, 7) : max);
+    });
+  }
+  boundDates();
+  // 줄을 새로 만들면 그 안의 날짜 칸도 묶는다
+  var repObserver = new MutationObserver(function () { boundDates(); });
+  ["repHistory", "repStaff", "repChannels", "repInvest", "repIp"].forEach(function (id) {
+    var host = $(id);
+    if (host) repObserver.observe(host, { childList: true });
+  });
 
   /* ── 매출현황 ── */
   var SALES_YEARS = [2023, 2024, 2025];
@@ -1606,6 +1660,10 @@
       if (!$("repName").value.trim()) return "대표자 성명을 입력해 주세요";
       if (!EMAIL.test($("repEmail").value.trim())) return "대표자 이메일 형식을 확인해 주세요";
       if ($("repPhone").value.replace(/[^\d]/g, "").length < 10) return "대표자 휴대전화 번호를 확인해 주세요";
+      var bd = $("repBirth").value.trim();
+      if (bd && !/^(19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(bd)) {
+        return "생년월일을 1991-04-01 처럼 여덟 자리로 적어주세요";
+      }
       if (!$("mgrSame").classList.contains("on")) {
         var me = $("mgrEmail").value.trim();
         if (me && !EMAIL.test(me)) return "실무 담당자 이메일 형식을 확인해 주세요";
@@ -1620,8 +1678,9 @@
     if (n === 5) {
       if (!$("agree1").classList.contains("on")) return "개인정보 수집 및 이용에 동의해 주세요";
       if (!$("agree2").classList.contains("on")) return "서약서에 동의해 주세요";
-      if (!$("signTeam").value.trim()) return "회사명을 입력해 주세요";
-      if (!$("signName").value.trim()) return "대표자명을 입력해 주세요";
+      if (!$("signTeam").value.trim() || !$("signName").value.trim()) {
+        return "앞 단계의 이름이 비어 있습니다. 되돌아가 확인해 주세요";
+      }
       if (signPad.isEmpty()) return "서명란에 서명해 주세요";
       if ($("applyPw").value.length < 4) return "접수 확인용 비밀번호를 4자 이상으로 정해주세요";
     }
@@ -2001,9 +2060,8 @@
   }
 
   $("finishBtn").addEventListener("click", function () {
-    if (!files.proof && !already.proof) {
-      // 예비 창업자에게는 사업자등록증이 없다 — 문구도 자격을 따라가야 한다
-      msg("e6", (isPre() ? "사실증명" : "사업자등록증") + "을 올려주세요");
+    if (!isPre() && !files.proof && !already.proof) {
+      msg("e6", "사업자등록증을 올려주세요");
       return;
     }
     if (!files.ir && !already.ir) { msg("e6", "IR 자료를 올려주세요"); return; }

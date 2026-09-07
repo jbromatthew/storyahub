@@ -373,8 +373,10 @@ foundersPublicRouter.post("/apply", async (req: Request, res: Response) => {
   }
 
   // ─ 중복 접수 막기 — 같은 회차에 같은 연락처면 덮어쓴다 ─
+  // kind를 빼먹으면 같은 번호로 참관 등록해 둔 사람의 기록을 덮어쓴다.
+  // 그러면 참가 신청인데 참관객 번호(BV)를 받고, 참관 등록은 사라진다.
   const dup = await prisma.erpFoundersApply.findFirst({
-    where: { roundId: round.id, OR: [{ repPhone }, { repEmail }] },
+    where: { roundId: round.id, kind: "applicant", OR: [{ repPhone }, { repEmail }] },
     orderBy: { createdAt: "desc" },
   });
 
