@@ -535,7 +535,7 @@ erpCenterOpsRouter.delete("/contacts/:id", async (req: AuthedRequest, res) => {
   res.json({ ok: true });
 });
 
-// ─── BROJ FOUNDERS — 회차·접수 관리 ─────────────────────────────────────────
+// ─── D·BROJ FOUNDERS — 회차·접수 관리 ─────────────────────────────────────────
 
 erpCenterOpsRouter.get("/founders/rounds", async (_req: AuthedRequest, res) => {
   const rounds = await prisma.erpFoundersRound.findMany({ orderBy: { year: "desc" } });
@@ -580,7 +580,7 @@ erpCenterOpsRouter.post("/founders/rounds", async (req: AuthedRequest, res) => {
   if (!Number.isInteger(year) || year < 2020 || year > 2100) return fail(res, "연도를 확인해 주세요");
   const data = {
     year,
-    title: str(b.title, 80) || `BROJ FOUNDERS ${year}`,
+    title: str(b.title, 80) || `D·BROJ FOUNDERS ${year}`,
     opensAt: dateOf(b.opensAt),
     closesAt: dateOf(b.closesAt),
     notice: str(b.notice, 500),

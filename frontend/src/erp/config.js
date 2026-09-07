@@ -31,7 +31,7 @@ export const ERP_MODULES = [
   // 기록은 그대로 두었으니 이 줄만 살리면 돌아온다. 매일 05:10 CRM 동기화도 계속 돈다.
   // { id: "crm-centers", label: "센터조회", icon: "board", group: "customer", groupLabel: "고객관리" },
   { id: "smart-store", label: "스마트상점", icon: "board", group: "bizsupport", groupLabel: "영업지원" },
-  { id: "founders", label: "BROJ FOUNDERS", icon: "board", group: "bizsupport" },
+  { id: "founders", label: "D·BROJ FOUNDERS", icon: "board", group: "bizsupport" },
   { id: "vendor-orders", label: "크라이저 발주", icon: "sales", group: "bizsupport", vendorGate: true },
   { id: "install-schedule", label: "설치일정 (브로제이)", icon: "board", group: "bizsupport", vendorGate: true },
   // OPEN API 센터관리 — 메뉴에서만 내렸다. 화면과 API는 그대로다.

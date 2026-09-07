@@ -102,7 +102,7 @@ app.use("/public/vendor", shareLimiter, vendorPublicRouter);
 app.use("/public/install", shareLimiter, installPublicRouter);
 // 무계정 공개 라우트 (스마트상점 신청 접수 — 고객이 가이드에서 직접 제출)
 app.use("/public/smartstore", shareLimiter, smartStorePublicRouter);
-// 무계정 공개 라우트 (BROJ FOUNDERS 참가 신청)
+// 무계정 공개 라우트 (D·BROJ FOUNDERS 참가 신청)
 app.use("/public/founders", shareLimiter, foundersPublicRouter);
 
 app.use((err: Error, _req: Request, res: Response, next: NextFunction) => {

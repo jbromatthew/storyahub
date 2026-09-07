@@ -284,7 +284,7 @@ export const api = {
   erpCrmAccountUnlink: () => req("/erp/crm/account", { method: "DELETE" }),
   // 센터 여정 — 자산 · AS · 접점
   erpOpsTeams: () => req("/erp/ops/teams"),
-  // BROJ FOUNDERS
+  // D·BROJ FOUNDERS
   erpFoundersRounds: () => req("/erp/ops/founders/rounds"),
   erpFoundersRoundSave: (body) => req("/erp/ops/founders/rounds", { method: "POST", body }),
   erpFoundersReviewPass: (id, password) =>

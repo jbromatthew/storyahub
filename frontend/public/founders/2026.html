@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>참가 신청 · BROJ FOUNDERS 2026</title>
-<meta name="description" content="BROJ FOUNDERS 2026 IR 피칭대회 참가 신청. 신청서·개인정보동의서·서약서를 온라인으로 작성하고 IR 자료를 첨부하세요.">
-<meta property="og:title" content="참가 신청 · BROJ FOUNDERS 2026">
+<title>참가 신청 · D·BROJ FOUNDERS 2026</title>
+<meta name="description" content="D·BROJ FOUNDERS 2026 IR 피칭대회 참가 신청. 신청서·개인정보동의서·서약서를 온라인으로 작성하고 IR 자료를 첨부하세요.">
+<meta property="og:title" content="참가 신청 · D·BROJ FOUNDERS 2026">
 <meta property="og:description" content="1억 원 투자 기회. 온라인으로 접수하세요.">
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -63,6 +63,13 @@
 
   /* 표제 */
   .hero{padding:16px 0 28px}
+  /* 대회 로고 — 주최 두 곳과 대회 이름이 한 장에 들어 있다 */
+  .hero-logo{display:block;width:auto;height:auto;max-width:340px;
+    margin:0 0 22px;
+    /* 밝은 바탕에 얹으면 은색 테두리가 묻힌다 — 아주 옅은 그림자로 띄운다 */
+    filter:drop-shadow(0 2px 4px rgba(21,23,27,.12))}
+  @media(max-width:560px){.hero-logo{max-width:270px;margin-bottom:18px}}
+
   /* 공동 주최 두 곳 — 가운데 세로선으로 나눈다 */
   .lockup{display:flex;align-items:center;gap:16px;margin-bottom:20px}
   .lockup img{display:block;width:auto}
@@ -80,9 +87,6 @@
     line-height:1.75;text-wrap:pretty}
 
   h1 em{font-style:normal;color:var(--brand)}
-  .wordmark{margin-top:14px;font-size:clamp(16px,3.4vw,21px);font-weight:700;
-    letter-spacing:-.02em;color:var(--ink)}
-  .wordmark b{font-weight:800}
   .rule{width:74px;height:2px;background:var(--brand);margin:18px 0 0;border-radius:2px;opacity:.85}
 
   /* 무엇이 걸려 있는지 — 포스터와 같은 순서 */
@@ -497,7 +501,7 @@
 
 <div class="top">
   <div class="top-in">
-    <div class="brand">BROJ <em>FOUNDERS</em> 2026</div>
+    <div class="brand">D·BROJ <em>FOUNDERS</em> 2026</div>
     <div class="deadline" id="dl"></div>
   </div>
   <div class="bar"><i id="bar"></i></div>
@@ -506,14 +510,10 @@
 <div class="wrap">
 
   <div class="hero">
-    <div class="lockup">
-      <img src="logo-broj.png" alt="BROJ" class="lg-broj">
-      <span class="lg-x"></span>
-      <img src="logo-draper.png" alt="Draper Startup House" class="lg-draper">
-    </div>
-    <div class="eyebrow" id="heroEyebrow" style="display:none">BROJ FOUNDERS 2026</div>
+    <img src="logo-founders.png" class="hero-logo"
+      alt="Draper Startup House × BROJ · Founders 2026">
+    <div class="eyebrow" id="heroEyebrow" style="display:none">D·BROJ FOUNDERS 2026</div>
     <h1 id="heroTitle">피트니스의 다음 혁신,<br>함께할 <em>형제</em>를 찾습니다</h1>
-    <div class="wordmark" id="wordmark">BROJ Founders <b>2026</b></div>
     <div class="rule" id="rule"></div>
     <div class="prize" id="prize">
       <div class="award"><svg class="laurel" viewBox="0 0 26 44" aria-hidden="true"><path d="M20 3C11 9 6 17 6 24s5 14 14 17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><g fill="currentColor"><ellipse cx="15.4" cy="7.6" rx="4.6" ry="2.2" transform="rotate(-38 15.4 7.6)"/><ellipse cx="10.6" cy="13.6" rx="4.8" ry="2.3" transform="rotate(-22 10.6 13.6)"/><ellipse cx="8.2" cy="20.6" rx="5" ry="2.4" transform="rotate(-6 8.2 20.6)"/><ellipse cx="8.4" cy="27.6" rx="5" ry="2.4" transform="rotate(10 8.4 27.6)"/><ellipse cx="11.2" cy="34" rx="4.8" ry="2.3" transform="rotate(26 11.2 34)"/><ellipse cx="16" cy="39.4" rx="4.6" ry="2.2" transform="rotate(42 16 39.4)"/></g></svg>1등 최대 <b>1억 원</b> 투자 기회<svg class="laurel rt" viewBox="0 0 26 44" aria-hidden="true"><path d="M20 3C11 9 6 17 6 24s5 14 14 17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><g fill="currentColor"><ellipse cx="15.4" cy="7.6" rx="4.6" ry="2.2" transform="rotate(-38 15.4 7.6)"/><ellipse cx="10.6" cy="13.6" rx="4.8" ry="2.3" transform="rotate(-22 10.6 13.6)"/><ellipse cx="8.2" cy="20.6" rx="5" ry="2.4" transform="rotate(-6 8.2 20.6)"/><ellipse cx="8.4" cy="27.6" rx="5" ry="2.4" transform="rotate(10 8.4 27.6)"/><ellipse cx="11.2" cy="34" rx="4.8" ry="2.3" transform="rotate(26 11.2 34)"/><ellipse cx="16" cy="39.4" rx="4.6" ry="2.2" transform="rotate(42 16 39.4)"/></g></svg></div>
@@ -555,7 +555,7 @@
   <!-- 인쇄할 때 공고문이 옮겨 담기는 곳 -->
   <div id="printArea" style="display:none">
     <div class="print-head">
-      <h1>BROJ FOUNDERS 2026 IR 피칭대회 모집 공고문</h1>
+      <h1>D·BROJ FOUNDERS 2026 IR 피칭대회 모집 공고문</h1>
       <p>접수 2026. 9. 7(월) ~ 9. 17(목) 14:00 · b2b.broj.io/founders/2026.html</p>
     </div>
   </div>
@@ -571,9 +571,9 @@
     <div class="notice" id="notice">
       <div class="notice-get">
         <a class="dl" href="broj-founders-2026-notice.pdf"
-          download="BROJ Founders 2026 모집공고.pdf"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6v8.2m0 0L4.9 6.7M8 9.8l3.1-3.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.4 11.6v1.6a1.2 1.2 0 0 0 1.2 1.2h8.8a1.2 1.2 0 0 0 1.2-1.2v-1.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>공고문 내려받기 <i>PDF</i></a>
+          download="D·BROJ Founders 2026 모집공고.pdf"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6v8.2m0 0L4.9 6.7M8 9.8l3.1-3.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.4 11.6v1.6a1.2 1.2 0 0 0 1.2 1.2h8.8a1.2 1.2 0 0 0 1.2-1.2v-1.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>공고문 내려받기 <i>PDF</i></a>
         <a class="dl alt" href="broj-founders-2026-notice.hwp"
-          download="BROJ Founders 2026 모집공고.hwp"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6v8.2m0 0L4.9 6.7M8 9.8l3.1-3.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.4 11.6v1.6a1.2 1.2 0 0 0 1.2 1.2h8.8a1.2 1.2 0 0 0 1.2-1.2v-1.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><i>HWP</i></a>
+          download="D·BROJ Founders 2026 모집공고.hwp"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6v8.2m0 0L4.9 6.7M8 9.8l3.1-3.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.4 11.6v1.6a1.2 1.2 0 0 0 1.2 1.2h8.8a1.2 1.2 0 0 0 1.2-1.2v-1.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><i>HWP</i></a>
         <button type="button" class="dl alt" id="noticePrint"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 6V2.2h7.2V6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><rect x="1.8" y="6" width="12.4" height="5.2" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4.4 9.6h7.2v4.2H4.4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>인쇄 · PDF로 저장</button>
       </div>
 
@@ -581,7 +581,7 @@
       <p><b>목적</b> — 대한민국 피트니스 산업의 혁신을 선도할 유망 Founder를 발굴·육성하고, 전문 투자 역량과
         글로벌 네트워크를 연결하여 기업 간 실질적인 투자·협업 기회를 창출함으로써 피트니스 산업의 지속적인
         성장과 혁신 창업 생태계 활성화를 촉진합니다.</p>
-      <p class="q">BROJ Founders는 브로제이 CRM에 축적된 운영 데이터와 전국 피트니스 현장에 기반한 실증성,
+      <p class="q">D·BROJ Founders는 브로제이 CRM에 축적된 운영 데이터와 전국 피트니스 현장에 기반한 실증성,
         그리고 스타트업의 유연한 민첩성을 결합해 피트니스 산업의 새로운 혁신을 만들어가는 오픈이노베이션
         프로그램입니다. 단기적인 트렌드나 일회성 대회에 머무르지 않고, 실제 사업 기반 위에서의 검증과 신뢰를
         바탕으로 한 장기적 파트너십을 중요하게 생각합니다. Founder를 단순한 심사 대상이 아닌 ‘성장 동반자’로
@@ -682,7 +682,7 @@
       <p class="warn"><b>투자금은 상금이 아닙니다.</b> 수상 기업을 대상으로 Draper Korea의 투자 검토 및 협의가
         진행됩니다. 제출·발표한 내용이 실제 사실과 중대한 차이가 있는 경우 투자가 진행되지 않을 수 있으며,
         최종 투자 규모와 조건은 기업가치, 사업 현황, 투자 협의 결과 등에 따라 달라집니다.</p>
-      <p class="s">입상작은 차년도 2027년 「BROJ Founders」 참가 신청 시 우대할 예정입니다.</p>
+      <p class="s">입상작은 차년도 2027년 「D·BROJ Founders」 참가 신청 시 우대할 예정입니다.</p>
 
       <h3>6. 유의사항</h3>
       <ul>
@@ -695,7 +695,7 @@
       </ul>
 
       <h3>7. 문의처</h3>
-      <p>「BROJ Founders 2026」 운영사무국<br>
+      <p>「D·BROJ Founders 2026」 운영사무국<br>
         공식 홈페이지 <a href="/founders/2026/home.html">b2b.broj.io/founders/2026/home.html</a><br>
         이메일 <a href="mailto:broj.network@gmail.com">broj.network@gmail.com</a><br>
         카카오톡 @broj</p>
@@ -1077,7 +1077,7 @@
       <div class="card">
         <h3>개인정보 수집 및 이용 동의서<span class="req">*</span></h3>
         <div class="doc">
-          <p>「BROJ Founders 2026 IR 피칭대회」 신청기관의 모든 개인정보를 다음의 목적으로 보유하고 활용합니다.
+          <p>「D·BROJ Founders 2026 IR 피칭대회」 신청기관의 모든 개인정보를 다음의 목적으로 보유하고 활용합니다.
              개인정보 수집 및 동의를 거부하실 수 있으며, 다만 이 경우 참가신청이 제한될 수 있음에 유의하시기 바랍니다.</p>
           <table>
             <tr><th>개인정보 수집항목</th>
@@ -1085,7 +1085,7 @@
             <tr><th>수집 및 이용 목적</th>
               <td>본인확인, 공지사항의 전달, 실적 확인 등</td></tr>
             <tr><th>보유 및 이용 기간</th>
-              <td>BROJ Founders 2026 IR 피칭대회 사업 종료일로부터 3년 이후까지</td></tr>
+              <td>D·BROJ Founders 2026 IR 피칭대회 사업 종료일로부터 3년 이후까지</td></tr>
           </table>
           <p style="color:var(--muted)">※ 개인정보보호법에 의거, 개인정보 수집 및 이용 동의서는 필수 제출해야 합니다.</p>
           <p style="margin-bottom:0">BROJ, 드레이퍼스타트업하우스 코리아 대표 귀하</p>
@@ -1099,7 +1099,7 @@
       <div class="card">
         <h3>서약서<span class="req">*</span></h3>
         <div class="doc">
-          <p>BROJ, 드레이퍼스타트업하우스 코리아가 주최하는 「BROJ Founders 2026 IR 피칭대회」 참가와 관련하여
+          <p>BROJ, 드레이퍼스타트업하우스 코리아가 주최하는 「D·BROJ Founders 2026 IR 피칭대회」 참가와 관련하여
              아래 내용을 숙지했음을 서약합니다.</p>
           <ul>
             <li>참가자는 제출한 아이디어·사업계획 및 관련 자료가 본인의 독창적인 창작물이며, 타인의 지식재산권 및 기타 권리를 침해하거나 침해할 우려가 있는 경우에는 선정 또는 수상이 취소될 수 있으며, 지급된 상장 및 상금 등을 반환하여야 합니다.</li>
@@ -1334,7 +1334,7 @@
   </div>
 
   <div class="foot">
-    BROJ FOUNDERS 2026 운영사무국<br>
+    D·BROJ FOUNDERS 2026 운영사무국<br>
     <a href="mailto:broj.network@gmail.com">broj.network@gmail.com</a> · 카카오톡 @broj
   </div>
 </div>
@@ -2196,7 +2196,6 @@
     $("steps").style.display = k === "visitor" ? "none" : "";
     $("heroEyebrow").textContent = k === "visitor" ? "참관 등록" : "참가 신청";
     $("heroEyebrow").style.display = "";
-    $("wordmark").style.display = "none";
     $("rule").style.display = "none";
     $("heroTitle").innerHTML = k === "visitor"
       ? "피칭 현장에서<br>직접 만나보세요"
@@ -2211,11 +2210,11 @@
       if (!vSignReady) { vSignReady = true; vSignPad.ready(); }
       loadCapacity();
       $("prize").style.display = "none";
-      document.title = "참관 등록 · BROJ FOUNDERS 2026";
+      document.title = "참관 등록 · D·BROJ FOUNDERS 2026";
     } else {
       // 첫 화면에서 이미 읽은 안내다 — 폼에서는 접어 입력이 위로 오게 한다
       $("prize").style.display = "none";
-      document.title = "참가 신청 · BROJ FOUNDERS 2026";
+      document.title = "참가 신청 · D·BROJ FOUNDERS 2026";
       go(1);
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2225,7 +2224,6 @@
   });
   $("backToKind").addEventListener("click", function () {
     $("heroEyebrow").style.display = "none";
-    $("wordmark").style.display = "";
     $("rule").style.display = "";
     $("heroTitle").innerHTML = SLOGAN;
     $("heroSub").innerHTML = "출전하실 분과 보러 오실 분, 어느 쪽인지 골라주세요.";
