@@ -629,7 +629,7 @@ foundersPublicRouter.get("/apply/lookup", async (req: Request, res: Response) =>
 // 참가비 2만원. 계좌이체로 받고 입금자명으로 대조한다.
 // 이름·연락처·소속·직함만 받는다 — 보러 오는 분께 서류를 물을 이유가 없다.
 
-const VISITOR_FEE = 20000;
+export const VISITOR_FEE = 20000;
 /// 자유석이다. 자리를 미리 배정하지 않고 오신 순서대로 앉는다.
 /// 의자가 차면 스탠딩으로 보게 되고, 정원을 넘으면 마감한다.
 const SEAT_LIMIT = 50;   // 현장 의자 수 — 안내용

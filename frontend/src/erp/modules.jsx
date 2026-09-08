@@ -16639,6 +16639,23 @@ export function FoundersView() {
     !kw || [a.applyNo, a.teamName, a.repName, a.subject, a.repEmail, a.repPhone]
       .some((v) => String(v || "").toLowerCase().includes(kw)));
 
+  // VIP 로 모시면 참가비 0원 · 입금확인으로 넘어간다. 거두면 2만원 · 입금대기로 돌아온다.
+  const setVip = async (a, on) => {
+    let note = a.vipNote || "";
+    if (on) {
+      const asked = window.prompt("누가 왜 모시는 분인지 한 줄 남겨주세요 (건너뛰어도 됩니다)", note);
+      if (asked === null) return;
+      note = asked;
+    } else if (!window.confirm(`${a.repName} 님의 VIP 초대를 거둡니다. 참가비 2만원이 다시 붙고 입금대기로 돌아갑니다.`)) {
+      return;
+    }
+    try {
+      const r = await api.erpFoundersApplyUpdate(a.id, { vip: on, vipNote: on ? note : "" });
+      setApplies((p) => p.map((x) => (x.id === a.id ? { ...x, ...(r.apply || {}) } : x)));
+      toastSuccess(on ? "VIP로 모셨어요 — 참가비 0원" : "VIP 초대를 거뒀어요");
+    } catch (e) { notifyError(e); }
+  };
+
   const setStat = async (a, s) => {
     const label = [...BF_STATUS, ...BF_VSTATUS].find(([v]) => v === s)?.[1] || s;
     if (!(await confirmAction(`${a.teamName || a.repName} 접수를 '${label}'로 바꿀까요?`))) return;
@@ -16688,7 +16705,8 @@ export function FoundersView() {
   const copyList = async () => {
     if (!rows.length) return;
     const head = kind === "visitor"
-      ? ["등록번호", "상태", "좌석", "등록일", "성함", "연락처", "소속", "직함", "이메일", "참가비", "입금자명", "입금확인"]
+      ? ["등록번호", "상태", "좌석", "등록일", "성함", "연락처", "소속", "직함", "이메일",
+         "VIP", "참가비", "입금자명", "입금확인", "모신 이유"]
       : ["접수번호", "상태", "접수일", "참가구분", "팀명", "대표자", "연락처", "이메일",
          "주제", "분야", "팀원수", "증빙", "IR자료"];
     const lines = [head.join("\t")];
@@ -16699,8 +16717,8 @@ export function FoundersView() {
         ? [a.applyNo, label,
            a.seatType === "seat" ? `의자 ${a.seatNo}` : a.seatType === "standing" ? `스탠딩 ${a.seatNo}` : "",
            day, a.repName, a.repPhone, a.repOrg, a.repTitle, a.repEmail,
-           a.feeAmount, a.payerName || a.repName,
-           a.paidAt ? new Date(a.paidAt).toLocaleDateString("ko-KR") : ""]
+           a.vip ? "VIP" : "", a.vip ? 0 : a.feeAmount, a.vip ? "" : (a.payerName || a.repName),
+           a.paidAt ? new Date(a.paidAt).toLocaleDateString("ko-KR") : "", a.vipNote || ""]
         : [a.applyNo, label, day, BF_ENTRY[a.entryType] || "", a.teamName, a.repName, a.repPhone, a.repEmail,
            (a.subject || "").replace(/\s+/g, " "),
            (a.tracks || []).map((t) => BF_TRACKS[t] || t).join(" "),
@@ -16811,8 +16829,11 @@ export function FoundersView() {
                           {a.seatType === "seat" ? `좌석 ${a.seatNo}번` : `스탠딩 ${a.seatNo}번`}
                         </span>
                       )}
-                      {isV && a.feeAmount > 0 && (
-                        <span className="small muted">{a.feeAmount.toLocaleString()}원</span>
+                      {isV && a.vip && <span className="cc-pill brand">VIP 초대</span>}
+                      {isV && (
+                        <span className="small muted">
+                          {a.vip ? "0원 (무료)" : `${(a.feeAmount || 0).toLocaleString()}원`}
+                        </span>
                       )}
                       <span className="small muted" style={{ marginLeft: "auto" }}>
                         {new Date(a.createdAt).toLocaleDateString("ko-KR")}
@@ -16831,10 +16852,17 @@ export function FoundersView() {
                               <div className="cc-kv"><span>좌석</span>
                                 <b>{a.seatType === "seat" ? `의자 ${a.seatNo}번`
                                   : a.seatType === "standing" ? `스탠딩 ${a.seatNo}번` : <i>-</i>}</b></div>
-                              <div className="cc-kv"><span>참가비</span><b>{(a.feeAmount || 0).toLocaleString()}원</b></div>
-                              <div className="cc-kv"><span>입금자명</span><b>{a.payerName || a.repName}</b></div>
-                              <div className="cc-kv"><span>입금 확인</span>
+                              <div className="cc-kv"><span>참가비</span>
+                                <b>{a.vip
+                                  ? <span style={{ color: "var(--accent-deep)" }}>0원 · VIP 초대</span>
+                                  : `${(a.feeAmount || 0).toLocaleString()}원`}</b></div>
+                              <div className="cc-kv"><span>입금자명</span>
+                                <b>{a.vip ? <i>받지 않음</i> : (a.payerName || a.repName)}</b></div>
+                              <div className="cc-kv"><span>{a.vip ? "초대 확정" : "입금 확인"}</span>
                                 <b>{a.paidAt ? new Date(a.paidAt).toLocaleString("ko-KR") : <i>대기</i>}</b></div>
+                              {a.vip && (
+                                <div className="cc-kv"><span>모신 이유</span><b>{a.vipNote || <i>-</i>}</b></div>
+                              )}
                               <div className="cc-kv"><span>등록일</span>
                                 <b>{new Date(a.createdAt).toLocaleString("ko-KR")}</b></div>
                               <div className="cc-kv"><span>개인정보</span>
@@ -16851,6 +16879,11 @@ export function FoundersView() {
                                 <button key={v} type="button" className={"chip" + (a.status === v ? " on" : "")}
                                   onClick={() => setStat(a, v)}>{label}</button>
                               ))}
+                              <span style={{ width: 1, height: 20, background: "var(--line)", margin: "0 4px" }} />
+                              <button type="button" className={"chip" + (a.vip ? " on" : "")}
+                                title={a.vip ? "초대를 거두면 참가비 2만원이 다시 붙습니다"
+                                             : "참가비를 받지 않고 모십니다 — 0원, 입금확인으로"}
+                                onClick={() => setVip(a, !a.vip)}>★ VIP 초대</button>
                               <button type="button" className="btn btn-ghost btn-sm"
                                 style={{ marginLeft: "auto", color: "#C0392B" }} onClick={() => remove(a)}>삭제</button>
                             </div>

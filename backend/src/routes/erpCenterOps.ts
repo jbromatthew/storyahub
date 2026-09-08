@@ -632,6 +632,18 @@ erpCenterOpsRouter.patch("/founders/applies/:id", async (req: AuthedRequest, res
     if (s === "pending") data.paidAt = null;
   }
   if (b.memo !== undefined) data.memo = str(b.memo, 1000);
+  if (b.vipNote !== undefined) data.vipNote = str(b.vipNote, 200);
+  // VIP 로 모시면 참가비를 받지 않는다 — 0원이고 입금을 기다리지 않는다
+  if (b.vip !== undefined) {
+    const { VISITOR_FEE } = await import("./foundersPublic.js");
+    const on = b.vip === true;
+    data.vip = on;
+    data.feeAmount = on ? 0 : VISITOR_FEE;
+    if (data.status === undefined) {
+      data.status = on ? "paid" : "pending";
+      data.paidAt = on ? new Date() : null;
+    }
+  }
   const row = await prisma.erpFoundersApply.update({ where: { id: req.params.id }, data });
   const { pushFoundersRowSoon } = await import("../services/foundersSheet.js");
   pushFoundersRowSoon(row);

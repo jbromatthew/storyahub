@@ -104,13 +104,14 @@ function visitorRow(a: ErpFoundersApply): string[] {
   return [
     a.applyNo,
     KST(a.createdAt),
-    STATUS_KO[a.status] ?? a.status,
+    // 우리가 모신 분은 상태·참가비에 그대로 드러낸다
+    a.vip ? "VIP 초대" : (STATUS_KO[a.status] ?? a.status),
     a.repName,
     phone(a.repPhone),
     a.repOrg,
     a.repTitle,
     a.repEmail,
-    a.feeAmount ? String(a.feeAmount) : "",
+    a.vip ? "0 (VIP)" : (a.feeAmount ? String(a.feeAmount) : ""),
     a.payerName,
     a.paidAt ? KST(a.paidAt) : "",
     a.signKey ? "있음" : "",
