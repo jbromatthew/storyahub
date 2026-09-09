@@ -33,7 +33,8 @@ const KST = (d: Date | null | undefined) =>
   d ? new Date(d.getTime() + 9 * 3600_000).toISOString().replace("T", " ").slice(0, 16) : "";
 
 const STATUS_KO: Record<string, string> = {
-  received: "접수", reviewing: "검토중", passed: "합격", rejected: "미선정",
+  received: "접수", screening: "1차 서면심사", docfail: "서류 탈락",
+  top14: "TOP14 예비합격", top7: "TOP7 본선", top3: "TOP3 최종", rejected: "미선정",
   pending: "입금대기", paid: "입금확인", cancelled: "취소",
 };
 

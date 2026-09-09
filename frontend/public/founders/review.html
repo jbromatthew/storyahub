@@ -109,8 +109,7 @@
   .pill{flex:0 0 auto;font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;
     border:1px solid var(--line);background:var(--steel-2);color:var(--ink-2);white-space:nowrap}
   .pill.received{background:var(--steel-2);color:var(--ink-2)}
-  .pill.reviewing{background:var(--warn-wash);border-color:var(--warn-line);color:var(--warn)}
-  .pill.passed{background:var(--ok-wash);border-color:var(--ok-line);color:var(--ok)}
+  .pill.screening{background:var(--warn-wash);border-color:var(--warn-line);color:var(--warn)}
   .pill.rejected{background:var(--bad-wash);border-color:var(--bad-line);color:var(--bad)}
   .pill.file{background:var(--brand-wash);border-color:var(--brand-line);color:var(--brand-deep)}
 
@@ -158,9 +157,10 @@
   .pill.sc{background:var(--steel-2);color:var(--ink-2)}
   .pill.aw{background:var(--brand);border-color:var(--brand);color:#fff}
   .pill.screening{background:var(--warn-wash);border-color:var(--warn-line);color:var(--warn)}
-  .pill.finalist{background:var(--ok-wash);border-color:var(--ok-line);color:var(--ok)}
-  .pill.reserve{background:var(--brand-wash);border-color:var(--brand-line);color:var(--brand-deep)}
-  .pill.final3{background:var(--ok);border-color:var(--ok);color:#fff}
+  .pill.top14{background:var(--brand-wash);border-color:var(--brand-line);color:var(--brand-deep)}
+  .pill.top7{background:var(--ok-wash);border-color:var(--ok-line);color:var(--ok)}
+  .pill.top3{background:var(--ok);border-color:var(--ok);color:#fff}
+  .pill.docfail{background:var(--bad-wash);border-color:var(--bad-line);color:var(--bad)}
 
   .acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px;
     padding-top:16px;border-top:1px solid var(--line-2)}
@@ -237,12 +237,13 @@
   };
   /* 공고문 4항 일정을 그대로 따른다 */
   var STATUS = [
-    { k: "received",  t: "접수",      d: "아직 심사 전" },
-    { k: "screening", t: "1차 서면",  d: "서면 평가 진행 중" },
-    { k: "finalist",  t: "본선 진출", d: "1차 합격 · 7팀" },
-    { k: "reserve",   t: "예비",      d: "1차 합격 · 예비 7팀" },
-    { k: "final3",    t: "최종 3팀",  d: "2차 통과 · 최종 평가" },
-    { k: "rejected",  t: "미선정",    d: "" }
+    { k: "received",  t: "접수",           d: "아직 심사 전" },
+    { k: "screening", t: "1차 서면심사",   d: "서면 평가 진행 중" },
+    { k: "docfail",   t: "서류 탈락",      d: "1차 서면에서 떨어짐" },
+    { k: "top14",     t: "TOP14 예비합격", d: "1차 합격 · 본선 결원 시 순차 승격" },
+    { k: "top7",      t: "TOP7 본선",      d: "2차 대면 평가 대상 · 7팀" },
+    { k: "top3",      t: "TOP3 최종",      d: "최종 평가 · 시상 대상 · 3팀" },
+    { k: "rejected",  t: "미선정",         d: "" }
   ];
   var AWARDS = [
     { k: "", t: "없음", d: "" },
@@ -251,7 +252,7 @@
     { k: "good", t: "우수상", d: "상금 100만원" }
   ];
   var SCORE_ITEMS = [];                                   // 로그인할 때 서버가 준다
-  var LIMITS = { finalist: 7, reserve: 7, final3: 3 };    // 공고문이 정한 인원
+  var LIMITS = { top14: 14, top7: 7, top3: 3 };          // 공고문이 정한 인원
   var token = "", who = "", applies = [], filter = "", openId = "";
 
   var $ = function (id) { return document.getElementById(id); };
@@ -577,7 +578,7 @@
       }).join("") +
       "</div>";
 
-    if (a.status === "final3") {
+    if (a.status === "top3") {
       h += '<div class="sec">시상</div><div class="stage">' +
         AWARDS.map(function (w) {
           return '<button type="button" class="st' + ((a.award || "") === w.k ? " on" : "") +

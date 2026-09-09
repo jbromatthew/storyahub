@@ -623,7 +623,9 @@ erpCenterOpsRouter.patch("/founders/applies/:id", async (req: AuthedRequest, res
   const data: Record<string, unknown> = {};
   if (b.status !== undefined) {
     const s = str(b.status, 20);
-    if (!["received", "reviewing", "passed", "rejected", "pending", "paid", "cancelled"].includes(s)) {
+    const { FOUNDERS_STATUS } = await import("./foundersPublic.js");
+    const OK = [...FOUNDERS_STATUS.map((x) => x.k), "pending", "paid", "cancelled"];
+    if (!OK.includes(s)) {
       return fail(res, "상태가 올바르지 않습니다");
     }
     data.status = s;

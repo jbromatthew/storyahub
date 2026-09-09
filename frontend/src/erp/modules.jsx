@@ -15813,9 +15813,15 @@ const BF_TRACKS = {
   business: "피트니스 사업", tech: "기술", content: "콘텐츠·교육",
   product: "제품", next: "신사업", market: "브로제이 연동 입점",
 };
+// 공고문 사다리 — 1차에서 14팀을 뽑고 그중 7팀이 본선에 간다
 const BF_STATUS = [
-  ["received", "접수", "warn"], ["reviewing", "검토중", "brand"],
-  ["passed", "합격", "ok"], ["rejected", "미선정", "off"],
+  ["received", "접수", "warn"],
+  ["screening", "1차 서면심사", "brand"],
+  ["docfail", "서류 탈락", "bad"],
+  ["top14", "TOP14 예비합격", "brand"],
+  ["top7", "TOP7 본선", "ok"],
+  ["top3", "TOP3 최종", "ok"],
+  ["rejected", "미선정", "off"],
 ];
 // 참관객은 입금으로 관리한다
 const BF_VSTATUS = [

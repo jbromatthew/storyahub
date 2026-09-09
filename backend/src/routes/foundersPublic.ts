@@ -257,16 +257,19 @@ foundersPublicRouter.post("/resume", async (req: Request, res: Response) => {
    신청자 목록을 보고 상태를 바꾸는 것까지만 한다. */
 
 const REVIEW_TTL_H = 12;
-/* 공고문 4항 「세부일정 및 절차」를 그대로 옮긴 단계.
-   접수 → 1차 서면 → 본선 7팀 / 예비 7팀 → 2차 대면 → 최종 3팀 → 시상 */
-const REVIEW_STATUS = [
-  "received",   // 접수
-  "screening",  // 1차 서면 심사중
-  "finalist",   // 1차 합격 · 본선 진출 (7)
-  "reserve",    // 1차 합격 · 예비 (7)
-  "rejected",   // 미선정
-  "final3",     // 2차 통과 · 최종 평가 대상 (3)
+/* 공고문 4항 「세부일정 및 절차」를 그대로 옮긴 사다리.
+   접수 → 1차 서면 → (서류 탈락 | TOP14 예비합격) → TOP7 본선 → TOP3 최종 → 시상
+   1차에서 14인·팀을 뽑고 그중 7팀이 본선에 간다. TOP14 에 머문 쪽이 곧 예비합격자다. */
+export const FOUNDERS_STATUS = [
+  { k: "received", t: "접수", d: "아직 심사 전" },
+  { k: "screening", t: "1차 서면심사", d: "서면 평가 진행 중" },
+  { k: "docfail", t: "서류 탈락", d: "1차 서면에서 떨어짐" },
+  { k: "top14", t: "TOP14 예비합격", d: "1차 합격 · 본선 결원 시 순차 승격" },
+  { k: "top7", t: "TOP7 본선", d: "2차 대면 평가 대상" },
+  { k: "top3", t: "TOP3 최종", d: "최종 평가 · 시상 대상" },
+  { k: "rejected", t: "미선정", d: "" },
 ];
+const REVIEW_STATUS = FOUNDERS_STATUS.map((s) => s.k);
 const AWARDS = ["", "grand", "excellent", "good"];   // 대상·최우수·우수
 
 /* 공고문 5항 배점표. 합계 100점. */
