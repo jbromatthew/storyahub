@@ -2306,6 +2306,8 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
   const [stocks, setStocks] = useState([]);
   const [advances, setAdvances] = useState([]);   // 업체 미수금
   const [advForm, setAdvForm] = useState({ teamId: "", date: "", amount: 0, reason: "" });
+  const [settlements, setSettlements] = useState([]);   // 정산 자취
+  const [stlForm, setStlForm] = useState({ teamId: "", date: "", gross: 0, offset: 0, paid: 0, memo: "" });
   const [stockForm, setStockForm] = useState({ name: "", unit: "개", date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date()), qty: "", unitPrice: "", vatSeparate: true });
   const [moveFor, setMoveFor] = useState(null); // {stockId, kind} 입출고 입력 대상
   const [moveForm, setMoveForm] = useState({ date: "", qty: "", unitPrice: "", vatSeparate: true, memo: "" });
@@ -2323,8 +2325,8 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
   const [qTo, setQTo] = useState("");
 
   const load = () => {
-    Promise.all([api.erpConstructionItems(), api.erpConstructionApartments(), api.erpConstructionQuotes(), api.erpConstructionTeams().catch(() => []), api.erpConstructionStocks().catch(() => []), api.erpConstructionAdvances().catch(() => [])])
-      .then(([i, a, q, tm, st, ad]) => { setItems(i); setApts(a); setQuotes(q); setTeams(tm); setStocks(st); setAdvances(ad); })
+    Promise.all([api.erpConstructionItems(), api.erpConstructionApartments(), api.erpConstructionQuotes(), api.erpConstructionTeams().catch(() => []), api.erpConstructionStocks().catch(() => []), api.erpConstructionAdvances().catch(() => []), api.erpConstructionSettlements().catch(() => [])])
+      .then(([i, a, q, tm, st, ad, se]) => { setItems(i); setApts(a); setQuotes(q); setTeams(tm); setStocks(st); setAdvances(ad); setSettlements(se); })
       .catch(notifyError)
       .finally(() => setLoading(false));
   };
@@ -2354,6 +2356,58 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
     try {
       const row = await api.erpConstructionUpdateAdvance(a.id, { settled: !a.settled });
       setAdvances((p) => p.map((x) => (x.id === a.id ? row : x)));
+    } catch (e) { notifyError(e); }
+  };
+
+  // ---- 정산 기록 ----
+  const typedSettlements = useMemo(
+    () => settlements.filter((x) => (x.orderType || "아파트너") === orderType),
+    [settlements, orderType]);
+
+  // 업체를 고르면 미지급액과 남은 미수금으로 세 칸을 미리 채워준다
+  const pickSettleTeam = (teamId) => {
+    const row = teamPayoutSummary.find((t) => t.id === teamId);
+    const gross = row?.unpaid || 0;
+    const owed = advanceOf(teamId);
+    const offset = Math.min(owed, gross);
+    setStlForm((p) => ({ ...p, teamId, gross, offset, paid: Math.max(0, gross - offset) }));
+  };
+  const setSettleField = (patch) => setStlForm((p) => {
+    const next = { ...p, ...patch };
+    // 대상액이나 상계를 손대면 실입금은 따라 움직인다
+    if (patch.gross !== undefined || patch.offset !== undefined) {
+      next.paid = Math.max(0, cstNum(next.gross) - cstNum(next.offset));
+    }
+    return next;
+  });
+
+  const addSettlement = async () => {
+    if (!stlForm.teamId) return notifyError(new Error("업체를 고르세요"));
+    const gross = cstNum(stlForm.gross), offset = cstNum(stlForm.offset), paid = cstNum(stlForm.paid);
+    if (!gross && !paid && !offset) return notifyError(new Error("금액을 넣으세요"));
+    const owed = advanceOf(stlForm.teamId);
+    if (offset > owed) return notifyError(new Error(`남은 미수금은 ${formatWon(owed)}입니다`));
+    try {
+      const row = await api.erpConstructionCreateSettlement({
+        ...stlForm, gross, offset, paid, orderType,
+        teamName: teams.find((t) => t.id === stlForm.teamId)?.name || "",
+      });
+      setSettlements((p) => [row, ...p]);
+      const fresh = await api.erpConstructionAdvances().catch(() => null);
+      if (fresh) setAdvances(fresh);
+      setStlForm({ teamId: "", date: "", gross: 0, offset: 0, paid: 0, memo: "" });
+      toastSuccess(`정산 ${formatWon(paid)} 기록했어요${offset ? ` · 미수금 ${formatWon(offset)} 상계` : ""}`);
+    } catch (e) { notifyError(e); }
+  };
+
+  const removeSettlement = async (x) => {
+    if (!window.confirm(`${x.teamName} ${x.date || ""} 정산 기록을 지웁니다. 빼놨던 미수금 ${formatWon(x.offset)}도 되돌아갑니다.`)) return;
+    try {
+      await api.erpConstructionDeleteSettlement(x.id);
+      setSettlements((p) => p.filter((y) => y.id !== x.id));
+      const fresh = await api.erpConstructionAdvances().catch(() => null);
+      if (fresh) setAdvances(fresh);
+      toastSuccess("되돌렸어요");
     } catch (e) { notifyError(e); }
   };
 
@@ -2418,7 +2472,8 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
     for (const a of advances) {
       if (a.settled) continue;
       if ((a.orderType || "아파트너") !== orderType) continue;
-      map.set(a.teamId, (map.get(a.teamId) || 0) + (a.amount || 0));
+      const left = Math.max(0, (a.amount || 0) - (a.offsetAmount || 0));
+      if (left) map.set(a.teamId, (map.get(a.teamId) || 0) + left);
     }
     return map;
   }, [advances, orderType]);
@@ -3369,6 +3424,91 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
             </table>
           </div>
 
+          {/* 정산 기록 — 얼마 보내고 미수금 얼마 뺐는지 */}
+          <div className="card" style={{ marginTop: 18 }}>
+            <div className="kbe-meta-h" style={{ marginTop: 0 }}>정산 기록하기</div>
+            <div className="small" style={{ color: "var(--muted)", margin: "6px 0 12px", lineHeight: 1.55 }}>
+              업체를 고르면 <strong>미지급액</strong>과 <strong>남은 미수금</strong>으로 세 칸이 채워집니다.
+              숫자를 고치면 실입금액이 따라 움직입니다. 기록하면 그만큼 미수금이 줄고 아래 자취에 남습니다.
+            </div>
+
+            <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 10 }}>
+              <label style={{ flex: "1 1 150px" }}>
+                <div className="small" style={{ color: "var(--muted)", marginBottom: 3 }}>업체 *</div>
+                <select value={stlForm.teamId} onChange={(e) => pickSettleTeam(e.target.value)}
+                  style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff" }}>
+                  <option value="">업체 선택</option>
+                  {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </label>
+              <label style={{ flex: "0 0 140px" }}>
+                <div className="small" style={{ color: "var(--muted)", marginBottom: 3 }}>정산일</div>
+                <input type="date" value={stlForm.date} onChange={(e) => setSettleField({ date: e.target.value })}
+                  style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13 }} />
+              </label>
+              <label style={{ flex: "0 0 120px" }}>
+                <div className="small" style={{ color: "var(--muted)", marginBottom: 3 }}>정산 대상액</div>
+                <input inputMode="numeric" value={stlForm.gross ? cstNum(stlForm.gross).toLocaleString() : ""}
+                  onChange={(e) => setSettleField({ gross: cstNum(e.target.value) })} placeholder="0"
+                  style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, textAlign: "right" }} />
+              </label>
+              <label style={{ flex: "0 0 120px" }}>
+                <div className="small" style={{ color: "#B06A00", marginBottom: 3 }}>− 미수금 상계</div>
+                <input inputMode="numeric" value={stlForm.offset ? cstNum(stlForm.offset).toLocaleString() : ""}
+                  onChange={(e) => setSettleField({ offset: cstNum(e.target.value) })} placeholder="0"
+                  style={{ width: "100%", border: "1px solid #F0DAA8", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, textAlign: "right", background: "#FFFCF4" }} />
+              </label>
+              <label style={{ flex: "0 0 130px" }}>
+                <div className="small" style={{ color: "#0D7A3E", marginBottom: 3 }}>= 실입금액</div>
+                <input inputMode="numeric" value={stlForm.paid ? cstNum(stlForm.paid).toLocaleString() : ""}
+                  onChange={(e) => setStlForm((p) => ({ ...p, paid: cstNum(e.target.value) }))} placeholder="0"
+                  style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 14, textAlign: "right", fontWeight: 800 }} />
+              </label>
+              <input value={stlForm.memo} onChange={(e) => setStlForm((p) => ({ ...p, memo: e.target.value }))}
+                placeholder="메모 (9월분 정산 등)"
+                style={{ flex: "1 1 160px", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13 }} />
+              <button type="button" className="btn btn-accent btn-sm" onClick={addSettlement}>정산 기록</button>
+            </div>
+
+            {stlForm.teamId && (
+              <div className="cst-owed" style={{ marginTop: 0 }}>
+                남은 미수금 <b>{formatWon(advanceOf(stlForm.teamId))}</b>
+                {" · "}이번에 <b>{formatWon(cstNum(stlForm.offset))}</b>을 빼고
+                {" "}<b className="net">{formatWon(cstNum(stlForm.paid))}</b>을 보냅니다.
+                {advanceOf(stlForm.teamId) - cstNum(stlForm.offset) > 0 && (
+                  <> 기록 후 미수금은 <b>{formatWon(advanceOf(stlForm.teamId) - cstNum(stlForm.offset))}</b> 남습니다.</>
+                )}
+              </div>
+            )}
+
+            <div className="erp-tbl-cap" style={{ marginTop: 14 }}><span className="cnt">정산 자취</span></div>
+            <div className="erp-tbl-wrap">
+              <table className="erp-tbl">
+                <thead>
+                  <tr><th className="shrink">정산일</th><th>업체</th>
+                    <th className="shrink num">정산 대상</th><th className="shrink num">− 미수금</th>
+                    <th className="shrink num">= 실입금</th><th>메모</th><th className="shrink"></th></tr>
+                </thead>
+                <tbody>
+                  {typedSettlements.map((x) => (
+                    <tr key={x.id}>
+                      <td className="shrink small">{x.date || "-"}</td>
+                      <td><div className="cell-ttl">{x.teamName || teams.find((t) => t.id === x.teamId)?.name || "(이름없음)"}</div>
+                        {x.byName && <div className="small" style={{ color: "var(--muted)" }}>{x.byName}</div>}</td>
+                      <td className="shrink num">{formatWon(x.gross)}</td>
+                      <td className="shrink num" style={{ color: x.offset ? "#B06A00" : "var(--muted)" }}>
+                        {x.offset ? `−${formatWon(x.offset)}` : "-"}</td>
+                      <td className="shrink num" style={{ fontWeight: 800, color: "#0D7A3E" }}>{formatWon(x.paid)}</td>
+                      <td className="small">{x.memo || "-"}</td>
+                      <td className="shrink"><button type="button" className="cst-x" onClick={() => removeSettlement(x)}>✕</button></td>
+                    </tr>
+                  ))}
+                  {!typedSettlements.length && <tr><td colSpan={7} className="erp-tbl-empty">아직 기록한 정산이 없습니다.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           {/* 업체 미수금 — 우리가 먼저 낸 돈 */}
           <div className="card" style={{ marginTop: 18 }}>
             <div className="kbe-meta-h" style={{ marginTop: 0 }}>업체 미수금 (우리가 먼저 낸 돈)</div>
@@ -3408,10 +3548,17 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
                       <td><div className="cell-ttl">{a.teamName || teams.find((t) => t.id === a.teamId)?.name || "(이름없음)"}</div>
                         {a.byName && <div className="small" style={{ color: "var(--muted)" }}>{a.byName}</div>}</td>
                       <td className="small">{a.reason || "-"}</td>
-                      <td className="shrink num" style={{ fontWeight: 700, color: a.settled ? "var(--muted)" : "#B06A00" }}>{formatWon(a.amount)}</td>
+                      <td className="shrink num" style={{ fontWeight: 700, color: a.settled ? "var(--muted)" : "#B06A00" }}>
+                        {formatWon(a.amount)}
+                        {!a.settled && a.offsetAmount > 0 && (
+                          <div className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>
+                            {formatWon(a.offsetAmount)} 상계 · 남은 {formatWon(Math.max(0, a.amount - a.offsetAmount))}
+                          </div>
+                        )}
+                      </td>
                       <td className="shrink">
                         <button type="button" className={"chip" + (a.settled ? " on" : "")}
-                          title={a.settled ? "다시 미수금으로 되돌립니다" : "정산에서 뺐거나 돌려받았습니다"}
+                          title={a.settled ? "다시 미수금으로 되돌립니다" : "정산에서 빼지 않고 바로 닫습니다"}
                           onClick={() => toggleAdvance(a)}>{a.settled ? "회수됨" : "미회수"}</button>
                       </td>
                       <td className="shrink"><button type="button" className="cst-x" onClick={() => removeAdvance(a)}>✕</button></td>

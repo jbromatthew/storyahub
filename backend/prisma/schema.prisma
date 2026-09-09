@@ -775,13 +775,35 @@ model ErpConstructionAdvance {
   amount    Int       @default(0)
   reason    String    @default("") // 재료값 대납 · 선지급 …
   memo      String    @default("")
-  settled   Boolean   @default(false) // 정산에서 빼서 회수했다
+  offsetAmount Int    @default(0) // 정산에서 지금까지 빼서 회수한 금액
+  settled   Boolean   @default(false) // 다 회수했다 (금액이 다 찼거나 손으로 닫았거나)
   settledAt DateTime?
   byName    String    @default("")
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
   @@index([teamId, settled])
+  @@index([orderType])
+}
+
+/// 업체 정산 한 건 — 얼마를 정산했고, 그중 미수금을 얼마 빼고, 실제로 얼마를 보냈나.
+/// 여기 남는 자취가 곧 미수금 장부다.
+model ErpConstructionSettlement {
+  id        String   @id @default(cuid())
+  teamId    String
+  teamName  String   @default("")
+  orderType String   @default("아파트너")
+  date      String   @default("") // YYYY-MM-DD
+  gross     Int      @default(0) // 정산 대상액
+  offset    Int      @default(0) // 그중 미수금으로 뺀 금액
+  paid      Int      @default(0) // 실제로 보낸 금액
+  /// 어느 미수금에서 얼마를 뺐는지 — 지울 때 그대로 되돌린다
+  allocations Json   @default("[]") // [{advanceId, amount}]
+  memo      String   @default("")
+  byName    String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([teamId, date])
   @@index([orderType])
 }
 

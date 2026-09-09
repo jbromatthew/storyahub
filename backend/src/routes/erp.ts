@@ -2042,6 +2042,100 @@ erpRouter.delete("/construction/advances/:id", async (req: AuthedRequest, res) =
   res.json({ ok: true });
 });
 
+/* ── 업체 정산 — 미수금을 빼고 실제로 보낸 금액까지 남긴다 ── */
+
+erpRouter.get("/construction/settlements", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const orderType = String(req.query.orderType || "").trim();
+  const rows = await prisma.erpConstructionSettlement.findMany({
+    where: orderType ? { orderType } : {},
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    take: 500,
+  });
+  res.json(rows);
+});
+
+erpRouter.post("/construction/settlements", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const b = req.body ?? {};
+  const teamId = String(b.teamId ?? "").trim();
+  if (!teamId) return res.status(400).json({ error: "업체를 고르세요" });
+  const gross = Math.max(0, Math.floor(Number(b.gross) || 0));
+  const paid = Math.max(0, Math.floor(Number(b.paid) || 0));
+  let offset = Math.max(0, Math.floor(Number(b.offset) || 0));
+  if (!gross && !paid && !offset) return res.status(400).json({ error: "금액을 넣으세요" });
+
+  const orderType = String(b.orderType ?? "아파트너").trim().slice(0, 20);
+  const who = await prisma.user.findUnique({ where: { id: req.userId! }, select: { name: true, email: true } });
+
+  // 오래된 미수금부터 채워 나간다
+  const open = await prisma.erpConstructionAdvance.findMany({
+    where: { teamId, settled: false, orderType },
+    orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+  });
+  const allocations: Array<{ advanceId: string; amount: number }> = [];
+  let left = offset;
+  for (const a of open) {
+    if (left <= 0) break;
+    const room = Math.max(0, a.amount - a.offsetAmount);
+    if (room <= 0) continue;
+    const take = Math.min(room, left);
+    allocations.push({ advanceId: a.id, amount: take });
+    left -= take;
+  }
+  // 남은 미수금보다 많이 빼겠다고 하면 있는 만큼만 뺀다
+  offset -= left;
+
+  const row = await prisma.$transaction(async (tx) => {
+    for (const al of allocations) {
+      const cur = open.find((x) => x.id === al.advanceId)!;
+      const next = cur.offsetAmount + al.amount;
+      await tx.erpConstructionAdvance.update({
+        where: { id: al.advanceId },
+        data: {
+          offsetAmount: next,
+          settled: next >= cur.amount,
+          settledAt: next >= cur.amount ? new Date() : null,
+        },
+      });
+    }
+    return tx.erpConstructionSettlement.create({
+      data: {
+        teamId,
+        teamName: String(b.teamName ?? "").trim().slice(0, 80),
+        orderType,
+        date: String(b.date ?? "").trim().slice(0, 10),
+        gross, offset, paid,
+        allocations,
+        memo: String(b.memo ?? "").trim().slice(0, 500),
+        byName: who?.name || who?.email || "",
+      },
+    });
+  });
+  res.status(201).json(row);
+});
+
+/** 정산 기록을 지우면 빼놨던 미수금도 그대로 되돌린다 */
+erpRouter.delete("/construction/settlements/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const row = await prisma.erpConstructionSettlement.findUnique({ where: { id: req.params.id } });
+  if (!row) return res.status(404).json({ error: "정산 기록을 찾을 수 없습니다" });
+  const allocations = (row.allocations as Array<{ advanceId: string; amount: number }>) ?? [];
+  await prisma.$transaction(async (tx) => {
+    for (const al of allocations) {
+      const cur = await tx.erpConstructionAdvance.findUnique({ where: { id: al.advanceId } });
+      if (!cur) continue;
+      const next = Math.max(0, cur.offsetAmount - al.amount);
+      await tx.erpConstructionAdvance.update({
+        where: { id: cur.id },
+        data: { offsetAmount: next, settled: next >= cur.amount, settledAt: next >= cur.amount ? cur.settledAt : null },
+      });
+    }
+    await tx.erpConstructionSettlement.delete({ where: { id: row.id } });
+  });
+  res.json({ ok: true });
+});
+
 erpRouter.get("/construction/teams", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
   const [teams, quotes] = await Promise.all([
