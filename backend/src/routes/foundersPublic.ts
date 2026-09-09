@@ -424,13 +424,64 @@ foundersPublicRouter.get("/review/applies/:id/file/:kind", async (req: Request, 
 });
 
 /** BF2026-0001 */
-async function nextApplyNo(year: number): Promise<string> {
-  const prefix = `BF${year}-`;
-  const n = await prisma.erpFoundersApply.count({ where: { applyNo: { startsWith: prefix } } });
+/**
+ * 다음 접수번호. 건수를 세면 안 된다 — 중간에 한 건이라도 지워지면
+ * 이미 쓰인 번호를 다시 내주고, 유니크 제약에 걸려 접수가 통째로 막힌다.
+ * 지금 쓰이고 있는 가장 큰 번호 다음을 준다.
+ */
+async function nextNo(prefix: string): Promise<string> {
+  const last = await prisma.erpFoundersApply.findFirst({
+    where: { applyNo: { startsWith: prefix } },
+    orderBy: { applyNo: "desc" },
+    select: { applyNo: true },
+  });
+  const n = last ? Number(last.applyNo.slice(prefix.length)) || 0 : 0;
   return `${prefix}${String(n + 1).padStart(4, "0")}`;
 }
 
-foundersPublicRouter.post("/apply", async (req: Request, res: Response) => {
+async function nextApplyNo(year: number): Promise<string> {
+  return nextNo(`BF${year}-`);
+}
+
+/**
+ * express 4 는 async 핸들러가 터지면 아무 응답도 주지 않는다.
+ * 접수하는 쪽에서는 그게 「서버에 연결할 수 없습니다」로 보이고 한없이 기다린다.
+ * 무슨 일이 나든 답은 주게 감싼다.
+ */
+const guard =
+  (fn: (req: Request, res: Response) => Promise<unknown>) =>
+  async (req: Request, res: Response) => {
+    try {
+      await fn(req, res);
+    } catch (e) {
+      console.error("[founders]", (e as Error).message, e);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "접수 처리 중 문제가 생겼습니다. 잠시 후 다시 시도해 주세요." });
+      }
+    }
+  };
+
+/** 접수번호가 겹치면 다음 번호로 다시 시도한다 */
+async function createWithNo(
+  data: Record<string, unknown>,
+  firstNo: string,
+  passHash: string,
+  prefix: string,
+) {
+  let applyNo = firstNo;
+  for (let i = 0; i < 5; i++) {
+    try {
+      return await prisma.erpFoundersApply.create({ data: { ...data, applyNo, passHash } as never });
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code !== "P2002") throw e;
+      applyNo = await nextNo(prefix);
+    }
+  }
+  throw new Error("접수번호를 만들지 못했습니다");
+}
+
+foundersPublicRouter.post("/apply", guard(async (req: Request, res: Response) => {
   const round = await openRound();
   if (!round) return fail(res, "지금은 접수 기간이 아닙니다");
   const now = new Date();
@@ -540,14 +591,18 @@ foundersPublicRouter.post("/apply", async (req: Request, res: Response) => {
   const pw = String(b.password ?? "");
   const passHash = pw.length >= PW_MIN ? hashPw(pw) : draft?.passHash ?? dup?.passHash ?? "";
 
-  const row = dup
+  let row;
+  if (dup) {
     // 덮어쓰면 접수일도 그날로 옮긴다 — 마감을 따질 때 기준이 되는 것은
     // 지금 남아 있는 내용을 언제 냈는가다
-    ? await prisma.erpFoundersApply.update({
-        where: { id: dup.id },
-        data: { ...withSign, passHash, createdAt: now },
-      })
-    : await prisma.erpFoundersApply.create({ data: { ...withSign, applyNo, passHash } });
+    row = await prisma.erpFoundersApply.update({
+      where: { id: dup.id },
+      data: { ...withSign, passHash, createdAt: now },
+    });
+  } else {
+    // 둘이 같은 순간에 내면 같은 번호를 집을 수 있다 — 다음 번호로 몇 번 더 해본다
+    row = await createWithNo(withSign, applyNo, passHash, `BF${round.year}-`);
+  }
 
   if (draft) await prisma.erpFoundersDraft.delete({ where: { phone: repPhone } }).catch(() => {});
   pushFoundersRowSoon(row);
@@ -561,7 +616,7 @@ foundersPublicRouter.post("/apply", async (req: Request, res: Response) => {
     canResume: !!passHash,
     message: dup ? "기존 접수를 갱신했습니다" : "접수되었습니다",
   });
-});
+}));
 
 /**
  * 파일 첨부 — 접수 뒤에 이어서 올린다. 접수번호와 연락처가 맞아야 받는다.
@@ -659,7 +714,7 @@ foundersPublicRouter.get("/visitor/capacity", async (_req: Request, res: Respons
   });
 });
 
-foundersPublicRouter.post("/visitor", async (req: Request, res: Response) => {
+foundersPublicRouter.post("/visitor", guard(async (req: Request, res: Response) => {
   const round = await openRound();
   if (!round) return fail(res, "지금은 접수 기간이 아닙니다");
   const now = new Date();
@@ -715,7 +770,7 @@ foundersPublicRouter.post("/visitor", async (req: Request, res: Response) => {
 
   const row = dup
     ? await prisma.erpFoundersApply.update({ where: { id: dup.id }, data: withSign })
-    : await prisma.erpFoundersApply.create({ data: { ...withSign, applyNo } });
+    : await createWithNo(withSign, applyNo, "", `BV${round.year}-`);
   pushFoundersRowSoon(row);
   if (!dup) notifyFoundersApplySoon(round.id, "visitor");
 
@@ -729,11 +784,9 @@ foundersPublicRouter.post("/visitor", async (req: Request, res: Response) => {
     left,
     updated: !!dup,
   });
-});
+}));
 
 /** BV2026-0001 */
 async function nextVisitorNo(year: number): Promise<string> {
-  const prefix = `BV${year}-`;
-  const n = await prisma.erpFoundersApply.count({ where: { applyNo: { startsWith: prefix } } });
-  return `${prefix}${String(n + 1).padStart(4, "0")}`;
+  return nextNo(`BV${year}-`);
 }
