@@ -150,15 +150,26 @@ export default function AuthScreen({ onSuccess, erpMode = false }) {
             disabled={loading}
             style={{ width: "100%", padding: 15, fontSize: 15, marginTop: 4, opacity: loading ? 0.7 : 1 }}
           >
-            {loading ? "처리 중…" : mode === "register" ? "가입하고 7일 무료 체험" : "로그인"}
+            {loading ? "처리 중…"
+              : mode === "register" ? (erpMode ? "가입 신청" : "가입하고 7일 무료 체험")
+              : "로그인"}
           </button>
         </form>
 
-        <div className="small" style={{ textAlign: "center", marginTop: 16, lineHeight: 1.5 }}>
-          {mode === "register"
-            ? "가입하면 이용약관 및 개인정보처리방침에 동의하게 됩니다."
-            : "간편 로그인(카카오 등)은 곧 제공됩니다."}
-        </div>
+        {/* 회사 안에서 쓰는 곳이라 체험·요금 이야기를 하지 않는다 */}
+        {erpMode ? (
+          mode === "register" && (
+            <div className="small" style={{ textAlign: "center", marginTop: 16, lineHeight: 1.55 }}>
+              회사 메일로만 가입할 수 있고, 관리자 승인 후 이용할 수 있습니다.
+            </div>
+          )
+        ) : (
+          <div className="small" style={{ textAlign: "center", marginTop: 16, lineHeight: 1.5 }}>
+            {mode === "register"
+              ? "가입하면 이용약관 및 개인정보처리방침에 동의하게 됩니다."
+              : "간편 로그인(카카오 등)은 곧 제공됩니다."}
+          </div>
+        )}
       </div>
     </div>
   );
