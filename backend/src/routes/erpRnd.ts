@@ -188,7 +188,21 @@ erpRndRouter.get("/domains", async (_req: AuthedRequest, res) => {
   const domains = await prisma.erpRndDomain.findMany({
     orderBy: [{ sortIndex: "asc" }, { name: "asc" }],
   });
-  res.json({ domains, types: RND_TYPES, kinds: RND_KINDS, statuses: RND_STATUS });
+  // 담당자·기획자 고르개에 쓸 사람 목록 — 승인된 재직자만
+  const emps = await prisma.erpEmployee.findMany({
+    where: { status: "active", memberStatus: "approved", NOT: { name: null } },
+    select: { name: true, email: true },
+    orderBy: { name: "asc" },
+  });
+  const seen = new Set<string>();
+  const people: Array<{ name: string; email: string }> = [];
+  for (const e of emps) {
+    const nm = (e.name ?? "").trim();
+    if (!nm || seen.has(nm)) continue;
+    seen.add(nm);
+    people.push({ name: nm, email: (e.email ?? "").toLowerCase() });
+  }
+  res.json({ domains, types: RND_TYPES, kinds: RND_KINDS, statuses: RND_STATUS, people });
 });
 
 erpRndRouter.put("/domains", async (req: AuthedRequest, res) => {

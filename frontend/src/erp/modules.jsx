@@ -15847,6 +15847,11 @@ export function RndBacklogView() {
   };
   const [form, setForm] = useState(blank);
 
+  // 보통 올린 사람이 그 건을 물고 있다 — 담당자를 나로 채워두고, 바꿀 수 있게 둔다
+  useEffect(() => {
+    if (meName) setForm((p) => (p.ownerName ? p : { ...p, ownerName: meName }));
+  }, [meName]);
+
   // 조건을 손대면 빠른검색에서 벗어난 것으로 본다
   const setFf = (patch) => { setF((p) => ({ ...p, ...patch })); setActiveSeg(""); };
   const dirty = JSON.stringify(f) !== JSON.stringify(RND_BLANK_F);
@@ -15883,10 +15888,17 @@ export function RndBacklogView() {
   const types = meta?.types || [];
   const kinds = meta?.kinds || [];
   const statuses = meta?.statuses || [];
+  const people = meta?.people || [];   // 승인된 재직자 — 담당자·기획자 고르개
   const kindName = (k) => (kinds.find((x) => x.k === k) || {}).t || k;
   const statusName = (k) => (statuses.find((x) => x.k === k) || {}).t || k;
   const servicesOf = (name) => (domains.find((d) => d.name === name) || {}).services || [];
   const typeHint = (k) => (types.find((x) => x.k === k) || {}).desc || "";
+  // 예전에 손으로 적어둔 이름이나 퇴사자 이름이 목록에 없어도 지워지지 않게 함께 얹는다
+  const peopleWith = (cur) => {
+    const names = people.map((x) => x.name);
+    const v = (cur || "").trim();
+    return v && !names.includes(v) ? [v, ...names] : names;
+  };
   // 즐겨찾기는 사람마다 따로다 — 화면을 먼저 바꾸고 뒤에서 저장한다
   const toggleStar = async (t) => {
     const on = !t.star;
@@ -16027,7 +16039,8 @@ export function RndBacklogView() {
         try { await api.erpRndFileUpload(ticket.id, f); }
         catch (e) { notifyError(e); }
       }
-      setForm(blank); setPending([]); setShowNew(false); loadTickets();
+      // 다음 건도 보통 내가 문다 — 담당자를 다시 나로 채워둔다
+      setForm({ ...blank, ownerName: meName }); setPending([]); setShowNew(false); loadTickets();
       toastSuccess(pending.length ? `올렸어요 · 붙임 ${pending.length}개` : "올렸어요");
     } catch (e) { notifyError(e); } finally { setBusy(false); }
   };
@@ -16218,9 +16231,14 @@ export function RndBacklogView() {
               <input className="input" value={form.centerName} maxLength={80}
                 onChange={(e) => setForm({ ...form, centerName: e.target.value })} />
             </OaField>
-            <OaField label="담당자" hint="CXM · 세일즈">
-              <input className="input" value={form.ownerName} maxLength={40} placeholder={meName}
-                onChange={(e) => setForm({ ...form, ownerName: e.target.value })} />
+            <OaField label="담당자" hint="이 건을 물고 있는 사람 · 기본은 나">
+              <select className="input" value={form.ownerName}
+                onChange={(e) => setForm({ ...form, ownerName: e.target.value })}>
+                <option value="">선택 안 함</option>
+                {peopleWith(form.ownerName).map((n) => (
+                  <option key={n} value={n}>{n}{n === meName ? " (나)" : ""}</option>
+                ))}
+              </select>
             </OaField>
             <OaField label="유형 판단" hint={typeHint(form.cxmType) || "비워두면 RND가 정합니다"}>
               <select className="input" value={form.cxmType}
@@ -16517,9 +16535,14 @@ export function RndBacklogView() {
                   </select>
                 </OaField>
                 <OaField label={openTicket.kind === "qa" ? "담당자" : "기획자"}>
-                  <input className="input" defaultValue={openTicket.plannerName} maxLength={40}
-                    placeholder={openTicket.kind === "qa" ? "대응할 담당자" : "배정할 기획자"}
-                    onBlur={(e) => { if (e.target.value !== openTicket.plannerName) patch(openTicket.id, { plannerName: e.target.value }, "담당자를 배정했어요"); }} />
+                  <select className="input" value={openTicket.plannerName || ""}
+                    onChange={(e) => patch(openTicket.id, { plannerName: e.target.value },
+                      e.target.value ? "담당자를 배정했어요" : "담당자를 뗐어요")}>
+                    <option value="">{openTicket.kind === "qa" ? "대응할 담당자" : "배정할 기획자"}</option>
+                    {peopleWith(openTicket.plannerName).map((n) => (
+                      <option key={n} value={n}>{n}{n === meName ? " (나)" : ""}</option>
+                    ))}
+                  </select>
                 </OaField>
                 <OaField label="노션 티켓" hint="노션에 만든 티켓 주소">
                   <input className="input" defaultValue={openTicket.notionUrl} maxLength={300}
