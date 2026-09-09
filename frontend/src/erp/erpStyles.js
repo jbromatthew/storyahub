@@ -385,6 +385,11 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .cmb-drill:hover{color:var(--accent-deep);}
 .cmb-drill i{font-style:normal;color:var(--muted);font-size:13px;}
 .cmb-drill:hover i{color:var(--accent-deep);}
+/* 업체 미수금 — 정산할 때 얼마만 주면 되는지 */
+.cst-owed{margin-top:8px;padding:9px 12px;border-radius:9px;font-size:12.5px;line-height:1.6;
+  background:#FFF6E3;border:1px solid #F0DAA8;color:#7A5200;}
+.cst-owed b{font-weight:800;}
+.cst-owed b.net{color:#0D7A3E;font-size:13.5px;}
 .dash-matrix-table td.dash-matrix-cell{min-width:72px;}
 .dash-weekly-table td.dash-weekly-cell{min-width:64px;}
 .dash-weekly-cell .actual{font-weight:700;}

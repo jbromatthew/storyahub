@@ -1985,6 +1985,63 @@ function teamOut(t: any) {
 }
 
 // 협력업체(공사팀) 풀
+/* ── 업체 미수금 — 우리가 먼저 낸 돈. 정산에서 빼고 준다 ── */
+
+erpRouter.get("/construction/advances", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const orderType = String(req.query.orderType || "").trim();
+  const rows = await prisma.erpConstructionAdvance.findMany({
+    where: orderType ? { orderType } : {},
+    orderBy: [{ settled: "asc" }, { date: "desc" }, { createdAt: "desc" }],
+  });
+  res.json(rows);
+});
+
+erpRouter.post("/construction/advances", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const b = req.body ?? {};
+  const teamId = String(b.teamId ?? "").trim();
+  const amount = Math.max(0, Math.floor(Number(b.amount) || 0));
+  if (!teamId) return res.status(400).json({ error: "업체를 고르세요" });
+  if (!amount) return res.status(400).json({ error: "금액을 넣으세요" });
+  const who = await prisma.user.findUnique({ where: { id: req.userId! }, select: { name: true, email: true } });
+  const row = await prisma.erpConstructionAdvance.create({
+    data: {
+      teamId,
+      teamName: String(b.teamName ?? "").trim().slice(0, 80),
+      orderType: String(b.orderType ?? "아파트너").trim().slice(0, 20),
+      date: String(b.date ?? "").trim().slice(0, 10),
+      amount,
+      reason: String(b.reason ?? "").trim().slice(0, 100),
+      memo: String(b.memo ?? "").trim().slice(0, 500),
+      byName: who?.name || who?.email || "",
+    },
+  });
+  res.status(201).json(row);
+});
+
+erpRouter.patch("/construction/advances/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  const b = req.body ?? {};
+  const data: Record<string, unknown> = {};
+  if (b.amount !== undefined) data.amount = Math.max(0, Math.floor(Number(b.amount) || 0));
+  if (b.reason !== undefined) data.reason = String(b.reason).trim().slice(0, 100);
+  if (b.memo !== undefined) data.memo = String(b.memo).trim().slice(0, 500);
+  if (b.date !== undefined) data.date = String(b.date).trim().slice(0, 10);
+  if (b.settled !== undefined) {
+    data.settled = b.settled === true;
+    data.settledAt = b.settled === true ? new Date() : null;
+  }
+  const row = await prisma.erpConstructionAdvance.update({ where: { id: req.params.id }, data });
+  res.json(row);
+});
+
+erpRouter.delete("/construction/advances/:id", async (req: AuthedRequest, res) => {
+  if (!(await requireOwner(req, res))) return;
+  await prisma.erpConstructionAdvance.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
 erpRouter.get("/construction/teams", async (req: AuthedRequest, res) => {
   if (!(await requireOwner(req, res))) return;
   const [teams, quotes] = await Promise.all([

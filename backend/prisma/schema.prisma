@@ -765,6 +765,26 @@ model ErpConstructionTeam {
   createdAt   DateTime @default(now())
 }
 
+/// 업체 미수금 — 우리가 먼저 낸 돈(선지급·재료값 대납). 정산할 때 빼고 준다.
+model ErpConstructionAdvance {
+  id        String    @id @default(cuid())
+  teamId    String
+  teamName  String    @default("")
+  orderType String    @default("아파트너")
+  date      String    @default("") // YYYY-MM-DD
+  amount    Int       @default(0)
+  reason    String    @default("") // 재료값 대납 · 선지급 …
+  memo      String    @default("")
+  settled   Boolean   @default(false) // 정산에서 빼서 회수했다
+  settledAt DateTime?
+  byName    String    @default("")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([teamId, settled])
+  @@index([orderType])
+}
+
 model ErpConstructionStock {
   id        String                     @id @default(cuid())
   name      String

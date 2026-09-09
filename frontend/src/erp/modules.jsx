@@ -2304,6 +2304,8 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
   const [quotes, setQuotes] = useState([]);
   const [teams, setTeams] = useState([]);
   const [stocks, setStocks] = useState([]);
+  const [advances, setAdvances] = useState([]);   // 업체 미수금
+  const [advForm, setAdvForm] = useState({ teamId: "", date: "", amount: 0, reason: "" });
   const [stockForm, setStockForm] = useState({ name: "", unit: "개", date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date()), qty: "", unitPrice: "", vatSeparate: true });
   const [moveFor, setMoveFor] = useState(null); // {stockId, kind} 입출고 입력 대상
   const [moveForm, setMoveForm] = useState({ date: "", qty: "", unitPrice: "", vatSeparate: true, memo: "" });
@@ -2321,10 +2323,46 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
   const [qTo, setQTo] = useState("");
 
   const load = () => {
-    Promise.all([api.erpConstructionItems(), api.erpConstructionApartments(), api.erpConstructionQuotes(), api.erpConstructionTeams().catch(() => []), api.erpConstructionStocks().catch(() => [])])
-      .then(([i, a, q, tm, st]) => { setItems(i); setApts(a); setQuotes(q); setTeams(tm); setStocks(st); })
+    Promise.all([api.erpConstructionItems(), api.erpConstructionApartments(), api.erpConstructionQuotes(), api.erpConstructionTeams().catch(() => []), api.erpConstructionStocks().catch(() => []), api.erpConstructionAdvances().catch(() => [])])
+      .then(([i, a, q, tm, st, ad]) => { setItems(i); setApts(a); setQuotes(q); setTeams(tm); setStocks(st); setAdvances(ad); })
       .catch(notifyError)
       .finally(() => setLoading(false));
+  };
+
+  // ---- 업체 미수금 ----
+  const typedAdvances = useMemo(
+    () => advances.filter((a) => (a.orderType || "아파트너") === orderType),
+    [advances, orderType]);
+
+  const addAdvance = async () => {
+    if (!advForm.teamId) return notifyError(new Error("업체를 고르세요"));
+    if (!cstNum(advForm.amount)) return notifyError(new Error("금액을 넣으세요"));
+    try {
+      const row = await api.erpConstructionCreateAdvance({
+        ...advForm,
+        amount: cstNum(advForm.amount),
+        teamName: teams.find((t) => t.id === advForm.teamId)?.name || "",
+        orderType,
+      });
+      setAdvances((p) => [row, ...p]);
+      setAdvForm({ teamId: "", date: "", amount: 0, reason: "" });
+      toastSuccess("미수금을 적어뒀어요");
+    } catch (e) { notifyError(e); }
+  };
+
+  const toggleAdvance = async (a) => {
+    try {
+      const row = await api.erpConstructionUpdateAdvance(a.id, { settled: !a.settled });
+      setAdvances((p) => p.map((x) => (x.id === a.id ? row : x)));
+    } catch (e) { notifyError(e); }
+  };
+
+  const removeAdvance = async (a) => {
+    if (!window.confirm(`${a.teamName} ${formatWon(a.amount)} 미수금을 지웁니다.`)) return;
+    try {
+      await api.erpConstructionDeleteAdvance(a.id);
+      setAdvances((p) => p.filter((x) => x.id !== a.id));
+    } catch (e) { notifyError(e); }
   };
 
   // ---- 재고 ----
@@ -2374,19 +2412,41 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
   const today = new Date();
   const [cstCalYm, setCstCalYm] = useState({ y: today.getFullYear(), m: today.getMonth() + 1 });
   const [cstCalDay, setCstCalDay] = useState(null);
+  // 업체별 남은 미수금 (아직 정산에서 빼지 않은 것)
+  const advanceByTeam = useMemo(() => {
+    const map = new Map();
+    for (const a of advances) {
+      if (a.settled) continue;
+      if ((a.orderType || "아파트너") !== orderType) continue;
+      map.set(a.teamId, (map.get(a.teamId) || 0) + (a.amount || 0));
+    }
+    return map;
+  }, [advances, orderType]);
+  const advanceOf = (teamId) => advanceByTeam.get(teamId) || 0;
+
   const teamPayoutSummary = useMemo(() => {
     const map = new Map();
     for (const q of typedQuotes) {
       for (const p of (q.payouts || [])) {
         const key = p.teamId || p.teamName;
-        const cur = map.get(key) || { name: p.teamName || "(이름없음)", total: 0, paid: 0, unpaid: 0 };
+        const cur = map.get(key) || { id: p.teamId || "", name: p.teamName || "(이름없음)", total: 0, paid: 0, unpaid: 0 };
         cur.total += p.amount || 0;
         if (p.paid) cur.paid += p.amount || 0; else cur.unpaid += p.amount || 0;
         map.set(key, cur);
       }
     }
-    return [...map.values()].sort((a, b) => b.unpaid - a.unpaid);
-  }, [typedQuotes]);
+    // 지급할 건 없어도 미수금만 남은 업체가 있을 수 있다 — 빠뜨리지 않는다
+    for (const [teamId, amount] of advanceByTeam) {
+      if (!amount || map.has(teamId)) continue;
+      map.set(teamId, { id: teamId, name: teams.find((t) => t.id === teamId)?.name || "(이름없음)", total: 0, paid: 0, unpaid: 0 });
+    }
+    return [...map.values()]
+      .map((t) => {
+        const owed = advanceOf(t.id);
+        return { ...t, owed, net: Math.max(0, t.unpaid - owed), leftOwed: Math.max(0, owed - t.unpaid) };
+      })
+      .sort((a, b) => b.unpaid - a.unpaid || b.owed - a.owed);
+  }, [typedQuotes, advanceByTeam, teams]); // eslint-disable-line
   useEffect(() => { load(); }, []);
 
   // 리스트에서 개소 수 바로 입력 (blur 시 저장)
@@ -2854,10 +2914,31 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
               {(() => {
                 const sum = editing.payouts.reduce((a, p) => a + cstNum(p.amount), 0);
                 const unpaid = editing.payouts.reduce((a, p) => a + (p.paid ? 0 : cstNum(p.amount)), 0);
+                // 이 견적에 붙은 팀 중 미수금이 남은 곳 — 얼마만 주면 되는지 바로 보여준다
+                const owing = [];
+                for (const p of editing.payouts) {
+                  if (p.paid || !p.teamId) continue;
+                  const owed = advanceOf(p.teamId);
+                  if (!owed) continue;
+                  const give = cstNum(p.amount);
+                  owing.push({
+                    name: p.teamName || teams.find((t) => t.id === p.teamId)?.name || "업체",
+                    owed, give, net: Math.max(0, give - owed), left: Math.max(0, owed - give),
+                  });
+                }
                 return (
-                  <div className="small" style={{ marginTop: 8, fontWeight: 700 }}>
-                    지급 합계 <strong>{formatWon(sum)}</strong> · 미지급 <strong style={{ color: "var(--accent-deep)" }}>{formatWon(unpaid)}</strong>
-                  </div>
+                  <>
+                    <div className="small" style={{ marginTop: 8, fontWeight: 700 }}>
+                      지급 합계 <strong>{formatWon(sum)}</strong> · 미지급 <strong style={{ color: "var(--accent-deep)" }}>{formatWon(unpaid)}</strong>
+                    </div>
+                    {owing.map((o, i) => (
+                      <div key={i} className="cst-owed">
+                        <b>{o.name}</b> 미수금 <b>{formatWon(o.owed)}</b>이 남아 있습니다.
+                        {" "}이번 {formatWon(o.give)}에서 빼면 <b className="net">{formatWon(o.net)}</b>만 주면 됩니다.
+                        {o.left > 0 && <> 그래도 <b>{formatWon(o.left)}</b>은 더 받아야 합니다.</>}
+                      </div>
+                    ))}
+                  </>
                 );
               })()}
             </>
@@ -3250,29 +3331,96 @@ export function ConstructionView({ orderType = "아파트너" } = {}) {
             아파트너 공사 정산에서 각 공사팀에 지급할 금액을 집계합니다. 업체(공사팀) 등록·사업자 정보·직원은 왼쪽 메뉴 <strong>업체 관리</strong>에서 관리하세요.
           </div>
 
-          <div className="cst-summary" style={{ gridTemplateColumns: "repeat(2,1fr)" }}>
+          <div className="cst-summary" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
             <div className="cst-sum-card unsettled"><div className="lbl">팀에 줄 미지급 총액</div><div className="val">{formatWon(teamPayoutSummary.reduce((a, t) => a + t.unpaid, 0))}</div></div>
+            <div className="cst-sum-card"><div className="lbl">받을 미수금 총액</div>
+              <div className="val" style={{ color: "#B06A00" }}>{formatWon(teamPayoutSummary.reduce((a, t) => a + t.owed, 0))}</div></div>
             <div className="cst-sum-card settled"><div className="lbl">지급 완료 총액</div><div className="val">{formatWon(teamPayoutSummary.reduce((a, t) => a + t.paid, 0))}</div></div>
           </div>
 
-          <div className="erp-tbl-cap"><span className="cnt">팀별 지급 현황</span></div>
+          <div className="erp-tbl-cap"><span className="cnt">팀별 지급 현황</span>
+            <span className="small" style={{ color: "var(--muted)" }}>미수금을 뺀 실지급액까지</span></div>
           <div className="erp-tbl-wrap">
             <table className="erp-tbl">
               <thead>
-                <tr><th>공사팀</th><th className="shrink num">총 정산액</th><th className="shrink num">지급 완료</th><th className="shrink num">미지급</th></tr>
+                <tr><th>공사팀</th><th className="shrink num">총 정산액</th><th className="shrink num">지급 완료</th>
+                  <th className="shrink num">미지급</th><th className="shrink num">− 미수금</th><th className="shrink num">= 실지급액</th></tr>
               </thead>
               <tbody>
                 {teamPayoutSummary.map((t, i) => (
                   <tr key={i}>
-                    <td><div className="cell-ttl">{t.name}</div></td>
+                    <td><div className="cell-ttl">{t.name}</div>
+                      {t.leftOwed > 0 && (
+                        <div className="small" style={{ color: "#B06A00" }}>
+                          다 빼고도 {formatWon(t.leftOwed)} 더 받아야 합니다
+                        </div>
+                      )}
+                    </td>
                     <td className="shrink num">{formatWon(t.total)}</td>
                     <td className="shrink num" style={{ color: "#0D7A3E" }}>{formatWon(t.paid)}</td>
-                    <td className="shrink num" style={{ fontWeight: 800, color: t.unpaid > 0 ? "var(--accent-deep)" : "#0D7A3E" }}>{t.unpaid > 0 ? formatWon(t.unpaid) : "완료"}</td>
+                    <td className="shrink num" style={{ color: t.unpaid > 0 ? "var(--accent-deep)" : "#0D7A3E" }}>{t.unpaid > 0 ? formatWon(t.unpaid) : "완료"}</td>
+                    <td className="shrink num" style={{ color: t.owed > 0 ? "#B06A00" : "var(--muted)" }}>{t.owed > 0 ? `−${formatWon(t.owed)}` : "-"}</td>
+                    <td className="shrink num" style={{ fontWeight: 800, color: t.net > 0 ? "var(--accent-deep)" : "#0D7A3E" }}>
+                      {t.unpaid > 0 ? formatWon(t.net) : "완료"}</td>
                   </tr>
                 ))}
-                {!teamPayoutSummary.length && <tr><td colSpan={4} className="erp-tbl-empty">정산할 공사팀 지급 내역이 없습니다. 견적의 팀 정산에서 배분하면 여기에 집계됩니다.</td></tr>}
+                {!teamPayoutSummary.length && <tr><td colSpan={6} className="erp-tbl-empty">정산할 공사팀 지급 내역이 없습니다. 견적의 팀 정산에서 배분하면 여기에 집계됩니다.</td></tr>}
               </tbody>
             </table>
+          </div>
+
+          {/* 업체 미수금 — 우리가 먼저 낸 돈 */}
+          <div className="card" style={{ marginTop: 18 }}>
+            <div className="kbe-meta-h" style={{ marginTop: 0 }}>업체 미수금 (우리가 먼저 낸 돈)</div>
+            <div className="small" style={{ color: "var(--muted)", margin: "6px 0 12px", lineHeight: 1.55 }}>
+              선지급하거나 재료값을 대신 사준 돈을 업체별로 적어 두세요.
+              정산할 때 <strong>미지급액에서 자동으로 빼서</strong> 실지급액을 보여줍니다.
+              돈을 실제로 회수했거나 정산에서 뺐다면 <strong>회수</strong>로 넘기면 됩니다.
+            </div>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+              <select value={advForm.teamId}
+                onChange={(e) => setAdvForm({ ...advForm, teamId: e.target.value })}
+                style={{ flex: "1 1 140px", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff" }}>
+                <option value="">업체 선택 *</option>
+                {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <input type="date" value={advForm.date} onChange={(e) => setAdvForm({ ...advForm, date: e.target.value })}
+                style={{ flex: "0 0 150px", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13 }} />
+              <input inputMode="numeric" value={advForm.amount ? cstNum(advForm.amount).toLocaleString() : ""}
+                onChange={(e) => setAdvForm({ ...advForm, amount: cstNum(e.target.value) })} placeholder="금액 *"
+                style={{ flex: "0 0 120px", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13, textAlign: "right" }} />
+              <input value={advForm.reason} onChange={(e) => setAdvForm({ ...advForm, reason: e.target.value })}
+                placeholder="사유 (재료값 대납 · 선지급 …)"
+                style={{ flex: "1 1 180px", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", fontSize: 13 }} />
+              <button type="button" className="btn btn-accent btn-sm" onClick={addAdvance}>+ 등록</button>
+            </div>
+
+            <div className="erp-tbl-wrap">
+              <table className="erp-tbl">
+                <thead>
+                  <tr><th className="shrink">날짜</th><th>업체</th><th>사유</th>
+                    <th className="shrink num">금액</th><th className="shrink">상태</th><th className="shrink"></th></tr>
+                </thead>
+                <tbody>
+                  {typedAdvances.map((a) => (
+                    <tr key={a.id} style={{ opacity: a.settled ? 0.55 : 1 }}>
+                      <td className="shrink small">{a.date || "-"}</td>
+                      <td><div className="cell-ttl">{a.teamName || teams.find((t) => t.id === a.teamId)?.name || "(이름없음)"}</div>
+                        {a.byName && <div className="small" style={{ color: "var(--muted)" }}>{a.byName}</div>}</td>
+                      <td className="small">{a.reason || "-"}</td>
+                      <td className="shrink num" style={{ fontWeight: 700, color: a.settled ? "var(--muted)" : "#B06A00" }}>{formatWon(a.amount)}</td>
+                      <td className="shrink">
+                        <button type="button" className={"chip" + (a.settled ? " on" : "")}
+                          title={a.settled ? "다시 미수금으로 되돌립니다" : "정산에서 뺐거나 돌려받았습니다"}
+                          onClick={() => toggleAdvance(a)}>{a.settled ? "회수됨" : "미회수"}</button>
+                      </td>
+                      <td className="shrink"><button type="button" className="cst-x" onClick={() => removeAdvance(a)}>✕</button></td>
+                    </tr>
+                  ))}
+                  {!typedAdvances.length && <tr><td colSpan={6} className="erp-tbl-empty">등록된 미수금이 없습니다.</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}
