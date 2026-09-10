@@ -59,6 +59,7 @@ export const RND_KINDS = [
     flow: ["filed", "triaged", "backlog", "planned", "replied", "shared", "dev", "done"] },
 ];
 const KIND_KEYS = RND_KINDS.map((k) => k.k);
+const KIND_KO = Object.fromEntries(RND_KINDS.map((k) => [k.k, k.t]));
 
 /** 티켓 대응 플로우의 단계들. 반려·보류는 어디서든 갈 수 있다. */
 export const RND_STATUS = [
@@ -334,10 +335,36 @@ erpRndRouter.patch("/tickets/:id", async (req: AuthedRequest, res) => {
     push("notionUrl", cur.notionUrl, v);
   }
   if (b.rejectNote !== undefined) data.rejectNote = str(b.rejectNote, 1000);
-  for (const f of ["title", "body", "service", "centerName", "vipNote"] as const) {
-    if (b[f] !== undefined) data[f] = str(b[f], f === "body" ? 4000 : 200);
+
+  // 올린 내용을 고치는 것도 자취에 남긴다 — 무엇이 어떻게 바뀌었는지 나중에 따질 수 있게
+  if (b.domain !== undefined) {
+    const v = str(b.domain, 40);
+    if (!v) return fail(res, "도메인을 선택하세요");
+    data.domain = v;
+    push("domain", cur.domain, v);
   }
-  if (b.vip !== undefined) data.vip = !!b.vip;
+  if (b.kind !== undefined) {
+    const v = str(b.kind, 20);
+    if (!KIND_KEYS.includes(v)) return fail(res, "티켓 구분을 선택하세요");
+    data.kind = v;
+    push("kind", KIND_KO[cur.kind] ?? cur.kind, KIND_KO[v] ?? v);
+  }
+  const FIELD_KO: Record<string, string> = {
+    title: "제목", body: "내용", service: "세부서비스", centerName: "요청 센터", vipNote: "VIP 정보",
+  };
+  for (const f of ["title", "body", "service", "centerName", "vipNote"] as const) {
+    if (b[f] === undefined) continue;
+    const v = str(b[f], f === "body" ? 4000 : 200);
+    if (f === "title" && !v) return fail(res, "제목을 입력하세요");
+    data[f] = v;
+    // 내용은 통째로 자취에 담으면 읽기 어렵다 — 앞머리만 남긴다
+    const cut = (x: string) => (x.length > 60 ? `${x.slice(0, 60)}…` : x);
+    push(FIELD_KO[f] ?? f, cut(cur[f] ?? ""), cut(v));
+  }
+  if (b.vip !== undefined) {
+    data.vip = !!b.vip;
+    push("VIP", cur.vip ? "VIP" : "일반", b.vip ? "VIP" : "일반");
+  }
 
   const t = await prisma.erpRndTicket.update({ where: { id }, data });
   if (logs.length) {
@@ -350,7 +377,8 @@ erpRndRouter.patch("/tickets/:id", async (req: AuthedRequest, res) => {
       const what = head.field === "status" ? `${head.before} → ${head.after}`
         : head.field === "planner" ? `기획자 ${head.after || "해제"}`
         : head.field === "rndType" ? `유형 ${head.after || "해제"}`
-        : `${head.before || "없음"} → ${head.after || "없음"}`;
+        : head.field === "제목" || head.field === "내용" ? `${head.field}을(를) 고쳤습니다`
+        : `${head.field} ${head.before || "없음"} → ${head.after || "없음"}`;
       await notifyUser(cur.authorId, {
         module: "rnd",
         title: `#${id} ${what}`,

@@ -390,6 +390,10 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
   background:#FFF6E3;border:1px solid #F0DAA8;color:#7A5200;}
 .cst-owed b{font-weight:800;}
 .cst-owed b.net{color:#0D7A3E;font-size:13.5px;}
+/* RND 백로그 — 올린 내용 고치기 */
+.rnd-edit{padding:14px;border:1px solid var(--accent);border-radius:11px;
+  background:var(--accent-soft,#FBEAE1);margin-bottom:14px}
+.rnd-edit .input{background:var(--card,#fff)}
 .dash-matrix-table td.dash-matrix-cell{min-width:72px;}
 .dash-weekly-table td.dash-weekly-cell{min-width:64px;}
 .dash-weekly-cell .actual{font-weight:700;}

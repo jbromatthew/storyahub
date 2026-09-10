@@ -16141,6 +16141,7 @@ export function RndBacklogView() {
   const [upBusy, setUpBusy] = useState(false);
   const [sel, setSel] = useState(new Set());    // 엑셀로 뽑을 것들
   const [sort, setSort] = useState({ key: "createdAt", dir: "desc" });
+  const [edit, setEdit] = useState(null);       // 올린 내용 고치는 중
 
   const blank = {
     domain: "", service: "", kind: "request", title: "", body: "",
@@ -16193,6 +16194,32 @@ export function RndBacklogView() {
   const kindName = (k) => (kinds.find((x) => x.k === k) || {}).t || k;
   const statusName = (k) => (statuses.find((x) => x.k === k) || {}).t || k;
   const servicesOf = (name) => (domains.find((d) => d.name === name) || {}).services || [];
+  const startEdit = (t) => setEdit({
+    domain: t.domain || "", service: t.service || "", kind: t.kind,
+    title: t.title || "", body: t.body || "",
+    centerName: t.centerName || "", ownerName: t.ownerName || "",
+    cxmType: t.cxmType || "", vip: !!t.vip, vipNote: t.vipNote || "",
+  });
+
+  // 바뀐 칸만 보낸다 — 손대지 않은 것까지 자취에 남기지 않으려고
+  const saveEdit = async () => {
+    if (!openTicket || !edit) return;
+    if (!edit.title.trim()) { toastError("제목을 입력하세요"); return; }
+    const body = {};
+    for (const k of Object.keys(edit)) {
+      const was = k === "vip" ? !!openTicket.vip : (openTicket[k] ?? "");
+      if (edit[k] !== was) body[k] = edit[k];
+    }
+    if (!Object.keys(body).length) { setEdit(null); return; }
+    setBusy(true);
+    try {
+      await api.erpRndTicketUpdate(openTicket.id, body);
+      setEdit(null);
+      loadTickets();
+      toastSuccess("고쳤어요");
+    } catch (e) { notifyError(e); } finally { setBusy(false); }
+  };
+
   const typeHint = (k) => (types.find((x) => x.k === k) || {}).desc || "";
   // 예전에 손으로 적어둔 이름이나 퇴사자 이름이 목록에 없어도 지워지지 않게 함께 얹는다
   const peopleWith = (cur) => {
@@ -16269,6 +16296,7 @@ export function RndBacklogView() {
   });
 
   const openTicket = tickets.find((t) => t.id === openId) || null;
+  useEffect(() => { setEdit(null); }, [openId]);
 
   // 고를 수 있는 값은 지금 불러온 것에서 뽑는다
   const pickList = (fn) => [...new Set(tickets.map(fn).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko"));
@@ -16772,9 +16800,106 @@ export function RndBacklogView() {
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpenId(null)}>닫기</button>
             </div>
             <div className="rnd-modal-body">
-              <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-.02em", marginBottom: 10 }}>
-                {openTicket.vip && <span className="tag accent" style={{ marginRight: 8 }}>VIP</span>}
-                {openTicket.title}
+              {edit ? (
+                /* 올린 내용 고치기 — 바뀐 것만 저장하고 자취에 남는다 */
+                <div className="rnd-edit">
+                  <div className="oa-form">
+                    <OaField label="도메인">
+                      <select className="input" value={edit.domain}
+                        onChange={(e) => setEdit({ ...edit, domain: e.target.value, service: "" })}>
+                        {!domains.some((d) => d.name === edit.domain) && edit.domain && (
+                          <option value={edit.domain}>{edit.domain}</option>
+                        )}
+                        {domains.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+                      </select>
+                    </OaField>
+                    <OaField label="세부서비스">
+                      <select className="input" value={edit.service}
+                        onChange={(e) => setEdit({ ...edit, service: e.target.value })}>
+                        <option value="">선택 안 함</option>
+                        {!servicesOf(edit.domain).includes(edit.service) && edit.service && (
+                          <option value={edit.service}>{edit.service}</option>
+                        )}
+                        {servicesOf(edit.domain).map((x) => <option key={x} value={x}>{x}</option>)}
+                      </select>
+                    </OaField>
+                    <OaField label="티켓 구분" hint={(kinds.find((k) => k.k === edit.kind) || {}).desc}>
+                      <select className="input" value={edit.kind}
+                        onChange={(e) => setEdit({ ...edit, kind: e.target.value })}>
+                        {kinds.map((k) => <option key={k.k} value={k.k}>{k.t} — {k.desc}</option>)}
+                      </select>
+                    </OaField>
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <OaField label="제목">
+                      <input className="input" value={edit.title} maxLength={200} autoFocus
+                        onChange={(e) => setEdit({ ...edit, title: e.target.value })} />
+                    </OaField>
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <OaField label="내용">
+                      <textarea className="input" rows={8} value={edit.body} maxLength={4000}
+                        onChange={(e) => setEdit({ ...edit, body: e.target.value })} />
+                    </OaField>
+                  </div>
+                  <div className="oa-form" style={{ marginTop: 12 }}>
+                    <OaField label="요청 센터">
+                      <input className="input" value={edit.centerName} maxLength={80}
+                        onChange={(e) => setEdit({ ...edit, centerName: e.target.value })} />
+                    </OaField>
+                    <OaField label="담당자">
+                      <select className="input" value={edit.ownerName}
+                        onChange={(e) => setEdit({ ...edit, ownerName: e.target.value })}>
+                        <option value="">선택 안 함</option>
+                        {peopleWith(edit.ownerName).map((n) => (
+                          <option key={n} value={n}>{n}{n === meName ? " (나)" : ""}</option>
+                        ))}
+                      </select>
+                    </OaField>
+                    <OaField label="유형 판단" hint={typeHint(edit.cxmType)}>
+                      <select className="input" value={edit.cxmType}
+                        onChange={(e) => setEdit({ ...edit, cxmType: e.target.value })}>
+                        <option value="">선택 안 함</option>
+                        {[1, 2, 3].map((r) => (
+                          <optgroup key={r} label={`${r}순위`}>
+                            {types.filter((x) => x.rank === r).map((x) => (
+                              <option key={x.k} value={x.k}>{x.k} — {x.desc}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </OaField>
+                  </div>
+                  <div className="row" style={{ gap: 10, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+                    <label className="small row" style={{ gap: 6, alignItems: "center", cursor: "pointer" }}>
+                      <input type="checkbox" checked={edit.vip}
+                        onChange={(e) => setEdit({ ...edit, vip: e.target.checked })} />
+                      VIP 센터
+                    </label>
+                    {edit.vip && (
+                      <input className="input" style={{ flex: 1, minWidth: 180 }} placeholder="VIP 정보"
+                        value={edit.vipNote} maxLength={200}
+                        onChange={(e) => setEdit({ ...edit, vipNote: e.target.value })} />
+                    )}
+                  </div>
+                  <div className="row" style={{ gap: 8, marginTop: 14 }}>
+                    <button type="button" className="btn btn-accent btn-sm" disabled={busy}
+                      onClick={saveEdit}>저장</button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEdit(null)}>취소</button>
+                    <span className="small muted" style={{ marginLeft: "auto" }}>
+                      바뀐 것만 「지나온 자취」에 남습니다
+                    </span>
+                  </div>
+                </div>
+              ) : (
+              <>
+              <div className="row" style={{ gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
+                <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-.02em", flex: 1, minWidth: 0 }}>
+                  {openTicket.vip && <span className="tag accent" style={{ marginRight: 8 }}>VIP</span>}
+                  {openTicket.title}
+                </div>
+                <button type="button" className="btn btn-ghost btn-sm" style={{ flex: "0 0 auto" }}
+                  onClick={() => startEdit(openTicket)}>✎ 고치기</button>
               </div>
               {openTicket.body && (
                 <div className="small" style={{ whiteSpace: "pre-wrap", lineHeight: 1.75, marginBottom: 14 }}>{openTicket.body}</div>
@@ -16792,6 +16917,8 @@ export function RndBacklogView() {
                     : <i>-</i>}
                 </b></div>
               </div>
+              </>
+              )}
 
               <div className="cc-sec">붙임 {(openTicket.files || []).length ? `${openTicket.files.length}개` : ""}</div>
               {!!(openTicket.files || []).length && (
