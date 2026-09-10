@@ -1,6 +1,7 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { prisma } from "../db.js";
+import { notifySmartStoreApplySoon } from "../services/smartStoreNotify.js";
 import { env } from "../env.js";
 
 /** 무계정 공개 라우트 — 고객이 스마트상점 가이드에서 접수 정보를 직접 제출.
@@ -125,16 +126,22 @@ smartStorePublicRouter.post("/apply", async (req, res) => {
   /* 두 단계 모두 기존 건을 먼저 찾는다. 연락처가 고유 키라 그쪽을 우선 보고,
      없으면 사업자번호로 찾는다 — 같은 센터가 다른 번호로 다시 적어도 새 행이 생기지 않게. */
   const bizInput = normalizeBizNo(text(b.bizNo, 30));
-  let existing: { id: string; phone: string } | null = null;
+  // stage 는 알림에 쓴다 — 리드였던 분이 신청완료로 올라선 것만 새 소식이라서
+  let existing: { id: string; phone: string; stage: string } | null = null;
   if (phone.length >= 9) {
     existing = await prisma.erpSmartStoreApply.findUnique({
       where: { roundId_phone: { roundId: r.id, phone } },
-      select: { id: true, phone: true },
+      select: { id: true, phone: true, stage: true },
     });
   }
   if (!existing && bizInput) {
     const byBiz = await findByBizNo(r.id, bizInput);
-    if (byBiz) existing = { id: byBiz.id, phone: byBiz.phone };
+    if (byBiz) {
+      const cur = await prisma.erpSmartStoreApply.findUnique({
+        where: { id: byBiz.id }, select: { stage: true },
+      });
+      existing = { id: byBiz.id, phone: byBiz.phone, stage: cur?.stage ?? "" };
+    }
   }
   if (!existing && phone.length < 9) {
     return res.status(400).json({ error: "연락처를 정확히 입력해 주세요" });
@@ -188,12 +195,25 @@ smartStorePublicRouter.post("/apply", async (req, res) => {
   if (APPLY_TYPES.has(priorTypeRaw)) data.priorType = priorTypeRaw;
   if (typeof b.hasPrior === "boolean") data.hasPrior = b.hasPrior;
 
+  let row;
+  let event: "lead" | "done" | null = null;
   if (existing) {
     // 사업자번호로 찾은 건이면 연락처가 바뀌었을 수 있다. 위에서 이미 비어 있음을 확인한 번호라 충돌하지 않는다.
     if (phone.length >= 9 && phone !== existing.phone) data.phone = phone;
-    await prisma.erpSmartStoreApply.update({ where: { id: existing.id }, data });
+    row = await prisma.erpSmartStoreApply.update({ where: { id: existing.id }, data });
+    // 이미 낸 사람이 같은 내용을 다시 낸 것은 알리지 않는다.
+    // 리드였던 분이 스마트상점 ID까지 내신 것만 새 소식이다.
+    if (existing.stage !== "done" && row.stage === "done") event = "done";
   } else {
-    await prisma.erpSmartStoreApply.create({ data: { roundId: r.id, phone, ...data } });
+    row = await prisma.erpSmartStoreApply.create({ data: { roundId: r.id, phone, ...data } });
+    event = row.stage === "done" ? "done" : "lead";
+  }
+
+  if (event) {
+    notifySmartStoreApplySoon(r.id, event, {
+      centerName: row.centerName, industry: row.industry, isCustomer: row.isCustomer,
+      source: row.source, sourceDetail: row.sourceDetail, storeId: row.storeId,
+    });
   }
 
   res.json({ ok: true, message: "접수 정보가 전달되었습니다" });
