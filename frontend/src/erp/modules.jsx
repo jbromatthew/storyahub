@@ -6911,6 +6911,9 @@ function SourceCell({ value, active, onFilter, onSave }) {
 
 /** 세부채널 셀 — 칩을 누르면 그 채널만 걸러 보고, 연필을 누르면 고친다.
  *  잘못 눌러 값이 바뀌는 일이 없도록 저장 직전에 무엇이 어떻게 바뀌는지 확인받는다. */
+/** 세부채널을 아직 안 정한 건을 가리키는 표식. 사람이 적을 수 없는 값이라야 한다. */
+const SS_NO_DETAIL = "__none__";
+
 function SourceDetailCell({ value, options, active, onFilter, onSave }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value || "");
@@ -6950,7 +6953,9 @@ function SourceDetailCell({ value, options, active, onFilter, onSave }) {
         ? <button type="button" onClick={onFilter} className="tag" title="이 채널만 보기"
             style={{ background: active ? "var(--brand, #FA6400)" : "#FFF0E6", color: active ? "#fff" : "#B4501E",
                      fontSize: 11.5, border: "none", cursor: "pointer", fontFamily: "inherit" }}>{value}</button>
-        : <span style={{ color: "var(--muted)" }}>-</span>}
+        : <button type="button" onClick={onFilter} className="tag" title="세부채널 미선정만 보기"
+            style={{ background: active ? "var(--brand, #FA6400)" : "#F1F3F5", color: active ? "#fff" : "var(--muted)",
+                     fontSize: 11.5, border: "none", cursor: "pointer", fontFamily: "inherit" }}>미선정</button>}
       <button type="button" onClick={() => setEditing(true)} title="세부채널 고치기"
         style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", fontSize: 12, padding: "0 2px" }}>✎</button>
     </span>
@@ -7113,6 +7118,7 @@ export function SmartStoreView() {
   const publicUrl = cur ? `${location.origin}${cur.guidePath}` : "";
   const kw = q.trim().toLowerCase();
   const detailOptions = [...new Set(applies.map((a) => a.sourceDetail).filter(Boolean))].sort();
+  const noDetailCount = applies.filter((a) => !a.sourceDetail).length;
   /* 컬럼별 정렬 기준. 빈 값은 방향과 상관없이 늘 뒤로 보낸다 */
   const SORT_VAL = {
     createdAt: (a) => new Date(a.createdAt).getTime(),
@@ -7155,7 +7161,7 @@ export function SmartStoreView() {
       (a.sourceDetail || "").toLowerCase().includes(kw) ||
       (a.industry || "").toLowerCase().includes(kw))
     .filter((a) => !fSource || (fSource === "none" ? !a.source : a.source === fSource))
-    .filter((a) => !fDetail || a.sourceDetail === fDetail)
+    .filter((a) => !fDetail || (fDetail === SS_NO_DETAIL ? !a.sourceDetail : a.sourceDetail === fDetail))
     // 기존고객 여부는 고객이 직접 고른 값이라, 답을 안 한 건(null)은 어느 쪽에도 넣지 않는다
     .filter((a) => !fCust || (fCust === "existing" ? a.isCustomer === true : a.isCustomer === false))
     .filter((a) => !fStage || a.stage === fStage)
@@ -7289,8 +7295,13 @@ export function SmartStoreView() {
 
           {(() => {
             const by = {};
-            for (const a of applies) if (a.sourceDetail) by[a.sourceDetail] = (by[a.sourceDetail] || 0) + 1;
-            const rows = Object.entries(by).sort((x, y) => y[1] - x[1]);
+            for (const a of applies) {
+              const k = a.sourceDetail || SS_NO_DETAIL;
+              by[k] = (by[k] || 0) + 1;
+            }
+            // 미선정은 늘 맨 뒤에 둔다 — 채워야 할 것이지 채널이 아니다
+            const rows = Object.entries(by)
+              .sort((x, y) => (x[0] === SS_NO_DETAIL) - (y[0] === SS_NO_DETAIL) || y[1] - x[1]);
             if (!rows.length) return null;
             return (
               <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -7301,7 +7312,7 @@ export function SmartStoreView() {
                     style={{ background: fDetail === k ? "var(--brand, #FA6400)" : "#F2F3F4",
                              color: fDetail === k ? "#fff" : "var(--ink)",
                              fontSize: 11.5, border: "none", cursor: "pointer", fontFamily: "inherit" }}>
-                    {k} <strong>{n}</strong>
+                    {k === SS_NO_DETAIL ? "미선정" : k} <strong>{n}</strong>
                   </button>
                 ))}
               </div>
@@ -7319,10 +7330,11 @@ export function SmartStoreView() {
               <option value="marketing">마케팅</option>
               <option value="none">경로 없음</option>
             </select>
-            {detailOptions.length > 0 && (
+            {(detailOptions.length > 0 || noDetailCount > 0) && (
               <select value={fDetail} onChange={(e) => setFDetail(e.target.value)} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff" }}>
                 <option value="">세부채널 전체</option>
                 {detailOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+                {noDetailCount > 0 && <option value={SS_NO_DETAIL}>미선정 ({noDetailCount})</option>}
               </select>
             )}
             <select value={fCust} onChange={(e) => setFCust(e.target.value)} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", fontFamily: "inherit", fontSize: 13, background: "#fff" }}>
@@ -7411,8 +7423,9 @@ export function SmartStoreView() {
                         <SourceDetailCell
                           value={a.sourceDetail}
                           options={detailOptions}
-                          active={fDetail === a.sourceDetail}
-                          onFilter={() => setFDetail(fDetail === a.sourceDetail ? "" : a.sourceDetail)}
+                          active={fDetail === (a.sourceDetail || SS_NO_DETAIL)}
+                          onFilter={() => setFDetail(
+                            fDetail === (a.sourceDetail || SS_NO_DETAIL) ? "" : (a.sourceDetail || SS_NO_DETAIL))}
                           onSave={(v) => patchApply(a, { sourceDetail: v })} />
                       </td>
                       <td style={{ textAlign: "left" }}>
