@@ -17,3 +17,6 @@ mobile/ios/build/
 mobile/android/.gradle/
 mobile/android/app/build/
 mobile/android/build/
+
+# DB 덤프 — 저장소에 들어갈 것이 아니다
+backend/backups/

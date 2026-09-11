@@ -41,6 +41,7 @@ rsync -avz --delete \
   --exclude node_modules \
   --exclude .env \
   --exclude .env.local \
+  --exclude backups \
   -e "$RSYNC_SSH" \
   "$ROOT/backend/" \
   "${EC2_USER}@${EC2_HOST}:${REMOTE_DIR}/"
