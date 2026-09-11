@@ -125,7 +125,7 @@ function visitorRow(a: ErpFoundersApply): string[] {
 }
 
 const RECEIPT_KO: Record<string, string> = {
-  none: "안 받음", cash: "현금영수증", tax: "세금계산서",
+  cash: "현금영수증", tax: "세금계산서",
 };
 
 const bizNo = (v: string) => {

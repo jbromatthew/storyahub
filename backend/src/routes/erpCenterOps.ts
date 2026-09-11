@@ -638,7 +638,7 @@ erpCenterOpsRouter.patch("/founders/applies/:id", async (req: AuthedRequest, res
   // 참가비 증빙 — 잘못 적어 오신 번호를 우리가 고쳐 드릴 수 있어야 한다
   if (b.receiptType !== undefined) {
     const v = str(b.receiptType, 10);
-    if (!["", "none", "cash", "tax"].includes(v)) return fail(res, "증빙 구분이 올바르지 않습니다");
+    if (!["", "cash", "tax"].includes(v)) return fail(res, "증빙 구분이 올바르지 않습니다");
     data.receiptType = v;
   }
   if (b.receiptNo !== undefined) data.receiptNo = str(b.receiptNo, 20).replace(/[^\d]/g, "");

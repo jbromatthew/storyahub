@@ -160,6 +160,9 @@
   .card h3 .opt{font-weight:500;color:var(--muted);font-size:12px}
 
   label.f{display:block;margin-bottom:14px}
+  /* label.f 의 display:block 이 브라우저 기본 [hidden] 을 이겨서,
+     감춰둔 칸이 그대로 보였다. hidden 이 항상 이기게 못을 박는다. */
+  [hidden]{display:none !important}
   label.f:last-child{margin-bottom:0}
   .f>span{display:block;font-size:12px;color:var(--ink-2);margin-bottom:6px;font-weight:700}
   .f>span em{font-style:normal;color:var(--brand);margin-left:2px}
@@ -1295,14 +1298,13 @@
         <div class="f" style="margin-top:16px">
           <span>증빙<em>*</em></span>
           <div class="rcpt-pick">
-            <label class="rcpt on"><input type="radio" name="vrcpt" value="none" checked><b>안 받음</b></label>
-            <label class="rcpt"><input type="radio" name="vrcpt" value="cash"><b>현금영수증</b></label>
+            <label class="rcpt on"><input type="radio" name="vrcpt" value="cash" checked><b>현금영수증</b></label>
             <label class="rcpt"><input type="radio" name="vrcpt" value="tax"><b>세금계산서</b></label>
           </div>
-          <span class="hint">입금이 확인되면 발급해 드립니다.</span>
+          <span class="hint">입금이 확인되면 발급해 드립니다. 둘 중 하나를 골라주세요.</span>
         </div>
 
-        <label class="f" id="vCashWrap" hidden style="margin-top:12px">
+        <label class="f" id="vCashWrap" style="margin-top:12px">
           <span>현금영수증 받으실 휴대폰 번호<em>*</em></span>
           <input type="tel" id="vCashNo" maxlength="13" inputmode="numeric" placeholder="010-1234-5678">
           <span class="hint">소득공제용으로 발급합니다. 위 연락처와 같으면 그대로 두셔도 됩니다.</span></label>
@@ -2239,6 +2241,7 @@
       $("v1").classList.add("on");
       $("bar").style.width = "50%";
       if (!vSignReady) { vSignReady = true; vSignPad.ready(); }
+      vRcptPick();
       loadCapacity();
       $("prize").style.display = "none";
       document.title = "참관 등록 · 2026 BROJ Founders x Draper";
@@ -2375,7 +2378,7 @@
   });
   /* 증빙 — 고른 것에 맞는 칸만 편다 */
   function vRcptPick() {
-    var v = (document.querySelector('input[name="vrcpt"]:checked') || {}).value || "none";
+    var v = (document.querySelector('input[name="vrcpt"]:checked') || {}).value || "cash";
     document.querySelectorAll(".rcpt").forEach(function (el) {
       el.classList.toggle("on", el.querySelector("input").checked);
     });
@@ -2388,6 +2391,11 @@
   }
   document.querySelectorAll('input[name="vrcpt"]').forEach(function (el) {
     el.addEventListener("change", vRcptPick);
+  });
+  var vCashTouched = false;
+  $("vCashNo").addEventListener("input", function () { vCashTouched = true; });
+  $("vPhone").addEventListener("input", function () {
+    if (!vCashTouched) $("vCashNo").value = this.value;
   });
   $("vCashNo").addEventListener("input", function () {
     var d = this.value.replace(/[^\d]/g, "").slice(0, 11);
@@ -2405,9 +2413,13 @@
     if ($("vPhone").value.replace(/[^\d]/g, "").length < 10) { msg("ev", "연락처를 확인해 주세요"); return; }
     if (!$("vAgree").classList.contains("on")) { msg("ev", "개인정보 수집·이용에 동의해 주세요"); return; }
     if (vSignPad.isEmpty()) { msg("ev", "서명란에 서명해 주세요"); return; }
-    var rcpt = (document.querySelector('input[name="vrcpt"]:checked') || {}).value || "none";
-    if (rcpt === "cash" && $("vCashNo").value.replace(/[^\d]/g, "").length < 10) {
-      msg("ev", "현금영수증 받으실 휴대폰 번호를 확인해 주세요"); return;
+    var rcpt = (document.querySelector('input[name="vrcpt"]:checked') || {}).value || "cash";
+    if (rcpt === "cash") {
+      // 비워두셨으면 등록 연락처로 끊는다
+      if (!$("vCashNo").value.trim()) $("vCashNo").value = $("vPhone").value;
+      if ($("vCashNo").value.replace(/[^\d]/g, "").length < 10) {
+        msg("ev", "현금영수증 받으실 휴대폰 번호를 확인해 주세요"); return;
+      }
     }
     if (rcpt === "tax") {
       if ($("vTaxNo").value.replace(/[^\d]/g, "").length !== 10) {
@@ -2431,7 +2443,7 @@
         email: $("vEmail").value.trim(),
         payerName: $("vPayer").value.trim(),
         receiptType: rcpt,
-        receiptNo: rcpt === "tax" ? $("vTaxNo").value : rcpt === "cash" ? $("vCashNo").value : "",
+        receiptNo: rcpt === "tax" ? $("vTaxNo").value : $("vCashNo").value,
         receiptEmail: rcpt === "tax" ? $("vTaxEmail").value.trim() : "",
         privacyAgreed: true,
         signature: vSignPad.data()
@@ -2452,8 +2464,8 @@
           "우리은행 <b>1005-704-322242</b> (주)브로제이<br>" +
           "입금자명 <b>" + esc(res.j.payerName) + "</b><br><br>" +
           "입금이 확인되면 문자로 안내드립니다." +
-          (rcpt === "cash" ? " 현금영수증도 함께 발급해 드립니다."
-            : rcpt === "tax" ? " 세금계산서는 적어주신 메일로 보내드립니다." : "") + "<br>" +
+          (rcpt === "tax" ? " 세금계산서는 적어주신 메일로 보내드립니다."
+            : " 현금영수증도 함께 발급해 드립니다.") + "<br>" +
           "행사 <b>2026년 10월 9일(금) 14:00</b> · 어브 스튜디오<br>" +
           "문의 broj.network@gmail.com · 카카오톡 @broj";
         document.querySelectorAll("section").forEach(function (el) { el.classList.remove("on"); });

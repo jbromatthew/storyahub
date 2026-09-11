@@ -15842,7 +15842,7 @@ const BF_VSTATUS = [
 ];
 const BF_KIND = { applicant: "참가자", visitor: "참관객" };
 // 참가비 증빙 — 참관객만 고른다
-const BF_RECEIPT = [["none", "안 받음"], ["cash", "현금영수증"], ["tax", "세금계산서"]];
+const BF_RECEIPT = [["cash", "현금영수증"], ["tax", "세금계산서"]];
 const bfReceiptKo = (k) => (BF_RECEIPT.find(([v]) => v === k) || [])[1] || "";
 const bfBizNo = (v) => {
   const d = String(v ?? "").replace(/[^\d]/g, "");
@@ -17314,7 +17314,7 @@ export function FoundersView() {
                         </span>
                       )}
                       {isV && a.vip && <span className="cc-pill brand">VIP 초대</span>}
-                      {isV && a.receiptType && a.receiptType !== "none" && (
+                      {isV && a.receiptType && (
                         <span className={`cc-pill ${a.receiptDone ? "ok" : "warn"}`}
                           title={a.receiptType === "tax" ? bfBizNo(a.receiptNo) : ccPhone(a.receiptNo)}>
                           {bfReceiptKo(a.receiptType)}{a.receiptDone ? " 발급" : " 대기"}
@@ -17354,10 +17354,10 @@ export function FoundersView() {
                                 <div className="cc-kv"><span>모신 이유</span><b>{a.vipNote || <i>-</i>}</b></div>
                               )}
                               <div className="cc-kv"><span>증빙</span>
-                                <b>{a.receiptType && a.receiptType !== "none"
+                                <b>{a.receiptType
                                   ? <>{bfReceiptKo(a.receiptType)} · {a.receiptType === "tax" ? bfBizNo(a.receiptNo) : ccPhone(a.receiptNo)}
                                       {a.receiptDone && <span className="cc-pill ok" style={{ marginLeft: 6 }}>발급</span>}</>
-                                  : <i>{a.receiptType === "none" ? "안 받음" : "-"}</i>}</b></div>
+                                  : <i>-</i>}</b></div>
                               {a.receiptType === "tax" && (
                                 <div className="cc-kv"><span>계산서 메일</span><b>{a.receiptEmail || <i>-</i>}</b></div>
                               )}
@@ -17382,7 +17382,7 @@ export function FoundersView() {
                                 title={a.vip ? "초대를 거두면 참가비 2만원이 다시 붙습니다"
                                              : "참가비를 받지 않고 모십니다 — 0원, 입금확인으로"}
                                 onClick={() => setVip(a, !a.vip)}>★ VIP 초대</button>
-                              {a.receiptType && a.receiptType !== "none" && (
+                              {a.receiptType && (
                                 <button type="button" className={"chip" + (a.receiptDone ? " on" : "")}
                                   title={a.receiptDone ? "발급을 되돌립니다" : `${bfReceiptKo(a.receiptType)}를 발급했습니다`}
                                   onClick={() => setReceiptDone(a, !a.receiptDone)}>

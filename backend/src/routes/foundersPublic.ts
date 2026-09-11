@@ -729,9 +729,10 @@ foundersPublicRouter.post("/visitor", guard(async (req: Request, res: Response) 
   if (repPhone.length < 10) return fail(res, "연락처를 확인해 주세요");
   if (b.privacyAgreed !== true) return fail(res, "개인정보 수집·이용에 동의해 주셔야 등록됩니다");
 
-  // 참가비 증빙 — 고른 것에 맞는 번호만 받는다
-  const rType = ["none", "cash", "tax"].includes(str(b.receiptType, 10)) ? str(b.receiptType, 10) : "none";
-  const rNo = digits(b.receiptNo);
+  // 참가비 증빙 — 둘 중 하나는 반드시 고른다. 2만원을 받고 증빙을 안 끊을 수는 없다.
+  const rType = str(b.receiptType, 10) === "tax" ? "tax" : "cash";
+  // 현금영수증 번호를 비워 보내면 등록 연락처로 끊는다
+  const rNo = digits(b.receiptNo) || (rType === "cash" ? repPhone : "");
   const rEmail = str(b.receiptEmail, 120).toLowerCase() || str(b.email, 120).toLowerCase();
   if (rType === "cash" && rNo.length < 10) {
     return fail(res, "현금영수증 받으실 휴대폰 번호를 확인해 주세요");
@@ -744,7 +745,7 @@ foundersPublicRouter.post("/visitor", guard(async (req: Request, res: Response) 
   }
   const receipt = {
     receiptType: rType,
-    receiptNo: rType === "none" ? "" : rNo,
+    receiptNo: rNo,
     receiptEmail: rType === "tax" ? rEmail : "",
   };
 
@@ -774,6 +775,7 @@ foundersPublicRouter.post("/visitor", guard(async (req: Request, res: Response) 
     repTitle: str(b.title, 60),
     payerName: str(b.payerName, 40) || repName,
     feeAmount: VISITOR_FEE,
+    ...receipt,
     privacyAgreed: true,
     privacyAt: now,
     signerName: repName,
