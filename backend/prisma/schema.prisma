@@ -1339,7 +1339,9 @@ model ErpFoundersApply {
 
   /// 참가비 증빙 — none 안 받음 | cash 현금영수증 | tax 세금계산서
   receiptType  String @default("")
-  receiptNo    String @default("") // 현금영수증은 휴대폰 번호, 세금계산서는 사업자등록번호
+  /// 현금영수증 용도 — personal 소득공제(개인) | biz 지출증빙(사업자)
+  receiptUse   String @default("")
+  receiptNo    String @default("") // 소득공제는 휴대폰 번호, 지출증빙·세금계산서는 사업자등록번호
   receiptEmail String @default("") // 세금계산서 받으실 메일
   receiptNote  String @default("") // 상호 등 우리가 덧붙일 것
   receiptDone  Boolean @default(false) // 발급 완료

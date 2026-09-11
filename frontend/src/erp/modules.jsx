@@ -15844,6 +15844,10 @@ const BF_KIND = { applicant: "참가자", visitor: "참관객" };
 // 참가비 증빙 — 참관객만 고른다
 const BF_RECEIPT = [["cash", "현금영수증"], ["tax", "세금계산서"]];
 const bfReceiptKo = (k) => (BF_RECEIPT.find(([v]) => v === k) || [])[1] || "";
+// 현금영수증은 용도가 갈린다 — 개인 소득공제 · 사업자 지출증빙
+const bfReceiptFull = (a) => (a.receiptType === "tax" ? "세금계산서"
+  : a.receiptType === "cash" ? (a.receiptUse === "biz" ? "현금영수증 지출증빙" : "현금영수증 소득공제")
+  : "");
 const bfBizNo = (v) => {
   const d = String(v ?? "").replace(/[^\d]/g, "");
   return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}` : d;
@@ -17199,8 +17203,8 @@ export function FoundersView() {
            day, a.repName, a.repPhone, a.repOrg, a.repTitle, a.repEmail,
            a.vip ? "VIP" : "", a.vip ? 0 : a.feeAmount, a.vip ? "" : (a.payerName || a.repName),
            a.paidAt ? new Date(a.paidAt).toLocaleDateString("ko-KR") : "", a.vipNote || "",
-           bfReceiptKo(a.receiptType),
-           a.receiptType === "tax" ? bfBizNo(a.receiptNo) : (a.receiptNo || ""),
+           bfReceiptFull(a),
+           a.receiptUse === "personal" ? (a.receiptNo || "") : bfBizNo(a.receiptNo),
            a.receiptEmail || "",
            a.receiptDone ? (a.receiptAt ? new Date(a.receiptAt).toLocaleDateString("ko-KR") : "발급") : ""]
         : [a.applyNo, label, day, BF_ENTRY[a.entryType] || "", a.teamName, a.repName, a.repPhone, a.repEmail,
@@ -17316,8 +17320,8 @@ export function FoundersView() {
                       {isV && a.vip && <span className="cc-pill brand">VIP 초대</span>}
                       {isV && a.receiptType && (
                         <span className={`cc-pill ${a.receiptDone ? "ok" : "warn"}`}
-                          title={a.receiptType === "tax" ? bfBizNo(a.receiptNo) : ccPhone(a.receiptNo)}>
-                          {bfReceiptKo(a.receiptType)}{a.receiptDone ? " 발급" : " 대기"}
+                          title={a.receiptUse === "personal" ? ccPhone(a.receiptNo) : bfBizNo(a.receiptNo)}>
+                          {bfReceiptFull(a)}{a.receiptDone ? " 발급" : " 대기"}
                         </span>
                       )}
                       {isV && (
@@ -17355,7 +17359,7 @@ export function FoundersView() {
                               )}
                               <div className="cc-kv"><span>증빙</span>
                                 <b>{a.receiptType
-                                  ? <>{bfReceiptKo(a.receiptType)} · {a.receiptType === "tax" ? bfBizNo(a.receiptNo) : ccPhone(a.receiptNo)}
+                                  ? <>{bfReceiptFull(a)} · {a.receiptUse === "personal" ? ccPhone(a.receiptNo) : bfBizNo(a.receiptNo)}
                                       {a.receiptDone && <span className="cc-pill ok" style={{ marginLeft: 6 }}>발급</span>}</>
                                   : <i>-</i>}</b></div>
                               {a.receiptType === "tax" && (

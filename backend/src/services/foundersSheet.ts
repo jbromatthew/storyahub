@@ -117,16 +117,18 @@ function visitorRow(a: ErpFoundersApply): string[] {
     a.paidAt ? KST(a.paidAt) : "",
     a.signKey ? "있음" : "",
     // 뒤에만 붙인다 — 앞 열이 밀리면 K열 입금확인 타임스탬프가 어긋난다
-    RECEIPT_KO[a.receiptType] ?? "",
-    a.receiptType === "tax" ? bizNo(a.receiptNo) : phone(a.receiptNo),
+    receiptKo(a.receiptType, a.receiptUse),
+    a.receiptUse === "personal" ? phone(a.receiptNo) : bizNo(a.receiptNo),
     a.receiptEmail,
     a.receiptDone ? (a.receiptAt ? KST(a.receiptAt) : "발급") : "",
   ];
 }
 
-const RECEIPT_KO: Record<string, string> = {
-  cash: "현금영수증", tax: "세금계산서",
-};
+function receiptKo(type: string, use: string): string {
+  if (type === "tax") return "세금계산서";
+  if (type !== "cash") return "";
+  return use === "biz" ? "현금영수증 (지출증빙)" : "현금영수증 (소득공제)";
+}
 
 const bizNo = (v: string) => {
   const d = String(v ?? "").replace(/[^\d]/g, "");

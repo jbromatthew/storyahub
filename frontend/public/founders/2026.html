@@ -465,6 +465,8 @@
   .rcpt:hover{border-color:var(--brand-line)}
   .rcpt.on{border-color:var(--brand);background:var(--brand-wash)}
   .rcpt.on b{color:var(--brand-deep)}
+  .rcpt.sm{padding:9px 10px}
+  .rcpt.sm b{font-size:12.5px}
 
   /* 버튼 */
   .nav{display:flex;gap:10px;margin-top:22px}
@@ -1304,10 +1306,19 @@
           <span class="hint">입금이 확인되면 발급해 드립니다. 둘 중 하나를 골라주세요.</span>
         </div>
 
-        <label class="f" id="vCashWrap" style="margin-top:12px">
-          <span>현금영수증 받으실 휴대폰 번호<em>*</em></span>
-          <input type="tel" id="vCashNo" maxlength="13" inputmode="numeric" placeholder="010-1234-5678">
-          <span class="hint">소득공제용으로 발급합니다. 위 연락처와 같으면 그대로 두셔도 됩니다.</span></label>
+        <div id="vCashWrap" style="margin-top:12px">
+          <div class="f">
+            <span>현금영수증 용도<em>*</em></span>
+            <div class="rcpt-pick">
+              <label class="rcpt sm on"><input type="radio" name="vuse" value="personal" checked><b>개인 소득공제</b></label>
+              <label class="rcpt sm"><input type="radio" name="vuse" value="biz"><b>사업자 지출증빙</b></label>
+            </div>
+          </div>
+          <label class="f" style="margin-top:12px">
+            <span id="vCashLabel">현금영수증 받으실 휴대폰 번호<em>*</em></span>
+            <input type="tel" id="vCashNo" maxlength="13" inputmode="numeric" placeholder="010-1234-5678">
+            <span class="hint" id="vCashHint">소득공제용으로 발급합니다. 위 연락처와 같으면 그대로 두셔도 됩니다.</span></label>
+        </div>
 
         <div id="vTaxWrap" hidden style="margin-top:12px">
           <label class="f"><span>사업자등록번호<em>*</em></span>
@@ -1324,7 +1335,7 @@
           <table>
             <tr><th>수집 및 이용자</th><td>㈜브로제이</td></tr>
             <tr><th>수집·이용 목적</th><td>참관 등록 확인, 입금 대조, 행사 안내 및 사후 공지</td></tr>
-            <tr><th>수집하는 항목</th><td>성명, 연락처, 소속, 직함, 이메일(선택), 입금자명,<br>증빙 발급 정보(휴대폰 번호 또는 사업자등록번호·메일)</td></tr>
+            <tr><th>수집하는 항목</th><td>성명, 연락처, 소속, 직함, 이메일(선택), 입금자명,<br>증빙 발급 정보(휴대폰 번호 또는 사업자등록번호, 메일)</td></tr>
             <tr><th>보유 및 이용기간</th><td>행사 종료일로부터 1년간 보유 후 지체 없이 파기</td></tr>
             <tr><th>거부 권리</th><td>동의를 거부하실 수 있으나, 거부 시 참관 등록이 제한됩니다.</td></tr>
           </table>
@@ -2384,20 +2395,51 @@
     });
     $("vCashWrap").hidden = v !== "cash";
     $("vTaxWrap").hidden = v !== "tax";
-    // 현금영수증은 대개 등록한 연락처 그대로다 — 비어 있으면 채워 둔다
-    if (v === "cash" && !$("vCashNo").value.trim()) $("vCashNo").value = $("vPhone").value;
+    if (v === "cash") vUsePick();
     if (v === "tax" && !$("vTaxEmail").value.trim()) $("vTaxEmail").value = $("vEmail").value.trim();
     return v;
   }
+
+  /* 현금영수증 용도 — 개인은 휴대폰, 사업자는 사업자등록번호 */
+  function vUse() {
+    return (document.querySelector('input[name="vuse"]:checked') || {}).value || "personal";
+  }
+  function vUsePick() {
+    var u = vUse();
+    document.querySelectorAll('input[name="vuse"]').forEach(function (el) {
+      el.closest(".rcpt").classList.toggle("on", el.checked);
+    });
+    var personal = u === "personal";
+    $("vCashLabel").innerHTML = personal
+      ? '현금영수증 받으실 휴대폰 번호<em>*</em>'
+      : '사업자등록번호<em>*</em>';
+    $("vCashHint").textContent = personal
+      ? "소득공제용으로 발급합니다. 위 연락처와 같으면 그대로 두셔도 됩니다."
+      : "지출증빙용으로 발급합니다.";
+    $("vCashNo").placeholder = personal ? "010-1234-5678" : "000-00-00000";
+    $("vCashNo").maxLength = personal ? 13 : 12;
+    // 용도를 바꾸면 앞서 적은 번호는 쓸 수 없다
+    $("vCashNo").value = personal ? $("vPhone").value : "";
+    vCashTouched = false;
+  }
+  document.querySelectorAll('input[name="vuse"]').forEach(function (el) {
+    el.addEventListener("change", vUsePick);
+  });
   document.querySelectorAll('input[name="vrcpt"]').forEach(function (el) {
     el.addEventListener("change", vRcptPick);
   });
   var vCashTouched = false;
   $("vCashNo").addEventListener("input", function () { vCashTouched = true; });
   $("vPhone").addEventListener("input", function () {
-    if (!vCashTouched) $("vCashNo").value = this.value;
+    if (!vCashTouched && vUse() === "personal") $("vCashNo").value = this.value;
   });
   $("vCashNo").addEventListener("input", function () {
+    if (vUse() === "biz") {
+      var b = this.value.replace(/[^\d]/g, "").slice(0, 10);
+      this.value = b.length > 5 ? b.slice(0, 3) + "-" + b.slice(3, 5) + "-" + b.slice(5)
+        : b.length > 3 ? b.slice(0, 3) + "-" + b.slice(3) : b;
+      return;
+    }
     var d = this.value.replace(/[^\d]/g, "").slice(0, 11);
     this.value = d.length > 7 ? d.slice(0, 3) + "-" + d.slice(3, 7) + "-" + d.slice(7)
       : d.length > 3 ? d.slice(0, 3) + "-" + d.slice(3) : d;
@@ -2414,12 +2456,16 @@
     if (!$("vAgree").classList.contains("on")) { msg("ev", "개인정보 수집·이용에 동의해 주세요"); return; }
     if (vSignPad.isEmpty()) { msg("ev", "서명란에 서명해 주세요"); return; }
     var rcpt = (document.querySelector('input[name="vrcpt"]:checked') || {}).value || "cash";
-    if (rcpt === "cash") {
+    var use = rcpt === "cash" ? vUse() : "";
+    if (use === "personal") {
       // 비워두셨으면 등록 연락처로 끊는다
       if (!$("vCashNo").value.trim()) $("vCashNo").value = $("vPhone").value;
       if ($("vCashNo").value.replace(/[^\d]/g, "").length < 10) {
         msg("ev", "현금영수증 받으실 휴대폰 번호를 확인해 주세요"); return;
       }
+    }
+    if (use === "biz" && $("vCashNo").value.replace(/[^\d]/g, "").length !== 10) {
+      msg("ev", "사업자등록번호 10자리를 확인해 주세요"); return;
     }
     if (rcpt === "tax") {
       if ($("vTaxNo").value.replace(/[^\d]/g, "").length !== 10) {
@@ -2443,6 +2489,7 @@
         email: $("vEmail").value.trim(),
         payerName: $("vPayer").value.trim(),
         receiptType: rcpt,
+        receiptUse: use,
         receiptNo: rcpt === "tax" ? $("vTaxNo").value : $("vCashNo").value,
         receiptEmail: rcpt === "tax" ? $("vTaxEmail").value.trim() : "",
         privacyAgreed: true,
@@ -2465,7 +2512,8 @@
           "입금자명 <b>" + esc(res.j.payerName) + "</b><br><br>" +
           "입금이 확인되면 문자로 안내드립니다." +
           (rcpt === "tax" ? " 세금계산서는 적어주신 메일로 보내드립니다."
-            : " 현금영수증도 함께 발급해 드립니다.") + "<br>" +
+            : use === "biz" ? " 현금영수증은 지출증빙용으로 발급해 드립니다."
+              : " 현금영수증도 함께 발급해 드립니다.") + "<br>" +
           "행사 <b>2026년 10월 9일(금) 14:00</b> · 어브 스튜디오<br>" +
           "문의 broj.network@gmail.com · 카카오톡 @broj";
         document.querySelectorAll("section").forEach(function (el) { el.classList.remove("on"); });

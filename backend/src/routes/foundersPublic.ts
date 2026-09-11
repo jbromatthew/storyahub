@@ -731,20 +731,25 @@ foundersPublicRouter.post("/visitor", guard(async (req: Request, res: Response) 
 
   // 참가비 증빙 — 둘 중 하나는 반드시 고른다. 2만원을 받고 증빙을 안 끊을 수는 없다.
   const rType = str(b.receiptType, 10) === "tax" ? "tax" : "cash";
-  // 현금영수증 번호를 비워 보내면 등록 연락처로 끊는다
-  const rNo = digits(b.receiptNo) || (rType === "cash" ? repPhone : "");
+  // 현금영수증은 용도가 갈린다 — 개인은 소득공제(휴대폰), 사업자는 지출증빙(사업자번호)
+  const rUse = rType === "cash"
+    ? (str(b.receiptUse, 10) === "biz" ? "biz" : "personal")
+    : "";
+  // 소득공제용 번호를 비워 보내면 등록 연락처로 끊는다
+  const rNo = digits(b.receiptNo) || (rUse === "personal" ? repPhone : "");
   const rEmail = str(b.receiptEmail, 120).toLowerCase() || str(b.email, 120).toLowerCase();
-  if (rType === "cash" && rNo.length < 10) {
+  if (rUse === "personal" && rNo.length < 10) {
     return fail(res, "현금영수증 받으실 휴대폰 번호를 확인해 주세요");
   }
-  if (rType === "tax") {
-    if (rNo.length !== 10) return fail(res, "사업자등록번호 10자리를 확인해 주세요");
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rEmail)) {
-      return fail(res, "세금계산서 받으실 메일 주소를 확인해 주세요");
-    }
+  if ((rUse === "biz" || rType === "tax") && rNo.length !== 10) {
+    return fail(res, "사업자등록번호 10자리를 확인해 주세요");
+  }
+  if (rType === "tax" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rEmail)) {
+    return fail(res, "세금계산서 받으실 메일 주소를 확인해 주세요");
   }
   const receipt = {
     receiptType: rType,
+    receiptUse: rUse,
     receiptNo: rNo,
     receiptEmail: rType === "tax" ? rEmail : "",
   };

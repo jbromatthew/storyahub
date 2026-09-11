@@ -641,6 +641,11 @@ erpCenterOpsRouter.patch("/founders/applies/:id", async (req: AuthedRequest, res
     if (!["", "cash", "tax"].includes(v)) return fail(res, "증빙 구분이 올바르지 않습니다");
     data.receiptType = v;
   }
+  if (b.receiptUse !== undefined) {
+    const v = str(b.receiptUse, 10);
+    if (!["", "personal", "biz"].includes(v)) return fail(res, "현금영수증 용도가 올바르지 않습니다");
+    data.receiptUse = v;
+  }
   if (b.receiptNo !== undefined) data.receiptNo = str(b.receiptNo, 20).replace(/[^\d]/g, "");
   if (b.receiptEmail !== undefined) data.receiptEmail = str(b.receiptEmail, 120).toLowerCase();
   if (b.receiptNote !== undefined) data.receiptNote = str(b.receiptNote, 200);
