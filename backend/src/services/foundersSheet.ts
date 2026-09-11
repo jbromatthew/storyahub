@@ -116,8 +116,22 @@ function visitorRow(a: ErpFoundersApply): string[] {
     a.payerName,
     a.paidAt ? KST(a.paidAt) : "",
     a.signKey ? "있음" : "",
+    // 뒤에만 붙인다 — 앞 열이 밀리면 K열 입금확인 타임스탬프가 어긋난다
+    RECEIPT_KO[a.receiptType] ?? "",
+    a.receiptType === "tax" ? bizNo(a.receiptNo) : phone(a.receiptNo),
+    a.receiptEmail,
+    a.receiptDone ? (a.receiptAt ? KST(a.receiptAt) : "발급") : "",
   ];
 }
+
+const RECEIPT_KO: Record<string, string> = {
+  none: "안 받음", cash: "현금영수증", tax: "세금계산서",
+};
+
+const bizNo = (v: string) => {
+  const d = String(v ?? "").replace(/[^\d]/g, "");
+  return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}` : d;
+};
 
 function sheetId(): string {
   return env.foundersSheetId.trim();

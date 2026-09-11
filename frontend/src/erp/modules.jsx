@@ -15841,6 +15841,13 @@ const BF_VSTATUS = [
   ["pending", "입금대기", "warn"], ["paid", "입금확인", "ok"], ["cancelled", "취소", "off"],
 ];
 const BF_KIND = { applicant: "참가자", visitor: "참관객" };
+// 참가비 증빙 — 참관객만 고른다
+const BF_RECEIPT = [["none", "안 받음"], ["cash", "현금영수증"], ["tax", "세금계산서"]];
+const bfReceiptKo = (k) => (BF_RECEIPT.find(([v]) => v === k) || [])[1] || "";
+const bfBizNo = (v) => {
+  const d = String(v ?? "").replace(/[^\d]/g, "");
+  return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}` : d;
+};
 const BF_ENTRY = { pre: "예비창업자", early: "초기창업기업" };
 const BF_URL = "https://b2b.broj.io/founders/2026.html";
 
@@ -17104,6 +17111,14 @@ export function FoundersView() {
       .some((v) => String(v || "").toLowerCase().includes(kw)));
 
   // VIP 로 모시면 참가비 0원 · 입금확인으로 넘어간다. 거두면 2만원 · 입금대기로 돌아온다.
+  const setReceiptDone = async (a, on) => {
+    try {
+      const r = await api.erpFoundersApplyUpdate(a.id, { receiptDone: on });
+      setApplies((p) => p.map((x) => (x.id === a.id ? { ...x, ...(r.apply || {}) } : x)));
+      toastSuccess(on ? `${bfReceiptKo(a.receiptType)} 발급으로 표시했어요` : "발급 표시를 지웠어요");
+    } catch (e) { notifyError(e); }
+  };
+
   const setVip = async (a, on) => {
     let note = a.vipNote || "";
     if (on) {
@@ -17170,7 +17185,8 @@ export function FoundersView() {
     if (!rows.length) return;
     const head = kind === "visitor"
       ? ["등록번호", "상태", "좌석", "등록일", "성함", "연락처", "소속", "직함", "이메일",
-         "VIP", "참가비", "입금자명", "입금확인", "모신 이유"]
+         "VIP", "참가비", "입금자명", "입금확인", "모신 이유",
+         "증빙", "발급번호", "계산서 메일", "발급완료"]
       : ["접수번호", "상태", "접수일", "참가구분", "팀명", "대표자", "연락처", "이메일",
          "주제", "분야", "팀원수", "증빙", "IR자료"];
     const lines = [head.join("\t")];
@@ -17182,7 +17198,11 @@ export function FoundersView() {
            a.seatType === "seat" ? `의자 ${a.seatNo}` : a.seatType === "standing" ? `스탠딩 ${a.seatNo}` : "",
            day, a.repName, a.repPhone, a.repOrg, a.repTitle, a.repEmail,
            a.vip ? "VIP" : "", a.vip ? 0 : a.feeAmount, a.vip ? "" : (a.payerName || a.repName),
-           a.paidAt ? new Date(a.paidAt).toLocaleDateString("ko-KR") : "", a.vipNote || ""]
+           a.paidAt ? new Date(a.paidAt).toLocaleDateString("ko-KR") : "", a.vipNote || "",
+           bfReceiptKo(a.receiptType),
+           a.receiptType === "tax" ? bfBizNo(a.receiptNo) : (a.receiptNo || ""),
+           a.receiptEmail || "",
+           a.receiptDone ? (a.receiptAt ? new Date(a.receiptAt).toLocaleDateString("ko-KR") : "발급") : ""]
         : [a.applyNo, label, day, BF_ENTRY[a.entryType] || "", a.teamName, a.repName, a.repPhone, a.repEmail,
            (a.subject || "").replace(/\s+/g, " "),
            (a.tracks || []).map((t) => BF_TRACKS[t] || t).join(" "),
@@ -17294,6 +17314,12 @@ export function FoundersView() {
                         </span>
                       )}
                       {isV && a.vip && <span className="cc-pill brand">VIP 초대</span>}
+                      {isV && a.receiptType && a.receiptType !== "none" && (
+                        <span className={`cc-pill ${a.receiptDone ? "ok" : "warn"}`}
+                          title={a.receiptType === "tax" ? bfBizNo(a.receiptNo) : ccPhone(a.receiptNo)}>
+                          {bfReceiptKo(a.receiptType)}{a.receiptDone ? " 발급" : " 대기"}
+                        </span>
+                      )}
                       {isV && (
                         <span className="small muted">
                           {a.vip ? "0원 (무료)" : `${(a.feeAmount || 0).toLocaleString()}원`}
@@ -17327,6 +17353,14 @@ export function FoundersView() {
                               {a.vip && (
                                 <div className="cc-kv"><span>모신 이유</span><b>{a.vipNote || <i>-</i>}</b></div>
                               )}
+                              <div className="cc-kv"><span>증빙</span>
+                                <b>{a.receiptType && a.receiptType !== "none"
+                                  ? <>{bfReceiptKo(a.receiptType)} · {a.receiptType === "tax" ? bfBizNo(a.receiptNo) : ccPhone(a.receiptNo)}
+                                      {a.receiptDone && <span className="cc-pill ok" style={{ marginLeft: 6 }}>발급</span>}</>
+                                  : <i>{a.receiptType === "none" ? "안 받음" : "-"}</i>}</b></div>
+                              {a.receiptType === "tax" && (
+                                <div className="cc-kv"><span>계산서 메일</span><b>{a.receiptEmail || <i>-</i>}</b></div>
+                              )}
                               <div className="cc-kv"><span>등록일</span>
                                 <b>{new Date(a.createdAt).toLocaleString("ko-KR")}</b></div>
                               <div className="cc-kv"><span>개인정보</span>
@@ -17348,6 +17382,13 @@ export function FoundersView() {
                                 title={a.vip ? "초대를 거두면 참가비 2만원이 다시 붙습니다"
                                              : "참가비를 받지 않고 모십니다 — 0원, 입금확인으로"}
                                 onClick={() => setVip(a, !a.vip)}>★ VIP 초대</button>
+                              {a.receiptType && a.receiptType !== "none" && (
+                                <button type="button" className={"chip" + (a.receiptDone ? " on" : "")}
+                                  title={a.receiptDone ? "발급을 되돌립니다" : `${bfReceiptKo(a.receiptType)}를 발급했습니다`}
+                                  onClick={() => setReceiptDone(a, !a.receiptDone)}>
+                                  🧾 {bfReceiptKo(a.receiptType)} 발급
+                                </button>
+                              )}
                               <button type="button" className="btn btn-ghost btn-sm"
                                 style={{ marginLeft: "auto", color: "#C0392B" }} onClick={() => remove(a)}>삭제</button>
                             </div>

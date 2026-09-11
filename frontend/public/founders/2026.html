@@ -452,6 +452,17 @@
   .pay dt{color:var(--muted);font-size:12.5px;white-space:nowrap}
   .pay dd{margin:0;font-weight:700}
 
+  /* 증빙 고르기 */
+  .rcpt-pick{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .rcpt{flex:1 1 110px;display:flex;align-items:center;justify-content:center;gap:6px;
+    padding:11px 12px;border:1.5px solid var(--line);border-radius:12px;background:#fff;
+    cursor:pointer;transition:border-color .15s,background .15s}
+  .rcpt input{position:absolute;opacity:0;pointer-events:none}
+  .rcpt b{font-size:13.5px;font-weight:700;color:var(--ink-2)}
+  .rcpt:hover{border-color:var(--brand-line)}
+  .rcpt.on{border-color:var(--brand);background:var(--brand-wash)}
+  .rcpt.on b{color:var(--brand-deep)}
+
   /* 버튼 */
   .nav{display:flex;gap:10px;margin-top:22px}
   .btn{flex:1;border:0;border-radius:10px;padding:14px 18px;font:inherit;font-size:15px;
@@ -1280,6 +1291,29 @@
         <label class="f" style="margin-top:14px"><span>입금자명<em>*</em></span>
           <input type="text" id="vPayer" maxlength="40" placeholder="성함과 다르면 적어주세요">
           <span class="hint">비워두시면 위 성함으로 대조합니다.</span></label>
+
+        <div class="f" style="margin-top:16px">
+          <span>증빙<em>*</em></span>
+          <div class="rcpt-pick">
+            <label class="rcpt on"><input type="radio" name="vrcpt" value="none" checked><b>안 받음</b></label>
+            <label class="rcpt"><input type="radio" name="vrcpt" value="cash"><b>현금영수증</b></label>
+            <label class="rcpt"><input type="radio" name="vrcpt" value="tax"><b>세금계산서</b></label>
+          </div>
+          <span class="hint">입금이 확인되면 발급해 드립니다.</span>
+        </div>
+
+        <label class="f" id="vCashWrap" hidden style="margin-top:12px">
+          <span>현금영수증 받으실 휴대폰 번호<em>*</em></span>
+          <input type="tel" id="vCashNo" maxlength="13" inputmode="numeric" placeholder="010-1234-5678">
+          <span class="hint">소득공제용으로 발급합니다. 위 연락처와 같으면 그대로 두셔도 됩니다.</span></label>
+
+        <div id="vTaxWrap" hidden style="margin-top:12px">
+          <label class="f"><span>사업자등록번호<em>*</em></span>
+            <input type="text" id="vTaxNo" maxlength="12" inputmode="numeric" placeholder="000-00-00000"></label>
+          <label class="f" style="margin-top:12px"><span>세금계산서 받으실 메일<em>*</em></span>
+            <input type="email" id="vTaxEmail" placeholder="세금계산서를 받으실 주소">
+            <span class="hint">상호·대표자명은 사업자등록번호로 조회해 발행합니다.</span></label>
+        </div>
       </div>
 
       <div class="card">
@@ -1288,7 +1322,7 @@
           <table>
             <tr><th>수집 및 이용자</th><td>㈜브로제이</td></tr>
             <tr><th>수집·이용 목적</th><td>참관 등록 확인, 입금 대조, 행사 안내 및 사후 공지</td></tr>
-            <tr><th>수집하는 항목</th><td>성명, 연락처, 소속, 직함, 이메일(선택), 입금자명</td></tr>
+            <tr><th>수집하는 항목</th><td>성명, 연락처, 소속, 직함, 이메일(선택), 입금자명,<br>증빙 발급 정보(휴대폰 번호 또는 사업자등록번호·메일)</td></tr>
             <tr><th>보유 및 이용기간</th><td>행사 종료일로부터 1년간 보유 후 지체 없이 파기</td></tr>
             <tr><th>거부 권리</th><td>동의를 거부하실 수 있으나, 거부 시 참관 등록이 제한됩니다.</td></tr>
           </table>
@@ -2339,11 +2373,50 @@
     e.target.value = d.length > 7 ? d.slice(0, 3) + "-" + d.slice(3, 7) + "-" + d.slice(7)
       : d.length > 3 ? d.slice(0, 3) + "-" + d.slice(3) : d;
   });
+  /* 증빙 — 고른 것에 맞는 칸만 편다 */
+  function vRcptPick() {
+    var v = (document.querySelector('input[name="vrcpt"]:checked') || {}).value || "none";
+    document.querySelectorAll(".rcpt").forEach(function (el) {
+      el.classList.toggle("on", el.querySelector("input").checked);
+    });
+    $("vCashWrap").hidden = v !== "cash";
+    $("vTaxWrap").hidden = v !== "tax";
+    // 현금영수증은 대개 등록한 연락처 그대로다 — 비어 있으면 채워 둔다
+    if (v === "cash" && !$("vCashNo").value.trim()) $("vCashNo").value = $("vPhone").value;
+    if (v === "tax" && !$("vTaxEmail").value.trim()) $("vTaxEmail").value = $("vEmail").value.trim();
+    return v;
+  }
+  document.querySelectorAll('input[name="vrcpt"]').forEach(function (el) {
+    el.addEventListener("change", vRcptPick);
+  });
+  $("vCashNo").addEventListener("input", function () {
+    var d = this.value.replace(/[^\d]/g, "").slice(0, 11);
+    this.value = d.length > 7 ? d.slice(0, 3) + "-" + d.slice(3, 7) + "-" + d.slice(7)
+      : d.length > 3 ? d.slice(0, 3) + "-" + d.slice(3) : d;
+  });
+  $("vTaxNo").addEventListener("input", function () {
+    var d = this.value.replace(/[^\d]/g, "").slice(0, 10);
+    this.value = d.length > 5 ? d.slice(0, 3) + "-" + d.slice(3, 5) + "-" + d.slice(5)
+      : d.length > 3 ? d.slice(0, 3) + "-" + d.slice(3) : d;
+  });
+
   $("visitorBtn").addEventListener("click", function () {
     if (!$("vName").value.trim()) { msg("ev", "성함을 입력해 주세요"); return; }
     if ($("vPhone").value.replace(/[^\d]/g, "").length < 10) { msg("ev", "연락처를 확인해 주세요"); return; }
     if (!$("vAgree").classList.contains("on")) { msg("ev", "개인정보 수집·이용에 동의해 주세요"); return; }
     if (vSignPad.isEmpty()) { msg("ev", "서명란에 서명해 주세요"); return; }
+    var rcpt = (document.querySelector('input[name="vrcpt"]:checked') || {}).value || "none";
+    if (rcpt === "cash" && $("vCashNo").value.replace(/[^\d]/g, "").length < 10) {
+      msg("ev", "현금영수증 받으실 휴대폰 번호를 확인해 주세요"); return;
+    }
+    if (rcpt === "tax") {
+      if ($("vTaxNo").value.replace(/[^\d]/g, "").length !== 10) {
+        msg("ev", "사업자등록번호 10자리를 확인해 주세요"); return;
+      }
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test($("vTaxEmail").value.trim())) {
+        msg("ev", "세금계산서 받으실 메일 주소를 확인해 주세요"); return;
+      }
+    }
     var btn = $("visitorBtn");
     btn.disabled = true;
     btn.textContent = "등록 중…";
@@ -2357,6 +2430,9 @@
         title: $("vTitle").value.trim(),
         email: $("vEmail").value.trim(),
         payerName: $("vPayer").value.trim(),
+        receiptType: rcpt,
+        receiptNo: rcpt === "tax" ? $("vTaxNo").value : rcpt === "cash" ? $("vCashNo").value : "",
+        receiptEmail: rcpt === "tax" ? $("vTaxEmail").value.trim() : "",
         privacyAgreed: true,
         signature: vSignPad.data()
       })
@@ -2375,7 +2451,9 @@
           "아래 계좌로 <b>20,000원</b>을 3일 이내에 입금해 주세요.<br>" +
           "우리은행 <b>1005-704-322242</b> (주)브로제이<br>" +
           "입금자명 <b>" + esc(res.j.payerName) + "</b><br><br>" +
-          "입금이 확인되면 문자로 안내드립니다.<br>" +
+          "입금이 확인되면 문자로 안내드립니다." +
+          (rcpt === "cash" ? " 현금영수증도 함께 발급해 드립니다."
+            : rcpt === "tax" ? " 세금계산서는 적어주신 메일로 보내드립니다." : "") + "<br>" +
           "행사 <b>2026년 10월 9일(금) 14:00</b> · 어브 스튜디오<br>" +
           "문의 broj.network@gmail.com · 카카오톡 @broj";
         document.querySelectorAll("section").forEach(function (el) { el.classList.remove("on"); });

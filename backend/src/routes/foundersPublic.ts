@@ -729,6 +729,25 @@ foundersPublicRouter.post("/visitor", guard(async (req: Request, res: Response) 
   if (repPhone.length < 10) return fail(res, "연락처를 확인해 주세요");
   if (b.privacyAgreed !== true) return fail(res, "개인정보 수집·이용에 동의해 주셔야 등록됩니다");
 
+  // 참가비 증빙 — 고른 것에 맞는 번호만 받는다
+  const rType = ["none", "cash", "tax"].includes(str(b.receiptType, 10)) ? str(b.receiptType, 10) : "none";
+  const rNo = digits(b.receiptNo);
+  const rEmail = str(b.receiptEmail, 120).toLowerCase() || str(b.email, 120).toLowerCase();
+  if (rType === "cash" && rNo.length < 10) {
+    return fail(res, "현금영수증 받으실 휴대폰 번호를 확인해 주세요");
+  }
+  if (rType === "tax") {
+    if (rNo.length !== 10) return fail(res, "사업자등록번호 10자리를 확인해 주세요");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rEmail)) {
+      return fail(res, "세금계산서 받으실 메일 주소를 확인해 주세요");
+    }
+  }
+  const receipt = {
+    receiptType: rType,
+    receiptNo: rType === "none" ? "" : rNo,
+    receiptEmail: rType === "tax" ? rEmail : "",
+  };
+
   const dup = await prisma.erpFoundersApply.findFirst({
     where: { roundId: round.id, kind: "visitor", repPhone },
     orderBy: { createdAt: "desc" },

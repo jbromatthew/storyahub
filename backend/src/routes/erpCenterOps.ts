@@ -635,6 +635,19 @@ erpCenterOpsRouter.patch("/founders/applies/:id", async (req: AuthedRequest, res
   }
   if (b.memo !== undefined) data.memo = str(b.memo, 1000);
   if (b.vipNote !== undefined) data.vipNote = str(b.vipNote, 200);
+  // 참가비 증빙 — 잘못 적어 오신 번호를 우리가 고쳐 드릴 수 있어야 한다
+  if (b.receiptType !== undefined) {
+    const v = str(b.receiptType, 10);
+    if (!["", "none", "cash", "tax"].includes(v)) return fail(res, "증빙 구분이 올바르지 않습니다");
+    data.receiptType = v;
+  }
+  if (b.receiptNo !== undefined) data.receiptNo = str(b.receiptNo, 20).replace(/[^\d]/g, "");
+  if (b.receiptEmail !== undefined) data.receiptEmail = str(b.receiptEmail, 120).toLowerCase();
+  if (b.receiptNote !== undefined) data.receiptNote = str(b.receiptNote, 200);
+  if (b.receiptDone !== undefined) {
+    data.receiptDone = b.receiptDone === true;
+    data.receiptAt = b.receiptDone === true ? new Date() : null;
+  }
   // VIP 로 모시면 참가비를 받지 않는다 — 0원이고 입금을 기다리지 않는다
   if (b.vip !== undefined) {
     const { VISITOR_FEE } = await import("./foundersPublic.js");
