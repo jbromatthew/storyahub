@@ -12,6 +12,10 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: "autoUpdate",
+        // 등록은 main.jsx 에서 직접 한다 — 새 것이 올라오면 스스로 갈아끼우게 하려고.
+        // 홈 화면에 담아 쓰는 기기(아이패드 등)는 앱을 완전히 끄는 일이 드물어
+        // 그냥 두면 옛 화면을 오래 들고 있는다.
+        injectRegister: null,
         // 스마트상점 공개 가이드는 용량이 커서(수백KB) 서비스워커 프리캐시 대상에서 제외
         workbox: {
           // 정적 공개 페이지는 서비스 워커가 가로채면 안 된다 — ERP index.html이 대신 뜬다

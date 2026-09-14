@@ -16152,6 +16152,7 @@ export function RndBacklogView() {
   const [counts, setCounts] = useState({});
   const [starCount, setStarCount] = useState(0);
   const [meName, setMeName] = useState("");
+  const [meEmail, setMeEmail] = useState("");
   const [f, setF] = useState(RND_BLANK_F);
   const [segments, setSegments] = useState([]);
   const [activeSeg, setActiveSeg] = useState("");
@@ -16196,6 +16197,7 @@ export function RndBacklogView() {
         const list = d.tickets || [];
         setTickets(list); setCounts(d.counts || {}); setMeName(d.meName || "");
         setStarCount(d.starCount || 0);
+        setMeEmail(d.meEmail || "");
         const live = new Set(list.map((t) => t.id));
         setSel((p) => new Set([...p].filter((id) => live.has(id))));
       })
@@ -16468,6 +16470,10 @@ export function RndBacklogView() {
       <div className="small" style={{ marginTop: 8, lineHeight: 1.6, color: "var(--muted)" }}>
         사업부가 요구사항을 올리면 RND가 유형을 정하고 담당자를 붙여 대응합니다.
         상태가 바뀌면 <strong>올린 사람에게 알림</strong>이 갑니다.
+        {meEmail && (
+          <>{" · "}지금 <strong>{meEmail}</strong> 으로 보고 있습니다
+            {" · "}즐겨찾기 <strong>{starCount}</strong>개</>
+        )}
       </div>
 
       <RndHowTo kinds={kinds} types={types} />

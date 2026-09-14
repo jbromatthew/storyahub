@@ -256,6 +256,7 @@ erpRndRouter.get("/tickets", async (req: AuthedRequest, res) => {
     counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])),
     starCount: starred.size,
     meName: who.name,
+    meEmail: who.email,
   });
 });
 

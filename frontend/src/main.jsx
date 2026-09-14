@@ -8,6 +8,18 @@ import VendorPortalPage from "./VendorPortalPage.jsx";
 import SurveyPage from "./SurveyPage.jsx";
 import SettlePage from "./SettlePage.jsx";
 import "./index.css";
+import { registerSW } from "virtual:pwa-register";
+
+/* 새 배포가 올라오면 스스로 갈아끼우고 화면을 다시 그린다.
+   홈 화면에 담아 쓰는 기기는 앱을 아예 끄는 일이 드물어, 그냥 두면
+   며칠씩 옛 화면을 들고 있었다. 한 시간에 한 번 새 것이 있는지도 본다. */
+const updateSW = registerSW({
+  immediate: true,
+  onRegisteredSW(_url, reg) {
+    if (reg) setInterval(() => reg.update().catch(() => {}), 3600_000);
+  },
+  onNeedRefresh() { updateSW(true); },
+});
 
 const ERP_MODE = import.meta.env.VITE_ERP_MODE === "true" || import.meta.env.VITE_ERP_MODE === "1";
 
