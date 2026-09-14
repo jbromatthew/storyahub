@@ -16208,6 +16208,24 @@ export function RndBacklogView() {
     window.addEventListener("erp:open-rnd", open);
     return () => window.removeEventListener("erp:open-rnd", open);
   }, []);
+
+  /* 다른 기기에서 별을 달거나 상태를 옮겼을 수 있다.
+     화면을 켜 둔 채 두었다가 돌아오면 새로 받아 온다 — 너무 잦지 않게 30초에 한 번. */
+  const lastLoad = useRef(0);
+  useEffect(() => {
+    const again = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastLoad.current < 30000) return;
+      lastLoad.current = Date.now();
+      loadTickets();
+    };
+    document.addEventListener("visibilitychange", again);
+    window.addEventListener("focus", again);
+    return () => {
+      document.removeEventListener("visibilitychange", again);
+      window.removeEventListener("focus", again);
+    };
+  }, [loadTickets]);
   useEffect(() => { loadTickets(); }, [loadTickets]);
 
   const domains = meta?.domains || [];
@@ -16463,10 +16481,12 @@ export function RndBacklogView() {
         </button>
         <span style={{ flex: 1 }} />
         <button type="button" className={"chip" + (f.star ? " on" : "")}
-          title="내가 별을 단 티켓만 봅니다"
+          title="내가 별을 단 티켓만 봅니다 — 어느 기기에서 달아도 같이 보입니다"
           onClick={() => setFf({ star: !f.star })}>
           ★ 즐겨찾기 <i style={{ fontStyle: "normal", opacity: .6 }}>{starCount}</i>
         </button>
+        <button type="button" className="btn btn-ghost btn-sm" title="지금 것으로 새로 받아옵니다"
+          onClick={() => { lastLoad.current = Date.now(); loadTickets(); toastSuccess("새로 받아왔어요"); }}>⟳</button>
         <label className="small row" style={{ gap: 6, alignItems: "center", cursor: "pointer" }}>
           <input type="checkbox" checked={f.mine} onChange={(e) => setFf({ mine: e.target.checked })} />
           내가 올린 것만
