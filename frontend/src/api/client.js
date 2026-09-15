@@ -447,6 +447,8 @@ export const api = {
     if (pageSize) p.set("pageSize", String(pageSize));
     return req(`/erp/sales/rows?${p}`);
   },
+  erpPrevServiceMeta: () => req("/erp/sales/stats/prev-service/meta"),
+  erpPrevService: (body) => req("/erp/sales/stats/prev-service", { method: "POST", body }),
   erpPaymentRateMeta: () => req("/erp/sales/payment-rate/meta"),
   erpPaymentRate: (body) => req("/erp/sales/payment-rate", { method: "POST", body }),
   erpSalesTrend: ({ tab, industries } = {}) => {

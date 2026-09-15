@@ -8408,6 +8408,167 @@ function GaugeRing({ rate, size = 132 }) {
   );
 }
 
+/* ── 세일즈 통계 ── */
+
+const PS_PRESETS = [
+  { id: "cur", label: "이번 달", pick: (ms) => ms.slice(0, 1) },
+  { id: "l3", label: "직전 3개월", pick: (ms) => ms.slice(0, 3) },
+  { id: "l6", label: "직전 6개월", pick: (ms) => ms.slice(0, 6) },
+  { id: "y", label: "올해", pick: (ms) => ms.filter((m) => m.startsWith(String(new Date().getFullYear()))) },
+  { id: "all", label: "전체", pick: (ms) => ms },
+];
+
+export function SalesStatsView() {
+  const [months, setMonths] = useState([]);       // 고를 수 있는 월
+  const [picked, setPicked] = useState([]);       // 고른 월
+  const [serviceOnly, setServiceOnly] = useState(true);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showMonths, setShowMonths] = useState(false);
+
+  useEffect(() => {
+    api.erpPrevServiceMeta()
+      .then((d) => {
+        const ms = d.months || [];
+        setMonths(ms);
+        setPicked(ms.slice(0, 3));    // 처음엔 직전 3개월
+      })
+      .catch(notifyError)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const run = useCallback(() => {
+    setLoading(true);
+    api.erpPrevService({ months: picked, serviceOnly })
+      .then(setData)
+      .catch(notifyError)
+      .finally(() => setLoading(false));
+  }, [picked, serviceOnly]);
+  useEffect(() => { if (months.length) run(); }, [run, months.length]);
+
+  const items = data?.items || [];
+  const top = items[0]?.inquiries || 1;
+
+  const copy = async () => {
+    const head = ["직전서비스", "문의", "비중(%)", "결제", "결제율(%)"];
+    const lines = [head.join("\t"), ...items.map((x) =>
+      [x.label, x.inquiries, x.share, x.paid, x.paidRate ?? ""].join("\t"))];
+    try { await navigator.clipboard.writeText(lines.join("\n")); toastSuccess(`${items.length}줄을 복사했어요`); }
+    catch { notifyError(new Error("복사에 실패했습니다")); }
+  };
+
+  const label = picked.length === 1 ? picked[0].replace(/\.$/, "")
+    : picked.length ? `${picked[picked.length - 1].replace(/\.$/, "")} ~ ${picked[0].replace(/\.$/, "")} · ${picked.length}개월`
+      : "월을 고르세요";
+
+  return (
+    <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">Sales</div>
+      <div className="h-title">세일즈 통계</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.6, color: "var(--muted)" }}>
+        우리로 넘어오기 전에 무엇을 쓰고 있었는지 — 문의 시트의 <strong>직전서비스</strong> 칸을 센 것입니다.
+        많은 순으로 놓았습니다.
+      </div>
+
+      <div className="sales-toolbar" style={{ marginTop: 14, alignItems: "center" }}>
+        {PS_PRESETS.map((p) => {
+          const want = p.pick(months);
+          const on = want.length === picked.length && want.every((m) => picked.includes(m));
+          return (
+            <button key={p.id} type="button" className={"sales-tab" + (on ? " on" : "")}
+              onClick={() => setPicked(want)}>{p.label}</button>
+          );
+        })}
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowMonths((v) => !v)}>
+          {showMonths ? "월 접기" : "월 직접 고르기"}
+        </button>
+        <span className="small" style={{ color: "var(--muted)", marginLeft: "auto" }}>{label}</span>
+      </div>
+
+      {showMonths && (
+        <div className="card" style={{ marginTop: 10, padding: 14 }}>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+            {months.map((m) => (
+              <button key={m} type="button"
+                className={"chip" + (picked.includes(m) ? " on" : "")}
+                onClick={() => setPicked((p) => (p.includes(m) ? p.filter((x) => x !== m) : [...p, m].sort((a, b) => b.localeCompare(a))))}>
+                {m.replace(/\.$/, "")}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="row" style={{ gap: 6, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <button type="button" className={"chip" + (serviceOnly ? " on" : "")}
+          onClick={() => setServiceOnly(true)}>서비스만</button>
+        <button type="button" className={"chip" + (!serviceOnly ? " on" : "")}
+          onClick={() => setServiceOnly(false)}>전체</button>
+        <span className="small" style={{ color: "var(--muted)" }}>
+          {serviceOnly
+            ? "처음 도입 · 대답 없음 · 기존 고객 · 기타를 뺀 실제 서비스만"
+            : "적힌 값을 그대로 다 보여줍니다"}
+        </span>
+        <span style={{ flex: 1 }} />
+        <button type="button" className="btn btn-ghost btn-sm" onClick={copy} disabled={!items.length}>
+          엑셀로 복사
+        </button>
+      </div>
+
+      {loading && !data ? <div className="spinner" /> : !data ? null : (
+        <>
+          <div className="cst-summary" style={{ gridTemplateColumns: "repeat(3,1fr)", marginTop: 14 }}>
+            <div className="cst-sum-card"><div className="lbl">신규문의</div>
+              <div className="val">{data.total.toLocaleString()}</div></div>
+            <div className="cst-sum-card"><div className="lbl">직전서비스 적힌 건</div>
+              <div className="val">{data.answered.toLocaleString()}
+                <span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 6 }}>
+                  {data.total ? `${Math.round((data.answered / data.total) * 1000) / 10}%` : ""}</span></div></div>
+            <div className="cst-sum-card"><div className="lbl">{serviceOnly ? "서비스 건수" : "집계 건수"}</div>
+              <div className="val">{data.shown.toLocaleString()}
+                <span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 6 }}>
+                  {items.length}가지</span></div></div>
+          </div>
+
+          {!items.length ? (
+            <div className="small" style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+              고른 기간에 직전서비스가 적힌 문의가 없습니다.
+            </div>
+          ) : (
+            <div className="card" style={{ marginTop: 14, padding: "16px 18px" }}>
+              <div className="ps-list">
+                {items.map((x, i) => (
+                  <div key={x.label} className="ps-row">
+                    <span className="ps-rank">{i + 1}</span>
+                    <span className="ps-name" title={x.note || x.label}>
+                      {x.label}
+                      {x.note && <i>{x.note}</i>}
+                    </span>
+                    <span className="ps-bar">
+                      <i style={{ width: `${Math.max((x.inquiries / top) * 100, 1.5)}%` }} />
+                    </span>
+                    <span className="ps-n">{x.inquiries.toLocaleString()}</span>
+                    <span className="ps-share">{x.share}%</span>
+                    <span className="ps-paid" title="이 중 실제 결제까지 간 건">
+                      결제 {x.paid}{x.paidRate != null ? ` · ${x.paidRate}%` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="small" style={{ marginTop: 10, color: "var(--muted)", lineHeight: 1.6 }}>
+            비중은 <strong>지금 막대에 잡힌 {data.shown.toLocaleString()}건</strong> 기준입니다.
+            직전서비스를 안 적은 문의 {data.blank.toLocaleString()}건은 어디에도 들어가지 않습니다.
+            대소문자만 다른 같은 이름은 하나로 묶었습니다.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // 세일즈/마케팅 계기판 응답 캐시 (variant+월별) — 재방문 시 즉시 표시 후 백그라운드 갱신
 const salesDashCache = new Map();
 

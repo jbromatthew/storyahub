@@ -151,6 +151,21 @@ salesSyncRouter.post("/payment-rate", async (req: AuthedRequest, res: Response) 
   }
 });
 
+/* ── 세일즈 통계 — 직전서비스 ── */
+
+salesSyncRouter.get("/stats/prev-service/meta", async (_req: AuthedRequest, res: Response) => {
+  const { getPrevServiceMeta } = await import("../services/salesPrevService.js");
+  res.json(await getPrevServiceMeta());
+});
+
+salesSyncRouter.post("/stats/prev-service", async (req: AuthedRequest, res: Response) => {
+  const { computePrevService } = await import("../services/salesPrevService.js");
+  const months = Array.isArray(req.body?.months)
+    ? req.body.months.map((m: unknown) => String(m)).slice(0, 60)
+    : [];
+  res.json(await computePrevService({ months, serviceOnly: req.body?.serviceOnly === true }));
+});
+
 const TREND_TAB_IDS = new Set(listTrendTabs().map((t) => t.id));
 
 salesSyncRouter.get("/trend/tabs", async (_req: AuthedRequest, res: Response) => {
