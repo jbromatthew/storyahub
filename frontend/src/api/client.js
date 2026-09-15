@@ -290,6 +290,8 @@ export const api = {
   erpFoundersRoundSave: (body) => req("/erp/ops/founders/rounds", { method: "POST", body }),
   erpFoundersReviewPass: (id, password) =>
     req(`/erp/ops/founders/rounds/${id}/review-pass`, { method: "PATCH", body: { password } }),
+  erpFoundersVipCode: (id, code) =>
+    req(`/erp/ops/founders/rounds/${id}/vip-code`, { method: "PATCH", body: { code } }),
   erpFoundersRoundUpdate: (id, body) => req(`/erp/ops/founders/rounds/${id}`, { method: "PATCH", body }),
   erpFoundersApplies: (q = {}) => {
     const p = new URLSearchParams();

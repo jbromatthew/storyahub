@@ -546,6 +546,7 @@ erpCenterOpsRouter.get("/founders/rounds", async (_req: AuthedRequest, res) => {
       ...r,
       applyCount: map.get(r.id) ?? 0,
       reviewPassSet: !!reviewPassHash, // 해시 자체는 내보내지 않는다
+      // VIP 코드는 우리가 손님에게 건네줄 주소라서 그대로 보여준다
     })),
   });
 });
@@ -562,6 +563,18 @@ erpCenterOpsRouter.patch("/founders/rounds/:id/review-pass", async (req: AuthedR
     data: { reviewPassHash: pw ? hashFoundersPw(pw) : "" },
   });
   res.json({ ok: true, reviewPassSet: !!pw });
+});
+
+/** VIP 초대 등록 페이지 열쇠. 빈 값을 보내면 그 페이지를 닫는다. */
+erpCenterOpsRouter.patch("/founders/rounds/:id/vip-code", async (req: AuthedRequest, res) => {
+  const round = await prisma.erpFoundersRound.findUnique({ where: { id: String(req.params.id) } });
+  if (!round) return fail(res, "회차를 찾을 수 없습니다", 404);
+  const raw = String((req.body ?? {}).code ?? "").trim();
+  // 주소에 실려 다닐 값이라 영문·숫자·하이픈만 받는다
+  const code = raw.replace(/[^A-Za-z0-9-]/g, "").slice(0, 40);
+  if (raw && code.length < 8) return fail(res, "초대 코드는 영문·숫자 8자 이상으로 정해주세요");
+  await prisma.erpFoundersRound.update({ where: { id: round.id }, data: { vipCode: code } });
+  res.json({ ok: true, vipCode: code });
 });
 
 /** 시트에 전부 다시 얹는다 — 연동 붙이기 전 접수나 어긋난 줄을 맞출 때 */

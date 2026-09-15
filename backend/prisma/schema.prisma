@@ -1263,6 +1263,8 @@ model ErpFoundersRound {
   notice    String   @default("") // 화면 상단 안내
   /// 공동 주최(드레이퍼) 심사 페이지 비밀번호 (scrypt). 계정 없이 이것 하나로 연다.
   reviewPassHash String @default("")
+  /// VIP 초대 등록 페이지 열쇠. 비어 있으면 그 페이지는 열리지 않는다.
+  vipCode        String @default("")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>초대 참관 등록 · 2026 BROJ Founders x Draper</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="2026 BROJ Founders x Draper 초대 참관 등록.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<style>
+  :root{
+    --paper:#FBF6F2; --card:#FFFFFF; --sunk:#FCFAF8;
+    --steel-2:#F5F0EC;
+    --line:#E7DED7; --line-2:#F0EAE5; --edge:#FFFFFF;
+    --ink:#171412; --ink-2:#4A443F; --muted:#857C75;
+    --brand:#FA6400; --brand-2:#FF8231; --brand-deep:#C24C00; --brand-wash:#FFF4EC; --brand-line:#FFD3B0;
+    --ok:#1B7A46; --ok-wash:#E9F6EE; --ok-line:#B9E2C9;
+    --bad:#B3261E; --bad-wash:#FCEDEC; --bad-line:#F3C7C4;
+    --r:12px;
+    --lift:0 1px 0 var(--edge) inset, 0 1px 2px rgba(21,23,27,.06), 0 8px 20px rgba(21,23,27,.05);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{
+    margin:0;color:var(--ink);
+    background:
+      radial-gradient(900px 620px at 88% 24%, rgba(255,178,120,.30) 0%, rgba(255,178,120,0) 62%),
+      radial-gradient(760px 560px at 8% 78%, rgba(255,150,80,.16) 0%, rgba(255,150,80,0) 60%),
+      linear-gradient(165deg,#FFFDFB 0%,#FDF4EC 55%,#FCEDE1 100%);
+    background-attachment:fixed;
+    font-family:"Noto Sans JP","Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    font-size:15px;line-height:1.7;letter-spacing:-.012em;-webkit-font-smoothing:antialiased;
+    word-break:keep-all;overflow-wrap:break-word;
+  }
+  a{color:var(--brand-deep)}
+  [hidden]{display:none !important}
+
+  .wrap{max-width:560px;margin:0 auto;padding:28px 20px 80px}
+
+  .lockup{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+  .lockup img{display:block;width:auto}
+  .lockup .lg-broj{height:24px}
+  .lockup .lg-draper{height:20px}
+  .lockup .lg-x{width:1px;height:19px;background:var(--line)}
+
+  .badge{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;
+    letter-spacing:.06em;padding:4px 11px;border-radius:999px;
+    background:var(--brand);color:#fff;box-shadow:0 2px 8px rgba(250,100,0,.28)}
+  h1{font-size:clamp(25px,5.6vw,33px);font-weight:900;letter-spacing:-.04em;
+    margin:12px 0 0;line-height:1.24}
+  .lede{margin:12px 0 0;color:var(--ink-2);font-size:14.5px;line-height:1.75}
+  .lede b{font-weight:800;color:var(--ink)}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:20px;box-shadow:var(--lift);margin-top:20px}
+  h3{font-size:15px;font-weight:800;letter-spacing:-.02em;margin:0 0 14px;
+    display:flex;align-items:center;gap:6px}
+  h3 .req{color:var(--brand);font-size:13px}
+
+  label.f{display:block;margin-bottom:14px}
+  label.f:last-child{margin-bottom:0}
+  .f > span:first-child{display:block;font-size:13px;font-weight:700;color:var(--ink-2);margin-bottom:6px}
+  .f em{font-style:normal;color:var(--brand);margin-left:2px}
+  .f input{width:100%;font-family:inherit;font-size:15px;color:var(--ink);
+    padding:13px 14px;border:1.5px solid var(--line);border-radius:12px;background:#fff;
+    transition:border-color .15s,box-shadow .15s}
+  .f input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(250,100,0,.12)}
+  .f input::placeholder{color:#B9B0A9}
+  .hint{display:block;font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.6}
+
+  .free{display:flex;align-items:baseline;gap:10px;padding:16px 18px;border-radius:14px;
+    background:linear-gradient(180deg,var(--brand-wash),#fff);border:1px solid var(--brand-line)}
+  .free .amt{font-size:26px;font-weight:900;letter-spacing:-.03em;color:var(--brand-deep)}
+  .free .t{font-size:13.5px;color:var(--ink-2);font-weight:700}
+
+  .doc{background:var(--sunk);border:1px solid var(--line);border-radius:10px;
+    padding:14px;max-height:180px;overflow:auto;font-size:12.5px;line-height:1.7;color:var(--ink-2)}
+  .doc table{width:100%;border-collapse:collapse}
+  .doc th{text-align:left;width:112px;vertical-align:top;padding:5px 10px 5px 0;
+    color:var(--muted);font-weight:700;white-space:nowrap}
+  .doc td{padding:5px 0;vertical-align:top}
+
+  .agree{display:flex;align-items:flex-start;gap:10px;margin-top:14px;cursor:pointer;
+    padding:13px 14px;border:1.5px solid var(--line);border-radius:12px;background:#fff;
+    transition:border-color .15s,background .15s}
+  .agree:hover{border-color:var(--brand-line)}
+  .agree.on{border-color:var(--brand);background:var(--brand-wash)}
+  .agree .box{flex:0 0 auto;width:20px;height:20px;border-radius:6px;border:1.5px solid var(--line);
+    background:#fff;display:flex;align-items:center;justify-content:center;
+    color:#fff;font-size:12px;font-weight:900;margin-top:1px}
+  .agree.on .box{background:var(--brand);border-color:var(--brand)}
+  .agree span.t{font-size:13.5px;line-height:1.6}
+
+  .sign-wrap{border:1.5px dashed var(--line);border-radius:12px;background:#fff;
+    position:relative;overflow:hidden;touch-action:none}
+  .sign-wrap canvas{display:block;width:100%;height:170px}
+  .sign-wrap .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:#C5BCB5;font-size:13.5px;pointer-events:none}
+  .sign-wrap.drawn .ph{display:none}
+  .sign-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+
+  .btn{font-family:inherit;font-size:15px;font-weight:800;border-radius:13px;cursor:pointer;
+    border:1px solid transparent;padding:15px 20px;transition:transform .1s,box-shadow .15s,opacity .15s}
+  .btn:active{transform:translateY(1px)}
+  .btn-go{width:100%;background:linear-gradient(180deg,var(--brand-2),var(--brand));color:#fff;
+    box-shadow:0 1px 0 rgba(255,255,255,.3) inset,0 6px 16px rgba(250,100,0,.28);margin-top:20px}
+  .btn-go:disabled{opacity:.6;cursor:default}
+  .btn-ghost{background:#fff;border-color:var(--line);color:var(--ink-2);font-size:13px;padding:7px 12px}
+
+  .msg{margin-top:14px;padding:13px 15px;border-radius:12px;font-size:13.5px;line-height:1.6}
+  .msg.err{background:var(--bad-wash);border:1px solid var(--bad-line);color:var(--bad)}
+
+  .done{text-align:center;padding:26px 20px}
+  .done .tick{width:56px;height:56px;border-radius:50%;background:var(--ok-wash);
+    border:1px solid var(--ok-line);color:var(--ok);display:flex;align-items:center;justify-content:center;
+    font-size:28px;margin:0 auto 16px}
+  .done h2{font-size:21px;font-weight:900;letter-spacing:-.03em;margin:0 0 8px}
+  .done .no{font-size:24px;font-weight:900;letter-spacing:.02em;color:var(--brand-deep);
+    margin:16px 0;font-variant-numeric:tabular-nums}
+  .done p{color:var(--ink-2);font-size:14px;line-height:1.8;margin:0}
+
+  .gate{text-align:center;padding:60px 20px;color:var(--muted);font-size:14px;line-height:1.8}
+
+  footer{margin-top:34px;text-align:center;color:var(--muted);font-size:12.5px;line-height:1.8}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <div class="lockup">
+    <img src="logo-broj.png" alt="BROJ" class="lg-broj">
+    <span class="lg-x"></span>
+    <img src="logo-draperx.png" alt="Draper X Ventures" class="lg-draper">
+  </div>
+
+  <div id="gate" class="gate">확인하는 중…</div>
+
+  <div id="form" hidden>
+    <span class="badge">VIP 초대</span>
+    <h1>초대해 드립니다<br>현장에서 뵙겠습니다</h1>
+    <p class="lede">2026 BROJ Founders x Draper IR 피칭대회에 초대합니다.
+      <b>참가비는 받지 않습니다.</b> 아래 네 가지만 적어주시면 등록이 끝납니다.</p>
+
+    <div class="card">
+      <h3>참관자 정보<span class="req">*</span></h3>
+      <label class="f"><span>성함<em>*</em></span>
+        <input type="text" id="vName" maxlength="40" placeholder="홍길동"></label>
+      <label class="f"><span>연락처<em>*</em></span>
+        <input type="tel" id="vPhone" maxlength="13" inputmode="numeric" placeholder="010-1234-5678"></label>
+      <label class="f"><span>소속</span>
+        <input type="text" id="vOrg" maxlength="80" placeholder="회사·기관명"></label>
+      <label class="f"><span>직함</span>
+        <input type="text" id="vTitle" maxlength="60" placeholder="대표 · 팀장 · 매니저 등"></label>
+      <label class="f"><span>이메일 <i style="font-style:normal;color:var(--muted);font-weight:400">선택</i></span>
+        <input type="email" id="vEmail" placeholder="안내 메일을 받으실 주소">
+        <span class="hint">적어주시면 행사 안내를 메일로도 보내드립니다.</span></label>
+    </div>
+
+    <div class="card">
+      <h3>참가비</h3>
+      <div class="free">
+        <span class="amt">0원</span>
+        <span class="t">초대해 드린 분이라 참가비를 받지 않습니다.<br>입금하실 것이 없습니다.</span>
+      </div>
+      <p class="hint" style="margin-top:12px">자리는 <b>자유석</b>입니다. 오신 순서대로 앉으시면 되고,
+        의자가 다 차면 서서 보실 수 있습니다.</p>
+    </div>
+
+    <div class="card">
+      <h3>개인정보 수집·이용 동의<span class="req">*</span></h3>
+      <div class="doc">
+        <table>
+          <tr><th>수집 및 이용자</th><td>㈜브로제이</td></tr>
+          <tr><th>수집·이용 목적</th><td>참관 등록 확인, 행사 안내 및 사후 공지</td></tr>
+          <tr><th>수집하는 항목</th><td>성명, 연락처, 소속, 직함, 이메일(선택)</td></tr>
+          <tr><th>보유 및 이용기간</th><td>행사 종료일로부터 1년간 보유 후 지체 없이 파기</td></tr>
+          <tr><th>거부 권리</th><td>동의를 거부하실 수 있으나, 거부 시 참관 등록이 제한됩니다.</td></tr>
+        </table>
+      </div>
+      <div class="agree" id="vAgree">
+        <span class="box">✓</span>
+        <span class="t">위 내용을 확인하였으며 개인정보 수집·이용에 동의합니다.</span>
+      </div>
+
+      <div style="margin-top:18px">
+        <div class="f"><span>서명<em>*</em></span></div>
+        <div class="sign-wrap" id="vSignWrap">
+          <canvas id="vSignPad"></canvas>
+          <div class="ph">이 칸에 마우스나 손가락으로 서명해 주세요</div>
+        </div>
+        <div class="sign-row">
+          <span class="hint" style="margin:0;flex:1">현장 확인 때 쓰입니다.</span>
+          <button type="button" class="btn btn-ghost" id="vSignClear">지우기</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="msg err" id="ev" hidden></div>
+    <button type="button" class="btn btn-go" id="vipBtn">초대 등록 마치기</button>
+  </div>
+
+  <div id="done" class="card done" hidden>
+    <div class="tick">✓</div>
+    <h2>초대 등록이 완료되었습니다</h2>
+    <p>아래 등록번호를 저장해 두세요.</p>
+    <div class="no" id="doneNo"></div>
+    <p id="doneNote"></p>
+  </div>
+
+  <footer>
+    2026 BROJ Founders x Draper 운영사무국<br>
+    broj.network@gmail.com · 카카오톡 @broj
+  </footer>
+</div>
+
+<script>
+var API = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+  ? "http://localhost:4000" : "https://api.storyahub.com";
+var $ = function (id) { return document.getElementById(id); };
+function esc(v) {
+  return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+function msg(id, text) { var el = $(id); el.textContent = text; el.hidden = false; }
+
+var CODE = new URLSearchParams(location.search).get("k") || "";
+
+/* 서명 패드 — 접수 페이지와 같은 방식 */
+function makeSignPad(wrapId, canvasId, clearId) {
+  var wrap = $(wrapId), cv = $(canvasId), ctx = cv.getContext("2d");
+  var drawing = false, dirty = false, last = null;
+  function fit() {
+    var r = wrap.getBoundingClientRect();
+    if (!r.width) { requestAnimationFrame(fit); return; }   // 자리 잡기 전엔 폭이 0이다
+    var dpr = window.devicePixelRatio || 1;
+    var keep = dirty ? cv.toDataURL() : null;
+    cv.width = Math.round(r.width * dpr);
+    cv.height = Math.round(170 * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineWidth = 2.2; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#171412";
+    if (keep) { var im = new Image(); im.onload = function () { ctx.drawImage(im, 0, 0, r.width, 170); }; im.src = keep; }
+  }
+  function at(e) {
+    var r = cv.getBoundingClientRect();
+    var p = e.touches ? e.touches[0] : e;
+    return { x: p.clientX - r.left, y: p.clientY - r.top };
+  }
+  function down(e) { e.preventDefault(); drawing = true; last = at(e); }
+  function move(e) {
+    if (!drawing) return;
+    e.preventDefault();
+    var p = at(e);
+    ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+    last = p;
+    if (!dirty) { dirty = true; wrap.classList.add("drawn"); }
+  }
+  function up() { drawing = false; }
+  cv.addEventListener("pointerdown", down);
+  cv.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+  window.addEventListener("resize", fit);
+  $(clearId).addEventListener("click", function () {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    dirty = false; wrap.classList.remove("drawn");
+  });
+  return {
+    ready: fit,
+    isEmpty: function () { return !dirty; },
+    data: function () { return dirty ? cv.toDataURL("image/png") : ""; }
+  };
+}
+var pad = makeSignPad("vSignWrap", "vSignPad", "vSignClear");
+
+$("vPhone").addEventListener("input", function () {
+  var d = this.value.replace(/[^\d]/g, "").slice(0, 11);
+  this.value = d.length > 7 ? d.slice(0, 3) + "-" + d.slice(3, 7) + "-" + d.slice(7)
+    : d.length > 3 ? d.slice(0, 3) + "-" + d.slice(3) : d;
+});
+$("vAgree").addEventListener("click", function () { this.classList.toggle("on"); });
+
+/* 초대 주소가 맞는지 먼저 본다 — 아니면 아무것도 보여주지 않는다 */
+fetch(API + "/public/founders/vip/check?k=" + encodeURIComponent(CODE))
+  .then(function (r) { return r.json(); })
+  .then(function (j) {
+    if (!j.ok) {
+      $("gate").innerHTML = "초대 주소가 올바르지 않습니다.<br>운영사무국으로 문의해 주세요." +
+        "<br><br>broj.network@gmail.com · 카카오톡 @broj";
+      return;
+    }
+    $("gate").hidden = true;
+    $("form").hidden = false;
+    pad.ready();
+  })
+  .catch(function () {
+    $("gate").textContent = "지금은 연결할 수 없습니다. 잠시 후 다시 열어주세요.";
+  });
+
+$("vipBtn").addEventListener("click", function () {
+  $("ev").hidden = true;
+  if (!$("vName").value.trim()) { msg("ev", "성함을 입력해 주세요"); return; }
+  if ($("vPhone").value.replace(/[^\d]/g, "").length < 10) { msg("ev", "연락처를 확인해 주세요"); return; }
+  if (!$("vAgree").classList.contains("on")) { msg("ev", "개인정보 수집·이용에 동의해 주세요"); return; }
+  if (pad.isEmpty()) { msg("ev", "서명란에 서명해 주세요"); return; }
+
+  var btn = $("vipBtn");
+  btn.disabled = true;
+  btn.textContent = "등록 중…";
+  fetch(API + "/public/founders/vip", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      code: CODE,
+      name: $("vName").value.trim(),
+      phone: $("vPhone").value,
+      org: $("vOrg").value.trim(),
+      title: $("vTitle").value.trim(),
+      email: $("vEmail").value.trim(),
+      privacyAgreed: true,
+      signature: pad.data()
+    })
+  }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (res) {
+      btn.disabled = false;
+      btn.textContent = "초대 등록 마치기";
+      if (!res.ok) { msg("ev", res.j.error || "등록하지 못했습니다"); return; }
+      $("form").hidden = true;
+      $("doneNo").textContent = res.j.applyNo;
+      $("doneNote").innerHTML =
+        "참가비는 <b>받지 않습니다</b>. 입금하실 것이 없습니다.<br>" +
+        "자리는 <b>자유석</b>입니다. 오신 순서대로 앉으시면 됩니다.<br><br>" +
+        "행사 <b>2026년 10월 9일(금) 14:00</b> · 어브 스튜디오<br>" +
+        "문의 broj.network@gmail.com · 카카오톡 @broj";
+      $("done").hidden = false;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    })
+    .catch(function () {
+      btn.disabled = false;
+      btn.textContent = "초대 등록 마치기";
+      msg("ev", "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+    });
+});
+</script>
+</body>
+</html>

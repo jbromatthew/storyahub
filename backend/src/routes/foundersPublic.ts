@@ -812,6 +812,86 @@ foundersPublicRouter.post("/visitor", guard(async (req: Request, res: Response) 
   });
 }));
 
+/**
+ * VIP 초대 등록 — 우리가 모시는 분이 직접 적는 자리.
+ * 참가비를 받지 않으니 입금도 증빙도 묻지 않는다. 대신 초대 코드가 맞아야 한다.
+ */
+foundersPublicRouter.get("/vip/check", async (req: Request, res: Response) => {
+  const round = await openRound();
+  const code = str(req.query.k, 40);
+  const ok = !!round?.vipCode && code === round.vipCode;
+  res.json({ ok, title: ok ? round?.title ?? "" : "" });
+});
+
+foundersPublicRouter.post("/vip", guard(async (req: Request, res: Response) => {
+  const round = await openRound();
+  if (!round) return fail(res, "지금은 접수 기간이 아닙니다");
+  const b = req.body ?? {};
+  if (!round.vipCode || str(b.code, 40) !== round.vipCode) {
+    return fail(res, "초대 주소가 올바르지 않습니다. 운영사무국에 문의해 주세요", 403);
+  }
+
+  const now = new Date();
+  const repName = str(b.name, 40);
+  const repPhone = digits(b.phone);
+  if (!repName) return fail(res, "성함을 입력해 주세요");
+  if (repPhone.length < 10) return fail(res, "연락처를 확인해 주세요");
+  if (b.privacyAgreed !== true) return fail(res, "개인정보 수집·이용에 동의해 주셔야 등록됩니다");
+
+  const dup = await prisma.erpFoundersApply.findFirst({
+    where: { roundId: round.id, kind: "visitor", repPhone },
+    orderBy: { createdAt: "desc" },
+  });
+
+  let seatNo = dup?.seatNo ?? null;
+  if (!dup) {
+    const taken = await prisma.erpFoundersApply.count({ where: visitorWhere(round.id) });
+    if (taken >= TOTAL_LIMIT) {
+      return fail(res, `참관 정원 ${TOTAL_LIMIT}명이 모두 찼습니다. 운영사무국으로 연락해 주세요.`);
+    }
+    seatNo = taken + 1;
+  }
+
+  const data = {
+    roundId: round.id,
+    kind: "visitor",
+    repName,
+    repPhone,
+    repEmail: str(b.email, 120).toLowerCase(),
+    repOrg: str(b.org, 80),
+    repTitle: str(b.title, 60),
+    // 모시는 분이라 받을 돈이 없다 — 입금을 기다리지 않는다
+    feeAmount: 0,
+    payerName: "",
+    vip: true,
+    vipNote: str(b.vipNote, 200) || "초대 등록",
+    receiptType: "",
+    receiptUse: "",
+    receiptNo: "",
+    receiptEmail: "",
+    privacyAgreed: true,
+    privacyAt: now,
+    signerName: repName,
+    status: "paid",
+    paidAt: now,
+    seatNo,
+    seatType: "free",
+    submittedIp: str(req.ip, 60),
+  };
+
+  const applyNo = dup?.applyNo ?? (await nextVisitorNo(round.year));
+  const signKey = await storeSignature(applyNo, b.signature).catch(() => "");
+  const withSign = signKey ? { ...data, signKey } : data;
+
+  const row = dup
+    ? await prisma.erpFoundersApply.update({ where: { id: dup.id }, data: withSign })
+    : await createWithNo(withSign, applyNo, "", `BV${round.year}-`);
+  pushFoundersRowSoon(row);
+  if (!dup) notifyFoundersApplySoon(round.id, "visitor");
+
+  res.json({ ok: true, applyNo: row.applyNo, seatNo: row.seatNo, updated: !!dup });
+}));
+
 /** BV2026-0001 */
 async function nextVisitorNo(year: number): Promise<string> {
   return nextNo(`BV${year}-`);

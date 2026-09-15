@@ -15821,6 +15821,7 @@ export function CrmCentersView() {
 // ─── BROJ Founders x Draper — IR 피칭대회 접수 관리 ──────────────────────────────────
 
 const REVIEW_URL = "https://b2b.broj.io/founders/review.html";
+const VIP_URL = "https://b2b.broj.io/founders/vip.html";
 const FAQ_URL = "https://b2b.broj.io/founders/faq.html";
 const BF_TRACKS = {
   business: "피트니스 사업", tech: "기술", content: "콘텐츠·교육",
@@ -17116,6 +17117,7 @@ export function FoundersView() {
   const [kind, setKind] = useState("applicant"); // applicant(참가자) | visitor(참관객)
   const [form, setForm] = useState({ year: 2026, title: "", opensAt: "", closesAt: "", notice: "" });
   const [reviewPw, setReviewPw] = useState("");
+  const [vipCode, setVipCode] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
 
   const loadRounds = useCallback(() =>
@@ -17546,6 +17548,70 @@ export function FoundersView() {
               <button type="button" className="btn btn-accent" onClick={saveRound}>저장</button>
             </div>
           </div>
+
+          {cur && (
+            <div className="card" style={{ marginTop: 14, padding: "14px 16px" }}>
+              <div className="h-eyebrow" style={{ marginBottom: 10 }}>VIP 초대 참관 등록 페이지</div>
+              <div className="small muted" style={{ marginBottom: 12, lineHeight: 1.65 }}>
+                모시는 분께 이 주소만 건네면 됩니다. <strong>참가비 0원</strong>으로 바로 등록되고
+                입금도 증빙도 묻지 않습니다. 등록되면 참관객 목록에 <strong>VIP 초대</strong>로 뜹니다.
+                주소를 아는 사람은 누구나 열 수 있으니 코드를 길게 잡고 필요 없어지면 닫아 주세요.
+              </div>
+              {cur.vipCode ? (
+                <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+                  <code className="small" style={{
+                    background: "var(--surface-2,#F5F6F8)", padding: "7px 11px", borderRadius: 7,
+                    border: "1px solid var(--line)", wordBreak: "break-all",
+                  }}>{`${VIP_URL}?k=${cur.vipCode}`}</code>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
+                    navigator.clipboard.writeText(`${VIP_URL}?k=${cur.vipCode}`)
+                      .then(() => toastSuccess("주소를 복사했어요")).catch(() => {});
+                  }}>주소 복사</button>
+                  <a className="btn btn-ghost btn-sm" href={`${VIP_URL}?k=${cur.vipCode}`}
+                    target="_blank" rel="noopener">열어보기</a>
+                </div>
+              ) : (
+                <div className="small" style={{ marginBottom: 12, color: "var(--muted)" }}>
+                  아직 닫혀 있습니다. 아래에 코드를 정하면 주소가 만들어집니다.
+                </div>
+              )}
+              <div className="oa-form">
+                <OaField label="초대 코드" hint="영문·숫자 8자 이상. 주소 뒤에 붙습니다">
+                  <input className="input" value={vipCode} placeholder="예: broj2026-vip-a7k2"
+                    onChange={(e) => setVipCode(e.target.value.replace(/[^A-Za-z0-9-]/g, ""))} />
+                </OaField>
+              </div>
+              <div className="row" style={{ gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <button type="button" className="btn btn-accent" disabled={pwBusy || vipCode.length < 8}
+                  onClick={async () => {
+                    setPwBusy(true);
+                    try {
+                      await api.erpFoundersVipCode(cur.id, vipCode);
+                      setVipCode("");
+                      loadRounds();
+                      toastSuccess("초대 페이지를 열었어요");
+                    } catch (e) { notifyError(e); } finally { setPwBusy(false); }
+                  }}>코드 저장</button>
+                <button type="button" className="btn btn-ghost btn-sm"
+                  onClick={() => setVipCode(`broj${cur.year}-vip-${Math.random().toString(36).slice(2, 8)}`)}>
+                  아무거나 만들기
+                </button>
+                {cur.vipCode && (
+                  <button type="button" className="btn btn-ghost" disabled={pwBusy}
+                    onClick={async () => {
+                      if (!window.confirm("초대 페이지를 닫습니다. 나눠둔 주소는 더 이상 열리지 않습니다.")) return;
+                      setPwBusy(true);
+                      try {
+                        await api.erpFoundersVipCode(cur.id, "");
+                        loadRounds();
+                        toastSuccess("초대 페이지를 닫았어요");
+                      } catch (e) { notifyError(e); } finally { setPwBusy(false); }
+                    }}>페이지 닫기</button>
+                )}
+                <span className={`cc-pill ${cur.vipCode ? "ok" : ""}`}>{cur.vipCode ? "열림" : "닫힘"}</span>
+              </div>
+            </div>
+          )}
 
           {cur && (
             <div className="card" style={{ marginTop: 14, padding: "14px 16px" }}>
