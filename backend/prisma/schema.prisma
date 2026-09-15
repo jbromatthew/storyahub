@@ -1253,6 +1253,34 @@ model ErpCenterPointSnap {
 }
 
 /// BROJ FOUNDERS — IR 피칭대회 회차 (2026년 등). 스마트상점 회차와 같은 얼개다.
+/// 이탈 센터 — 구글시트 「이탈센터 목록」을 그대로 옮겨 둔다.
+/// 시트가 원본이라 동기화할 때마다 통째로 갈아끼운다.
+model ErpChurnCenter {
+  id         String  @id @default(cuid())
+  sheetRow   Int     @unique // 시트에서 몇 번째 줄이었나
+  churnDate  String  @default("") // YYYY-MM-DD
+  month      String  @default("") // YYYY-MM — 월별로 묶을 때 쓴다
+  kind       String  @default("") // 중도이탈(정기권) | 전환이탈 (1년권)
+  industry   String  @default("")
+  centerName String  @default("")
+  joinYear   String  @default("")
+  plan       String  @default("")
+  reason     String  @default("") // 이탈사유
+  service    String  @default("")
+  program    String  @default("") // 이탈프로그램 — 어디로 옮겨갔나
+  detail     String  @default("") // 세부내용
+  note       String  @default("")
+  firstPaidAt String @default("")
+  usedMonths Int? // 이용개월
+  week       String  @default("")
+
+  syncedAt DateTime @default(now())
+
+  @@index([month])
+  @@index([reason])
+  @@index([industry])
+}
+
 model ErpFoundersRound {
   id        String   @id @default(cuid())
   year      Int

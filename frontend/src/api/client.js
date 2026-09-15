@@ -447,6 +447,15 @@ export const api = {
     if (pageSize) p.set("pageSize", String(pageSize));
     return req(`/erp/sales/rows?${p}`);
   },
+  erpChurnMeta: () => req("/erp/ops/churn/meta"),
+  erpChurnRows: (q = {}) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(q)) if (v) p.set(k, v);
+    const s = p.toString();
+    return req(`/erp/ops/churn${s ? `?${s}` : ""}`);
+  },
+  erpChurnStats: (body) => req("/erp/ops/churn/stats", { method: "POST", body }),
+  erpChurnSync: () => req("/erp/ops/churn/sync", { method: "POST" }),
   erpPrevServiceMeta: () => req("/erp/sales/stats/prev-service/meta"),
   erpPrevService: (body) => req("/erp/sales/stats/prev-service", { method: "POST", body }),
   erpPaymentRateMeta: () => req("/erp/sales/payment-rate/meta"),

@@ -47,6 +47,7 @@ import { startPurgeScheduler } from "./services/purge.js";
 import { startSalesDashboardWarmer } from "./services/salesDashboard.js";
 import { startSalesAutoSync } from "./services/salesAutoSync.js";
 import { startSmartStoreReport } from "./services/smartStoreReport.js";
+import { startChurnSync } from "./services/churnSheet.js";
 import { startSalesReportBot } from "./services/salesReportBot.js";
 
 const app = express();
@@ -139,6 +140,7 @@ app.listen(env.port, () => {
       startSalesDashboardWarmer();
       startSalesAutoSync();
       startSmartStoreReport();
+      startChurnSync();   // 이탈 시트 매일 한 번
       startSalesReportBot();
       startCenterSync();
       startCrmKeepAlive();

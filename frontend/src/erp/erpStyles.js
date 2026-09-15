@@ -388,6 +388,15 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
   text-overflow:ellipsis;white-space:nowrap}
 .ps-name i{font-style:normal;font-weight:500;font-size:11px;color:var(--muted);margin-left:5px}
 .ps-bars{display:flex;flex-direction:column;gap:3px;min-width:0}
+/* 이탈 — 월별 추이 */
+.ch-spark{display:flex;align-items:flex-end;gap:3px;height:132px;overflow-x:auto;padding-top:6px}
+.ch-col{flex:1 1 0;min-width:26px;display:flex;flex-direction:column;align-items:center;
+  justify-content:flex-end;height:100%;position:relative}
+.ch-col i{display:block;width:100%;max-width:26px;border-radius:4px 4px 0 0;
+  background:linear-gradient(180deg,var(--accent,#DD5E39),var(--accent-deep,#C2491F));min-height:2px}
+.ch-col em{font-style:normal;font-size:10px;color:var(--ink);font-weight:700;margin-bottom:2px;order:-1}
+.ch-col b{font-size:9.5px;color:var(--muted);font-weight:500;margin-top:4px;white-space:nowrap}
+.ch-col:hover i{filter:brightness(1.08)}
 .ps-barline{display:grid;grid-template-columns:1fr 52px 48px;gap:8px;align-items:center}
 .ps-bar{display:block;height:10px;border-radius:999px;background:#F0EDE7;overflow:hidden;min-width:30px}
 .ps-bar i{display:block;height:100%;border-radius:999px}

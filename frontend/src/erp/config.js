@@ -31,6 +31,7 @@ export const ERP_MODULES = [
   // 센터조회 — 메뉴에서만 내렸다. 화면(CrmCentersView)과 API, 쌓인 센터·자산·AS
   // 기록은 그대로 두었으니 이 줄만 살리면 돌아온다. 매일 05:10 CRM 동기화도 계속 돈다.
   // { id: "crm-centers", label: "센터조회", icon: "board", group: "customer", groupLabel: "고객관리" },
+  { id: "churn", label: "이탈 관리", icon: "chart", group: "customer", groupLabel: "고객관리" },
   { id: "smart-store", label: "스마트상점", icon: "board", group: "bizsupport", groupLabel: "영업지원" },
   { id: "founders", label: "BROJ Founders x Draper", icon: "board", group: "bizsupport" },
   { id: "vendor-orders", label: "크라이저 발주", icon: "sales", group: "bizsupport", vendorGate: true },

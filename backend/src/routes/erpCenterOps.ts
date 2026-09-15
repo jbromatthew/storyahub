@@ -537,6 +537,70 @@ erpCenterOpsRouter.delete("/contacts/:id", async (req: AuthedRequest, res) => {
 
 // ─── BROJ Founders x Draper — 회차·접수 관리 ─────────────────────────────────────────
 
+/* ─────────── 이탈 관리 ─────────── */
+
+erpCenterOpsRouter.get("/churn/meta", async (_req: AuthedRequest, res) => {
+  const { getChurnMeta, getChurnTimeline } = await import("../services/churnStats.js");
+  const [meta, timeline] = await Promise.all([getChurnMeta(), getChurnTimeline()]);
+  const last = await prisma.erpChurnCenter.findFirst({ orderBy: { syncedAt: "desc" }, select: { syncedAt: true } });
+  res.json({ ...meta, timeline, syncedAt: last?.syncedAt ?? null });
+});
+
+/** 로우데이터 — 걸러서 준다 */
+erpCenterOpsRouter.get("/churn", async (req: AuthedRequest, res) => {
+  const q = req.query;
+  const one = (v: unknown) => str(v, 60);
+  const where: Record<string, unknown> = {};
+  const from = one(q.from), to = one(q.to);
+  if (from || to) {
+    where.month = { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) };
+  }
+  for (const [k, f] of [["industry", "industry"], ["plan", "plan"], ["reason", "reason"], ["kind", "kind"]] as const) {
+    const v = one(q[k]);
+    if (v) where[f] = v;
+  }
+  const kw = one(q.q);
+  if (kw) {
+    where.OR = [
+      { centerName: { contains: kw, mode: "insensitive" } },
+      { detail: { contains: kw, mode: "insensitive" } },
+      { program: { contains: kw, mode: "insensitive" } },
+      { note: { contains: kw, mode: "insensitive" } },
+    ];
+  }
+  const rows = await prisma.erpChurnCenter.findMany({
+    where, orderBy: [{ churnDate: "desc" }, { sheetRow: "desc" }], take: 3000,
+  });
+  res.json({ rows, count: rows.length });
+});
+
+erpCenterOpsRouter.post("/churn/stats", async (req: AuthedRequest, res) => {
+  const { computeChurnStats, CHURN_AXES } = await import("../services/churnStats.js");
+  const axis = str(req.body?.axis, 20);
+  const ok = CHURN_AXES.some((a) => a.k === axis);
+  const raw = Array.isArray(req.body?.groups) ? req.body.groups : [];
+  const groups = raw
+    .map((g: { id?: unknown; label?: unknown; months?: unknown }, i: number) => ({
+      id: String(g.id ?? `g${i}`).slice(0, 40),
+      label: String(g.label ?? `비교군 ${i + 1}`).slice(0, 40),
+      months: Array.isArray(g.months) ? g.months.map((m: unknown) => String(m)).slice(0, 80) : [],
+    }))
+    .filter((g: { months: string[] }) => g.months.length)
+    .slice(0, 6);
+  if (!groups.length) return fail(res, "비교군에 월을 1개 이상 선택하세요");
+  res.json(await computeChurnStats({ groups, axis: ok ? (axis as never) : "reason" }));
+});
+
+/** 시트에서 다시 읽어 통째로 갈아끼운다 */
+erpCenterOpsRouter.post("/churn/sync", async (_req: AuthedRequest, res) => {
+  try {
+    const { syncChurnCenters } = await import("../services/churnSheet.js");
+    res.json({ ok: true, ...(await syncChurnCenters()) });
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
 erpCenterOpsRouter.get("/founders/rounds", async (_req: AuthedRequest, res) => {
   const rounds = await prisma.erpFoundersRound.findMany({ orderBy: { year: "desc" } });
   const counts = await prisma.erpFoundersApply.groupBy({ by: ["roundId"], _count: { _all: true } });

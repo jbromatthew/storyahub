@@ -8408,6 +8408,365 @@ function GaugeRing({ rate, size = 132 }) {
   );
 }
 
+/* ── 이탈 관리 — 로우데이터와 통계를 위 탭으로 오간다 ── */
+
+const CH_TABS = [
+  { id: "rows", label: "로우데이터" },
+  { id: "stats", label: "통계" },
+];
+const CH_COLORS = ["#C2491F", "#33529E", "#1E6B3E", "#8A5A00", "#6B3FA0", "#0E7490"];
+let chSeq = 0;
+const chNewId = () => `c${Date.now().toString(36)}${chSeq++}`;
+
+export function ChurnView() {
+  const [tab, setTab] = useState("rows");
+  const [meta, setMeta] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const loadMeta = useCallback(() => {
+    api.erpChurnMeta().then(setMeta).catch(notifyError);
+  }, []);
+  useEffect(() => { loadMeta(); }, [loadMeta]);
+
+  const sync = async () => {
+    setSyncing(true);
+    try {
+      const r = await api.erpChurnSync();
+      loadMeta();
+      toastSuccess(`시트에서 ${r.rows.toLocaleString()}줄을 다시 받아왔어요`);
+      window.dispatchEvent(new CustomEvent("erp:churn-synced"));
+    } catch (e) { notifyError(e); } finally { setSyncing(false); }
+  };
+
+  return (
+    <div className="fade pad wide" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">고객관리</div>
+      <div className="h-title">이탈 관리</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.6, color: "var(--muted)" }}>
+        구글시트 <strong>「이탈센터 목록」</strong>을 그대로 옮겨 봅니다. 시트가 원본이라 고치는 것은 시트에서 하고,
+        여기서는 보고 세기만 합니다.
+        {meta?.syncedAt && <> · 마지막 동기화 <strong>{new Date(meta.syncedAt).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}</strong></>}
+      </div>
+
+      <div className="sales-tabs" style={{ marginTop: 14 }}>
+        {CH_TABS.map((t) => (
+          <button key={t.id} type="button" className={"sales-tab" + (tab === t.id ? " on" : "")}
+            onClick={() => setTab(t.id)}>{t.label}</button>
+        ))}
+        <span style={{ flex: 1 }} />
+        <button type="button" className="btn btn-ghost btn-sm" disabled={syncing} onClick={sync}>
+          {syncing ? "받아오는 중…" : "⟳ 시트 동기화"}
+        </button>
+      </div>
+
+      {!meta ? <div className="spinner" />
+        : tab === "rows" ? <ChurnRows meta={meta} />
+          : <ChurnStats meta={meta} />}
+    </div>
+  );
+}
+
+/* ── 로우데이터 ── */
+function ChurnRows({ meta }) {
+  const months = meta.months || [];
+  const [f, setF] = useState({ from: "", to: "", industry: "", plan: "", reason: "", kind: "", q: "" });
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [openId, setOpenId] = useState("");
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.erpChurnRows(f).then((d) => setRows(d.rows || [])).catch(notifyError).finally(() => setLoading(false));
+  }, [f]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const again = () => load();
+    window.addEventListener("erp:churn-synced", again);
+    return () => window.removeEventListener("erp:churn-synced", again);
+  }, [load]);
+
+  const set = (patch) => setF((p) => ({ ...p, ...patch }));
+  const dirty = Object.values(f).some(Boolean);
+
+  const copy = async () => {
+    const head = ["이탈날짜", "구분", "업종", "센터명", "가입연도", "요금제", "이탈사유", "이탈프로그램", "이용개월", "세부내용"];
+    const lines = [head.join("\t"), ...rows.map((r) => [
+      r.churnDate, r.kind, r.industry, r.centerName, r.joinYear, r.plan, r.reason,
+      r.program, r.usedMonths ?? "", (r.detail || "").replace(/\s+/g, " "),
+    ].join("\t"))];
+    try { await navigator.clipboard.writeText(lines.join("\n")); toastSuccess(`${rows.length}줄을 복사했어요`); }
+    catch { notifyError(new Error("복사에 실패했습니다")); }
+  };
+
+  return (
+    <>
+      <div className="row" style={{ gap: 6, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <select className="input" style={{ maxWidth: 130 }} value={f.from} onChange={(e) => set({ from: e.target.value })}>
+          <option value="">시작 월</option>
+          {[...months].reverse().map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <span className="small muted">~</span>
+        <select className="input" style={{ maxWidth: 130 }} value={f.to} onChange={(e) => set({ to: e.target.value })}>
+          <option value="">끝 월</option>
+          {months.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <select className="input" style={{ maxWidth: 150 }} value={f.kind} onChange={(e) => set({ kind: e.target.value })}>
+          <option value="">구분 전체</option>
+          {(meta.kinds || []).map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+        <select className="input" style={{ maxWidth: 130 }} value={f.industry} onChange={(e) => set({ industry: e.target.value })}>
+          <option value="">업종 전체</option>
+          {(meta.industries || []).map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+        <select className="input" style={{ maxWidth: 150 }} value={f.plan} onChange={(e) => set({ plan: e.target.value })}>
+          <option value="">요금제 전체</option>
+          {(meta.plans || []).map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+        <select className="input" style={{ maxWidth: 150 }} value={f.reason} onChange={(e) => set({ reason: e.target.value })}>
+          <option value="">이탈사유 전체</option>
+          {(meta.reasons || []).map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+        <input className="input" style={{ maxWidth: 200 }} placeholder="센터명 · 내용 찾기"
+          value={f.q} onChange={(e) => set({ q: e.target.value })} />
+        {dirty && (
+          <button type="button" className="btn btn-ghost btn-sm"
+            onClick={() => setF({ from: "", to: "", industry: "", plan: "", reason: "", kind: "", q: "" })}>↺ 조건 지우기</button>
+        )}
+        <span style={{ flex: 1 }} />
+        <span className="small" style={{ fontWeight: 700 }}>{rows.length.toLocaleString()}건</span>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={copy} disabled={!rows.length}>엑셀로 복사</button>
+      </div>
+
+      {loading && !rows.length ? <div className="spinner" /> : (
+        <div className="dash-table-wrap" style={{ marginTop: 12 }}>
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th style={{ width: 96 }}>이탈날짜</th>
+                <th style={{ width: 128 }}>구분</th>
+                <th style={{ width: 92 }}>업종</th>
+                <th className="label">센터명</th>
+                <th style={{ width: 132 }}>요금제</th>
+                <th style={{ width: 112 }}>이탈사유</th>
+                <th style={{ width: 118 }}>이탈프로그램</th>
+                <th style={{ width: 74 }}>이용개월</th>
+              </tr>
+            </thead>
+            <tbody>
+              {!rows.length && (
+                <tr><td colSpan={8} className="small muted" style={{ textAlign: "center", padding: 40 }}>
+                  조건에 맞는 이탈 건이 없습니다.
+                </td></tr>
+              )}
+              {rows.map((r) => (
+                <React.Fragment key={r.id}>
+                  <tr style={{ cursor: r.detail ? "pointer" : "default" }}
+                    onClick={() => r.detail && setOpenId(openId === r.id ? "" : r.id)}>
+                    <td className="small">{r.churnDate}</td>
+                    <td className="small">{r.kind}</td>
+                    <td className="small">{r.industry}</td>
+                    <td className="label">{r.centerName}
+                      {r.detail && <span className="small muted" style={{ marginLeft: 6 }}>{openId === r.id ? "▾" : "▸"}</span>}</td>
+                    <td className="small">{r.plan}</td>
+                    <td className="small">{r.reason}</td>
+                    <td className="small">{r.program || <span className="muted">-</span>}</td>
+                    <td className="num">{r.usedMonths ?? <span className="muted">-</span>}</td>
+                  </tr>
+                  {openId === r.id && (
+                    <tr><td colSpan={8} style={{ background: "var(--surface-2,#F5F6F8)" }}>
+                      <div className="small" style={{ whiteSpace: "pre-wrap", lineHeight: 1.7, padding: "4px 2px" }}>
+                        {r.detail}
+                        {r.note && <div style={{ marginTop: 6, color: "var(--muted)" }}>비고 — {r.note}</div>}
+                        {r.firstPaidAt && <div style={{ marginTop: 4, color: "var(--muted)" }}>첫 결제일 {r.firstPaidAt}</div>}
+                      </div>
+                    </td></tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ── 통계 ── */
+function ChurnStats({ meta }) {
+  const months = meta.months || [];
+  const [axis, setAxis] = useState("reason");
+  const [groups, setGroups] = useState(() => [
+    { id: chNewId(), label: "올해", months: months.filter((m) => m.startsWith(String(new Date().getFullYear()))) },
+    { id: chNewId(), label: "작년", months: months.filter((m) => m.startsWith(String(new Date().getFullYear() - 1))) },
+  ].filter((g) => g.months.length));
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [openMonths, setOpenMonths] = useState("");
+
+  const run = useCallback(() => {
+    const valid = groups.filter((g) => g.months.length);
+    if (!valid.length) { setData(null); setLoading(false); return; }
+    setLoading(true);
+    api.erpChurnStats({ axis, groups: valid.map((g) => ({ id: g.id, label: g.label, months: g.months })) })
+      .then(setData).catch(notifyError).finally(() => setLoading(false));
+  }, [groups, axis]);
+  useEffect(() => { run(); }, [run]);
+
+  const setG = (id, patch) => setGroups((p) => p.map((g) => (g.id === id ? { ...g, ...patch } : g)));
+  const years = [...new Set(months.map((m) => m.slice(0, 4)))].sort((a, b) => b.localeCompare(a));
+
+  const gs = data?.groups || [];
+  const items = data?.items || [];
+  const topAll = items.reduce((m, x) => Math.max(m, ...x.byGroup.map((b) => b.count)), 1);
+
+  const timeline = meta.timeline || [];
+  const maxT = timeline.reduce((m, x) => Math.max(m, x.count), 1);
+  const recent = timeline.slice(-24);
+
+  const copy = async () => {
+    const head = [(meta.axes || []).find((a) => a.k === axis)?.t || axis,
+      ...gs.flatMap((g) => [`${g.label} 건`, `${g.label} 비중%`])];
+    const lines = [head.join("\t"), ...items.map((x) =>
+      [x.label, ...x.byGroup.flatMap((b) => [b.count, b.share])].join("\t"))];
+    try { await navigator.clipboard.writeText(lines.join("\n")); toastSuccess(`${items.length}줄을 복사했어요`); }
+    catch { notifyError(new Error("복사에 실패했습니다")); }
+  };
+
+  return (
+    <>
+      {/* 월별 추이 */}
+      <div className="card" style={{ marginTop: 14, padding: "16px 18px" }}>
+        <div className="kbe-meta-h" style={{ marginTop: 0 }}>월별 이탈 추이 <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>· 최근 24개월</span></div>
+        <div className="ch-spark">
+          {recent.map((t) => (
+            <span key={t.month} className="ch-col" title={`${t.month} · ${t.count}건`}>
+              <i style={{ height: `${Math.max((t.count / maxT) * 100, 2)}%` }} />
+              <em>{t.count}</em>
+              <b>{t.month.slice(2).replace("-", ".")}</b>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* 비교군 */}
+      <div className="rate-groups" style={{ marginTop: 14 }}>
+        {groups.map((g, gi) => (
+          <div key={g.id} className="card" style={{ padding: 14, borderTop: `3px solid ${CH_COLORS[gi % CH_COLORS.length]}` }}>
+            <div className="row" style={{ gap: 8, alignItems: "center" }}>
+              <input className="input" style={{ flex: 1, minWidth: 0, fontWeight: 700 }} value={g.label} maxLength={40}
+                onChange={(e) => setG(g.id, { label: e.target.value })} />
+              {groups.length > 1 && (
+                <button type="button" className="cst-x" onClick={() => setGroups((p) => p.filter((x) => x.id !== g.id))}>✕</button>
+              )}
+            </div>
+            <div className="row" style={{ gap: 5, marginTop: 9, flexWrap: "wrap" }}>
+              {years.map((y) => {
+                const want = months.filter((m) => m.startsWith(y));
+                const on = want.length === g.months.length && want.every((m) => g.months.includes(m));
+                return (
+                  <button key={y} type="button" className={"chip" + (on ? " on" : "")}
+                    onClick={() => setG(g.id, { months: want, label: g.label.startsWith("비교군") ? `${y}년` : g.label })}>
+                    {y}
+                  </button>
+                );
+              })}
+              <button type="button" className={"chip" + (g.months.length === months.length ? " on" : "")}
+                onClick={() => setG(g.id, { months })}>전체</button>
+            </div>
+            <div className="row" style={{ gap: 8, marginTop: 9, alignItems: "center" }}>
+              <span className="small" style={{ color: "var(--muted)", flex: 1 }}>
+                {g.months.length ? `${g.months[g.months.length - 1]} ~ ${g.months[0]} · ${g.months.length}개월` : "월 없음"}
+              </span>
+              <button type="button" className="btn btn-ghost btn-sm"
+                onClick={() => setOpenMonths(openMonths === g.id ? "" : g.id)}>
+                {openMonths === g.id ? "접기" : "월 고르기"}
+              </button>
+            </div>
+            {openMonths === g.id && (
+              <div className="row" style={{ gap: 5, marginTop: 9, flexWrap: "wrap" }}>
+                {months.map((m) => (
+                  <button key={m} type="button" className={"chip" + (g.months.includes(m) ? " on" : "")}
+                    onClick={() => setG(g.id, {
+                      months: g.months.includes(m) ? g.months.filter((x) => x !== m)
+                        : [...g.months, m].sort((a, b) => b.localeCompare(a)),
+                    })}>{m}</button>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        {groups.length < 6 && (
+          <button type="button" className="btn btn-ghost" style={{ minHeight: 90 }}
+            onClick={() => setGroups((p) => [...p, { id: chNewId(), label: `비교군 ${p.length + 1}`, months: months.slice(0, 12) }])}>
+            + 비교군 추가
+          </button>
+        )}
+      </div>
+
+      {/* 자를 축 */}
+      <div className="row" style={{ gap: 6, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
+        <span className="small" style={{ fontWeight: 700 }}>무엇으로</span>
+        {(meta.axes || []).map((a) => (
+          <button key={a.k} type="button" className={"chip" + (axis === a.k ? " on" : "")}
+            onClick={() => setAxis(a.k)}>{a.t}</button>
+        ))}
+        <span style={{ flex: 1 }} />
+        <button type="button" className="btn btn-ghost btn-sm" onClick={copy} disabled={!items.length}>엑셀로 복사</button>
+      </div>
+
+      {loading && !data ? <div className="spinner" /> : !data ? null : (
+        <>
+          <div className="cst-summary" style={{ gridTemplateColumns: `repeat(${Math.min(gs.length, 3)},1fr)`, marginTop: 14 }}>
+            {gs.map((g, gi) => (
+              <div key={g.id} className="cst-sum-card" style={{ borderTop: `3px solid ${CH_COLORS[gi % CH_COLORS.length]}` }}>
+                <div className="lbl">{g.label}</div>
+                <div className="val">{g.total.toLocaleString()}<span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 6 }}>건 이탈</span></div>
+                <div className="small" style={{ color: "var(--muted)" }}>{g.months.length}개월</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="card" style={{ marginTop: 14, padding: "16px 18px" }}>
+            <div className="row" style={{ gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+              {gs.map((g, gi) => (
+                <span key={g.id} className="small" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <i style={{ width: 11, height: 11, borderRadius: 3, background: CH_COLORS[gi % CH_COLORS.length], display: "inline-block" }} />
+                  {g.label}
+                </span>
+              ))}
+            </div>
+            <div className="ps-list">
+              {items.map((x, i) => (
+                <div key={x.label} className="ps-row2">
+                  <span className="ps-rank">{i + 1}</span>
+                  <span className="ps-name" title={x.label}>{x.label}</span>
+                  <span className="ps-bars">
+                    {x.byGroup.map((b, gi) => (
+                      <span key={gi} className="ps-barline" title={`${gs[gi]?.label} · ${b.count}건 · ${b.share}%`}>
+                        <span className="ps-bar">
+                          <i style={{ width: `${Math.max((b.count / topAll) * 100, b.count ? 1.5 : 0)}%`,
+                            background: CH_COLORS[gi % CH_COLORS.length] }} />
+                        </span>
+                        <b>{b.count.toLocaleString()}</b>
+                        <em>{b.share}%</em>
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="small" style={{ marginTop: 10, color: "var(--muted)", lineHeight: 1.6 }}>
+            비중은 <strong>그 비교군의 이탈 건수</strong> 기준이라 기간 길이가 달라도 견줄 수 있습니다.
+            줄 순서는 비교군 전체 합이 많은 순입니다.
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 /* ── 세일즈 통계 — 직전서비스. 결제율 분석처럼 비교군을 놓고 견준다 ── */
 
 const PS_PRESETS = [
