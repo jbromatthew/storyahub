@@ -8593,8 +8593,10 @@ function ChurnRows({ meta }) {
 
 /* ── 통계 ── */
 function ChurnStats({ meta }) {
+  const axisName = (k) => (meta.axes || []).find((a) => a.k === k)?.t || k;
   const months = meta.months || [];
   const [axis, setAxis] = useState("reason");
+  const [splitAxis, setSplitAxis] = useState("");   // 교차표로 쪼갤 축
   const [groups, setGroups] = useState(() => [
     { id: chNewId(), label: "올해", months: months.filter((m) => m.startsWith(String(new Date().getFullYear()))) },
     { id: chNewId(), label: "작년", months: months.filter((m) => m.startsWith(String(new Date().getFullYear() - 1))) },
@@ -8607,9 +8609,13 @@ function ChurnStats({ meta }) {
     const valid = groups.filter((g) => g.months.length);
     if (!valid.length) { setData(null); setLoading(false); return; }
     setLoading(true);
-    api.erpChurnStats({ axis, groups: valid.map((g) => ({ id: g.id, label: g.label, months: g.months })) })
+    api.erpChurnStats({
+      axis,
+      splitAxis: splitAxis === axis ? "" : splitAxis,
+      groups: valid.map((g) => ({ id: g.id, label: g.label, months: g.months })),
+    })
       .then(setData).catch(notifyError).finally(() => setLoading(false));
-  }, [groups, axis]);
+  }, [groups, axis, splitAxis]);
   useEffect(() => { run(); }, [run]);
 
   const setG = (id, patch) => setGroups((p) => p.map((g) => (g.id === id ? { ...g, ...patch } : g)));
@@ -8708,10 +8714,26 @@ function ChurnStats({ meta }) {
         <span className="small" style={{ fontWeight: 700 }}>무엇으로</span>
         {(meta.axes || []).map((a) => (
           <button key={a.k} type="button" className={"chip" + (axis === a.k ? " on" : "")}
-            onClick={() => setAxis(a.k)}>{a.t}</button>
+            onClick={() => { setAxis(a.k); if (splitAxis === a.k) setSplitAxis(""); }}>{a.t}</button>
         ))}
         <span style={{ flex: 1 }} />
         <button type="button" className="btn btn-ghost btn-sm" onClick={copy} disabled={!items.length}>엑셀로 복사</button>
+      </div>
+
+      {/* 교차표 — 업종 × 이탈사유 처럼 한 번 더 쪼개 본다 */}
+      <div className="row" style={{ gap: 6, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span className="small" style={{ fontWeight: 700 }}>× 쪼개기</span>
+        <button type="button" className={"chip" + (!splitAxis ? " on" : "")}
+          onClick={() => setSplitAxis("")}>없음</button>
+        {(meta.axes || []).filter((a) => a.k !== axis).map((a) => (
+          <button key={a.k} type="button" className={"chip" + (splitAxis === a.k ? " on" : "")}
+            onClick={() => setSplitAxis(a.k)}>{a.t}</button>
+        ))}
+        {splitAxis && (
+          <span className="small" style={{ color: "var(--muted)" }}>
+            {axisName(axis)} × {axisName(splitAxis)} 교차표가 비교군마다 한 장씩 나옵니다
+          </span>
+        )}
       </div>
 
       {loading && !data ? <div className="spinner" /> : !data ? null : (
@@ -8757,9 +8779,58 @@ function ChurnStats({ meta }) {
             </div>
           </div>
 
+          {(data.matrix || []).map((mx, mi) => {
+            const hot = mx.rows.reduce((m, r) => Math.max(m, ...r.cells), 1);
+            return (
+              <div key={mx.groupId} className="card" style={{ marginTop: 14, padding: "16px 18px",
+                borderTop: `3px solid ${CH_COLORS[mi % CH_COLORS.length]}` }}>
+                <div className="kbe-meta-h" style={{ marginTop: 0 }}>
+                  {mx.label} · {axisName(axis)} × {axisName(data.splitAxis)}
+                  <span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 8 }}>
+                    {mx.total.toLocaleString()}건
+                  </span>
+                </div>
+                <div className="dash-table-wrap">
+                  <table className="dash-table ch-matrix">
+                    <thead>
+                      <tr>
+                        <th className="label">{axisName(axis)}</th>
+                        {mx.cols.map((c) => <th key={c.label}>{c.label}</th>)}
+                        <th>합계</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mx.rows.map((r) => (
+                        <tr key={r.label}>
+                          <td className="label">{r.label}</td>
+                          {r.cells.map((n, ci) => (
+                            <td key={ci} className="num"
+                              style={{ background: n ? `rgba(221,94,57,${Math.min(0.06 + (n / hot) * 0.34, 0.4)})` : "transparent",
+                                color: n ? "var(--ink)" : "var(--muted)", fontWeight: n ? 700 : 400 }}>
+                              {n || "·"}
+                            </td>
+                          ))}
+                          <td className="num" style={{ fontWeight: 800 }}>{r.total}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="dash-sum">
+                        <td className="label">합계</td>
+                        {mx.cols.map((c) => <td key={c.label} className="num">{c.total}</td>)}
+                        <td className="num">{mx.total}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+
           <div className="small" style={{ marginTop: 10, color: "var(--muted)", lineHeight: 1.6 }}>
             비중은 <strong>그 비교군의 이탈 건수</strong> 기준이라 기간 길이가 달라도 견줄 수 있습니다.
             줄 순서는 비교군 전체 합이 많은 순입니다.
+            {data.splitAxis && " 교차표는 비교군마다 한 장씩이고, 칸 색이 진할수록 많습니다."}
           </div>
         </>
       )}

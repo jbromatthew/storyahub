@@ -588,7 +588,13 @@ erpCenterOpsRouter.post("/churn/stats", async (req: AuthedRequest, res) => {
     .filter((g: { months: string[] }) => g.months.length)
     .slice(0, 6);
   if (!groups.length) return fail(res, "비교군에 월을 1개 이상 선택하세요");
-  res.json(await computeChurnStats({ groups, axis: ok ? (axis as never) : "reason" }));
+  const split = str(req.body?.splitAxis, 20);
+  const okSplit = CHURN_AXES.some((a) => a.k === split);
+  res.json(await computeChurnStats({
+    groups,
+    axis: ok ? (axis as never) : "reason",
+    splitAxis: okSplit ? (split as never) : "",
+  }));
 });
 
 /** 시트에서 다시 읽어 통째로 갈아끼운다 */

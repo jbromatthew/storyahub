@@ -44,7 +44,12 @@ export async function getChurnTimeline() {
   return rows.filter((r) => r.month).map((r) => ({ month: r.month, count: r._count._all }));
 }
 
-export async function computeChurnStats(query: { groups: ChurnGroup[]; axis: ChurnAxis }) {
+export async function computeChurnStats(query: {
+  groups: ChurnGroup[];
+  axis: ChurnAxis;
+  /** 함께 주면 축 × 이 축 교차표까지 만든다 (업종 × 이탈사유 처럼) */
+  splitAxis?: ChurnAxis | "";
+}) {
   const groups = (query.groups ?? []).filter((g) => g.months?.length);
   if (!groups.length) return { groups: [], items: [], axis: query.axis };
 
@@ -82,9 +87,39 @@ export async function computeChurnStats(query: { groups: ChurnGroup[]; axis: Chu
     // 비교군마다 순서가 흔들리면 눈으로 좇기 어렵다 — 전체 합으로 한 번만 세운다
     .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label, "ko"));
 
+  // 교차표 — 축 × 쪼갤 축. 비교군마다 한 장씩 만든다.
+  const split = query.splitAxis && query.splitAxis !== query.axis ? query.splitAxis : "";
+  const matrix = !split ? [] : groups.map((g, gi) => {
+    const cell = new Map<string, Map<string, number>>();
+    const colTotal = new Map<string, number>();
+    for (const m of g.months) {
+      for (const r of byMonth.get(m) ?? []) {
+        const row = String(r[query.axis] ?? "").trim() || "(빈칸)";
+        const colK = String(r[split as ChurnAxis] ?? "").trim() || "(빈칸)";
+        const line = cell.get(row) ?? new Map<string, number>();
+        line.set(colK, (line.get(colK) ?? 0) + 1);
+        cell.set(row, line);
+        colTotal.set(colK, (colTotal.get(colK) ?? 0) + 1);
+      }
+    }
+    const cols = [...colTotal.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko"))
+      .map(([label, total]) => ({ label, total }));
+    const rows = [...cell.entries()]
+      .map(([label, line]) => ({
+        label,
+        total: [...line.values()].reduce((a, b) => a + b, 0),
+        cells: cols.map((c) => line.get(c.label) ?? 0),
+      }))
+      .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label, "ko"));
+    return { groupId: g.id, label: g.label, cols, rows, total: totals[gi] };
+  });
+
   return {
     axis: query.axis,
+    splitAxis: split,
     groups: groups.map((g, gi) => ({ ...g, total: totals[gi] })),
     items,
+    matrix,
   };
 }

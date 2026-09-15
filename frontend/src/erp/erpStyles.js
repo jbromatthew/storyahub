@@ -397,6 +397,12 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .ch-col em{font-style:normal;font-size:10px;color:var(--ink);font-weight:700;margin-bottom:2px;order:-1}
 .ch-col b{font-size:9.5px;color:var(--muted);font-weight:500;margin-top:4px;white-space:nowrap}
 .ch-col:hover i{filter:brightness(1.08)}
+/* 이탈 — 교차표 */
+.ch-matrix{min-width:640px;font-size:12.5px}
+.ch-matrix th{font-size:11.5px;text-align:right;white-space:nowrap}
+.ch-matrix th.label{text-align:left}
+.ch-matrix td{padding:7px 10px}
+.ch-matrix td.label{min-width:96px;font-weight:700}
 .ps-barline{display:grid;grid-template-columns:1fr 52px 48px;gap:8px;align-items:center}
 .ps-bar{display:block;height:10px;border-radius:999px;background:#F0EDE7;overflow:hidden;min-width:30px}
 .ps-bar i{display:block;height:100%;border-radius:999px}
