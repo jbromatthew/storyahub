@@ -33,7 +33,8 @@ export type ChurnRates = {
   totalRate: number | null; midRate: number | null; convRate: number | null;
 };
 
-const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 1000) / 10 : null);
+// 시트가 소수점 둘째 자리까지 보여준다 — 맞춰서 같은 값이 나오게 한다
+const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 10000) / 100 : null);
 
 export async function churnRatesFor(months: string[]): Promise<ChurnRates> {
   const rows = await prisma.erpChurnMonthly.findMany({

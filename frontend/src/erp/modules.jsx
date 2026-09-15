@@ -8594,7 +8594,7 @@ function ChurnRows({ meta }) {
 /* ── 통계 ── */
 function ChurnStats({ meta }) {
   const axisName = (k) => (meta.axes || []).find((a) => a.k === k)?.t || k;
-  const pctText = (v) => (v == null ? <i>-</i> : `${v.toFixed(1)}%`);
+  const pctText = (v) => (v == null ? <i>-</i> : `${v.toFixed(2)}%`);
   const months = meta.months || [];
   const [axis, setAxis] = useState("reason");
   const [splitAxis, setSplitAxis] = useState("");   // 교차표로 쪼갤 축
