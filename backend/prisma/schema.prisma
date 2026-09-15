@@ -1253,6 +1253,25 @@ model ErpCenterPointSnap {
 }
 
 /// BROJ FOUNDERS — IR 피칭대회 회차 (2026년 등). 스마트상점 회차와 같은 얼개다.
+/// 월간 추이 — [CXM] 월간 추이 데이터 「전체」 탭.
+/// 이탈률의 분모가 여기 있다. 이탈 건수는 시트가 세어 둔 값을 그대로 쓴다.
+model ErpChurnMonthly {
+  id    String @id @default(cuid())
+  month String @unique // YYYY-MM
+
+  activeCenters Int? // 활성센터
+  recurring     Int? // 정기결제 — 중도이탈률의 분모
+  yearPass      Int? // 1년권
+  bankTransfer  Int? // 계좌이체
+  renewDue      Int? // 재결제 수 — 전환이탈률의 분모
+  churnTotal    Int? // 총 이탈
+  churnMid      Int? // 중도이탈
+  churnConv     Int? // 전환이탈
+  renewed       Int? // 전환결제 (재결제 수 − 전환이탈)
+
+  syncedAt DateTime @default(now())
+}
+
 /// 이탈 센터 — 구글시트 「이탈센터 목록」을 그대로 옮겨 둔다.
 /// 시트가 원본이라 동기화할 때마다 통째로 갈아끼운다.
 model ErpChurnCenter {

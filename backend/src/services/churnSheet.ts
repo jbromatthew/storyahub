@@ -93,6 +93,67 @@ export async function syncChurnCenters(): Promise<{ rows: number; months: number
   return { rows: rows.length, months: months.size };
 }
 
+/* ── 월간 추이 — 이탈률의 분모 ── */
+
+const TREND_SHEET_ID = "1cAQ4v5VlB5e7bfJHDn3RcUFsvrByWNt9h8zYuMjaHGg";
+const TREND_TAB = "전체";
+/** 이 달부터 쓴다 — 그 앞은 칸이 비어 있어 분모가 없다 */
+const TREND_FROM = "2022-01";
+
+/** "3,706" · "-" · "" → 숫자 또는 null */
+function num(v: unknown): number | null {
+  const s = String(v ?? "").replace(/[,\s]/g, "");
+  if (!s || s === "-" || s.startsWith("#")) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+export async function syncChurnMonthly(): Promise<{ months: number }> {
+  const res = await client().spreadsheets.values.get({
+    spreadsheetId: (process.env.CHURN_TREND_SHEET_ID || TREND_SHEET_ID).trim(),
+    range: `'${TREND_TAB}'!B5:T200`,
+    valueRenderOption: "FORMATTED_VALUE",
+  });
+  const grid = res.data.values ?? [];
+  if (!grid.length) throw new Error("월간 추이 「전체」 탭을 읽지 못했습니다");
+
+  const head = (grid[0] ?? []).map((h) => txt(h));
+  const idx = (name: string) => head.indexOf(name);
+  // 「%」 열이 값 열 사이사이에 끼어 있어 이름으로만 집는다
+  const iMonth = idx("Month");
+  if (iMonth < 0) throw new Error("머리글에서 「Month」를 찾지 못했습니다");
+
+  // 이번 달까지만 — 그 뒤는 시트가 미리 깔아 둔 예상치다
+  const nowKst = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 7);
+
+  const rows: Array<Record<string, unknown>> = [];
+  for (const raw of grid.slice(1)) {
+    const row = (raw ?? []) as string[];
+    const month = txt(row[iMonth]);
+    if (!/^\d{4}-\d{2}$/.test(month)) continue;   // 합계·평균 줄은 걸러진다
+    if (month < TREND_FROM || month > nowKst) continue;
+    const at = (name: string) => (idx(name) < 0 ? null : num(row[idx(name)]));
+    rows.push({
+      month,
+      activeCenters: at("활성센터"),
+      recurring: at("정기결제"),
+      yearPass: at("1년권"),
+      bankTransfer: at("계좌이체"),
+      renewDue: at("재결제 수"),
+      churnTotal: at("총 이탈"),
+      churnMid: at("중도이탈"),
+      churnConv: at("전환이탈"),
+      renewed: at("전환결제"),
+    });
+  }
+
+  await prisma.$transaction([
+    prisma.erpChurnMonthly.deleteMany({}),
+    prisma.erpChurnMonthly.createMany({ data: rows as never }),
+  ]);
+  return { months: rows.length };
+}
+
 /* ── 매일 한 번 시트에서 다시 읽어 온다 ── */
 
 const SLOT = "18:00";   // KST
@@ -121,7 +182,8 @@ export function startChurnSync(): void {
     void (async () => {
       try {
         const r = await syncChurnCenters();
-        console.log(`[churn-sync] ${key} ${r.rows}줄 · ${r.months}개월`);
+        const t = await syncChurnMonthly();
+        console.log(`[churn-sync] ${key} ${r.rows}줄 · 월간추이 ${t.months}개월`);
       } catch (e) {
         console.error("[churn-sync] 실패:", e instanceof Error ? e.message : e);
       }

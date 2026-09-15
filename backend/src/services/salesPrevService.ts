@@ -16,11 +16,24 @@ const NOT_A_SERVICE: Record<string, string> = {
   "기타": "기타",
 };
 
+/** 직전서비스를 한 번 더 쪼개 볼 축 — 문의 시트의 다른 칸들 */
+export const PREV_SPLIT_AXES = [
+  { k: "업종", t: "업종" },
+  { k: "문의요금제", t: "문의요금제" },
+  { k: "실제 결제 상품", t: "결제 요금제" },
+  { k: "지역", t: "지역" },
+  { k: "접수경로", t: "접수경로" },
+] as const;
+
 export type PrevServiceGroup = { id: string; label: string; months: string[] };
 export type PrevServiceQuery = {
   groups: PrevServiceGroup[];
   /** true 면 처음 도입·대답 없음·기존 고객·기타를 뺀다 */
   serviceOnly?: boolean;
+  /** 주면 직전서비스 × 이 칸 교차표까지 만든다 */
+  splitAxis?: string;
+  /** 교차표를 문의로 셀지 실결제로 셀지 */
+  basis?: "inquiry" | "paid";
 };
 
 function normalizeMonth(v: string): string {
@@ -139,8 +152,47 @@ export async function computePrevService(query: PrevServiceQuery) {
     .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label, "ko"))
     .filter((x) => x.total > 0);
 
+  // 교차표 — 직전서비스 × 고른 칸. 비교군마다 한 장씩.
+  const split = String(query.splitAxis ?? "").trim();
+  const okSplit = PREV_SPLIT_AXES.some((a) => a.k === split);
+  const paidBasis = query.basis === "paid";
+  const matrix = !okSplit ? [] : groups.map((g, gi) => {
+    const cell = new Map<string, Map<string, number>>();
+    const colTotal = new Map<string, number>();
+    let total = 0;
+    for (const rawMonth of g.months) {
+      for (const data of byMonth.get(normalizeMonth(rawMonth)) ?? []) {
+        const rawSvc = String(data["직전서비스"] ?? "").trim();
+        if (!rawSvc) continue;
+        const key = rawSvc.toLowerCase();
+        if (!keys.includes(key)) continue;
+        if (paidBasis && !isPaid(data)) continue;
+        const row = labelOf(key);
+        const colK = String(data[split] ?? "").trim() || "(빈칸)";
+        const line = cell.get(row) ?? new Map<string, number>();
+        line.set(colK, (line.get(colK) ?? 0) + 1);
+        cell.set(row, line);
+        colTotal.set(colK, (colTotal.get(colK) ?? 0) + 1);
+        total += 1;
+      }
+    }
+    const cols = [...colTotal.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko"))
+      .map(([label, n]) => ({ label, total: n }));
+    const rows2 = [...cell.entries()]
+      .map(([label, line]) => ({
+        label,
+        total: [...line.values()].reduce((a, b) => a + b, 0),
+        cells: cols.map((c) => line.get(c.label) ?? 0),
+      }))
+      .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label, "ko"));
+    return { groupId: g.id, label: g.label, cols, rows: rows2, total };
+  });
+
   return {
     serviceOnly: !!query.serviceOnly,
+    splitAxis: okSplit ? split : "",
+    matrix,
     groups: groups.map((g, gi) => ({
       id: g.id,
       label: g.label,

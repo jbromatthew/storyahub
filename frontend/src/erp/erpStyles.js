@@ -403,6 +403,13 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .ch-matrix th.label{text-align:left}
 .ch-matrix td{padding:7px 10px}
 .ch-matrix td.label{min-width:96px;font-weight:700}
+/* 이탈률 — 요약 카드 안 세 줄 */
+.ch-rates{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.ch-rates span{flex:1 1 auto;display:flex;flex-direction:column;gap:1px;padding:6px 9px;
+  border-radius:8px;background:#fff;border:1px solid var(--line);font-size:13.5px;
+  font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ch-rates b{font-size:10.5px;font-weight:700;color:var(--muted);letter-spacing:.04em}
+.ch-rates i{font-style:normal;color:var(--muted);font-weight:500}
 .ps-barline{display:grid;grid-template-columns:1fr 52px 48px;gap:8px;align-items:center}
 .ps-bar{display:block;height:10px;border-radius:999px;background:#F0EDE7;overflow:hidden;min-width:30px}
 .ps-bar i{display:block;height:100%;border-radius:999px}

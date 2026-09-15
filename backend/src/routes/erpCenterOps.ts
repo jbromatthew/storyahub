@@ -600,8 +600,10 @@ erpCenterOpsRouter.post("/churn/stats", async (req: AuthedRequest, res) => {
 /** 시트에서 다시 읽어 통째로 갈아끼운다 */
 erpCenterOpsRouter.post("/churn/sync", async (_req: AuthedRequest, res) => {
   try {
-    const { syncChurnCenters } = await import("../services/churnSheet.js");
-    res.json({ ok: true, ...(await syncChurnCenters()) });
+    const { syncChurnCenters, syncChurnMonthly } = await import("../services/churnSheet.js");
+    const a = await syncChurnCenters();
+    const b = await syncChurnMonthly();
+    res.json({ ok: true, ...a, trendMonths: b.months });
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }

@@ -154,8 +154,8 @@ salesSyncRouter.post("/payment-rate", async (req: AuthedRequest, res: Response) 
 /* ── 세일즈 통계 — 직전서비스 ── */
 
 salesSyncRouter.get("/stats/prev-service/meta", async (_req: AuthedRequest, res: Response) => {
-  const { getPrevServiceMeta } = await import("../services/salesPrevService.js");
-  res.json(await getPrevServiceMeta());
+  const { getPrevServiceMeta, PREV_SPLIT_AXES } = await import("../services/salesPrevService.js");
+  res.json({ ...(await getPrevServiceMeta()), axes: PREV_SPLIT_AXES });
 });
 
 salesSyncRouter.post("/stats/prev-service", async (req: AuthedRequest, res: Response) => {
@@ -170,7 +170,12 @@ salesSyncRouter.post("/stats/prev-service", async (req: AuthedRequest, res: Resp
     .filter((g: { months: string[] }) => g.months.length)
     .slice(0, 6);
   if (!groups.length) return res.status(400).json({ error: "비교군에 월을 1개 이상 선택하세요" });
-  res.json(await computePrevService({ groups, serviceOnly: req.body?.serviceOnly === true }));
+  res.json(await computePrevService({
+    groups,
+    serviceOnly: req.body?.serviceOnly === true,
+    splitAxis: String(req.body?.splitAxis ?? ""),
+    basis: req.body?.basis === "paid" ? "paid" : "inquiry",
+  }));
 });
 
 const TREND_TAB_IDS = new Set(listTrendTabs().map((t) => t.id));

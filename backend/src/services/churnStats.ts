@@ -18,6 +18,49 @@ export const CHURN_AXES = [
 export type ChurnAxis = (typeof CHURN_AXES)[number]["k"];
 export type ChurnGroup = { id: string; label: string; months: string[] };
 
+/**
+ * 이탈률 — 분모가 달라 셋을 따로 낸다.
+ *   전체   = 총 이탈 ÷ 활성센터
+ *   중도   = 중도이탈 ÷ 당월 정기결제수
+ *   전환   = 전환이탈 ÷ 전환결제 해야 하는 대상수(재결제 수)
+ * 건수·분모는 「월간 추이」 시트가 세어 둔 값을 그대로 쓴다.
+ */
+export type ChurnRates = {
+  months: number;
+  activeCenters: number | null;   // 기간 마지막 달 기준
+  recurring: number; renewDue: number;
+  churnTotal: number; churnMid: number; churnConv: number;
+  totalRate: number | null; midRate: number | null; convRate: number | null;
+};
+
+const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 1000) / 10 : null);
+
+export async function churnRatesFor(months: string[]): Promise<ChurnRates> {
+  const rows = await prisma.erpChurnMonthly.findMany({
+    where: { month: { in: months } },
+    orderBy: { month: "asc" },
+  });
+  const sum = (f: (r: (typeof rows)[number]) => number | null) =>
+    rows.reduce((a, r) => a + (f(r) ?? 0), 0);
+  const churnTotal = sum((r) => r.churnTotal);
+  const churnMid = sum((r) => r.churnMid);
+  const churnConv = sum((r) => r.churnConv);
+  const recurring = sum((r) => r.recurring);
+  const renewDue = sum((r) => r.renewDue);
+  // 활성센터는 쌓는 값이 아니라 그 시점의 수다 — 기간 마지막 달을 쓴다
+  const last = [...rows].reverse().find((r) => r.activeCenters != null);
+  // 여러 달을 묶어 볼 때 전체 이탈률은 달마다의 분모를 더해 낸다
+  const activeSum = sum((r) => r.activeCenters);
+  return {
+    months: rows.length,
+    activeCenters: last?.activeCenters ?? null,
+    recurring, renewDue, churnTotal, churnMid, churnConv,
+    totalRate: pct(churnTotal, activeSum),
+    midRate: pct(churnMid, recurring),
+    convRate: pct(churnConv, renewDue),
+  };
+}
+
 export async function getChurnMeta() {
   const rows = await prisma.erpChurnCenter.findMany({
     select: { month: true, industry: true, plan: true, reason: true, kind: true },
@@ -36,12 +79,25 @@ export async function getChurnMeta() {
 
 /** 월별 이탈 수 — 추이용. 축과 상관없이 늘 같이 준다. */
 export async function getChurnTimeline() {
-  const rows = await prisma.erpChurnCenter.groupBy({
-    by: ["month"],
-    _count: { _all: true },
-    orderBy: { month: "asc" },
+  const [rows, trend] = await Promise.all([
+    prisma.erpChurnCenter.groupBy({ by: ["month"], _count: { _all: true }, orderBy: { month: "asc" } }),
+    prisma.erpChurnMonthly.findMany({ orderBy: { month: "asc" } }),
+  ]);
+  const byMonth = new Map(trend.map((t) => [t.month, t]));
+  return rows.filter((r) => r.month).map((r) => {
+    const t = byMonth.get(r.month);
+    return {
+      month: r.month,
+      count: r._count._all,                  // 우리가 가진 로우데이터 줄 수
+      activeCenters: t?.activeCenters ?? null,
+      churnTotal: t?.churnTotal ?? null,     // 시트가 세어 둔 값
+      churnMid: t?.churnMid ?? null,
+      churnConv: t?.churnConv ?? null,
+      totalRate: pct(t?.churnTotal ?? 0, t?.activeCenters ?? 0),
+      midRate: pct(t?.churnMid ?? 0, t?.recurring ?? 0),
+      convRate: pct(t?.churnConv ?? 0, t?.renewDue ?? 0),
+    };
   });
-  return rows.filter((r) => r.month).map((r) => ({ month: r.month, count: r._count._all }));
 }
 
 export async function computeChurnStats(query: {
@@ -115,10 +171,12 @@ export async function computeChurnStats(query: {
     return { groupId: g.id, label: g.label, cols, rows, total: totals[gi] };
   });
 
+  const rates = await Promise.all(groups.map((g) => churnRatesFor(g.months)));
+
   return {
     axis: query.axis,
     splitAxis: split,
-    groups: groups.map((g, gi) => ({ ...g, total: totals[gi] })),
+    groups: groups.map((g, gi) => ({ ...g, total: totals[gi], rates: rates[gi] })),
     items,
     matrix,
   };

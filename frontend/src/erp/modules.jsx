@@ -8594,9 +8594,11 @@ function ChurnRows({ meta }) {
 /* ── 통계 ── */
 function ChurnStats({ meta }) {
   const axisName = (k) => (meta.axes || []).find((a) => a.k === k)?.t || k;
+  const pctText = (v) => (v == null ? <i>-</i> : `${v.toFixed(1)}%`);
   const months = meta.months || [];
   const [axis, setAxis] = useState("reason");
   const [splitAxis, setSplitAxis] = useState("");   // 교차표로 쪼갤 축
+  const [tl, setTl] = useState("count");           // 추이에서 볼 값
   const [groups, setGroups] = useState(() => [
     { id: chNewId(), label: "올해", months: months.filter((m) => m.startsWith(String(new Date().getFullYear()))) },
     { id: chNewId(), label: "작년", months: months.filter((m) => m.startsWith(String(new Date().getFullYear() - 1))) },
@@ -8626,8 +8628,8 @@ function ChurnStats({ meta }) {
   const topAll = items.reduce((m, x) => Math.max(m, ...x.byGroup.map((b) => b.count)), 1);
 
   const timeline = meta.timeline || [];
-  const maxT = timeline.reduce((m, x) => Math.max(m, x.count), 1);
   const recent = timeline.slice(-24);
+  const maxT = recent.reduce((m, x) => Math.max(m, Number(x[tl]) || 0), 0) || 1;
 
   const copy = async () => {
     const head = [(meta.axes || []).find((a) => a.k === axis)?.t || axis,
@@ -8642,15 +8644,27 @@ function ChurnStats({ meta }) {
     <>
       {/* 월별 추이 */}
       <div className="card" style={{ marginTop: 14, padding: "16px 18px" }}>
-        <div className="kbe-meta-h" style={{ marginTop: 0 }}>월별 이탈 추이 <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>· 최근 24개월</span></div>
-        <div className="ch-spark">
-          {recent.map((t) => (
-            <span key={t.month} className="ch-col" title={`${t.month} · ${t.count}건`}>
-              <i style={{ height: `${Math.max((t.count / maxT) * 100, 2)}%` }} />
-              <em>{t.count}</em>
-              <b>{t.month.slice(2).replace("-", ".")}</b>
-            </span>
+        <div className="row" style={{ alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+          <div className="kbe-meta-h" style={{ margin: 0 }}>월별 추이 <span className="small" style={{ fontWeight: 500, color: "var(--muted)" }}>· 최근 24개월</span></div>
+          <span style={{ flex: 1 }} />
+          {[["count", "건수"], ["totalRate", "전체 이탈률"], ["midRate", "중도 이탈률"], ["convRate", "전환 이탈률"]].map(([k, t]) => (
+            <button key={k} type="button" className={"chip" + (tl === k ? " on" : "")} onClick={() => setTl(k)}>{t}</button>
           ))}
+        </div>
+        <div className="ch-spark">
+          {recent.map((t) => {
+            const v = t[tl];
+            const isRate = tl !== "count";
+            return (
+              <span key={t.month} className="ch-col"
+                title={`${t.month} · 이탈 ${t.churnTotal ?? t.count}건` +
+                  (t.totalRate != null ? ` · 전체 ${t.totalRate}% · 중도 ${t.midRate ?? "-"}% · 전환 ${t.convRate ?? "-"}%` : "")}>
+                <i style={{ height: `${v == null ? 0 : Math.max((v / (maxT || 1)) * 100, 2)}%` }} />
+                <em>{v == null ? "-" : isRate ? `${v}%` : v}</em>
+                <b>{t.month.slice(2).replace("-", ".")}</b>
+              </span>
+            );
+          })}
         </div>
       </div>
 
@@ -8739,13 +8753,26 @@ function ChurnStats({ meta }) {
       {loading && !data ? <div className="spinner" /> : !data ? null : (
         <>
           <div className="cst-summary" style={{ gridTemplateColumns: `repeat(${Math.min(gs.length, 3)},1fr)`, marginTop: 14 }}>
-            {gs.map((g, gi) => (
-              <div key={g.id} className="cst-sum-card" style={{ borderTop: `3px solid ${CH_COLORS[gi % CH_COLORS.length]}` }}>
-                <div className="lbl">{g.label}</div>
-                <div className="val">{g.total.toLocaleString()}<span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 6 }}>건 이탈</span></div>
-                <div className="small" style={{ color: "var(--muted)" }}>{g.months.length}개월</div>
-              </div>
-            ))}
+            {gs.map((g, gi) => {
+              const r = g.rates || {};
+              return (
+                <div key={g.id} className="cst-sum-card" style={{ borderTop: `3px solid ${CH_COLORS[gi % CH_COLORS.length]}` }}>
+                  <div className="lbl">{g.label}</div>
+                  <div className="val">{g.total.toLocaleString()}<span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 6 }}>건 이탈</span></div>
+                  <div className="small" style={{ color: "var(--muted)" }}>
+                    {g.months.length}개월{r.activeCenters ? ` · 활성센터 ${r.activeCenters.toLocaleString()}` : ""}
+                  </div>
+                  <div className="ch-rates">
+                    <span title={`총 이탈 ${r.churnTotal ?? 0}건 ÷ 활성센터`}>
+                      <b>전체</b>{pctText(r.totalRate)}</span>
+                    <span title={`중도이탈 ${r.churnMid ?? 0}건 ÷ 정기결제 ${(r.recurring ?? 0).toLocaleString()}`}>
+                      <b>중도</b>{pctText(r.midRate)}</span>
+                    <span title={`전환이탈 ${r.churnConv ?? 0}건 ÷ 재결제 대상 ${(r.renewDue ?? 0).toLocaleString()}`}>
+                      <b>전환</b>{pctText(r.convRate)}</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div className="card" style={{ marginTop: 14, padding: "16px 18px" }}>
@@ -8848,15 +8875,24 @@ const PS_PRESETS = [
   { id: "prevY", label: "작년", pick: (ms) => ms.filter((m) => m.startsWith(String(new Date().getFullYear() - 1))) },
   { id: "all", label: "전체", pick: (ms) => ms },
 ];
+const PS_FALLBACK_AXES = [
+  { k: "업종", t: "업종" },
+  { k: "문의요금제", t: "문의요금제" },
+  { k: "실제 결제 상품", t: "결제 요금제" },
+  { k: "지역", t: "지역" },
+  { k: "접수경로", t: "접수경로" },
+];
 const PS_COLORS = ["#C2491F", "#33529E", "#1E6B3E", "#8A5A00", "#6B3FA0", "#0E7490"];
 let psSeq = 0;
 const psNewId = () => `g${Date.now().toString(36)}${psSeq++}`;
 
 export function SalesStatsView() {
   const [months, setMonths] = useState([]);
+  const [meta, setMeta] = useState(null);
   const [groups, setGroups] = useState([]);
   const [serviceOnly, setServiceOnly] = useState(true);
   const [basis, setBasis] = useState("inquiry");   // inquiry | paid
+  const [splitAxis, setSplitAxis] = useState("");  // 직전서비스를 한 번 더 쪼갤 칸
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [openMonths, setOpenMonths] = useState("");   // 월을 펼쳐 고르는 비교군
@@ -8866,6 +8902,7 @@ export function SalesStatsView() {
       .then((d) => {
         const ms = d.months || [];
         setMonths(ms);
+        setMeta(d);
         setGroups([
           { id: psNewId(), label: "이번 달", months: ms.slice(0, 1) },
           { id: psNewId(), label: "직전 3개월", months: ms.slice(1, 4) },
@@ -8879,11 +8916,14 @@ export function SalesStatsView() {
     const valid = groups.filter((g) => g.months.length);
     if (!valid.length) return;
     setLoading(true);
-    api.erpPrevService({ serviceOnly, groups: valid.map((g) => ({ id: g.id, label: g.label, months: g.months })) })
+    api.erpPrevService({
+      serviceOnly, splitAxis, basis,
+      groups: valid.map((g) => ({ id: g.id, label: g.label, months: g.months })),
+    })
       .then(setData)
       .catch(notifyError)
       .finally(() => setLoading(false));
-  }, [groups, serviceOnly]);
+  }, [groups, serviceOnly, splitAxis, basis]);
   useEffect(() => { if (months.length) run(); }, [run, months.length]);
 
   const setG = (id, patch) => setGroups((p) => p.map((g) => (g.id === id ? { ...g, ...patch } : g)));
@@ -9000,6 +9040,23 @@ export function SalesStatsView() {
         </button>
       </div>
 
+      {/* 교차표 — 직전서비스 × 업종 처럼 한 번 더 쪼갠다 */}
+      <div className="row" style={{ gap: 6, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span className="small" style={{ fontWeight: 700 }}>× 쪼개기</span>
+        <button type="button" className={"chip" + (!splitAxis ? " on" : "")}
+          onClick={() => setSplitAxis("")}>없음</button>
+        {(data?.axes || meta?.axes || PS_FALLBACK_AXES).map((a) => (
+          <button key={a.k} type="button" className={"chip" + (splitAxis === a.k ? " on" : "")}
+            onClick={() => setSplitAxis(a.k)}>{a.t}</button>
+        ))}
+        {splitAxis && (
+          <span className="small" style={{ color: "var(--muted)" }}>
+            직전서비스 × {(PS_FALLBACK_AXES.find((a) => a.k === splitAxis) || {}).t || splitAxis} 교차표가
+            비교군마다 한 장씩 나옵니다 · {basis === "paid" ? "실결제" : "문의"} 기준
+          </span>
+        )}
+      </div>
+
       {loading && !data ? <div className="spinner" /> : !data ? null : (
         <>
           <div className="cst-summary" style={{ gridTemplateColumns: `repeat(${Math.min(gs.length, 3)},1fr)`, marginTop: 14 }}>
@@ -9057,6 +9114,54 @@ export function SalesStatsView() {
               </div>
             </div>
           )}
+
+          {(data.matrix || []).map((mx, mi) => {
+            const hot = mx.rows.reduce((m, r) => Math.max(m, ...r.cells), 1);
+            return (
+              <div key={mx.groupId} className="card" style={{ marginTop: 14, padding: "16px 18px",
+                borderTop: `3px solid ${PS_COLORS[mi % PS_COLORS.length]}` }}>
+                <div className="kbe-meta-h" style={{ marginTop: 0 }}>
+                  {mx.label} · 직전서비스 × {(PS_FALLBACK_AXES.find((a) => a.k === data.splitAxis) || {}).t || data.splitAxis}
+                  <span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 8 }}>
+                    {mx.total.toLocaleString()}건 · {basis === "paid" ? "실결제" : "문의"} 기준
+                  </span>
+                </div>
+                <div className="dash-table-wrap">
+                  <table className="dash-table ch-matrix">
+                    <thead>
+                      <tr>
+                        <th className="label">직전서비스</th>
+                        {mx.cols.map((c) => <th key={c.label}>{c.label}</th>)}
+                        <th>합계</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mx.rows.map((r) => (
+                        <tr key={r.label}>
+                          <td className="label">{r.label}</td>
+                          {r.cells.map((n, ci) => (
+                            <td key={ci} className="num"
+                              style={{ background: n ? `rgba(221,94,57,${Math.min(0.06 + (n / hot) * 0.34, 0.4)})` : "transparent",
+                                color: n ? "var(--ink)" : "var(--muted)", fontWeight: n ? 700 : 400 }}>
+                              {n || "·"}
+                            </td>
+                          ))}
+                          <td className="num" style={{ fontWeight: 800 }}>{r.total}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="dash-sum">
+                        <td className="label">합계</td>
+                        {mx.cols.map((c) => <td key={c.label} className="num">{c.total}</td>)}
+                        <td className="num">{mx.total}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
 
           <div className="small" style={{ marginTop: 10, color: "var(--muted)", lineHeight: 1.6 }}>
             비중은 <strong>그 비교군에서 잡힌 합</strong> 기준이라 기간 길이가 달라도 견줄 수 있습니다.
