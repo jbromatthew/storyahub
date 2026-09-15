@@ -24,8 +24,6 @@ export type PaymentRateQuery = {
   channels?: string[];
   assignees?: string[];
   groups: PaymentRateGroupInput[];
-  /** 달마다 이 날짜까지만 세어 견준다 (1~31). 없으면 달 전체. */
-  dayCut?: number;
 };
 
 type Counts = {
@@ -82,15 +80,6 @@ function monthKeyFromDate(raw: string | undefined): string | null {
   const s = String(raw ?? "").trim().replace(/\./g, "-");
   const m = s.match(/^(\d{4})-(\d{2})/);
   return m ? `${m[1]}.${m[2]}.` : null;
-}
-
-/** 날짜에서 '며칠'만. 달을 같은 날짜까지 잘라 견줄 때 쓴다. */
-function dayOfMonth(raw: string | undefined): number | null {
-  const s = String(raw ?? "").trim().replace(/\./g, "-");
-  const m = s.match(/^\d{4}-\d{2}-(\d{1,2})/);
-  if (!m) return null;
-  const d = Number(m[1]);
-  return d >= 1 && d <= 31 ? d : null;
 }
 
 function rowMatchesChannelFilter(
@@ -217,16 +206,10 @@ function addToCounts(counts: Counts, data: Record<string, string>) {
 
 function sumMonthRows(
   rows: Record<string, string>[],
-  assigneeFilter: Set<string> | null,
-  dayCut = 0
+  assigneeFilter: Set<string> | null
 ): PaymentRateMetrics {
   const counts = emptyCounts();
   for (const data of rows) {
-    // 월별 줄도 합계와 같은 날짜까지만 세야 한다 — 따로 놀면 합이 안 맞는다
-    if (dayCut) {
-      const d = dayOfMonth(inquiryDateRaw(data));
-      if (d === null || d > dayCut) continue;
-    }
     const assignee = assigneeName(data);
     if (assigneeFilter && !assigneeFilter.has(assignee)) continue;
     addToCounts(counts, data);
@@ -340,10 +323,6 @@ export async function computePaymentRate(query: PaymentRateQuery) {
     byMonth.get(row.sheetName)?.push(data);
   }
 
-  const dayCut = Number.isFinite(Number(query.dayCut)) && Number(query.dayCut) >= 1 && Number(query.dayCut) <= 31
-    ? Math.floor(Number(query.dayCut))
-    : 0;
-
   const groups = query.groups.map((group) => {
     const overall = emptyCounts();
     const overallOrganic = emptyCounts();
@@ -356,11 +335,6 @@ export async function computePaymentRate(query: PaymentRateQuery) {
     for (const rawMonth of group.months) {
       const month = normalizeMonthSheet(rawMonth);
       for (const data of byMonth.get(month) ?? []) {
-        // 이번 달은 아직 안 끝났다 — 지난달도 같은 날짜까지만 잘라야 견줄 수 있다
-        if (dayCut) {
-          const d = dayOfMonth(inquiryDateRaw(data));
-          if (d === null || d > dayCut) continue;
-        }
         const assignee = assigneeName(data);
         if (assigneeFilter && !assigneeFilter.has(assignee)) continue;
         const seg: "organic" | "nonOrganic" | null = matchesLegacyChannel("organic", data)
@@ -400,7 +374,7 @@ export async function computePaymentRate(query: PaymentRateQuery) {
       .sort((a, b) => a.localeCompare(b))
       .map((month) => ({
         month,
-        metrics: sumMonthRows(byMonth.get(month) ?? [], assigneeFilter, dayCut),
+        metrics: sumMonthRows(byMonth.get(month) ?? [], assigneeFilter),
       }));
     return {
       id: group.id,
@@ -445,7 +419,7 @@ export async function computePaymentRate(query: PaymentRateQuery) {
     .sort((a, b) => a.localeCompare(b))
     .map((month) => ({
       month,
-      metrics: sumMonthRows(byMonth.get(month) ?? [], assigneeFilter, dayCut),
+      metrics: sumMonthRows(byMonth.get(month) ?? [], assigneeFilter),
     }));
 
   const rows = PAYMENT_RATE_ROWS.map((row) => ({
@@ -459,7 +433,6 @@ export async function computePaymentRate(query: PaymentRateQuery) {
     channel,
     channels: channels ?? [],
     assignees: assigneeFilter ? [...assigneeFilter] : [],
-    dayCut: dayCut || null,
     groups: groups.map(({ id, label, months, overall, bySegment, byMonth }) => ({ id, label, months, overall, bySegment, byMonth })),
     rows,
     timeline,

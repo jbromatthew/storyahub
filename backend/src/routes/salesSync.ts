@@ -116,8 +116,6 @@ const paymentRateBodySchema = z.object({
   channel: z.enum(["all", "organic", "non-organic"]).optional(),
   channels: z.array(z.string()).optional(),
   assignees: z.array(z.string()).optional(),
-  // 달마다 이 날짜까지만 세어 견준다 — 이번 달이 안 끝나 늘 하락으로 보이던 것을 막는다
-  dayCut: z.number().int().min(1).max(31).optional(),
   groups: z
     .array(
       z.object({

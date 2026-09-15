@@ -5882,9 +5882,6 @@ function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange, selG
 export function PaymentRateView() {
   const [meta, setMeta] = useState(null);
   const [groups, setGroups] = useState([]);
-  // 이번 달은 아직 안 끝나서 지난달과 통째로 견주면 늘 하락으로 보인다.
-  // 달마다 같은 날짜까지만 잘라 견줄 수 있게 한다. 0 이면 달 전체.
-  const [dayCut, setDayCut] = useState(0);
   const [selectedIndustries, setSelectedIndustries] = useState([]);
   const [selectedChannels, setSelectedChannels] = useState([]);
   const [selectedAssignees, setSelectedAssignees] = useState([]);
@@ -5942,7 +5939,6 @@ export function PaymentRateView() {
       industries: selectedIndustries.length ? selectedIndustries : undefined,
       channels: selectedChannels.length ? selectedChannels : undefined,
       assignees: selectedAssignees.length ? selectedAssignees : undefined,
-      dayCut: dayCut || undefined,
       groups: valid.map((g) => ({ id: g.id, label: g.label, months: g.months })),
     })
       .then((res) => {
@@ -5952,7 +5948,7 @@ export function PaymentRateView() {
       })
       .catch(notifyError)
       .finally(() => setComputing(false));
-  }, [groups, selectedIndustries, selectedChannels, selectedAssignees, dayCut]);
+  }, [groups, selectedIndustries, selectedChannels, selectedAssignees]);
 
   const addGroup = (preset) => {
     const months = meta?.months || [];
@@ -6130,42 +6126,12 @@ export function PaymentRateView() {
         </div>
       )}
 
-      {/* 일자 기준 — 이번 달이 안 끝나 늘 하락으로 보이던 것을 맞춰 본다 */}
-      <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10,
-        padding: "10px 12px", borderRadius: 10, border: "1px solid var(--line)", background: "#FAF9F7" }}>
-        <span className="small" style={{ fontWeight: 700 }}>일자 기준</span>
-        <button type="button" className={"chip" + (dayCut === 0 ? " on" : "")} onClick={() => setDayCut(0)}>
-          달 전체
-        </button>
-        <button type="button" className={"chip" + (dayCut === new Date().getDate() ? " on" : "")}
-          title="모든 달을 오늘 날짜까지만 세어 견줍니다"
-          onClick={() => setDayCut(new Date().getDate())}>
-          오늘까지 ({new Date().getDate()}일)
-        </button>
-        {[7, 10, 15, 20, 25].map((d) => (
-          <button key={d} type="button" className={"chip" + (dayCut === d ? " on" : "")}
-            onClick={() => setDayCut(d)}>{d}일</button>
-        ))}
-        <span className="small" style={{ color: "var(--muted)", marginLeft: "auto" }}>
-          {dayCut
-            ? `모든 달을 1일~${dayCut}일 문의만 세어 견줍니다`
-            : "달을 통째로 셉니다 — 이번 달은 아직 안 끝나 낮게 보일 수 있습니다"}
-        </span>
-      </div>
-
       <button type="button" className="btn btn-accent" style={{ width: "100%", marginTop: 8 }} onClick={runCompute} disabled={computing || hasEmpty}>
         {computing ? "조회 중…" : "조회"}
       </button>
 
       {computing && !result ? <div className="spinner" /> : result && (
         <>
-          {result.dayCut && (
-            <div className="small" style={{ margin: "12px 0 0", padding: "9px 12px", borderRadius: 9,
-              background: "var(--accent-soft,#FBEAE1)", border: "1px solid var(--accent)",
-              color: "var(--accent-deep)", fontWeight: 700 }}>
-              모든 달을 <strong>1일~{result.dayCut}일</strong> 문의만 세어 견준 값입니다.
-            </div>
-          )}
           {noData && (
             <div className="small" style={{ marginTop: 12, padding: 12, background: "#FFF8E1", borderRadius: 8 }}>
               선택한 기간에 데이터가 없습니다. <strong>세일즈 동기화</strong>에서 해당 월을 먼저 동기화하세요.
@@ -8489,21 +8455,11 @@ const CMB_TABS = [
   { id: "plan", label: "요금제별" },
 ];
 
-/** 문의 대비 계약 — 전환율 색 */
-function cmbConvColor(v) {
-  if (v == null) return "var(--muted)";
-  if (v >= 40) return "#0D7A3E";
-  if (v >= 20) return "#B06A00";
-  return "#C5221F";
-}
-
 /** 문의 × 계약 표 — 목록에도, 업종을 파고든 화면에도 같은 모양으로 쓴다 */
 function CmbTable({ rows, labelHead, renderLabel }) {
   const list = rows || [];
   const add = (fn) => list.reduce((a, r) => a + (Number(fn(r)) || 0), 0);
   const tot = { mg: add((r) => r.mg), ma: add((r) => r.ma), sg: add((r) => r.sg), sa: add((r) => r.sa) };
-  tot.conv = tot.ma > 0 ? Math.round((tot.sa / tot.ma) * 1000) / 10 : null;
-  tot.convGoal = tot.mg > 0 ? Math.round((tot.sg / tot.mg) * 1000) / 10 : null;
   const rate = (a, g) => (g > 0 ? Math.round((a / g) * 1000) / 10 : null);
 
   return (
@@ -8514,7 +8470,6 @@ function CmbTable({ rows, labelHead, renderLabel }) {
             <th className="label" rowSpan="2">{labelHead}</th>
             <th colSpan="3" className="grp mkt">신규 문의 · 마케팅</th>
             <th colSpan="3" className="grp sal">신규 계약 · 세일즈</th>
-            <th rowSpan="2">전환율</th>
           </tr>
           <tr>
             <th>목표</th><th>현황</th><th>달성률</th>
@@ -8523,7 +8478,7 @@ function CmbTable({ rows, labelHead, renderLabel }) {
         </thead>
         <tbody>
           {!list.length && (
-            <tr><td colSpan={8} className="small" style={{ textAlign: "center", padding: 30 }}>
+            <tr><td colSpan={7} className="small" style={{ textAlign: "center", padding: 30 }}>
               항목이 없습니다
             </td></tr>
           )}
@@ -8540,10 +8495,6 @@ function CmbTable({ rows, labelHead, renderLabel }) {
                 <td className="num">{r.sa}</td>
                 <td className="num" style={{ color: dashRateColor(sr), fontWeight: 700 }}>
                   {sr != null ? formatDashRate(sr) : "-"}</td>
-                <td className="num" style={{ color: cmbConvColor(r.conv), fontWeight: 700 }}>
-                  {r.conv != null ? `${r.conv}%` : "-"}
-                  {r.convGoal != null && <i className="cmb-goalconv">목표 {r.convGoal}%</i>}
-                </td>
               </tr>
             );
           })}
@@ -8559,10 +8510,6 @@ function CmbTable({ rows, labelHead, renderLabel }) {
             <td className="num">{tot.sa}</td>
             <td className="num" style={{ color: dashRateColor(rate(tot.sa, tot.sg)), fontWeight: 800 }}>
               {tot.sg > 0 ? formatDashRate(rate(tot.sa, tot.sg)) : "-"}</td>
-            <td className="num" style={{ color: cmbConvColor(tot.conv), fontWeight: 800 }}>
-              {tot.conv != null ? `${tot.conv}%` : "-"}
-              {tot.convGoal != null && <i className="cmb-goalconv">목표 {tot.convGoal}%</i>}
-            </td>
           </tr>
         </tfoot>
       </table>
@@ -8605,11 +8552,6 @@ export function CombinedDashboardView() {
     put(mList, "m");
     put(sList, "s");
     return [...box.values()]
-      .map((r) => ({
-        ...r,
-        conv: r.ma > 0 ? Math.round((r.sa / r.ma) * 1000) / 10 : null,
-        convGoal: r.mg > 0 ? Math.round((r.sg / r.mg) * 1000) / 10 : null,
-      }))
       .sort((a, b) => b.sa - a.sa || b.ma - a.ma || a.label.localeCompare(b.label, "ko"));
   };
 
@@ -8639,8 +8581,6 @@ export function CombinedDashboardView() {
 
   const ms = mkt?.summary;
   const ss = sal?.summary;
-  const convNow = ms?.actual > 0 ? Math.round((ss?.actual / ms.actual) * 1000) / 10 : null;
-  const convGoal = ms?.totalGoal > 0 ? Math.round((ss?.totalGoal / ms.totalGoal) * 1000) / 10 : null;
   const leftDays = ss?.remainingBusinessDays ?? ss?.remainingDays;
 
   return (
@@ -8649,8 +8589,7 @@ export function CombinedDashboardView() {
       <div className="h-title">종합 계기판</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.55 }}>
         마케팅이 만든 <strong>신규 문의</strong>와 세일즈가 닫은 <strong>신규 계약</strong>을
-        같은 줄에 놓고 봅니다. 목표와 현황은 각 계기판과 같은 값이고,
-        <strong> 전환율</strong>은 여기서만 계산합니다 — 계약 ÷ 문의.
+        같은 줄에 놓고 봅니다. 목표와 현황은 각 계기판과 같은 값입니다.
         목표를 고치려면 각 계기판에서 하세요.
       </div>
 
@@ -8684,11 +8623,6 @@ export function CombinedDashboardView() {
               </div>
             </div>
 
-            <div className="cmb-arrow" aria-hidden="true">
-              <span className="v">{convNow != null ? `${convNow}%` : "-"}</span>
-              <span className="l">전환</span>
-            </div>
-
             <div className="cmb-card">
               <div className="dash-gauge-wrap"><GaugeRing rate={ss?.rate} size={104} /></div>
               <div className="cmb-side">
@@ -8699,16 +8633,6 @@ export function CombinedDashboardView() {
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="cmb-conv">
-            <span>문의 <b>{ms?.actual ?? 0}</b>건 중 <b>{ss?.actual ?? 0}</b>건이 계약으로</span>
-            <span className="sep" />
-            <span>지금 전환율 <b style={{ color: cmbConvColor(convNow) }}>
-              {convNow != null ? `${convNow}%` : "-"}</b></span>
-            {convGoal != null && (
-              <span className="muted">· 목표대로라면 {convGoal}%</span>
-            )}
           </div>
 
           <div className="sales-tabs" style={{ marginTop: 18 }}>
@@ -8731,10 +8655,6 @@ export function CombinedDashboardView() {
                 {drillData.head && (
                   <span className="small" style={{ color: "var(--muted)" }}>
                     문의 {drillData.head.ma} · 계약 {drillData.head.sa}
-                    {drillData.head.conv != null && (
-                      <> · 전환 <b style={{ color: cmbConvColor(drillData.head.conv) }}>
-                        {drillData.head.conv}%</b></>
-                    )}
                   </span>
                 )}
               </div>
@@ -8758,8 +8678,7 @@ export function CombinedDashboardView() {
 
           <div className="small" style={{ marginTop: 8, color: "var(--muted)", lineHeight: 1.6 }}>
             {tab === "industry" && !drillData && <>업종 이름을 누르면 그 안의 <strong>요금제별·채널별</strong>을 볼 수 있습니다. </>}
-            전환율은 <strong>같은 달 안에서</strong> 문의와 계약을 나눈 값입니다.
-            지난달 문의가 이번 달에 닫히는 건은 반영되지 않으니, 흐름을 보는 눈금으로 쓰세요.
+            목표와 현황은 세일즈·마케팅 계기판과 같은 값입니다. 고치려면 각 계기판에서 하세요.
           </div>
         </>
       )}

@@ -362,24 +362,10 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .cmb-gap{font-size:12.5px;font-weight:700;margin-top:3px;}
 .cmb-gap.pos{color:#0D7A3E;}
 .cmb-gap.neg{color:#C5221F;}
-.cmb-arrow{flex:0 0 auto;align-self:center;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;min-width:74px;padding:8px 6px;
-  border-radius:12px;background:#F4F2ED;border:1px dashed var(--line);}
-.cmb-arrow .v{font-size:17px;font-weight:900;letter-spacing:-.03em;
-  font-variant-numeric:tabular-nums;}
-.cmb-arrow .l{font-size:10.5px;color:var(--muted);font-weight:700;letter-spacing:.08em;}
-@media(max-width:640px){.cmb-arrow{width:100%;flex-direction:row;gap:8px;}}
-.cmb-conv{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;
-  padding:10px 14px;border-radius:11px;border:1px solid var(--line);background:#FAF9F7;
-  font-size:13px;}
-.cmb-conv .sep{flex:1;}
-.cmb-conv .muted{color:var(--muted);font-size:12.5px;}
 .cmb-table th.grp{text-align:center;font-size:11px;letter-spacing:.04em;}
 .cmb-table th.grp.mkt{color:#33529E;background:#F4F7FF;}
 .cmb-table th.grp.sal{color:#C2491F;background:#FDF5F1;}
 .cmb-table th.gl,.cmb-table td.gl{border-left:1px solid var(--line);}
-.cmb-goalconv{display:block;font-style:normal;font-size:10.5px;font-weight:500;
-  color:var(--muted);margin-top:1px;}
 .cmb-drill{border:0;background:none;cursor:pointer;font-family:inherit;font-weight:700;
   font-size:inherit;color:var(--ink);padding:0;display:inline-flex;align-items:center;gap:4px;}
 .cmb-drill:hover{color:var(--accent-deep);}
