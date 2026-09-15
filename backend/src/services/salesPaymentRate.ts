@@ -217,10 +217,16 @@ function addToCounts(counts: Counts, data: Record<string, string>) {
 
 function sumMonthRows(
   rows: Record<string, string>[],
-  assigneeFilter: Set<string> | null
+  assigneeFilter: Set<string> | null,
+  dayCut = 0
 ): PaymentRateMetrics {
   const counts = emptyCounts();
   for (const data of rows) {
+    // 월별 줄도 합계와 같은 날짜까지만 세야 한다 — 따로 놀면 합이 안 맞는다
+    if (dayCut) {
+      const d = dayOfMonth(inquiryDateRaw(data));
+      if (d === null || d > dayCut) continue;
+    }
     const assignee = assigneeName(data);
     if (assigneeFilter && !assigneeFilter.has(assignee)) continue;
     addToCounts(counts, data);
@@ -394,7 +400,7 @@ export async function computePaymentRate(query: PaymentRateQuery) {
       .sort((a, b) => a.localeCompare(b))
       .map((month) => ({
         month,
-        metrics: sumMonthRows(byMonth.get(month) ?? [], assigneeFilter),
+        metrics: sumMonthRows(byMonth.get(month) ?? [], assigneeFilter, dayCut),
       }));
     return {
       id: group.id,
@@ -439,7 +445,7 @@ export async function computePaymentRate(query: PaymentRateQuery) {
     .sort((a, b) => a.localeCompare(b))
     .map((month) => ({
       month,
-      metrics: sumMonthRows(byMonth.get(month) ?? [], assigneeFilter),
+      metrics: sumMonthRows(byMonth.get(month) ?? [], assigneeFilter, dayCut),
     }));
 
   const rows = PAYMENT_RATE_ROWS.map((row) => ({
