@@ -5882,6 +5882,9 @@ function RateStatsPanel({ result, groupLabels, statsMetric, onMetricChange, selG
 export function PaymentRateView() {
   const [meta, setMeta] = useState(null);
   const [groups, setGroups] = useState([]);
+  // 이번 달은 아직 안 끝나서 지난달과 통째로 견주면 늘 하락으로 보인다.
+  // 달마다 같은 날짜까지만 잘라 견줄 수 있게 한다. 0 이면 달 전체.
+  const [dayCut, setDayCut] = useState(0);
   const [selectedIndustries, setSelectedIndustries] = useState([]);
   const [selectedChannels, setSelectedChannels] = useState([]);
   const [selectedAssignees, setSelectedAssignees] = useState([]);
@@ -5939,6 +5942,7 @@ export function PaymentRateView() {
       industries: selectedIndustries.length ? selectedIndustries : undefined,
       channels: selectedChannels.length ? selectedChannels : undefined,
       assignees: selectedAssignees.length ? selectedAssignees : undefined,
+      dayCut: dayCut || undefined,
       groups: valid.map((g) => ({ id: g.id, label: g.label, months: g.months })),
     })
       .then((res) => {
@@ -5948,7 +5952,7 @@ export function PaymentRateView() {
       })
       .catch(notifyError)
       .finally(() => setComputing(false));
-  }, [groups, selectedIndustries, selectedChannels, selectedAssignees]);
+  }, [groups, selectedIndustries, selectedChannels, selectedAssignees, dayCut]);
 
   const addGroup = (preset) => {
     const months = meta?.months || [];
@@ -6126,12 +6130,42 @@ export function PaymentRateView() {
         </div>
       )}
 
+      {/* 일자 기준 — 이번 달이 안 끝나 늘 하락으로 보이던 것을 맞춰 본다 */}
+      <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10,
+        padding: "10px 12px", borderRadius: 10, border: "1px solid var(--line)", background: "#FAF9F7" }}>
+        <span className="small" style={{ fontWeight: 700 }}>일자 기준</span>
+        <button type="button" className={"chip" + (dayCut === 0 ? " on" : "")} onClick={() => setDayCut(0)}>
+          달 전체
+        </button>
+        <button type="button" className={"chip" + (dayCut === new Date().getDate() ? " on" : "")}
+          title="모든 달을 오늘 날짜까지만 세어 견줍니다"
+          onClick={() => setDayCut(new Date().getDate())}>
+          오늘까지 ({new Date().getDate()}일)
+        </button>
+        {[7, 10, 15, 20, 25].map((d) => (
+          <button key={d} type="button" className={"chip" + (dayCut === d ? " on" : "")}
+            onClick={() => setDayCut(d)}>{d}일</button>
+        ))}
+        <span className="small" style={{ color: "var(--muted)", marginLeft: "auto" }}>
+          {dayCut
+            ? `모든 달을 1일~${dayCut}일 문의만 세어 견줍니다`
+            : "달을 통째로 셉니다 — 이번 달은 아직 안 끝나 낮게 보일 수 있습니다"}
+        </span>
+      </div>
+
       <button type="button" className="btn btn-accent" style={{ width: "100%", marginTop: 8 }} onClick={runCompute} disabled={computing || hasEmpty}>
         {computing ? "조회 중…" : "조회"}
       </button>
 
       {computing && !result ? <div className="spinner" /> : result && (
         <>
+          {result.dayCut && (
+            <div className="small" style={{ margin: "12px 0 0", padding: "9px 12px", borderRadius: 9,
+              background: "var(--accent-soft,#FBEAE1)", border: "1px solid var(--accent)",
+              color: "var(--accent-deep)", fontWeight: 700 }}>
+              모든 달을 <strong>1일~{result.dayCut}일</strong> 문의만 세어 견준 값입니다.
+            </div>
+          )}
           {noData && (
             <div className="small" style={{ marginTop: 12, padding: 12, background: "#FFF8E1", borderRadius: 8 }}>
               선택한 기간에 데이터가 없습니다. <strong>세일즈 동기화</strong>에서 해당 월을 먼저 동기화하세요.
