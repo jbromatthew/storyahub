@@ -8408,106 +8408,161 @@ function GaugeRing({ rate, size = 132 }) {
   );
 }
 
-/* ── 세일즈 통계 ── */
+/* ── 세일즈 통계 — 직전서비스. 결제율 분석처럼 비교군을 놓고 견준다 ── */
 
 const PS_PRESETS = [
   { id: "cur", label: "이번 달", pick: (ms) => ms.slice(0, 1) },
-  { id: "l3", label: "직전 3개월", pick: (ms) => ms.slice(0, 3) },
-  { id: "l6", label: "직전 6개월", pick: (ms) => ms.slice(0, 6) },
+  { id: "l3", label: "직전 3개월", pick: (ms) => ms.slice(1, 4) },
+  { id: "l6", label: "직전 6개월", pick: (ms) => ms.slice(1, 7) },
   { id: "y", label: "올해", pick: (ms) => ms.filter((m) => m.startsWith(String(new Date().getFullYear()))) },
+  { id: "prevY", label: "작년", pick: (ms) => ms.filter((m) => m.startsWith(String(new Date().getFullYear() - 1))) },
   { id: "all", label: "전체", pick: (ms) => ms },
 ];
+const PS_COLORS = ["#C2491F", "#33529E", "#1E6B3E", "#8A5A00", "#6B3FA0", "#0E7490"];
+let psSeq = 0;
+const psNewId = () => `g${Date.now().toString(36)}${psSeq++}`;
 
 export function SalesStatsView() {
-  const [months, setMonths] = useState([]);       // 고를 수 있는 월
-  const [picked, setPicked] = useState([]);       // 고른 월
+  const [months, setMonths] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [serviceOnly, setServiceOnly] = useState(true);
+  const [basis, setBasis] = useState("inquiry");   // inquiry | paid
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showMonths, setShowMonths] = useState(false);
+  const [openMonths, setOpenMonths] = useState("");   // 월을 펼쳐 고르는 비교군
 
   useEffect(() => {
     api.erpPrevServiceMeta()
       .then((d) => {
         const ms = d.months || [];
         setMonths(ms);
-        setPicked(ms.slice(0, 3));    // 처음엔 직전 3개월
+        setGroups([
+          { id: psNewId(), label: "이번 달", months: ms.slice(0, 1) },
+          { id: psNewId(), label: "직전 3개월", months: ms.slice(1, 4) },
+        ]);
       })
       .catch(notifyError)
       .finally(() => setLoading(false));
   }, []);
 
   const run = useCallback(() => {
+    const valid = groups.filter((g) => g.months.length);
+    if (!valid.length) return;
     setLoading(true);
-    api.erpPrevService({ months: picked, serviceOnly })
+    api.erpPrevService({ serviceOnly, groups: valid.map((g) => ({ id: g.id, label: g.label, months: g.months })) })
       .then(setData)
       .catch(notifyError)
       .finally(() => setLoading(false));
-  }, [picked, serviceOnly]);
+  }, [groups, serviceOnly]);
   useEffect(() => { if (months.length) run(); }, [run, months.length]);
 
-  const items = data?.items || [];
-  const top = items[0]?.inquiries || 1;
+  const setG = (id, patch) => setGroups((p) => p.map((g) => (g.id === id ? { ...g, ...patch } : g)));
+  const addGroup = () => setGroups((p) => [...p, {
+    id: psNewId(), label: `비교군 ${p.length + 1}`, months: months.slice(0, 1),
+  }]);
+  const delGroup = (id) => setGroups((p) => p.filter((g) => g.id !== id));
+
+  const val = (b) => (basis === "paid" ? b.paid : b.inquiries);
+  const shareOf = (b) => (basis === "paid" ? b.paidShare : b.share);
+  const gs = data?.groups || [];
+  const items = (data?.items || [])
+    .map((x) => ({ ...x, sum: x.byGroup.reduce((a, b) => a + val(b), 0) }))
+    .filter((x) => x.sum > 0)
+    .sort((a, b) => b.sum - a.sum || a.label.localeCompare(b.label, "ko"));
+  const top = items[0]?.byGroup.reduce((m, b) => Math.max(m, val(b)), 0) || 1;
+  const topAll = items.reduce((m, x) => Math.max(m, ...x.byGroup.map(val)), 1);
 
   const copy = async () => {
-    const head = ["직전서비스", "문의", "비중(%)", "결제", "결제율(%)"];
+    const head = ["직전서비스", ...gs.flatMap((g) => [`${g.label} 건`, `${g.label} 비중%`])];
     const lines = [head.join("\t"), ...items.map((x) =>
-      [x.label, x.inquiries, x.share, x.paid, x.paidRate ?? ""].join("\t"))];
+      [x.label, ...x.byGroup.flatMap((b) => [val(b), shareOf(b)])].join("\t"))];
     try { await navigator.clipboard.writeText(lines.join("\n")); toastSuccess(`${items.length}줄을 복사했어요`); }
     catch { notifyError(new Error("복사에 실패했습니다")); }
   };
 
-  const label = picked.length === 1 ? picked[0].replace(/\.$/, "")
-    : picked.length ? `${picked[picked.length - 1].replace(/\.$/, "")} ~ ${picked[0].replace(/\.$/, "")} · ${picked.length}개월`
-      : "월을 고르세요";
+  const monthLabel = (ms) => !ms.length ? "월 없음"
+    : ms.length === 1 ? ms[0].replace(/\.$/, "")
+      : `${ms[ms.length - 1].replace(/\.$/, "")} ~ ${ms[0].replace(/\.$/, "")} · ${ms.length}개월`;
 
   return (
     <div className="fade pad rate-page" style={{ marginTop: 8, paddingBottom: 40 }}>
       <div className="h-eyebrow">Sales</div>
       <div className="h-title">세일즈 통계</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.6, color: "var(--muted)" }}>
-        우리로 넘어오기 전에 무엇을 쓰고 있었는지 — 문의 시트의 <strong>직전서비스</strong> 칸을 센 것입니다.
-        많은 순으로 놓았습니다.
+        우리로 넘어오기 전에 무엇을 쓰고 있었는지 — 문의 시트의 <strong>직전서비스</strong> 칸을 셉니다.
+        비교군을 여럿 놓고 견줄 수 있고, <strong>문의</strong> 기준과 <strong>실결제</strong> 기준을 바꿔 볼 수 있습니다.
       </div>
 
-      <div className="sales-toolbar" style={{ marginTop: 14, alignItems: "center" }}>
-        {PS_PRESETS.map((p) => {
-          const want = p.pick(months);
-          const on = want.length === picked.length && want.every((m) => picked.includes(m));
-          return (
-            <button key={p.id} type="button" className={"sales-tab" + (on ? " on" : "")}
-              onClick={() => setPicked(want)}>{p.label}</button>
-          );
-        })}
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowMonths((v) => !v)}>
-          {showMonths ? "월 접기" : "월 직접 고르기"}
-        </button>
-        <span className="small" style={{ color: "var(--muted)", marginLeft: "auto" }}>{label}</span>
-      </div>
-
-      {showMonths && (
-        <div className="card" style={{ marginTop: 10, padding: 14 }}>
-          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-            {months.map((m) => (
-              <button key={m} type="button"
-                className={"chip" + (picked.includes(m) ? " on" : "")}
-                onClick={() => setPicked((p) => (p.includes(m) ? p.filter((x) => x !== m) : [...p, m].sort((a, b) => b.localeCompare(a))))}>
-                {m.replace(/\.$/, "")}
+      {/* 비교군 */}
+      <div className="rate-groups" style={{ marginTop: 14 }}>
+        {groups.map((g, gi) => (
+          <div key={g.id} className="card" style={{ padding: 14, borderTop: `3px solid ${PS_COLORS[gi % PS_COLORS.length]}` }}>
+            <div className="row" style={{ gap: 8, alignItems: "center" }}>
+              <input className="input" style={{ flex: 1, minWidth: 0, fontWeight: 700 }}
+                value={g.label} maxLength={40}
+                onChange={(e) => setG(g.id, { label: e.target.value })} />
+              {groups.length > 1 && (
+                <button type="button" className="cst-x" title="비교군 빼기"
+                  onClick={() => delGroup(g.id)}>✕</button>
+              )}
+            </div>
+            <div className="row" style={{ gap: 5, marginTop: 9, flexWrap: "wrap" }}>
+              {PS_PRESETS.map((p) => {
+                const want = p.pick(months);
+                const on = want.length === g.months.length && want.every((m) => g.months.includes(m));
+                return (
+                  <button key={p.id} type="button" className={"chip" + (on ? " on" : "")}
+                    onClick={() => setG(g.id, { months: want, label: g.label.startsWith("비교군") ? p.label : g.label })}>
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="row" style={{ gap: 8, marginTop: 9, alignItems: "center" }}>
+              <span className="small" style={{ color: "var(--muted)", flex: 1 }}>{monthLabel(g.months)}</span>
+              <button type="button" className="btn btn-ghost btn-sm"
+                onClick={() => setOpenMonths(openMonths === g.id ? "" : g.id)}>
+                {openMonths === g.id ? "접기" : "월 고르기"}
               </button>
-            ))}
+            </div>
+            {openMonths === g.id && (
+              <div className="row" style={{ gap: 5, marginTop: 9, flexWrap: "wrap" }}>
+                {months.map((m) => (
+                  <button key={m} type="button" className={"chip" + (g.months.includes(m) ? " on" : "")}
+                    onClick={() => setG(g.id, {
+                      months: g.months.includes(m)
+                        ? g.months.filter((x) => x !== m)
+                        : [...g.months, m].sort((a, b) => b.localeCompare(a)),
+                    })}>{m.replace(/\.$/, "")}</button>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        ))}
+        {groups.length < 6 && (
+          <button type="button" className="btn btn-ghost" style={{ minHeight: 90 }} onClick={addGroup}>
+            + 비교군 추가
+          </button>
+        )}
+      </div>
 
-      <div className="row" style={{ gap: 6, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+      {/* 기준 */}
+      <div className="row" style={{ gap: 6, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
+        <span className="small" style={{ fontWeight: 700 }}>기준</span>
+        <button type="button" className={"chip" + (basis === "inquiry" ? " on" : "")}
+          onClick={() => setBasis("inquiry")}>문의</button>
+        <button type="button" className={"chip" + (basis === "paid" ? " on" : "")}
+          onClick={() => setBasis("paid")}>실결제</button>
+        <span className="small" style={{ color: "var(--muted)" }}>
+          {basis === "paid" ? "실제 결제까지 간 건만 셉니다" : "들어온 문의를 다 셉니다"}
+        </span>
+        <span style={{ width: 1, height: 18, background: "var(--line)", margin: "0 6px" }} />
         <button type="button" className={"chip" + (serviceOnly ? " on" : "")}
           onClick={() => setServiceOnly(true)}>서비스만</button>
         <button type="button" className={"chip" + (!serviceOnly ? " on" : "")}
           onClick={() => setServiceOnly(false)}>전체</button>
         <span className="small" style={{ color: "var(--muted)" }}>
-          {serviceOnly
-            ? "처음 도입 · 대답 없음 · 기존 고객 · 기타를 뺀 실제 서비스만"
-            : "적힌 값을 그대로 다 보여줍니다"}
+          {serviceOnly ? "처음 도입 · 대답 없음 · 기존 고객 · 기타 제외" : "적힌 값을 그대로"}
         </span>
         <span style={{ flex: 1 }} />
         <button type="button" className="btn btn-ghost btn-sm" onClick={copy} disabled={!items.length}>
@@ -8517,40 +8572,55 @@ export function SalesStatsView() {
 
       {loading && !data ? <div className="spinner" /> : !data ? null : (
         <>
-          <div className="cst-summary" style={{ gridTemplateColumns: "repeat(3,1fr)", marginTop: 14 }}>
-            <div className="cst-sum-card"><div className="lbl">신규문의</div>
-              <div className="val">{data.total.toLocaleString()}</div></div>
-            <div className="cst-sum-card"><div className="lbl">직전서비스 적힌 건</div>
-              <div className="val">{data.answered.toLocaleString()}
-                <span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 6 }}>
-                  {data.total ? `${Math.round((data.answered / data.total) * 1000) / 10}%` : ""}</span></div></div>
-            <div className="cst-sum-card"><div className="lbl">{serviceOnly ? "서비스 건수" : "집계 건수"}</div>
-              <div className="val">{data.shown.toLocaleString()}
-                <span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 6 }}>
-                  {items.length}가지</span></div></div>
+          <div className="cst-summary" style={{ gridTemplateColumns: `repeat(${Math.min(gs.length, 3)},1fr)`, marginTop: 14 }}>
+            {gs.map((g, gi) => (
+              <div key={g.id} className="cst-sum-card" style={{ borderTop: `3px solid ${PS_COLORS[gi % PS_COLORS.length]}` }}>
+                <div className="lbl">{g.label}</div>
+                <div className="val">
+                  {(basis === "paid" ? g.shownPaid : g.shown).toLocaleString()}
+                  <span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 6 }}>
+                    {basis === "paid" ? "결제" : "문의"}
+                  </span>
+                </div>
+                <div className="small" style={{ color: "var(--muted)" }}>
+                  신규문의 {g.total.toLocaleString()} · 직전서비스 적힌 것 {g.answered.toLocaleString()}
+                </div>
+              </div>
+            ))}
           </div>
 
           {!items.length ? (
             <div className="small" style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
-              고른 기간에 직전서비스가 적힌 문의가 없습니다.
+              고른 기간에 해당하는 건이 없습니다.
             </div>
           ) : (
             <div className="card" style={{ marginTop: 14, padding: "16px 18px" }}>
+              <div className="row" style={{ gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+                {gs.map((g, gi) => (
+                  <span key={g.id} className="small" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <i style={{ width: 11, height: 11, borderRadius: 3, background: PS_COLORS[gi % PS_COLORS.length], display: "inline-block" }} />
+                    {g.label}
+                  </span>
+                ))}
+              </div>
               <div className="ps-list">
                 {items.map((x, i) => (
-                  <div key={x.label} className="ps-row">
+                  <div key={x.label} className="ps-row2">
                     <span className="ps-rank">{i + 1}</span>
                     <span className="ps-name" title={x.note || x.label}>
-                      {x.label}
-                      {x.note && <i>{x.note}</i>}
+                      {x.label}{x.note && <i>{x.note}</i>}
                     </span>
-                    <span className="ps-bar">
-                      <i style={{ width: `${Math.max((x.inquiries / top) * 100, 1.5)}%` }} />
-                    </span>
-                    <span className="ps-n">{x.inquiries.toLocaleString()}</span>
-                    <span className="ps-share">{x.share}%</span>
-                    <span className="ps-paid" title="이 중 실제 결제까지 간 건">
-                      결제 {x.paid}{x.paidRate != null ? ` · ${x.paidRate}%` : ""}
+                    <span className="ps-bars">
+                      {x.byGroup.map((b, gi) => (
+                        <span key={gi} className="ps-barline" title={`${gs[gi]?.label} · ${val(b)}건 · ${shareOf(b)}%`}>
+                          <span className="ps-bar">
+                            <i style={{ width: `${Math.max((val(b) / topAll) * 100, val(b) ? 1.5 : 0)}%`,
+                              background: PS_COLORS[gi % PS_COLORS.length] }} />
+                          </span>
+                          <b>{val(b).toLocaleString()}</b>
+                          <em>{shareOf(b)}%</em>
+                        </span>
+                      ))}
                     </span>
                   </div>
                 ))}
@@ -8559,9 +8629,9 @@ export function SalesStatsView() {
           )}
 
           <div className="small" style={{ marginTop: 10, color: "var(--muted)", lineHeight: 1.6 }}>
-            비중은 <strong>지금 막대에 잡힌 {data.shown.toLocaleString()}건</strong> 기준입니다.
-            직전서비스를 안 적은 문의 {data.blank.toLocaleString()}건은 어디에도 들어가지 않습니다.
-            대소문자만 다른 같은 이름은 하나로 묶었습니다.
+            비중은 <strong>그 비교군에서 잡힌 합</strong> 기준이라 기간 길이가 달라도 견줄 수 있습니다.
+            줄 순서는 비교군 전체 합이 많은 순 — 비교군마다 순서가 흔들리지 않게 한 번만 세웁니다.
+            직전서비스를 안 적은 문의는 어디에도 들어가지 않고, 철자만 다른 같은 이름은 하나로 묶었습니다.
           </div>
         </>
       )}

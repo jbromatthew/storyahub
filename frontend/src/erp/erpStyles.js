@@ -377,25 +377,27 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .cst-owed b{font-weight:800;}
 .cst-owed b.net{color:#0D7A3E;font-size:13.5px;}
 
-/* 세일즈 통계 — 직전서비스 막대 */
+/* 세일즈 통계 — 직전서비스 비교 */
+.rate-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(236px,1fr));gap:10px}
 .ps-list{display:flex;flex-direction:column;gap:2px}
-.ps-row{display:grid;grid-template-columns:26px minmax(96px,150px) 1fr 58px 50px 108px;
-  gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line-2,#F0EBE1)}
-.ps-row:last-child{border-bottom:0}
-.ps-rank{font-family:var(--mono,monospace);font-size:11.5px;color:var(--muted);text-align:right;
-  font-variant-numeric:tabular-nums}
+.ps-row2{display:grid;grid-template-columns:26px minmax(100px,158px) 1fr;gap:10px;
+  align-items:center;padding:9px 0;border-bottom:1px solid var(--line-2,#F0EBE1)}
+.ps-row2:last-child{border-bottom:0}
+.ps-rank{font-size:11.5px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
 .ps-name{font-size:13px;font-weight:700;letter-spacing:-.01em;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
 .ps-name i{font-style:normal;font-weight:500;font-size:11px;color:var(--muted);margin-left:5px}
-.ps-bar{display:block;height:11px;border-radius:999px;background:#F0EDE7;overflow:hidden;min-width:40px}
-.ps-bar i{display:block;height:100%;border-radius:999px;
-  background:linear-gradient(90deg,var(--accent-deep,#C2491F),var(--accent,#DD5E39))}
-.ps-n{text-align:right;font-weight:800;font-size:13.5px;font-variant-numeric:tabular-nums}
-.ps-share{text-align:right;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
-.ps-paid{text-align:right;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.ps-bars{display:flex;flex-direction:column;gap:3px;min-width:0}
+.ps-barline{display:grid;grid-template-columns:1fr 52px 48px;gap:8px;align-items:center}
+.ps-bar{display:block;height:10px;border-radius:999px;background:#F0EDE7;overflow:hidden;min-width:30px}
+.ps-bar i{display:block;height:100%;border-radius:999px}
+.ps-barline b{text-align:right;font-weight:800;font-size:12.5px;font-variant-numeric:tabular-nums}
+.ps-barline em{text-align:right;font-style:normal;font-size:11.5px;color:var(--muted);
+  font-variant-numeric:tabular-nums}
 @media(max-width:720px){
-  .ps-row{grid-template-columns:22px minmax(80px,1fr) 52px 44px;row-gap:4px}
-  .ps-bar{grid-column:2 / -1;order:9}
+  .ps-row2{grid-template-columns:22px minmax(0,1fr);row-gap:6px}
+  .ps-bars{grid-column:1 / -1}
+}
   .ps-paid{display:none}
 }
 /* RND 백로그 — 올린 내용 고치기 */

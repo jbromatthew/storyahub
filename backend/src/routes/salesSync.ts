@@ -160,10 +160,17 @@ salesSyncRouter.get("/stats/prev-service/meta", async (_req: AuthedRequest, res:
 
 salesSyncRouter.post("/stats/prev-service", async (req: AuthedRequest, res: Response) => {
   const { computePrevService } = await import("../services/salesPrevService.js");
-  const months = Array.isArray(req.body?.months)
-    ? req.body.months.map((m: unknown) => String(m)).slice(0, 60)
-    : [];
-  res.json(await computePrevService({ months, serviceOnly: req.body?.serviceOnly === true }));
+  const raw = Array.isArray(req.body?.groups) ? req.body.groups : [];
+  const groups = raw
+    .map((g: { id?: unknown; label?: unknown; months?: unknown }, i: number) => ({
+      id: String(g.id ?? `g${i}`).slice(0, 40),
+      label: String(g.label ?? `비교군 ${i + 1}`).slice(0, 40),
+      months: Array.isArray(g.months) ? g.months.map((m: unknown) => String(m)).slice(0, 60) : [],
+    }))
+    .filter((g: { months: string[] }) => g.months.length)
+    .slice(0, 6);
+  if (!groups.length) return res.status(400).json({ error: "비교군에 월을 1개 이상 선택하세요" });
+  res.json(await computePrevService({ groups, serviceOnly: req.body?.serviceOnly === true }));
 });
 
 const TREND_TAB_IDS = new Set(listTrendTabs().map((t) => t.id));
