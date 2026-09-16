@@ -4609,9 +4609,12 @@ export function IncentiveView() {
 const PT_TIER_TONE = { core: "pt-core", growth: "pt-growth", specialist: "pt-spec" };
 const PT_BLANK = {
   name: "", category: "", field: "", tier: "", status: "lead", feature: "",
-  ceoName: "", contact: "", email: "", site: "", ownerName: "",
+  ceoName: "", contact: "", email: "", site: "", instagram: "", sns: "", ownerName: "",
   startAt: "", endAt: "", commission: "", benefit: "", nextStep: "", nextAt: "", note: "",
 };
+const PT_LOG_BLANK = { kind: "meeting", at: "", title: "", body: "", attendees: "", place: "", nextStep: "" };
+
+const ptToday = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
 
 /** 상태가 된 지 며칠 — 검토중인 채로 묵는 곳을 찾는 데 쓴다 */
 function ptDays(iso) {
@@ -4619,6 +4622,9 @@ function ptDays(iso) {
   const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
   return Number.isFinite(d) && d >= 0 ? d : null;
 }
+
+/** 주소를 눌러 열 수 있게 — 앞에 http 가 없으면 붙여 준다 */
+const ptHref = (v) => (/^https?:\/\//i.test(v) ? v : `https://${v}`);
 
 export function PartnersView() {
   const [meta, setMeta] = useState(null);
@@ -4631,11 +4637,12 @@ export function PartnersView() {
   const [sort, setSort] = useState({ k: "tier", dir: 1 });
   const [edit, setEdit] = useState(null);      // 고치는 중인 줄 (새로 만들면 id 없음)
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (keepId) => {
     try {
       const [m, d] = await Promise.all([api.erpPartnersMeta(), api.erpPartners()]);
       setMeta(m); setRows(d.rows || []);
+      // 기록을 남긴 뒤에도 창은 열어 둔다 — 방금 고친 줄로 갈아 끼운다
+      if (keepId) setEdit((prev) => (prev ? (d.rows || []).find((r) => r.id === keepId) || prev : prev));
     } catch (e) { notifyError(e); } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
@@ -4648,7 +4655,7 @@ export function PartnersView() {
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    let list = rows.filter((r) => {
+    const list = rows.filter((r) => {
       if (fStatus && r.status !== fStatus) return false;
       if (fTier && (r.tier || "none") !== fTier) return false;
       if (fCat && r.category !== fCat) return false;
@@ -4664,7 +4671,7 @@ export function PartnersView() {
         case "name": return r.name || "";
         case "category": return catOf(r.category)?.t || "힣";
         case "owner": return r.ownerName || "힣";
-        case "statusAt": return r.statusAt || "";
+        case "lastLog": return r.lastLogAt || "";
         default: return r.updatedAt || "";
       }
     };
@@ -4683,17 +4690,19 @@ export function PartnersView() {
 
   const exportCsv = () => {
     const head = ["등급", "업체명", "카테고리", "분야", "특징", "대표자", "담당자", "상태", "상태 경과(일)",
-      "다음 할 일", "다음 일정", "계약 시작", "계약 종료", "커미션", "혜택", "연락처", "이메일", "사이트", "메모"];
+      "최근 기록", "기록 수", "다음 할 일", "다음 일정", "계약 시작", "계약 종료", "커미션", "혜택",
+      "연락처", "이메일", "홈페이지", "인스타", "기타 채널", "메모"];
     const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const body = shown.map((r) => [
       tierOf(r.tier)?.t || "미정", r.name, catOf(r.category)?.t || "", r.field, r.feature,
       r.ceoName, r.ownerName, statusOf(r.status)?.t || r.status, ptDays(r.statusAt) ?? "",
-      r.nextStep, r.nextAt, r.startAt, r.endAt, r.commission, r.benefit, r.contact, r.email, r.site, r.note,
+      r.lastLogAt, r.logCount, r.nextStep, r.nextAt, r.startAt, r.endAt, r.commission, r.benefit,
+      r.contact, r.email, r.site, r.instagram, r.sns, r.note,
     ].map(esc).join(","));
     const blob = new Blob(["﻿" + [head.join(","), ...body].join("\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `브로제이_파트너스_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `브로제이_파트너스_${ptToday()}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -4701,13 +4710,14 @@ export function PartnersView() {
   const cnt = (k) => meta?.counts?.status?.[k] ?? 0;
 
   return (
-    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40 }}>
+    <div className="fade pad wide" style={{ marginTop: 8, paddingBottom: 40 }}>
       <div className="h-eyebrow">영업지원</div>
       <div className="h-title">브로제이 파트너스</div>
       <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
         컨설팅·시설·기구·용품·측정·IT 분야의 협력사를 후보부터 계약까지 한 줄로 봅니다.
         등급은 <strong>코어 &gt; 그로우스 &gt; 스페셜리스트</strong> 세 단계이고, 상태는
         후보 → 접촉 → 검토중 → 협의중 → 계약 순으로 올라갑니다.
+        줄을 누르면 미팅·통화 기록을 날짜별로 쌓을 수 있어요.
       </div>
 
       {loading ? <div className="spinner" /> : !meta ? null : (
@@ -4773,8 +4783,10 @@ export function PartnersView() {
                   <th>대표자</th>
                   {th("owner", "담당자")}
                   {th("status", "상태")}
+                  {th("lastLog", "최근 기록")}
                   <th className="l">다음 할 일</th>
                   <th>계약</th>
+                  <th>링크</th>
                 </tr>
               </thead>
               <tbody>
@@ -4800,6 +4812,11 @@ export function PartnersView() {
                         <span className={"pt-st pt-st-" + (st?.tone || "gray")}>{st?.t || r.status}</span>
                         {d != null && d > 0 && <span className="pt-sub"> {d}일</span>}
                       </td>
+                      <td>
+                        {r.lastLogAt
+                          ? <>{r.lastLogAt.slice(2)}<span className="pt-sub"> · {r.logCount}건</span></>
+                          : <span className="pt-sub">-</span>}
+                      </td>
                       <td className="l">
                         {r.nextStep || <span className="pt-sub">-</span>}
                         {r.nextAt && <span className="pt-sub"> ({r.nextAt.slice(5)})</span>}
@@ -4807,11 +4824,20 @@ export function PartnersView() {
                       <td className="pt-sub">
                         {r.startAt ? `${r.startAt.slice(2)}${r.endAt ? ` ~ ${r.endAt.slice(2)}` : " ~"}` : "-"}
                       </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <span className="pt-links">
+                          {r.site && <a href={ptHref(r.site)} target="_blank" rel="noreferrer" title={r.site}>홈</a>}
+                          {r.instagram && <a href={ptHref(r.instagram)} target="_blank" rel="noreferrer" title={r.instagram}>IG</a>}
+                          {r.sns && <a href={ptHref(r.sns)} target="_blank" rel="noreferrer" title={r.sns}>채널</a>}
+                          {(r.files?.length > 0) && <span className="pt-clip" title={`소개자료 ${r.files.length}개`}>📎{r.files.length}</span>}
+                          {!r.site && !r.instagram && !r.sns && !r.files?.length && <span className="pt-sub">-</span>}
+                        </span>
+                      </td>
                     </tr>
                   );
                 })}
                 {!shown.length && (
-                  <tr><td colSpan={9} className="erp-tbl-empty">
+                  <tr><td colSpan={11} className="erp-tbl-empty">
                     {rows.length ? "고르개에 걸리는 곳이 없습니다" : "아직 등록한 파트너가 없습니다 — 오른쪽 위 「파트너 추가」로 시작하세요"}
                   </td></tr>
                 )}
@@ -4823,19 +4849,22 @@ export function PartnersView() {
 
       {edit && meta && (
         <PartnerEdit row={edit} meta={meta} onClose={() => setEdit(null)}
-          onSaved={() => { setEdit(null); load(); }} />
+          onSaved={(keepId) => { if (!keepId) setEdit(null); load(keepId); }} />
       )}
     </div>
   );
 }
 
-/** 파트너 한 곳 — 새로 만들기와 고치기를 같이 한다 */
+/** 파트너 한 곳 — 왼쪽은 정보, 오른쪽은 날짜별 기록 */
 function PartnerEdit({ row, meta, onClose, onSaved }) {
+  const [tab, setTab] = useState("info");
   const [f, setF] = useState({ ...PT_BLANK, ...row });
   const [busy, setBusy] = useState(false);
+  const [upBusy, setUpBusy] = useState(false);
   const isNew = !row.id;
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
+  useEffect(() => { setF({ ...PT_BLANK, ...row }); }, [row]);
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -4847,21 +4876,50 @@ function PartnerEdit({ row, meta, onClose, onSaved }) {
     setBusy(true);
     try {
       const body = Object.fromEntries(Object.keys(PT_BLANK).map((k) => [k, f[k] ?? ""]));
-      if (isNew) await api.erpPartnerCreate(body);
-      else await api.erpPartnerPatch(row.id, body);
-      toastSuccess(isNew ? "파트너를 등록했어요" : "저장했어요");
-      onSaved();
+      if (isNew) {
+        const { row: made } = await api.erpPartnerCreate(body);
+        toastSuccess("파트너를 등록했어요 — 이제 기록을 남길 수 있어요");
+        onSaved(made.id);
+      } else {
+        await api.erpPartnerPatch(row.id, body);
+        toastSuccess("저장했어요");
+        onSaved(row.id);
+      }
     } catch (e) { notifyError(e); } finally { setBusy(false); }
   };
 
   const remove = async () => {
-    if (!(await confirmAction("이 파트너를 지울까요?", `${row.name} — 되돌릴 수 없습니다`))) return;
+    if (!(await confirmAction("이 파트너를 지울까요?", `${row.name} — 기록과 첨부까지 함께 사라집니다`))) return;
     setBusy(true);
     try { await api.erpPartnerDelete(row.id); toastSuccess("지웠어요"); onSaved(); }
     catch (e) { notifyError(e); } finally { setBusy(false); }
   };
 
+  const addFiles = async (list) => {
+    if (!list?.length || isNew) return;
+    setUpBusy(true);
+    try {
+      for (const one of list) await api.erpPartnerFileUpload(row.id, one);
+      toastSuccess("소개자료를 올렸어요");
+      onSaved(row.id);
+    } catch (e) { notifyError(e); } finally { setUpBusy(false); }
+  };
+
+  const openFile = async (idx) => {
+    try {
+      const { url } = await api.erpPartnerFileOpen(row.id, idx);
+      window.open(url, "_blank", "noopener");
+    } catch (e) { notifyError(e); }
+  };
+
+  const dropFile = async (idx, name) => {
+    if (!(await confirmAction("이 자료를 지울까요?", name))) return;
+    try { await api.erpPartnerFileDelete(row.id, idx); onSaved(row.id); }
+    catch (e) { notifyError(e); }
+  };
+
   const tier = meta.tiers.find((t) => t.k === f.tier);
+  const files = row.files || [];
 
   return (
     <div className="pt-modal" onClick={onClose}>
@@ -4874,95 +4932,286 @@ function PartnerEdit({ row, meta, onClose, onSaved }) {
           <button type="button" className="inc-drill-x" onClick={onClose} aria-label="닫기">✕</button>
         </div>
 
-        <div className="pt-form">
-          <label className="pt-f wide"><span>업체명</span>
-            <input value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="예: 런피엠(가민)" /></label>
-          <label className="pt-f"><span>분야</span>
-            <input value={f.field} onChange={(e) => set("field", e.target.value)} placeholder="예: 가민 시계" /></label>
-
-          <div className="pt-f wide"><span>카테고리</span>
-            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-              {meta.categories.map((c) => (
-                <button key={c.k} type="button" className={"chip sm" + (f.category === c.k ? " on" : "")}
-                  onClick={() => set("category", f.category === c.k ? "" : c.k)} title={c.desc}>{c.t}</button>
-              ))}
-            </div>
-          </div>
-
-          <div className="pt-f wide"><span>등급</span>
-            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-              {meta.tiers.map((t) => (
-                <button key={t.k} type="button" className={"chip" + (f.tier === t.k ? " on" : "")}
-                  onClick={() => set("tier", f.tier === t.k ? "" : t.k)}>{t.t}</button>
-              ))}
-              <button type="button" className={"chip" + (!f.tier ? " on" : "")} onClick={() => set("tier", "")}>미정</button>
-            </div>
-            {tier && <div className="pt-hint">{tier.term} · {tier.benefit}</div>}
-          </div>
-
-          <div className="pt-f wide"><span>상태</span>
-            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-              {meta.statuses.map((s) => (
-                <button key={s.k} type="button" className={"chip" + (f.status === s.k ? " on" : "")}
-                  onClick={() => set("status", s.k)}>{s.t}</button>
-              ))}
-            </div>
-          </div>
-
-          <label className="pt-f wide"><span>특징</span>
-            <textarea rows={2} value={f.feature} onChange={(e) => set("feature", e.target.value)}
-              placeholder="예: 러닝 데이터 연동 가능" /></label>
-
-          <label className="pt-f"><span>대표자</span>
-            <input value={f.ceoName} onChange={(e) => set("ceoName", e.target.value)} /></label>
-          <label className="pt-f"><span>담당자 (우리 쪽)</span>
-            <input list="pt-people" value={f.ownerName} onChange={(e) => set("ownerName", e.target.value)} />
-            <datalist id="pt-people">{(meta.people || []).map((p) => <option key={p.email} value={p.name} />)}</datalist>
-          </label>
-          <label className="pt-f"><span>연락처</span>
-            <input value={f.contact} onChange={(e) => set("contact", e.target.value)} /></label>
-          <label className="pt-f"><span>이메일</span>
-            <input value={f.email} onChange={(e) => set("email", e.target.value)} /></label>
-          <label className="pt-f wide"><span>사이트</span>
-            <input value={f.site} onChange={(e) => set("site", e.target.value)} placeholder="https://" /></label>
-
-          <label className="pt-f"><span>계약 시작</span>
-            <input type="date" value={f.startAt} onChange={(e) => set("startAt", e.target.value)} /></label>
-          <label className="pt-f"><span>계약 종료</span>
-            <input type="date" value={f.endAt} onChange={(e) => set("endAt", e.target.value)} /></label>
-
-          <label className="pt-f"><span>다음 할 일</span>
-            <input value={f.nextStep} onChange={(e) => set("nextStep", e.target.value)} placeholder="예: 제안서 발송" /></label>
-          <label className="pt-f"><span>다음 일정</span>
-            <input type="date" value={f.nextAt} onChange={(e) => set("nextAt", e.target.value)} /></label>
-
-          <label className="pt-f wide"><span>커미션 조건</span>
-            <input value={f.commission} onChange={(e) => set("commission", e.target.value)}
-              placeholder="예: 소개 3~10% · 신규 계약 5~10%" /></label>
-          <label className="pt-f wide"><span>합의한 혜택</span>
-            <textarea rows={2} value={f.benefit} onChange={(e) => set("benefit", e.target.value)} /></label>
-          <label className="pt-f wide"><span>메모</span>
-            <textarea rows={3} value={f.note} onChange={(e) => set("note", e.target.value)} /></label>
-        </div>
-
-        <div className="row" style={{ gap: 8, marginTop: 16, alignItems: "center" }}>
-          {!isNew && (
-            <>
-              <button type="button" className="btn btn-sm btn-ghost" onClick={remove} disabled={busy}
-                style={{ color: "#B3261E" }}>삭제</button>
-              <span className="small" style={{ color: "var(--muted)" }}>
-                {row.createdBy && `${row.createdBy} 등록`}
-              </span>
-            </>
-          )}
-          <span style={{ marginLeft: "auto" }} />
-          <button type="button" className="btn btn-sm btn-ghost" onClick={onClose} disabled={busy}>닫기</button>
-          <button type="button" className="btn btn-sm btn-accent" onClick={save} disabled={busy}>
-            {busy ? "저장 중…" : isNew ? "등록" : "저장"}
+        <div className="pt-tabs">
+          <button type="button" className={"chip" + (tab === "info" ? " on" : "")} onClick={() => setTab("info")}>정보</button>
+          <button type="button" className={"chip" + (tab === "log" ? " on" : "")} onClick={() => setTab("log")}
+            disabled={isNew} title={isNew ? "먼저 등록해 주세요" : ""}>
+            기록{row.logCount ? ` ${row.logCount}` : ""}
           </button>
         </div>
+
+        {tab === "info" ? (
+          <>
+            <div className="pt-form">
+              <label className="pt-f wide"><span>업체명</span>
+                <input value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="예: 런피엠(가민)" /></label>
+              <label className="pt-f"><span>분야</span>
+                <input value={f.field} onChange={(e) => set("field", e.target.value)} placeholder="예: 가민 시계" /></label>
+              <label className="pt-f"><span>대표자</span>
+                <input value={f.ceoName} onChange={(e) => set("ceoName", e.target.value)} /></label>
+
+              <div className="pt-f wide"><span>카테고리</span>
+                <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                  {meta.categories.map((c) => (
+                    <button key={c.k} type="button" className={"chip sm" + (f.category === c.k ? " on" : "")}
+                      onClick={() => set("category", f.category === c.k ? "" : c.k)} title={c.desc}>{c.t}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-f wide"><span>등급</span>
+                <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                  {meta.tiers.map((t) => (
+                    <button key={t.k} type="button" className={"chip" + (f.tier === t.k ? " on" : "")}
+                      onClick={() => set("tier", f.tier === t.k ? "" : t.k)}>{t.t}</button>
+                  ))}
+                  <button type="button" className={"chip" + (!f.tier ? " on" : "")} onClick={() => set("tier", "")}>미정</button>
+                </div>
+                {tier && <div className="pt-hint">{tier.term} · {tier.benefit}</div>}
+              </div>
+
+              <div className="pt-f wide"><span>상태</span>
+                <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                  {meta.statuses.map((s) => (
+                    <button key={s.k} type="button" className={"chip" + (f.status === s.k ? " on" : "")}
+                      onClick={() => set("status", s.k)}>{s.t}</button>
+                  ))}
+                </div>
+              </div>
+
+              <label className="pt-f wide"><span>특징</span>
+                <textarea rows={2} value={f.feature} onChange={(e) => set("feature", e.target.value)}
+                  placeholder="예: 러닝 데이터 연동 가능" /></label>
+
+              <label className="pt-f"><span>담당자 (우리 쪽)</span>
+                <input list="pt-people" value={f.ownerName} onChange={(e) => set("ownerName", e.target.value)} />
+                <datalist id="pt-people">{(meta.people || []).map((p) => <option key={p.email} value={p.name} />)}</datalist>
+              </label>
+              <label className="pt-f"><span>연락처</span>
+                <input value={f.contact} onChange={(e) => set("contact", e.target.value)} /></label>
+              <label className="pt-f"><span>이메일</span>
+                <input value={f.email} onChange={(e) => set("email", e.target.value)} /></label>
+              <label className="pt-f"><span>홈페이지</span>
+                <input value={f.site} onChange={(e) => set("site", e.target.value)} placeholder="runpm.co.kr" /></label>
+              <label className="pt-f"><span>인스타그램</span>
+                <input value={f.instagram} onChange={(e) => set("instagram", e.target.value)} placeholder="instagram.com/..." /></label>
+              <label className="pt-f"><span>그 밖의 채널</span>
+                <input value={f.sns} onChange={(e) => set("sns", e.target.value)} placeholder="유튜브·블로그 등" /></label>
+
+              <label className="pt-f"><span>계약 시작</span>
+                <input type="date" value={f.startAt} onChange={(e) => set("startAt", e.target.value)} /></label>
+              <label className="pt-f"><span>계약 종료</span>
+                <input type="date" value={f.endAt} onChange={(e) => set("endAt", e.target.value)} /></label>
+              <label className="pt-f"><span>다음 할 일</span>
+                <input value={f.nextStep} onChange={(e) => set("nextStep", e.target.value)} placeholder="예: 제안서 발송" /></label>
+              <label className="pt-f"><span>다음 일정</span>
+                <input type="date" value={f.nextAt} onChange={(e) => set("nextAt", e.target.value)} /></label>
+
+              <label className="pt-f wide"><span>커미션 조건</span>
+                <input value={f.commission} onChange={(e) => set("commission", e.target.value)}
+                  placeholder="예: 소개 3~10% · 신규 계약 5~10%" /></label>
+              <label className="pt-f wide"><span>합의한 혜택</span>
+                <textarea rows={2} value={f.benefit} onChange={(e) => set("benefit", e.target.value)} /></label>
+              <label className="pt-f wide"><span>메모</span>
+                <textarea rows={3} value={f.note} onChange={(e) => set("note", e.target.value)} /></label>
+            </div>
+
+            {/* 소개자료 — 회사 소개서·제품 카탈로그 */}
+            <div className="pt-files">
+              <div className="row between" style={{ alignItems: "center", gap: 8 }}>
+                <span className="pt-f-title">소개자료 {files.length ? `(${files.length})` : ""}</span>
+                {isNew ? <span className="small" style={{ color: "var(--muted)" }}>등록한 뒤에 붙일 수 있어요</span> : (
+                  <label className="btn btn-sm btn-ghost" style={{ cursor: "pointer" }}>
+                    <input type="file" multiple hidden disabled={upBusy}
+                      onChange={(e) => { addFiles([...e.target.files]); e.target.value = ""; }} />
+                    {upBusy ? "올리는 중…" : "+ 자료 붙이기"}
+                  </label>
+                )}
+              </div>
+              {files.length > 0 && (
+                <div className="pt-file-list">
+                  {files.map((x, i) => (
+                    <div key={i} className="pt-file">
+                      <button type="button" className="nm" onClick={() => openFile(i)}>📎 {x.name}</button>
+                      <span className="sz">{Math.max(1, Math.round((x.size || 0) / 1024))}KB</span>
+                      <button type="button" className="rm" onClick={() => dropFile(i, x.name)} aria-label="삭제">✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="row" style={{ gap: 8, marginTop: 16, alignItems: "center" }}>
+              {!isNew && (
+                <>
+                  <button type="button" className="btn btn-sm btn-ghost" onClick={remove} disabled={busy}
+                    style={{ color: "#B3261E" }}>삭제</button>
+                  <span className="small" style={{ color: "var(--muted)" }}>
+                    {row.createdBy && `${row.createdBy} 등록`}
+                  </span>
+                </>
+              )}
+              <span style={{ marginLeft: "auto" }} />
+              <button type="button" className="btn btn-sm btn-ghost" onClick={onClose} disabled={busy}>닫기</button>
+              <button type="button" className="btn btn-sm btn-accent" onClick={save} disabled={busy}>
+                {busy ? "저장 중…" : isNew ? "등록" : "저장"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <PartnerLogs partner={row} meta={meta} onChanged={() => onSaved(row.id)} />
+        )}
       </div>
     </div>
+  );
+}
+
+/** 날짜별 기록 — 미팅에서 무슨 이야기를 했는지, 자료는 무엇을 받았는지 */
+function PartnerLogs({ partner, meta, onChanged }) {
+  const [logs, setLogs] = useState(null);
+  const [draft, setDraft] = useState({ ...PT_LOG_BLANK, at: ptToday() });
+  const [busy, setBusy] = useState(false);
+  const [upFor, setUpFor] = useState("");
+  const kinds = meta.logKinds || [];
+  const kindOf = (k) => kinds.find((x) => x.k === k);
+
+  const load = async () => {
+    try { const d = await api.erpPartnerLogs(partner.id); setLogs(d.rows || []); }
+    catch (e) { notifyError(e); }
+  };
+  useEffect(() => { load(); }, [partner.id]);
+
+  const save = async () => {
+    if (!draft.title.trim() && !draft.body.trim()) {
+      return notifyError(new Error("제목이나 내용 중 하나는 적어 주세요"));
+    }
+    setBusy(true);
+    try {
+      if (draft.id) await api.erpPartnerLogPatch(draft.id, draft);
+      else await api.erpPartnerLogCreate(partner.id, draft);
+      setDraft({ ...PT_LOG_BLANK, at: ptToday() });
+      await load();
+      onChanged();
+      toastSuccess("기록했어요");
+    } catch (e) { notifyError(e); } finally { setBusy(false); }
+  };
+
+  const remove = async (l) => {
+    if (!(await confirmAction("이 기록을 지울까요?", `${l.at} ${l.title || ""}`))) return;
+    try { await api.erpPartnerLogDelete(l.id); await load(); onChanged(); }
+    catch (e) { notifyError(e); }
+  };
+
+  const addFiles = async (logId, list) => {
+    if (!list?.length) return;
+    setUpFor(logId);
+    try {
+      for (const one of list) await api.erpPartnerLogFileUpload(logId, one);
+      await load();
+      toastSuccess("붙였어요");
+    } catch (e) { notifyError(e); } finally { setUpFor(""); }
+  };
+
+  const openFile = async (logId, idx) => {
+    try {
+      const { url } = await api.erpPartnerLogFileOpen(logId, idx);
+      window.open(url, "_blank", "noopener");
+    } catch (e) { notifyError(e); }
+  };
+
+  const dropFile = async (logId, idx, name) => {
+    if (!(await confirmAction("이 붙임을 지울까요?", name))) return;
+    try { await api.erpPartnerLogFileDelete(logId, idx); await load(); }
+    catch (e) { notifyError(e); }
+  };
+
+  const isMeeting = draft.kind === "meeting";
+
+  return (
+    <>
+      {/* 새 기록 — 날짜가 기본으로 오늘이라 바로 적을 수 있다 */}
+      <div className="pt-log-new">
+        <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {kinds.map((k) => (
+            <button key={k.k} type="button" className={"chip sm" + (draft.kind === k.k ? " on" : "")}
+              onClick={() => setDraft((p) => ({ ...p, kind: k.k }))}>{k.t}</button>
+          ))}
+          <input type="date" className="pt-log-date" value={draft.at}
+            onChange={(e) => setDraft((p) => ({ ...p, at: e.target.value }))} />
+          {draft.id && <span className="small" style={{ color: "#8A5512", fontWeight: 700 }}>고치는 중</span>}
+        </div>
+        <input className="pt-log-in" value={draft.title} placeholder="한 줄 요약 (예: 1차 미팅 — 제휴 범위 논의)"
+          onChange={(e) => setDraft((p) => ({ ...p, title: e.target.value }))} />
+        <textarea className="pt-log-in" rows={3} value={draft.body} placeholder="무슨 이야기를 했는지"
+          onChange={(e) => setDraft((p) => ({ ...p, body: e.target.value }))} />
+        {isMeeting && (
+          <div className="row" style={{ gap: 8 }}>
+            <input className="pt-log-in" style={{ flex: 1 }} value={draft.attendees} placeholder="참석자"
+              onChange={(e) => setDraft((p) => ({ ...p, attendees: e.target.value }))} />
+            <input className="pt-log-in" style={{ flex: 1 }} value={draft.place} placeholder="장소"
+              onChange={(e) => setDraft((p) => ({ ...p, place: e.target.value }))} />
+          </div>
+        )}
+        <div className="row" style={{ gap: 8, alignItems: "center" }}>
+          <input className="pt-log-in" style={{ flex: 1 }} value={draft.nextStep} placeholder="다음 할 일 (적으면 표에도 올라갑니다)"
+            onChange={(e) => setDraft((p) => ({ ...p, nextStep: e.target.value }))} />
+          {draft.id && (
+            <button type="button" className="btn btn-sm btn-ghost"
+              onClick={() => setDraft({ ...PT_LOG_BLANK, at: ptToday() })}>취소</button>
+          )}
+          <button type="button" className="btn btn-sm btn-accent" onClick={save} disabled={busy}>
+            {busy ? "저장 중…" : draft.id ? "고치기" : "기록 남기기"}
+          </button>
+        </div>
+        <div className="small" style={{ color: "var(--muted)" }}>
+          파일은 기록을 남긴 뒤 그 줄에서 붙입니다 — 미팅 자료·견적서·계약서 모두 됩니다.
+        </div>
+      </div>
+
+      {logs === null ? <div className="spinner" /> : !logs.length ? (
+        <div className="erp-tbl-empty" style={{ padding: "24px 0" }}>아직 남긴 기록이 없습니다</div>
+      ) : (
+        <div className="pt-timeline">
+          {logs.map((l) => {
+            const k = kindOf(l.kind);
+            return (
+              <div key={l.id} className="pt-log">
+                <div className="pt-log-hd">
+                  <span className={"pt-st pt-st-" + (k?.tone || "gray")}>{k?.t || l.kind}</span>
+                  <span className="pt-log-at">{l.at}</span>
+                  {l.title && <span className="pt-log-title">{l.title}</span>}
+                  <span style={{ marginLeft: "auto" }} />
+                  <button type="button" className="pt-log-x" onClick={() => setDraft({ ...PT_LOG_BLANK, ...l })}>고치기</button>
+                  <button type="button" className="pt-log-x" onClick={() => remove(l)}>삭제</button>
+                </div>
+                {l.body && <div className="pt-log-body">{l.body}</div>}
+                {(l.attendees || l.place) && (
+                  <div className="pt-log-meta">
+                    {l.attendees && <span>참석 {l.attendees}</span>}
+                    {l.place && <span>장소 {l.place}</span>}
+                  </div>
+                )}
+                {l.nextStep && <div className="pt-log-next">다음 → {l.nextStep}</div>}
+                <div className="pt-log-files">
+                  {(l.files || []).map((x, i) => (
+                    <span key={i} className="pt-file">
+                      <button type="button" className="nm" onClick={() => openFile(l.id, i)}>📎 {x.name}</button>
+                      <button type="button" className="rm" onClick={() => dropFile(l.id, i, x.name)} aria-label="삭제">✕</button>
+                    </span>
+                  ))}
+                  <label className="pt-log-add">
+                    <input type="file" multiple hidden disabled={upFor === l.id}
+                      onChange={(e) => { addFiles(l.id, [...e.target.files]); e.target.value = ""; }} />
+                    {upFor === l.id ? "올리는 중…" : "+ 파일"}
+                  </label>
+                  <span className="pt-log-by">{l.authorName}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
   );
 }
 

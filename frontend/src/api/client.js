@@ -379,6 +379,26 @@ export const api = {
   erpPartnerCreate: (body) => req("/erp/partners", { method: "POST", body }),
   erpPartnerPatch: (id, body) => req(`/erp/partners/${id}`, { method: "PATCH", body }),
   erpPartnerDelete: (id) => req(`/erp/partners/${id}`, { method: "DELETE" }),
+  erpPartnerFileUpload: (id, file) =>
+    req(`/erp/partners/${id}/files`, {
+      method: "POST", raw: file,
+      headers: { "Content-Type": file.type || "application/octet-stream",
+                 "X-File-Name": encodeURIComponent(file.name) },
+    }),
+  erpPartnerFileOpen: (id, idx) => req(`/erp/partners/${id}/files/${idx}`),
+  erpPartnerFileDelete: (id, idx) => req(`/erp/partners/${id}/files/${idx}`, { method: "DELETE" }),
+  erpPartnerLogs: (id) => req(`/erp/partners/${id}/logs`),
+  erpPartnerLogCreate: (id, body) => req(`/erp/partners/${id}/logs`, { method: "POST", body }),
+  erpPartnerLogPatch: (logId, body) => req(`/erp/partners/logs/${logId}`, { method: "PATCH", body }),
+  erpPartnerLogDelete: (logId) => req(`/erp/partners/logs/${logId}`, { method: "DELETE" }),
+  erpPartnerLogFileUpload: (logId, file) =>
+    req(`/erp/partners/logs/${logId}/files`, {
+      method: "POST", raw: file,
+      headers: { "Content-Type": file.type || "application/octet-stream",
+                 "X-File-Name": encodeURIComponent(file.name) },
+    }),
+  erpPartnerLogFileOpen: (logId, idx) => req(`/erp/partners/logs/${logId}/files/${idx}`),
+  erpPartnerLogFileDelete: (logId, idx) => req(`/erp/partners/logs/${logId}/files/${idx}`, { method: "DELETE" }),
   erpSmartStoreApplies: ({ roundId } = {}) => req(`/erp/smartstore/applies${roundId ? `?roundId=${roundId}` : ""}`),
   erpSmartStoreEditLogs: ({ days } = {}) => req(`/erp/smartstore/edit-logs?days=${days || 30}`),
   erpSmartStoreApplyUpdate: (id, body) => req(`/erp/smartstore/applies/${id}`, { method: "PATCH", body }),

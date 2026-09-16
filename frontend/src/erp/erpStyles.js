@@ -882,7 +882,7 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .pt-st-red{background:#FBE2DF;color:#B3261E;}
 
 .pt-modal{position:fixed;inset:0;z-index:380;background:rgba(20,16,12,.42);display:flex;align-items:flex-start;justify-content:center;padding:4vh 14px;overflow:auto;}
-.pt-modal-in{width:100%;max-width:720px;background:var(--card,#fff);border:1px solid var(--line);border-radius:18px;padding:16px 18px 20px;box-shadow:0 18px 48px rgba(0,0,0,.2);animation:fadeUp .2s ease both;}
+.pt-modal-in{width:100%;max-width:860px;background:var(--card,#fff);border:1px solid var(--line);border-radius:18px;padding:16px 18px 20px;box-shadow:0 18px 48px rgba(0,0,0,.2);animation:fadeUp .2s ease both;}
 .pt-modal-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:14px;}
 .pt-form{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .pt-f{display:flex;flex-direction:column;gap:5px;min-width:0;}
@@ -892,6 +892,40 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .pt-f textarea{resize:vertical;line-height:1.5;}
 .pt-hint{font-size:11.5px;color:var(--muted);line-height:1.45;margin-top:4px;}
 @media(max-width:640px){.pt-form{grid-template-columns:1fr;}}
+
+/* 파트너 — 링크·소개자료·날짜별 기록 */
+.pt-links{display:inline-flex;gap:5px;align-items:center;}
+.pt-links a{font-size:11px;font-weight:800;border-radius:999px;padding:2px 8px;background:#EEF0F3;color:#4A5160;text-decoration:none;}
+.pt-links a:hover{background:var(--accent-soft);color:var(--accent-deep);}
+.pt-clip{font-size:11px;font-weight:700;color:var(--muted);}
+.pt-tabs{display:flex;gap:6px;margin-bottom:12px;}
+.pt-files{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;}
+.pt-f-title{font-size:12px;font-weight:800;color:var(--ink);}
+.pt-file-list{display:flex;flex-direction:column;gap:4px;margin-top:8px;}
+.pt-file{display:inline-flex;align-items:center;gap:6px;background:var(--paper,#F7F4EE);border-radius:9px;padding:4px 8px;max-width:100%;}
+.pt-file .nm{border:none;background:none;padding:0;font:inherit;font-size:12.5px;color:var(--ink);cursor:pointer;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pt-file .nm:hover{color:var(--accent-deep);text-decoration:underline;}
+.pt-file .sz{font-size:11px;color:var(--muted);margin-left:auto;}
+.pt-file .rm{border:none;background:none;cursor:pointer;color:var(--muted);font-size:11px;padding:0 2px;}
+.pt-file .rm:hover{color:#B3261E;}
+
+.pt-log-new{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:14px;padding:12px 13px;background:var(--paper,#F7F4EE);}
+.pt-log-in{width:100%;border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-family:inherit;font-size:13.5px;background:#fff;color:var(--ink);resize:vertical;line-height:1.5;}
+.pt-log-date{border:1px solid var(--line);border-radius:9px;padding:4px 8px;font-family:inherit;font-size:12.5px;background:#fff;color:var(--ink);}
+.pt-timeline{display:flex;flex-direction:column;gap:10px;margin-top:14px;}
+.pt-log{border:1px solid var(--line);border-left:3px solid var(--line);border-radius:12px;padding:11px 13px;background:#fff;}
+.pt-log-hd{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+.pt-log-at{font-size:12px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums;}
+.pt-log-title{font-size:13.5px;font-weight:700;}
+.pt-log-x{border:none;background:none;font:inherit;font-size:11.5px;color:var(--muted);cursor:pointer;padding:2px 4px;}
+.pt-log-x:hover{color:var(--accent-deep);}
+.pt-log-body{font-size:13px;line-height:1.55;margin-top:7px;white-space:pre-wrap;}
+.pt-log-meta{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:6px;}
+.pt-log-next{font-size:12px;font-weight:700;color:#8A5512;background:#FFF4E0;border-radius:8px;padding:5px 9px;margin-top:7px;display:inline-block;}
+.pt-log-files{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;}
+.pt-log-add{font-size:11.5px;font-weight:700;color:var(--muted);border:1px dashed var(--line);border-radius:9px;padding:3px 9px;cursor:pointer;}
+.pt-log-add:hover{color:var(--accent-deep);border-color:var(--accent);}
+.pt-log-by{font-size:11px;color:var(--muted);margin-left:auto;}
 @media(max-width:560px){.inc-pool{text-align:left;}}
 
 ${CALENDAR_CSS}

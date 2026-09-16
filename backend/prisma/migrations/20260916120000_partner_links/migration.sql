@@ -1,0 +1,4 @@
+-- 파트너 홈페이지·SNS·소개자료
+ALTER TABLE "ErpPartner" ADD COLUMN "instagram" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ErpPartner" ADD COLUMN "sns" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ErpPartner" ADD COLUMN "files" JSONB NOT NULL DEFAULT '[]';
