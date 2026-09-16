@@ -1325,6 +1325,7 @@ async function requireOwner(req: AuthedRequest, res: Response): Promise<boolean>
  *  - 종합 점수 = 결제수 비율×0.4 + 매출 비율×0.4 + 팀장평가 비율×0.2 (영업 3명만)
  *  - 재원은 NBM 기준, 개인 기여도는 결제주문내역 기준 — 두 합계는 다를 수 있다
  *  - 결제 수는 신규센터만, 기여 매출은 신규센터 + 기존센터 업그레이드·상품추가
+ *  - 공공기관은 개인 매출로 치지 않는다. 다만 유치한 건수는 그대로 센다
  */
 const INCENTIVE_SALES = ["Jo", "Jeff", "Sofia"] as const;   // 영업 (1위 경쟁 대상)
 
@@ -1339,6 +1340,10 @@ const REVENUE_KINDS: Record<string, "new" | "upgrade" | "addon"> = {
 };
 /** 시트마다 괄호 앞 띄어쓰기가 들쭉날쭉해 공백을 지우고 맞춘다 */
 const kindKey = (v: unknown) => String(v ?? "").replace(/\s+/g, "");
+/** 공공기관 건은 개인 매출에서 뺀다 — 입찰·예산 집행이라 영업 개인의 몫으로 보기 어렵다.
+ *  단 신규 유치 건수는 그대로 센다 (결제 수·개수 목표에는 들어간다). */
+const PUBLIC_INDUSTRY = "공공기관";
+const isPublicOrder = (data: Record<string, string>) => kindKey(data["업종"]) === PUBLIC_INDUSTRY;
 const INCENTIVE_SUPPORT = "Owen";                            // 영업지원 (고정 비율)
 const INCENTIVE_DEFAULTS = {
   monthlyTarget: 165_000_000,  // 매출 조건 — 분기 평균 1억 6,500만원 이상
@@ -1377,14 +1382,18 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
     select: { data: true, sheetName: true },
   });
 
-  type Agg = { name: string; monthCounts: number[]; total: number };
+  type Agg = { name: string; monthCounts: number[]; total: number; publicCount: number };
   const byAssignee = new Map<string, Agg>();
   const revenueByAssignee = new Map<string, number>();
+  // 공공기관 매출은 따로 담아 둔다 — 점수에는 안 들어가도 화면에서는 보여야 한다
+  const publicByAssignee = new Map<string, number>();
   // 매출이 어디서 왔는지 화면에서 갈라 보여준다
   type Split = { new: number; upgrade: number; addon: number };
   const splitByAssignee = new Map<string, Split>();
   const orderMoney = (v: unknown) => Math.round(Number(String(v ?? "").replace(/[^0-9.-]/g, "")) || 0);
   let totalCount = 0;
+  let publicCountTotal = 0;
+  let publicRevenueTotal = 0;
   const revenueTotals: Split = { new: 0, upgrade: 0, addon: 0 };
 
   for (const row of rows) {
@@ -1396,15 +1405,24 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
     const name = String(data["결제 담당자"] ?? data["담당자"] ?? "").trim() || "미지정";
     const amount = orderMoney(data["합계"] ?? data["총매출"]);
 
-    // 결제 수는 신규 유치만 — 개수 목표(분기 평균)도 같은 기준이다
+    const pub = isPublicOrder(data);
+
+    // 결제 수는 신규 유치만 — 공공기관도 유치는 유치라 그대로 센다
     if (kindKey(data["구분"]) === kindKey(COUNT_KIND)) {
-      const agg = byAssignee.get(name) ?? { name, monthCounts: [0, 0, 0], total: 0 };
+      const agg = byAssignee.get(name) ?? { name, monthCounts: [0, 0, 0], total: 0, publicCount: 0 };
       agg.monthCounts[mi] += 1;
       agg.total += 1;
+      if (pub) { agg.publicCount += 1; publicCountTotal += 1; }
       byAssignee.set(name, agg);
       totalCount += 1;
     }
 
+    // 매출만 공공기관을 뺀다
+    if (pub) {
+      publicByAssignee.set(name, (publicByAssignee.get(name) ?? 0) + amount);
+      publicRevenueTotal += amount;
+      continue;
+    }
     revenueByAssignee.set(name, (revenueByAssignee.get(name) ?? 0) + amount);
     const sp = splitByAssignee.get(name) ?? { new: 0, upgrade: 0, addon: 0 };
     sp[bucket] += amount;
@@ -1466,7 +1484,9 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
     return {
       name,
       count: byAssignee.get(name)?.total ?? 0,
+      publicCount: byAssignee.get(name)?.publicCount ?? 0,
       revenue: revenueByAssignee.get(name) ?? 0,
+      publicRevenue: publicByAssignee.get(name) ?? 0,
       revenueSplit: splitByAssignee.get(name) ?? { new: 0, upgrade: 0, addon: 0 },
       docs: docCount.get(name) ?? 0,
       cases: caseCount.get(name) ?? 0,
@@ -1513,6 +1533,8 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
     months: monthNums.map((m) => `${m}월`),
     assignees,
     totalCount,
+    publicCountTotal,
+    publicRevenueTotal,
     revenueTotals,
     // NBM은 두 갈래 수기 입력 — 이카운트 HW매출 + 렌탈 매출 (이카운트 손익 조회 API 미제공)
     hwSales,
@@ -1526,6 +1548,60 @@ erpRouter.get("/incentive", async (req: AuthedRequest, res) => {
     topName,
     tied,
     distribution,
+  });
+});
+
+/** 내 매출이 왜 이 숫자인지 — 담당자 한 사람의 분기 결제 건을 그대로 펼쳐 준다 */
+erpRouter.get("/incentive/orders", async (req: AuthedRequest, res) => {
+  const access = await consultAccess(req.userId!, "incentive");
+  if (!access.visible) return res.status(403).json({ error: "세일즈팀 및 승인권자 전용 메뉴입니다" });
+  const now = new Date(Date.now() + 9 * 3600 * 1000);
+  const year = Number(req.query.year) || now.getUTCFullYear();
+  const quarter = Math.min(4, Math.max(1, Number(req.query.quarter) || Math.floor(now.getUTCMonth() / 3) + 1));
+  const name = String(req.query.name ?? "").trim();
+  if (!name) return res.status(400).json({ error: "담당자가 필요합니다" });
+  const monthKeys = [1, 2, 3].map((i) => `${year}.${String((quarter - 1) * 3 + i).padStart(2, "0")}`);
+
+  const rows = await prisma.erpSalesOrder.findMany({
+    where: { OR: monthKeys.map((m) => ({ sheetName: { startsWith: m } })) },
+    select: { data: true, sheetName: true },
+  });
+  const money = (v: unknown) => Math.round(Number(String(v ?? "").replace(/[^0-9.-]/g, "")) || 0);
+
+  const orders = rows.flatMap((row) => {
+    const data = row.data as Record<string, string>;
+    const bucket = REVENUE_KINDS[kindKey(data["구분"])];
+    if (!bucket) return [];
+    const who = String(data["결제 담당자"] ?? data["담당자"] ?? "").trim() || "미지정";
+    if (who.toLowerCase() !== name.toLowerCase()) return [];
+    const pub = isPublicOrder(data);
+    return [{
+      date: String(data["날짜"] ?? "").trim(),
+      month: row.sheetName.trim(),
+      center: String(data["센터명"] ?? "").trim() || "(센터명 없음)",
+      kind: String(data["구분"] ?? "").trim(),
+      bucket,
+      industry: String(data["업종"] ?? "").trim(),
+      plan: String(data["기본 요금제"] ?? "").trim(),
+      note: String(data["상품명 / 비고"] ?? data["비고"] ?? "").trim().slice(0, 120),
+      amount: money(data["합계"] ?? data["총매출"]),
+      isPublic: pub,
+      // 개인 매출로 치는지 · 결제 수로 치는지 — 줄마다 이유가 보이게 같이 내려준다
+      countsRevenue: !pub,
+      countsCount: kindKey(data["구분"]) === kindKey(COUNT_KIND),
+    }];
+  }).sort((a, b) => a.date.localeCompare(b.date) || a.center.localeCompare(b.center, "ko"));
+
+  const sum = (f: (o: (typeof orders)[number]) => number) => orders.reduce((a, o) => a + f(o), 0);
+  res.json({
+    name, year, quarter, months: monthKeys,
+    orders,
+    totals: {
+      revenue: sum((o) => (o.countsRevenue ? o.amount : 0)),
+      publicRevenue: sum((o) => (o.isPublic ? o.amount : 0)),
+      count: orders.filter((o) => o.countsCount).length,
+      publicCount: orders.filter((o) => o.countsCount && o.isPublic).length,
+    },
   });
 });
 

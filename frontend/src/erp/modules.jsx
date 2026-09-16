@@ -4069,6 +4069,113 @@ export function TaxInvoiceView() {
 }
 
 /** 인센티브 (소유자 전용) — 분기 선택 → 결제주문내역 담당자별 마감 카운트 + NBM(HW매출, 이카운트 연동 예정) */
+/** 내 매출이 왜 이 숫자인지 — 담당자 한 사람의 분기 결제 건을 날짜순으로 펼친다 */
+function IncentiveOrders({ year, quarter, name, onClose }) {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState("");
+  const [onlyCounted, setOnlyCounted] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setData(null); setErr("");
+    api.erpIncentiveOrders({ year, quarter, name })
+      .then((d) => { if (alive) setData(d); })
+      .catch((e) => { if (alive) setErr(e?.message || "불러오지 못했어요"); });
+    return () => { alive = false; };
+  }, [year, quarter, name]);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const rows = !data ? [] : data.orders.filter((o) => !onlyCounted || o.countsRevenue);
+
+  const csv = () => {
+    const head = ["날짜", "센터명", "구분", "업종", "요금제", "금액", "개인매출 반영", "결제수 반영", "비고"];
+    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const body = rows.map((o) => [o.date, o.center, o.kind, o.industry, o.plan, o.amount,
+      o.countsRevenue ? "O" : "제외(공공기관)", o.countsCount ? "O" : "-", o.note].map(esc).join(","));
+    const blob = new Blob(["\uFEFF" + [head.join(","), ...body].join("\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `인센티브_${name}_${year}년${quarter}분기.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  return (
+    <div className="inc-drill-bg" onClick={onClose}>
+      <div className="inc-drill" onClick={(e) => e.stopPropagation()}>
+        <div className="inc-drill-hd">
+          <div>
+            <div className="h-eyebrow">{year}년 {quarter}분기</div>
+            <div style={{ fontWeight: 800, fontSize: 16, marginTop: 2 }}>{name} · 결제 건 내역</div>
+          </div>
+          <div className="row" style={{ gap: 6 }}>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={csv} disabled={!rows.length}>엑셀</button>
+            <button type="button" className="inc-drill-x" onClick={onClose} aria-label="닫기">✕</button>
+          </div>
+        </div>
+
+        {err ? <div className="small" style={{ color: "#B3261E", padding: "16px 4px" }}>{err}</div>
+          : !data ? <div className="spinner" />
+            : (
+              <>
+                <div className="inc-drill-sum">
+                  <div><span className="k">개인 매출</span><span className="v">{formatWon(data.totals.revenue)}</span></div>
+                  {data.totals.publicRevenue > 0 && (
+                    <div><span className="k">공공기관 (제외)</span><span className="v off">{formatWon(data.totals.publicRevenue)}</span></div>
+                  )}
+                  <div><span className="k">결제 수 <span style={{ opacity: .65 }}>신규</span></span>
+                    <span className="v">{data.totals.count}건
+                      {data.totals.publicCount > 0 && <span className="small" style={{ color: "var(--muted)", fontWeight: 500 }}> (공공 {data.totals.publicCount} 포함)</span>}
+                    </span></div>
+                </div>
+                <div className="row" style={{ gap: 6, margin: "10px 0 8px", alignItems: "center", flexWrap: "wrap" }}>
+                  <button type="button" className={"chip" + (!onlyCounted ? " on" : "")} onClick={() => setOnlyCounted(false)}>전체 {data.orders.length}건</button>
+                  <button type="button" className={"chip" + (onlyCounted ? " on" : "")} onClick={() => setOnlyCounted(true)}>개인 매출로 친 것만</button>
+                </div>
+                <div className="dash-table-wrap">
+                  <table className="inc-drill-tbl">
+                    <thead>
+                      <tr>
+                        <th>날짜</th><th className="l">센터명</th><th>구분</th><th>업종</th><th className="r">금액</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((o, i) => (
+                        <tr key={i} className={o.isPublic ? "pub" : ""}>
+                          <td className="dt">{(o.date || o.month).slice(5)}</td>
+                          <td className="l">
+                            {o.center}
+                            {o.plan && <span className="sub"> · {o.plan}</span>}
+                            {o.note && <span className="sub"> · {o.note}</span>}
+                          </td>
+                          <td><span className="inc-drill-kind">{o.kind}</span></td>
+                          <td>
+                            {o.industry || "-"}
+                            {o.isPublic && <span className="inc-drill-ex">매출 제외</span>}
+                          </td>
+                          <td className="r">{o.amount ? formatWon(o.amount) : "-"}</td>
+                        </tr>
+                      ))}
+                      {!rows.length && <tr><td colSpan={5} className="erp-tbl-empty">해당 분기 결제 건이 없습니다</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="small" style={{ color: "var(--muted)", marginTop: 10, lineHeight: 1.5 }}>
+                  신규센터 · 기존센터 업그레이드 · 상품추가만 개인 기여로 봅니다 (요금제 이용권·문자 충전 등 갱신·운영 건은 빠집니다).
+                  <strong> 공공기관은 매출에서 빼고, 신규 유치 건수는 그대로 셉니다.</strong>
+                </div>
+              </>
+            )}
+      </div>
+    </div>
+  );
+}
+
 export function IncentiveView() {
   const kstNow = new Date(Date.now() + 9 * 3600 * 1000);
   const [year, setYear] = useState(kstNow.getUTCFullYear());
@@ -4081,6 +4188,7 @@ export function IncentiveView() {
   const [rentalDraft, setRentalDraft] = useState(["", "", ""]);
   const [usageDraft, setUsageDraft] = useState({});   // 채널톡 활용 횟수 (수기 입력)
   const [hwSaving, setHwSaving] = useState(false);
+  const [drill, setDrill] = useState("");            // 누른 사람의 결제 건 내역
 
   useEffect(() => {
     setLoading(true);
@@ -4201,6 +4309,8 @@ export function IncentiveView() {
         재원은 <strong>3개월 누적 NBM 매출 × 0.5%</strong>이고, <strong>매출·개수 두 조건을 모두 충족</strong>해야 지급됩니다.
         영업 3명은 결제수·매출·팀장평가로 순위를 내어 1위에게 보너스를 더하고, 영업지원은 고정 비율입니다.
         팀장 평가는 상담자료 승인·채널톡 활용·사례 공유 3개 지표로 자동 산정되며, 채널톡 활용 횟수만 직접 입력합니다.
+        <strong> 공공기관 매출은 개인 매출에서 빼고, 신규 유치 건수는 그대로 셉니다.</strong>
+        {" "}숫자를 누르면 어떤 센터가 언제 얼마로 잡혔는지 볼 수 있어요.
       </div>
 
       <div className="row" style={{ gap: 8, margin: "16px 0 4px", alignItems: "center", flexWrap: "wrap" }}>
@@ -4308,12 +4418,24 @@ export function IncentiveView() {
                       <div className="inc-score"><i style={{ width: `${Math.min(100, sc.score)}%` }} /></div>
                       <div className="inc-metric" style={{ marginTop: 10 }}>
                         <span className="k">결제 수 <span style={{ fontWeight: 400, opacity: .65 }}>신규</span></span>
-                        <span className="v">{sc.count}건 <span style={{ color: "var(--muted)", fontWeight: 500 }}>{sc.countScore.toFixed(0)}점</span></span>
+                        <button type="button" className="v inc-drill-btn" onClick={() => setDrill(row.name)}>
+                          {sc.count}건 <span style={{ color: "var(--muted)", fontWeight: 500 }}>{sc.countScore.toFixed(0)}점</span>
+                        </button>
                       </div>
                       <div className="inc-metric">
-                        <span className="k">기여 매출</span>
-                        <span className="v">{formatWon(sc.revenue)} <span style={{ color: "var(--muted)", fontWeight: 500 }}>{sc.revenueScore.toFixed(0)}점</span></span>
+                        <span className="k">기여 매출 <span style={{ fontWeight: 400, opacity: .65 }}>공공 제외</span></span>
+                        <button type="button" className="v inc-drill-btn" onClick={() => setDrill(row.name)}>
+                          {formatWon(sc.revenue)} <span style={{ color: "var(--muted)", fontWeight: 500 }}>{sc.revenueScore.toFixed(0)}점</span>
+                        </button>
                       </div>
+                      {sc.publicRevenue > 0 && (
+                        <div className="inc-metric" style={{ marginTop: -4 }}>
+                          <span className="k" style={{ fontSize: 11.5 }}>
+                            · 공공기관 {formatWon(sc.publicRevenue)}은 매출에서 제외
+                            {sc.publicCount > 0 && ` (신규 ${sc.publicCount}건은 결제 수에 포함)`}
+                          </span>
+                        </div>
+                      )}
                       {sc.revenueSplit && (sc.revenueSplit.upgrade > 0 || sc.revenueSplit.addon > 0) && (
                         <div className="inc-metric" style={{ marginTop: -4 }}>
                           <span className="k" style={{ fontSize: 11.5 }}>
@@ -4443,7 +4565,7 @@ export function IncentiveView() {
           </div>
 
           <div className="rate-plan-block" style={{ marginTop: 20 }}>
-            <div className="rate-plan-title">담당자별 마감 건수 <span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 6 }}>· 결제주문내역 신규센터 전체</span></div>
+            <div className="rate-plan-title">담당자별 마감 건수 <span className="small" style={{ fontWeight: 500, color: "var(--muted)", marginLeft: 6 }}>· 결제주문내역 신규센터 전체 (공공기관 포함) · 이름을 누르면 내역</span></div>
             <div className="dash-table-wrap">
               <table className="dash-table">
                 <thead>
@@ -4456,7 +4578,12 @@ export function IncentiveView() {
                 <tbody>
                   {data.assignees.map((a) => (
                     <tr key={a.name}>
-                      <td className="label"><AssigneeBadge name={a.name} /></td>
+                      <td className="label">
+                        <button type="button" className="inc-drill-name" onClick={() => setDrill(a.name)}>
+                          <AssigneeBadge name={a.name} />
+                        </button>
+                        {a.publicCount > 0 && <span className="small" style={{ color: "var(--muted)" }}> 공공 {a.publicCount}</span>}
+                      </td>
                       {a.monthCounts.map((c, i) => <td key={i} className="num">{c || "-"}</td>)}
                       <td className="num" style={{ fontWeight: 700 }}>{a.total}</td>
                     </tr>
@@ -4469,6 +4596,9 @@ export function IncentiveView() {
             </div>
           </div>
         </>
+      )}
+      {drill && (
+        <IncentiveOrders year={year} quarter={quarter} name={drill} onClose={() => setDrill("")} />
       )}
     </div>
   );

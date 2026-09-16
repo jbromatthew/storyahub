@@ -368,6 +368,12 @@ export const api = {
     return req(`/erp/incentive?${p}`);
   },
   erpIncentiveSave: (body) => req("/erp/incentive", { method: "PUT", body }),
+  erpIncentiveOrders: ({ year, quarter, name }) => {
+    const p = new URLSearchParams({ name });
+    if (year) p.set("year", year);
+    if (quarter) p.set("quarter", quarter);
+    return req(`/erp/incentive/orders?${p}`);
+  },
   erpSmartStoreApplies: ({ roundId } = {}) => req(`/erp/smartstore/applies${roundId ? `?roundId=${roundId}` : ""}`),
   erpSmartStoreEditLogs: ({ days } = {}) => req(`/erp/smartstore/edit-logs?days=${days || 30}`),
   erpSmartStoreApplyUpdate: (id, body) => req(`/erp/smartstore/applies/${id}`, { method: "PATCH", body }),
