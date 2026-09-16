@@ -34,6 +34,7 @@ export const ERP_MODULES = [
   { id: "churn", label: "이탈 관리", icon: "chart", group: "customer", groupLabel: "고객관리" },
   { id: "smart-store", label: "스마트상점", icon: "board", group: "bizsupport", groupLabel: "영업지원" },
   { id: "founders", label: "BROJ Founders x Draper", icon: "board", group: "bizsupport" },
+  { id: "partners", label: "파트너스", icon: "admin", group: "bizsupport" },
   { id: "vendor-orders", label: "크라이저 발주", icon: "sales", group: "bizsupport", vendorGate: true },
   { id: "install-schedule", label: "설치일정 (브로제이)", icon: "board", group: "bizsupport", vendorGate: true },
   // OPEN API 센터관리 — 메뉴에서만 내렸다. 화면과 API는 그대로다.

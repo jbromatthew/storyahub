@@ -374,6 +374,11 @@ export const api = {
     if (quarter) p.set("quarter", quarter);
     return req(`/erp/incentive/orders?${p}`);
   },
+  erpPartnersMeta: () => req("/erp/partners/meta"),
+  erpPartners: () => req("/erp/partners"),
+  erpPartnerCreate: (body) => req("/erp/partners", { method: "POST", body }),
+  erpPartnerPatch: (id, body) => req(`/erp/partners/${id}`, { method: "PATCH", body }),
+  erpPartnerDelete: (id) => req(`/erp/partners/${id}`, { method: "DELETE" }),
   erpSmartStoreApplies: ({ roundId } = {}) => req(`/erp/smartstore/applies${roundId ? `?roundId=${roundId}` : ""}`),
   erpSmartStoreEditLogs: ({ days } = {}) => req(`/erp/smartstore/edit-logs?days=${days || 30}`),
   erpSmartStoreApplyUpdate: (id, body) => req(`/erp/smartstore/applies/${id}`, { method: "PATCH", body }),

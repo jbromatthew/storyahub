@@ -1703,3 +1703,34 @@ model ErpRndTicketLog {
 
   @@index([ticketId, createdAt])
 }
+
+/// 브로제이 파트너스 — 제휴 후보부터 계약까지 한 줄로 본다.
+/// 등급은 Core > Growth > Specialist 세 단계 (운영 계획안 2026-08-21).
+model ErpPartner {
+  id         String   @id @default(cuid())
+  name       String                      // 업체명
+  category   String   @default("")       // 모집 카테고리 (컨설팅·락커·기구·용품·측정·IT)
+  field      String   @default("")       // 분야 (가민 시계처럼 더 좁은 갈래)
+  tier       String   @default("")       // core | growth | specialist | "" (미정)
+  status     String   @default("lead")   // lead → contact → review → nego → contracted | hold | ended
+  statusAt   DateTime @default(now())    // 이 상태가 된 날 — 검토중인 채로 묵는 곳을 찾는다
+  feature    String   @default("")       // 특징
+  ceoName    String   @default("")       // 대표자
+  contact    String   @default("")       // 업체 연락처
+  email      String   @default("")
+  site       String   @default("")
+  ownerName  String   @default("")       // 우리 쪽 담당자
+  startAt    String   @default("")       // 계약 시작 (YYYY-MM-DD)
+  endAt      String   @default("")       // 계약 종료
+  commission String   @default("")       // 커미션 조건
+  benefit    String   @default("")       // 합의한 혜택
+  nextStep   String   @default("")       // 다음 할 일
+  nextAt     String   @default("")       // 다음 할 일 날짜
+  note       String   @default("")
+  createdBy  String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([status])
+  @@index([tier])
+}

@@ -4604,6 +4604,368 @@ export function IncentiveView() {
   );
 }
 
+/* ===================== 파트너스 ===================== */
+
+const PT_TIER_TONE = { core: "pt-core", growth: "pt-growth", specialist: "pt-spec" };
+const PT_BLANK = {
+  name: "", category: "", field: "", tier: "", status: "lead", feature: "",
+  ceoName: "", contact: "", email: "", site: "", ownerName: "",
+  startAt: "", endAt: "", commission: "", benefit: "", nextStep: "", nextAt: "", note: "",
+};
+
+/** 상태가 된 지 며칠 — 검토중인 채로 묵는 곳을 찾는 데 쓴다 */
+function ptDays(iso) {
+  if (!iso) return null;
+  const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  return Number.isFinite(d) && d >= 0 ? d : null;
+}
+
+export function PartnersView() {
+  const [meta, setMeta] = useState(null);
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState("");
+  const [fStatus, setFStatus] = useState("");
+  const [fTier, setFTier] = useState("");
+  const [fCat, setFCat] = useState("");
+  const [sort, setSort] = useState({ k: "tier", dir: 1 });
+  const [edit, setEdit] = useState(null);      // 고치는 중인 줄 (새로 만들면 id 없음)
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [m, d] = await Promise.all([api.erpPartnersMeta(), api.erpPartners()]);
+      setMeta(m); setRows(d.rows || []);
+    } catch (e) { notifyError(e); } finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const tierOf = (k) => meta?.tiers.find((t) => t.k === k);
+  const statusOf = (k) => meta?.statuses.find((s) => s.k === k);
+  const catOf = (k) => meta?.categories.find((c) => c.k === k);
+  const tierRank = (k) => { const i = (meta?.tiers || []).findIndex((t) => t.k === k); return i < 0 ? 9 : i; };
+  const statusRank = (k) => { const i = (meta?.statuses || []).findIndex((s) => s.k === k); return i < 0 ? 9 : i; };
+
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    let list = rows.filter((r) => {
+      if (fStatus && r.status !== fStatus) return false;
+      if (fTier && (r.tier || "none") !== fTier) return false;
+      if (fCat && r.category !== fCat) return false;
+      if (!needle) return true;
+      return [r.name, r.field, r.feature, r.ceoName, r.ownerName, r.note, r.nextStep,
+        catOf(r.category)?.t, tierOf(r.tier)?.t]
+        .some((v) => String(v || "").toLowerCase().includes(needle));
+    });
+    const val = (r) => {
+      switch (sort.k) {
+        case "tier": return tierRank(r.tier);
+        case "status": return statusRank(r.status);
+        case "name": return r.name || "";
+        case "category": return catOf(r.category)?.t || "힣";
+        case "owner": return r.ownerName || "힣";
+        case "statusAt": return r.statusAt || "";
+        default: return r.updatedAt || "";
+      }
+    };
+    return [...list].sort((a, b) => {
+      const x = val(a), y = val(b);
+      const c = typeof x === "number" ? x - y : String(x).localeCompare(String(y), "ko");
+      return (c || String(a.name).localeCompare(String(b.name), "ko")) * sort.dir;
+    });
+  }, [rows, q, fStatus, fTier, fCat, sort, meta]);
+
+  const th = (k, label, cls = "") => (
+    <th className={cls + (sort.k === k ? " on" : "")} onClick={() => setSort((s) => ({ k, dir: s.k === k ? -s.dir : 1 }))}>
+      {label}<span className="pt-sort">{sort.k === k ? (sort.dir > 0 ? "▲" : "▼") : ""}</span>
+    </th>
+  );
+
+  const exportCsv = () => {
+    const head = ["등급", "업체명", "카테고리", "분야", "특징", "대표자", "담당자", "상태", "상태 경과(일)",
+      "다음 할 일", "다음 일정", "계약 시작", "계약 종료", "커미션", "혜택", "연락처", "이메일", "사이트", "메모"];
+    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const body = shown.map((r) => [
+      tierOf(r.tier)?.t || "미정", r.name, catOf(r.category)?.t || "", r.field, r.feature,
+      r.ceoName, r.ownerName, statusOf(r.status)?.t || r.status, ptDays(r.statusAt) ?? "",
+      r.nextStep, r.nextAt, r.startAt, r.endAt, r.commission, r.benefit, r.contact, r.email, r.site, r.note,
+    ].map(esc).join(","));
+    const blob = new Blob(["﻿" + [head.join(","), ...body].join("\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `브로제이_파트너스_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const cnt = (k) => meta?.counts?.status?.[k] ?? 0;
+
+  return (
+    <div className="fade pad" style={{ marginTop: 8, paddingBottom: 40 }}>
+      <div className="h-eyebrow">영업지원</div>
+      <div className="h-title">브로제이 파트너스</div>
+      <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+        컨설팅·시설·기구·용품·측정·IT 분야의 협력사를 후보부터 계약까지 한 줄로 봅니다.
+        등급은 <strong>코어 &gt; 그로우스 &gt; 스페셜리스트</strong> 세 단계이고, 상태는
+        후보 → 접촉 → 검토중 → 협의중 → 계약 순으로 올라갑니다.
+      </div>
+
+      {loading ? <div className="spinner" /> : !meta ? null : (
+        <>
+          {/* 등급이 무엇인지 — 누르면 그 등급만 본다 */}
+          <div className="pt-tiers">
+            {meta.tiers.map((t) => {
+              const n = meta.counts.tier?.[t.k] ?? 0;
+              return (
+                <button key={t.k} type="button"
+                  className={"pt-tier " + PT_TIER_TONE[t.k] + (fTier === t.k ? " on" : "")}
+                  onClick={() => setFTier((v) => (v === t.k ? "" : t.k))}>
+                  <div className="pt-tier-hd">
+                    <span className="pt-tier-name">{t.t}</span>
+                    <span className="pt-tier-n">{n}</span>
+                  </div>
+                  <div className="pt-tier-desc">{t.desc}</div>
+                  <div className="pt-tier-term">{t.term}</div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 상태 — 계약한 곳과 아직 보고 있는 곳 */}
+          <div className="pt-chips">
+            <button type="button" className={"chip" + (!fStatus ? " on" : "")} onClick={() => setFStatus("")}>
+              전체 {meta.total}
+            </button>
+            {meta.statuses.map((s) => (
+              <button key={s.k} type="button" className={"chip" + (fStatus === s.k ? " on" : "")}
+                onClick={() => setFStatus((v) => (v === s.k ? "" : s.k))}>
+                {s.t} {cnt(s.k)}
+              </button>
+            ))}
+          </div>
+
+          <div className="pt-chips">
+            {meta.categories.map((c) => (
+              <button key={c.k} type="button" className={"chip sm" + (fCat === c.k ? " on" : "")}
+                onClick={() => setFCat((v) => (v === c.k ? "" : c.k))}>
+                {c.t} {meta.counts.category?.[c.k] ?? 0}
+              </button>
+            ))}
+          </div>
+
+          <div className="row" style={{ gap: 8, margin: "14px 0 10px", alignItems: "center", flexWrap: "wrap" }}>
+            <input className="pt-search" value={q} onChange={(e) => setQ(e.target.value)}
+              placeholder="업체명·분야·특징·대표자·담당자로 찾기" />
+            <span className="small" style={{ color: "var(--muted)" }}>{shown.length}곳</span>
+            <span style={{ marginLeft: "auto" }} />
+            <button type="button" className="btn btn-sm btn-ghost" onClick={exportCsv} disabled={!shown.length}>엑셀</button>
+            <button type="button" className="btn btn-sm btn-accent" onClick={() => setEdit({ ...PT_BLANK })}>+ 파트너 추가</button>
+          </div>
+
+          <div className="pt-wrap">
+            <table className="pt-tbl">
+              <thead>
+                <tr>
+                  {th("tier", "등급")}
+                  {th("name", "업체명", "l")}
+                  {th("category", "카테고리")}
+                  <th className="l">특징</th>
+                  <th>대표자</th>
+                  {th("owner", "담당자")}
+                  {th("status", "상태")}
+                  <th className="l">다음 할 일</th>
+                  <th>계약</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((r) => {
+                  const st = statusOf(r.status);
+                  const d = ptDays(r.statusAt);
+                  return (
+                    <tr key={r.id} onClick={() => setEdit({ ...r })}>
+                      <td>
+                        {r.tier
+                          ? <span className={"pt-badge " + PT_TIER_TONE[r.tier]}>{tierOf(r.tier)?.t}</span>
+                          : <span className="pt-badge pt-none">미정</span>}
+                      </td>
+                      <td className="l">
+                        <span className="pt-name">{r.name}</span>
+                        {r.field && <span className="pt-sub"> · {r.field}</span>}
+                      </td>
+                      <td className="pt-cat">{catOf(r.category)?.t || "-"}</td>
+                      <td className="l pt-feature">{r.feature || "-"}</td>
+                      <td>{r.ceoName || "-"}</td>
+                      <td>{r.ownerName ? <AssigneeBadge name={r.ownerName} /> : <span className="pt-sub">미지정</span>}</td>
+                      <td>
+                        <span className={"pt-st pt-st-" + (st?.tone || "gray")}>{st?.t || r.status}</span>
+                        {d != null && d > 0 && <span className="pt-sub"> {d}일</span>}
+                      </td>
+                      <td className="l">
+                        {r.nextStep || <span className="pt-sub">-</span>}
+                        {r.nextAt && <span className="pt-sub"> ({r.nextAt.slice(5)})</span>}
+                      </td>
+                      <td className="pt-sub">
+                        {r.startAt ? `${r.startAt.slice(2)}${r.endAt ? ` ~ ${r.endAt.slice(2)}` : " ~"}` : "-"}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!shown.length && (
+                  <tr><td colSpan={9} className="erp-tbl-empty">
+                    {rows.length ? "고르개에 걸리는 곳이 없습니다" : "아직 등록한 파트너가 없습니다 — 오른쪽 위 「파트너 추가」로 시작하세요"}
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {edit && meta && (
+        <PartnerEdit row={edit} meta={meta} onClose={() => setEdit(null)}
+          onSaved={() => { setEdit(null); load(); }} />
+      )}
+    </div>
+  );
+}
+
+/** 파트너 한 곳 — 새로 만들기와 고치기를 같이 한다 */
+function PartnerEdit({ row, meta, onClose, onSaved }) {
+  const [f, setF] = useState({ ...PT_BLANK, ...row });
+  const [busy, setBusy] = useState(false);
+  const isNew = !row.id;
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const save = async () => {
+    if (!f.name.trim()) return notifyError(new Error("업체명을 적어 주세요"));
+    setBusy(true);
+    try {
+      const body = Object.fromEntries(Object.keys(PT_BLANK).map((k) => [k, f[k] ?? ""]));
+      if (isNew) await api.erpPartnerCreate(body);
+      else await api.erpPartnerPatch(row.id, body);
+      toastSuccess(isNew ? "파트너를 등록했어요" : "저장했어요");
+      onSaved();
+    } catch (e) { notifyError(e); } finally { setBusy(false); }
+  };
+
+  const remove = async () => {
+    if (!(await confirmAction("이 파트너를 지울까요?", `${row.name} — 되돌릴 수 없습니다`))) return;
+    setBusy(true);
+    try { await api.erpPartnerDelete(row.id); toastSuccess("지웠어요"); onSaved(); }
+    catch (e) { notifyError(e); } finally { setBusy(false); }
+  };
+
+  const tier = meta.tiers.find((t) => t.k === f.tier);
+
+  return (
+    <div className="pt-modal" onClick={onClose}>
+      <div className="pt-modal-in" onClick={(e) => e.stopPropagation()}>
+        <div className="pt-modal-hd">
+          <div>
+            <div className="h-eyebrow">{isNew ? "새 파트너" : "파트너"}</div>
+            <div style={{ fontWeight: 800, fontSize: 16, marginTop: 2 }}>{f.name || "업체명을 적어 주세요"}</div>
+          </div>
+          <button type="button" className="inc-drill-x" onClick={onClose} aria-label="닫기">✕</button>
+        </div>
+
+        <div className="pt-form">
+          <label className="pt-f wide"><span>업체명</span>
+            <input value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="예: 런피엠(가민)" /></label>
+          <label className="pt-f"><span>분야</span>
+            <input value={f.field} onChange={(e) => set("field", e.target.value)} placeholder="예: 가민 시계" /></label>
+
+          <div className="pt-f wide"><span>카테고리</span>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+              {meta.categories.map((c) => (
+                <button key={c.k} type="button" className={"chip sm" + (f.category === c.k ? " on" : "")}
+                  onClick={() => set("category", f.category === c.k ? "" : c.k)} title={c.desc}>{c.t}</button>
+              ))}
+            </div>
+          </div>
+
+          <div className="pt-f wide"><span>등급</span>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+              {meta.tiers.map((t) => (
+                <button key={t.k} type="button" className={"chip" + (f.tier === t.k ? " on" : "")}
+                  onClick={() => set("tier", f.tier === t.k ? "" : t.k)}>{t.t}</button>
+              ))}
+              <button type="button" className={"chip" + (!f.tier ? " on" : "")} onClick={() => set("tier", "")}>미정</button>
+            </div>
+            {tier && <div className="pt-hint">{tier.term} · {tier.benefit}</div>}
+          </div>
+
+          <div className="pt-f wide"><span>상태</span>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+              {meta.statuses.map((s) => (
+                <button key={s.k} type="button" className={"chip" + (f.status === s.k ? " on" : "")}
+                  onClick={() => set("status", s.k)}>{s.t}</button>
+              ))}
+            </div>
+          </div>
+
+          <label className="pt-f wide"><span>특징</span>
+            <textarea rows={2} value={f.feature} onChange={(e) => set("feature", e.target.value)}
+              placeholder="예: 러닝 데이터 연동 가능" /></label>
+
+          <label className="pt-f"><span>대표자</span>
+            <input value={f.ceoName} onChange={(e) => set("ceoName", e.target.value)} /></label>
+          <label className="pt-f"><span>담당자 (우리 쪽)</span>
+            <input list="pt-people" value={f.ownerName} onChange={(e) => set("ownerName", e.target.value)} />
+            <datalist id="pt-people">{(meta.people || []).map((p) => <option key={p.email} value={p.name} />)}</datalist>
+          </label>
+          <label className="pt-f"><span>연락처</span>
+            <input value={f.contact} onChange={(e) => set("contact", e.target.value)} /></label>
+          <label className="pt-f"><span>이메일</span>
+            <input value={f.email} onChange={(e) => set("email", e.target.value)} /></label>
+          <label className="pt-f wide"><span>사이트</span>
+            <input value={f.site} onChange={(e) => set("site", e.target.value)} placeholder="https://" /></label>
+
+          <label className="pt-f"><span>계약 시작</span>
+            <input type="date" value={f.startAt} onChange={(e) => set("startAt", e.target.value)} /></label>
+          <label className="pt-f"><span>계약 종료</span>
+            <input type="date" value={f.endAt} onChange={(e) => set("endAt", e.target.value)} /></label>
+
+          <label className="pt-f"><span>다음 할 일</span>
+            <input value={f.nextStep} onChange={(e) => set("nextStep", e.target.value)} placeholder="예: 제안서 발송" /></label>
+          <label className="pt-f"><span>다음 일정</span>
+            <input type="date" value={f.nextAt} onChange={(e) => set("nextAt", e.target.value)} /></label>
+
+          <label className="pt-f wide"><span>커미션 조건</span>
+            <input value={f.commission} onChange={(e) => set("commission", e.target.value)}
+              placeholder="예: 소개 3~10% · 신규 계약 5~10%" /></label>
+          <label className="pt-f wide"><span>합의한 혜택</span>
+            <textarea rows={2} value={f.benefit} onChange={(e) => set("benefit", e.target.value)} /></label>
+          <label className="pt-f wide"><span>메모</span>
+            <textarea rows={3} value={f.note} onChange={(e) => set("note", e.target.value)} /></label>
+        </div>
+
+        <div className="row" style={{ gap: 8, marginTop: 16, alignItems: "center" }}>
+          {!isNew && (
+            <>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={remove} disabled={busy}
+                style={{ color: "#B3261E" }}>삭제</button>
+              <span className="small" style={{ color: "var(--muted)" }}>
+                {row.createdBy && `${row.createdBy} 등록`}
+              </span>
+            </>
+          )}
+          <span style={{ marginLeft: "auto" }} />
+          <button type="button" className="btn btn-sm btn-ghost" onClick={onClose} disabled={busy}>닫기</button>
+          <button type="button" className="btn btn-sm btn-accent" onClick={save} disabled={busy}>
+            {busy ? "저장 중…" : isNew ? "등록" : "저장"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** 메뉴 권한 — 메뉴별 기본 공개/제한 + 허용 팀·멤버 선택 (소유자 전용, 소유자는 항상 전체 접근) */
 const MENU_OWNER_EMAIL = "matthew@broj.company";
 const MENU_EXEC_EMAILS = [MENU_OWNER_EMAIL, "david@broj.company"];
