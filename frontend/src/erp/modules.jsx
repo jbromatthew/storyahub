@@ -4984,8 +4984,14 @@ function PartnerEdit({ row, meta, onClose, onSaved }) {
                   placeholder="예: 러닝 데이터 연동 가능" /></label>
 
               <label className="pt-f"><span>담당자 (우리 쪽)</span>
-                <input list="pt-people" value={f.ownerName} onChange={(e) => set("ownerName", e.target.value)} />
-                <datalist id="pt-people">{(meta.people || []).map((p) => <option key={p.email} value={p.name} />)}</datalist>
+                <select value={f.ownerName} onChange={(e) => set("ownerName", e.target.value)}>
+                  <option value="">미지정</option>
+                  {/* 예전에 손으로 적어 둔 이름이 목록에 없으면 그것도 남겨 둔다 */}
+                  {f.ownerName && !(meta.people || []).some((p) => p.name === f.ownerName) && (
+                    <option value={f.ownerName}>{f.ownerName}</option>
+                  )}
+                  {(meta.people || []).map((p) => <option key={p.email} value={p.name}>{p.name}</option>)}
+                </select>
               </label>
               <label className="pt-f"><span>연락처</span>
                 <input value={f.contact} onChange={(e) => set("contact", e.target.value)} /></label>

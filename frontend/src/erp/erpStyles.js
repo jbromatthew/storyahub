@@ -888,7 +888,7 @@ textarea.input{resize:vertical;min-height:58px;line-height:1.5;}
 .pt-f{display:flex;flex-direction:column;gap:5px;min-width:0;}
 .pt-f.wide{grid-column:1 / -1;}
 .pt-f>span{font-size:11.5px;font-weight:700;color:var(--muted);}
-.pt-f input,.pt-f textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-family:inherit;font-size:13.5px;background:#fff;color:var(--ink);}
+.pt-f input,.pt-f textarea,.pt-f select{width:100%;border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-family:inherit;font-size:13.5px;background:#fff;color:var(--ink);}
 .pt-f textarea{resize:vertical;line-height:1.5;}
 .pt-hint{font-size:11.5px;color:var(--muted);line-height:1.45;margin-top:4px;}
 @media(max-width:640px){.pt-form{grid-template-columns:1fr;}}
